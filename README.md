@@ -57,20 +57,20 @@
  * 
  * For uarts it is possible to talk directly to the device connected to the uart
  * (a GSM modem for example), send/receive strings or bytes/special characters,
- * configuring pins/baudrate. In conjunction "suspend/resume" commands it
- * is possible t reconfigure given uart without letting the main sketch to notice
+ * configuring pins/baudrate. In conjunction with "suspend/resume" commands it
+ * is possible to reconfigure given uart without letting the main sketch to notice
  * that
  *
  * i2c commands include 'i2c scan', read/write commands and interface configuration:
  * pins to use and clock frequency 
  * 
- * There are some limited execution control over user sketches: allows to
- * suspend/resume main loop(). Keeps track of uptime, allow changing of CPU frequency,
- * light sleep.
+ * There are some limited execution control over user sketches: shell allows to
+ * suspend/resume main loop(), keeps track of uptime, allow changing of CPU frequency,
+ * entering the light sleep mode and waking up.
  *
- * Pin commands allow for changing pin modes, writing values, changing pullup modes,
- * reading (digital/analog). There are commands to generate PWM signal on arbitrary
- * pin, and commands to count pulses arrived on given pin
+ * Pin commands allow for changing pin modes, writing/reading  values, changing pullup
+ * modes, displaying current pin configuration. There are commands to generate PWM
+ * signal on arbitrary pin, and commands to count pulses arrived on given pin
  *
  * EXAMPLES:
  * ---------
@@ -80,7 +80,7 @@
  *  
  * Example #1:
  * A DS3231 RTC clock chip is connected to pins 21 and 22. Check if device is accessible via
- * I2C, read the current time (console script below from real setup):
+ * I2C, read the current time
  * 
  * --------------------- Example screenshot -----------------------------------
  * esp32#>
