@@ -16,19 +16,27 @@
  * Monitor and TeraTerm. Please note that some features will be unavailable if using
  * Arduino Serial Monitor: you will not be able to send Ctrl+C and Ctrl+Z sequences
  * which are useful in debugging GSM modems
+  *  
+ * HOW TO USE IT IN ARDUINO PROJECT:
+ * ---------------------------------
+ * 1. Add a single file, espshell.c to your sketch directory.
+ * 2. Compile & upload your sketch as usual. ESPShell will gain control automatically
+ * 3. Access command line interface via Arduino IDE's Serial Monitor or, better, thru
+ *    terminal software: linux cu, windows TeraTerm or putty.
+ *
+ * SHELL BRIEF DESCRIPTION AND EXAMPLES OF USE
+ * -------------------------------------------
  * 
  * Shell commands include i2c, uart, pin manipulation, tone generator
  * and a pulse counter. There are some basic 'information' commands:
  * memory usage, cpuid, pin; commands for execution flow control: suspend/resume
  * main Arduino loop(), restart and light sleep
- *
- * SHELL COMMANDS
- * --------------
- *
+ * 
  * Full list of commands is available by typing "?" and pressing <Enter>
  * Description of arguments to the command can be obtained by typing a command
  * with "?" like this:
- * --------------------------Example screen shot---------------------
+ * 
+ * --------------------Example screen shot------------------------------------
  * esp32#>pin ?
  *
  * "pin X (pullup|pulldown|out|in|analog|open|high|low){1,}"
@@ -45,11 +53,11 @@
  * Show current state,mode and logic value (low/high) of the pin X.
  * Ex.: pin 18
  * esp32#>
- * --------------------------------------------------------------------
+ * -------------------- End ------------------------------------
  * 
  * For uarts it is possible to talk directly to the device connected to the uart
  * (a GSM modem for example), send/receive strings or bytes/special characters,
- * configuring pins/baudrate. With conjunction "suspend/resume" commands it
+ * configuring pins/baudrate. In conjunction "suspend/resume" commands it
  * is possible t reconfigure given uart without letting the main sketch to notice
  * that
  *
@@ -64,9 +72,11 @@
  * reading (digital/analog). There are commands to generate PWM signal on arbitrary
  * pin, and commands to count pulses arrived on given pin
  *
+ * EXAMPLES:
+ * ---------
  * Some real life examples of I2C and UART commands. Hardware setup is: ESP32 generic
- *  devkit(ESP32-WROOM-32D), with SIMCOM SIM7600E modem on pins 18(RX),19(TX) and
- *  DS3231+EEPROM breakout board on pins 21 (SDA),22(SCL)
+ * devkit(ESP32-WROOM-32D), with SIMCOM SIM7600E modem on pins 18(RX),19(TX) and
+ * DS3231+EEPROM breakout board on pins 21 (SDA),22(SCL)
  *  
  * Example #1:
  * A DS3231 RTC clock chip is connected to pins 21 and 22. Check if device is accessible via
@@ -89,7 +99,7 @@
  * esp32-i2c#>down                    // shutdown the interface
  * esp32-i2c#>exit                    // exit i2c mode
  * esp32#>
- * ---------------------------------------------------------------------------
+ * -------------------- End ------------------------------------
  *
  * Example #2: Communicate with SIM7600E GSM modem connected to pins 18 (RX) 
  * and 19 (TX). Issue ATI commands, read the output and exit
@@ -111,11 +121,12 @@
  * 
  * Exit                              // CTRL+C pressed
  * esp32#>
- *----------------------------------------------------------------------------
+ * -------------------- End ------------------------------------
  *
  * Example #3: Communicate with a device over uart2, send and receive text
  * (alternative to the "uart tap"). Device connected to  pins 21 and 22 is
  * SIMCOM LTE modem SIM7600E:
+ * 
  * -------------------- Example screenshot -----------------------------------
  * esp32#>uart 2
  * esp32-uart#>write \ff\ff\CC\r\n    // send junk bytes: 0xff 0xff 0xcc 0x0d 0x0a. ignored by SIMCOM
@@ -134,13 +145,6 @@
  * 
  * 137 bytes read
  * esp32#>
- * ---------------------------------------------------------------------------
- *  
- * HOW TO USE IT IN ARDUINO PROJECT:
- * ---------------------------------
- * 1. Add espshell.c to your sketch directory.
- * 2. Compile & upload your sketch as usual. ESPShell will gain control automatically
- * 3. Access command line interface via Arduino IDE's Serial Monitor or, better, thru
- *    terminal software: linux cu, windows TeraTerm or putty.
+ * -------------------- End ------------------------------------
  *
- * 
+ *  Enjoy!
