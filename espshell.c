@@ -1,23 +1,15 @@
 /* 
  * ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
- * Uses editline library (see copyright information below)
+ * Latest source code is at: https://github.com/vvb333007/espshell/
+ * Uses editline library ( (c) 1992,1993 by Simmule Turner and Rich Salz)
  *
  * WHAT IS THIS:
- * ------------
+ * -------------
  * This is a debugging/development tool for use with Arduino projects on
  * ESP32 hardware. Provides a command line interface running in parallel
- * to user Arduino sketch. User can enter and execute commands in a way similar
- * to Linux shell. Commands include i2c, uart, pin manipulation, tone generator
- * and a pulse counter
+ * to user Arduino sketch (in a separate task). 
+ * More information is README.md
  *
- *
- * HOW TO USE IT IN ARDUINO PROJECT:
- * -------------------------------------
- * 1. Add espshell.c to your sketch directory.
- * 2. Compile & upload your sketch as usual. ESPShell will gain control automatically
- * 3. Access command line interface via Arduino IDE's Serial Monitor or, better, thru
- *    terminal software: linux cu, windows TeraTerm or putty.
- 
  * NAVIGATING THROUGH THE SOURCE CODE (THIS FILE):
  * ----------------------------------------------
  * Search for "TAG:" lines (TAG:pin TAG:uart etc)  to locate corresponding command handlers
