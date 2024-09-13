@@ -16,13 +16,18 @@
  * Monitor and TeraTerm. Please note that some features will be unavailable if using
  * Arduino Serial Monitor: you will not be able to send Ctrl+C and Ctrl+Z sequences
  * which are useful in debugging GSM modems
-  *  
+ *  
  * HOW TO USE IT IN ARDUINO PROJECT:
  * ---------------------------------
- * 1. Add a single file, espshell.c to your sketch directory.
- * 2. Compile & upload your sketch as usual. ESPShell will gain control automatically
- * 3. Access command line interface via Arduino IDE's Serial Monitor or, better, thru
- *    terminal software: linux cu, windows TeraTerm or putty.
+ * This tool does not require user to do ANY changes to their existing
+ * sketch/project.
+ * Follow these steps:
+ * a. Copy espshell.c to your sketch directory (where your .ino file is).
+ * b. Compile & upload your sketch as usual. (espshell will gain control 
+ *    automatically on startup)
+ * c. Enjoy! Now you can access the command line interface via Arduino 
+ *     IDE's Serial Monitor or ( better ) thru terminal software: Linux cu, 
+ *     Windows TeraTerm or PuTTY.
  *
  * SHELL BRIEF DESCRIPTION AND EXAMPLES OF USE
  * -------------------------------------------
