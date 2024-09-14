@@ -1422,18 +1422,18 @@ static struct keywords_t keywords_uart[] = {
   { "?", cmd_question, 0, "Show the list of available commands", NULL },
   { "up",cmd_uart,3, 
 #if WITH_HELP
-                       "%% \"up RX TX BAUD\"\n\r" \
-                       "%% Initialize uart interface X on pins RX/TX,baudrate BAUD, 8N1 mode\n\r" \
-                       "%% Ex.: up 18 19 115200 - Setup uart on pins rx=18, tx=19, at speed 115200",
+                       "% \"up RX TX BAUD\"\n\r" \
+                       "% Initialize uart interface X on pins RX/TX,baudrate BAUD, 8N1 mode\n\r" \
+                       "% Ex.: up 18 19 115200 - Setup uart on pins rx=18, tx=19, at speed 115200",
 #else
                        "",
 #endif                       
                        "Initialize uart (pins/speed)" },
   { "baud",cmd_uart_baud,1, 
 #if WITH_HELP
-                       "%% \"baud SPEED\"\n\r" \
-                       "%% Set speed for the uart (uart must be initialized)\n\r" \
-                       "%% Ex.: baud 115200 - Set uart baud rate to 115200",
+                       "% \"baud SPEED\"\n\r" \
+                       "% Set speed for the uart (uart must be initialized)\n\r" \
+                       "% Ex.: baud 115200 - Set uart baud rate to 115200",
 #else
                        "",
 #endif                       
@@ -1441,8 +1441,8 @@ static struct keywords_t keywords_uart[] = {
 
   { "down", cmd_uart, 0, 
 #if WITH_HELP  
-                         "%% \"down\"\n\r" \
-                         "%% Shutdown interface, detach pins",
+                         "% \"down\"\n\r" \
+                         "% Shutdown interface, detach pins",
 #else
                         "",
 #endif                         
@@ -1451,8 +1451,8 @@ static struct keywords_t keywords_uart[] = {
   // overlaps with "uart X down", never called, here are for the help text
   { "read", cmd_uart, 0, 
 #if WITH_HELP  
-                         "%% \"read\"\n\r" \
-                         "%% Read bytes (available) from uart interface X",
+                         "% \"read\"\n\r" \
+                         "% Read bytes (available) from uart interface X",
 #else
                         "",
 #endif                         
@@ -1460,9 +1460,9 @@ static struct keywords_t keywords_uart[] = {
 
   { "tap", cmd_uart, 0, 
 #if WITH_HELP  
-                        "%% \"tap\" Bridge *this* shell I/O to uart X:\n\r" \
-                        "%% User input will be forwarded to uart X; Anything uarts X sends back will be forwarded to the user\n\r" \
-                        "%% Press CTRL+C to return", 
+                        "% \"tap\" Bridge *this* shell I/O to uart X:\n\r" \
+                        "% User input will be forwarded to uart X; Anything uarts X sends back will be forwarded to the user\n\r" \
+                        "% Press CTRL+C to return", 
 #else
                         "",
 #endif                         
@@ -1470,11 +1470,11 @@ static struct keywords_t keywords_uart[] = {
 
   { "write", cmd_uart,-1,
 #if WITH_HELP  
-                         "%% \"write TEXT\"\n\r" \
-                         "%% Send an ascii/hex string(s) to uart X\n\r" \
-                         "%% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and hexadecimal\n\r" \
-                         "%% numbers \\AB (A and B are hexadecimal digits)\n\r" \
-                         "%% Ex.: \"write ATI\\n\\rMixed\\20Text and \\20\\21\\ff\"",
+                         "% \"write TEXT\"\n\r" \
+                         "% Send an ascii/hex string(s) to uart X\n\r" \
+                         "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and hexadecimal\n\r" \
+                         "% numbers \\AB (A and B are hexadecimal digits)\n\r" \
+                         "% Ex.: \"write ATI\\n\\rMixed\\20Text and \\20\\21\\ff\"",
 #else
                          "",
 #endif                         
@@ -1493,18 +1493,18 @@ static struct keywords_t keywords_i2c[] = {
   { "?", cmd_question, 0, "Show the list of available commands", NULL },
   { "up", cmd_i2c, 3, 
 #if WITH_HELP
-                       "%% \"up SDA SCL CLK\"\n\r" \
-                       "%% Initialize I2C interface X, use pins SDA/SCL, clock rate CLK\n\r" \
-                       "%% Ex.: iic 0 up 21 22 100000 - enable i2c0 at pins sda=21, scl=22, 100kHz clock",
+                       "% \"up SDA SCL CLK\"\n\r" \
+                       "% Initialize I2C interface X, use pins SDA/SCL, clock rate CLK\n\r" \
+                       "% Ex.: up 21 22 100000 - enable i2c at pins sda=21, scl=22, 100kHz clock",
 #else
                        "",
 #endif
                        "initialize interface (pins and speed)" },
   { "clock",cmd_i2c_clock,1, 
 #if WITH_HELP
-                       "%% \"clock SPEED\"\n\r" \
-                       "%% Set I2C master clock (i2c must be initialized)\n\r" \
-                       "%% Ex.: clock 100000 - Set i2c clock to 100kHz",
+                       "% \"clock SPEED\"\n\r" \
+                       "% Set I2C master clock (i2c must be initialized)\n\r" \
+                       "% Ex.: clock 100000 - Set i2c clock to 100kHz",
 #else
                        "",
 #endif                       
@@ -1513,9 +1513,9 @@ static struct keywords_t keywords_i2c[] = {
 
   { "read", cmd_i2c, 2, 
 #if WITH_HELP  
-                       "%% \"read ADDR SIZE\"\n\r"
-                       "%% I2C bus X : read SIZE bytes from a device at address ADDR (hex)\n\r"
-                       "%% Ex.: iic 0 read 68 7 - read 7 bytes from device address 0x68",
+                       "% \"read ADDR SIZE\"\n\r"
+                       "% I2C bus X : read SIZE bytes from a device at address ADDR (hex)\n\r"
+                       "% Ex.: read 68 7 - read 7 bytes from device address 0x68",
 #else
                       "",
 #endif                       
@@ -1523,8 +1523,8 @@ static struct keywords_t keywords_i2c[] = {
 
   { "down", cmd_i2c, 0, 
   #if WITH_HELP
-                        "%% \"down\"\n\r" \
-                        "%% Shutdown I2C interface X", 
+                        "% \"down\"\n\r" \
+                        "% Shutdown I2C interface X", 
 #else
                         "",
 #endif                        
@@ -1532,8 +1532,8 @@ static struct keywords_t keywords_i2c[] = {
 
   { "scan", cmd_i2c, 0, 
 #if WITH_HELP  
-                        "%% \"scan\"\n\r" \
-                        "%% Scan I2C bus X for devices", 
+                        "% \"scan\"\n\r" \
+                        "% Scan I2C bus X for devices", 
 #else
                         "",
 #endif                        
@@ -1541,9 +1541,9 @@ static struct keywords_t keywords_i2c[] = {
 
   { "write", cmd_i2c,-1, 
 #if WITH_HELP  
-                       "%% \"write ADDR D1 [D2 ... Dn]\"\n\r" \
-                       "%% Write bytes D1..Dn (hex values) to address ADDR (hex) on I2C bus X\n\r" \
-                       "%% Ex.: iic 0 write 78 0 1 FF - write 3 bytes to address 0x78",
+                       "% \"write ADDR D1 [D2 ... Dn]\"\n\r" \
+                       "% Write bytes D1..Dn (hex values) to address ADDR (hex) on I2C bus X\n\r" \
+                       "% Ex.: write 78 0 1 FF - write 3 bytes to address 0x78",
 #else
                        "",
 #endif
@@ -1566,10 +1566,10 @@ static struct keywords_t keywords_main[] = {
   // these checks are up to a command handler
   { "pin", cmd_pin, -1, 
 #if WITH_HELP
-                        "%% \"pin X (pullup|pulldown|out|in|analog|open|high|low){1,}\"\n\r" \
-                        "%% Set GPIO pin number X mode (INPUT, OUTPUT, PULL-UP etc) and level (HIGH or LOW).\n\r" \
-                        "%% Ex.: pin 18 out high       - set pin18 to OUTPUT logic \"1\"\n\r" \
-                        "%% Ex.: pin 18 in pullup open - set pin18 INPUT, PULL-UP, OPEN_DRAIN\n\r",
+                        "% \"pin X (pullup|pulldown|out|in|analog|open|high|low)...\"\n\r" \
+                        "% Set GPIO pin number X mode (INPUT, OUTPUT, PULL-UP etc) and level (HIGH or LOW).\n\r" \
+                        "% Ex.: pin 18 out high       - set pin18 to OUTPUT logic \"1\"\n\r" \
+                        "% Ex.: pin 18 in pullup open - set pin18 INPUT, PULL-UP, OPEN_DRAIN\n\r",
 #else
                         "",
 #endif
@@ -1578,9 +1578,9 @@ static struct keywords_t keywords_main[] = {
   //never called, shadowed by previous entry. for helptext only
   { "pin", cmd_pin,  2, 
 #if WITH_HELP
-                        "%% \"pin X\" read|aread\n\r" \
-                        "%% Digital or analog read on pin X\n\r" \
-                        "%% Ex.: pin 18 aread",
+                        "% \"pin X\" read|aread\n\r" \
+                        "% Digital or analog read on pin X\n\r" \
+                        "% Ex.: pin 18 aread - read analog pin",
 #else
                         "",
 #endif
@@ -1588,29 +1588,29 @@ static struct keywords_t keywords_main[] = {
   //never called, shadowed by previous entry. for helptext only
   { "pin", cmd_pin,  1, 
 #if WITH_HELP
-                        "%% \"pin X\"\n\r" \
-                        "%% Show current state,mode and logic value (low/high) of the pin X.\n\r" \
-                        "%% Ex.: pin 18",
+                        "% \"pin X\"\n\r" \
+                        "% Show current state,mode and logic value (low/high) of the pin X.\n\r" \
+                        "% Ex.: pin 18",
 #else
                         "",
 #endif
                         NULL },
 
-  { "cpu", cmd_cpu, 1,  "%% \"cpu F\" : Set CPU frequency to F Mhz", 
+  { "cpu", cmd_cpu, 1,  "% \"cpu F\" : Set CPU frequency to F Mhz", 
                         "Set/show CPU parameters" },
 
-  { "cpu", cmd_cpu, 0,  "%% \"cpu\" : Show CPU information", NULL },
+  { "cpu", cmd_cpu, 0,  "% \"cpu\" : Show CPU information", NULL },
 
-  { "mem", cmd_mem, 0,  "%% Show memory statistics", NULL },
+  { "mem", cmd_mem, 0,  "% Show memory statistics", NULL },
 
-  { "reset", cmd_restart, 0, "%% Restarts CPU", "Reset CPU" },
+  { "reset", cmd_restart, 0, "% Restarts CPU", "Reset CPU" },
 
-  { "nap", cmd_nap, 1, "%% \"nap S\"\n\r%% Put the CPU into light sleep mode for S seconds.", "CPU sleep" },
-  { "nap", cmd_nap, 0, "%% \"nap\"\n\r%% Put the CPU into light sleep mode, wakeup by console", NULL },
+  { "nap", cmd_nap, 1, "% \"nap S\"\n\r% Put the CPU into light sleep mode for S seconds.", "CPU sleep" },
+  { "nap", cmd_nap, 0, "% \"nap\"\n\r% Put the CPU into light sleep mode, wakeup by console", NULL },
 
   { "iic", cmd_i2c_if, 1,
 #if WITH_HELP
-                       "%% \"iic X\" \n\r%% Enter I2C interface X configuration mode \n\r", 
+                       "% \"iic X\" \n\r% Enter I2C interface X configuration mode \n\r", 
 #else
                        "",
 #endif
@@ -1618,67 +1618,67 @@ static struct keywords_t keywords_main[] = {
 
   { "uart",cmd_uart_if,1, 
 #if WITH_HELP
-                       "%% \"uart X\" \n\r%% Enter UART interface X configuration mode",
+                       "% \"uart X\" \n\r% Enter UART interface X configuration mode\n\r",
 #else
                        "",
 #endif                       
                        "UART commands" },
 
-  { "tty", cmd_tty,   1, "%% \"tty X\" Use uart X for command line interface.\n\r",
+  { "tty", cmd_tty,   1, "% \"tty X\" Use uart X for command line interface.\n\r",
                          "IO redirect" },
 
-  {"suspend", cmd_suspend, 0, "%% \"suspend\" : Suspend main loop()\n\r", "Suspend sketch execution"},
-  {"resume", cmd_resume, 0, "%% \"resume\" : Resume main loop()\n\r", "Resume sketch execution"},
+  {"suspend", cmd_suspend, 0, "% \"suspend\" : Suspend main loop()\n\r", "Suspend sketch execution"},
+  {"resume", cmd_resume, 0, "% \"resume\" : Resume main loop()\n\r", "Resume sketch execution"},
 
   {"tone", cmd_tone, 3, 
 #if WITH_HELP  
-                        "%% \"tone X FREQ DUTY\"\n\r" \
-                        "%% Start PWM generator on pin X, frequency FREQ Hz and duty cycle of DUTY\n\r" \
-                        "%% Max frequency is 78277 Hz\n\r" \
-                        "%% Value of DUTY is in range [0..1023] with 511 being a 50\%% duty cycle",
+                        "% \"tone X FREQ DUTY\"\n\r" \
+                        "% Start PWM generator on pin X, frequency FREQ Hz and duty cycle of DUTY\n\r" \
+                        "% Max frequency is 78277 Hz\n\r" \
+                        "% Value of DUTY is in range [0..1023] with 511 being a 50\%% duty cycle",
 #else
                         "",
 #endif
                         "PWM output"},
   {"tone", cmd_tone, 2, 
 #if WITH_HELP  
-                        "%% \"tone X FREQ\"\n\r" \
-                        "%% Start squarewave generator on pin X, frequency FREQ Hz\n\r" \
-                        "%% duty cycle is  set to 50\%",
+                        "% \"tone X FREQ\"\n\r" \
+                        "% Start squarewave generator on pin X, frequency FREQ Hz\n\r" \
+                        "% duty cycle is  set to 50\%",
 #else
                         "",
 #endif                        
                         NULL},
   {"tone", cmd_tone, 1, 
 #if WITH_HELP  
-                        "%% \"tone X\" Stop generator on pin X", 
+                        "% \"tone X\" Stop generator on pin X", 
 #else
                         "",
 #endif                        
                         NULL},
   {"count", cmd_count, 3, 
 #if WITH_HELP  
-                        "%% \"count X neg|pos|both DELAY_MS\"\n\r" \
-                        "%% Count pulses (negative/positive edge or both) on pin X within DELAY time\n\r" \
-                        "%% Ex.: \"count 4 pos 2000\"  - count pulses (by rising edge) on pin 4 for 2 sec.",
+                        "% \"count X neg|pos|both DELAY_MS\"\n\r" \
+                        "% Count pulses (negative/positive edge or both) on pin X within DELAY time\n\r" \
+                        "% Ex.: \"count 4 pos 2000\"  - count pulses (by rising edge) on pin 4 for 2 sec.",
 #else
                         "",
 #endif                        
                         "Pulse counter"},
   {"count", cmd_count, 2, 
 #if WITH_HELP  
-                        "%% \"count X neg|pos|both\"\n\r" \
-                        "%% Count pulses (negative/positive edge or both) on pin X\n\r" \
-                        "%% Pulses are counted for " xstr(PULSE_WAIT) " ms",
+                        "% \"count X neg|pos|both\"\n\r" \
+                        "% Count pulses (negative/positive edge or both) on pin X\n\r" \
+                        "% Pulses are counted for " xstr(PULSE_WAIT) " ms",
 #else
                         "",
 #endif                        
                         NULL},
   {"count", cmd_count, 1, 
 #if WITH_HELP  
-                        "%% \"count X\"\n\r" \
-                        "%% Count pulses (by positive edges) on pin X\n\r" \
-                        "%% Pulses are counted for " xstr(PULSE_WAIT) " ms",
+                        "% \"count X\"\n\r" \
+                        "% Count pulses (by positive edges) on pin X\n\r" \
+                        "% Pulses are counted for " xstr(PULSE_WAIT) " ms",
 #else
                         "",
 #endif                        
@@ -1693,7 +1693,7 @@ static struct keywords_t keywords_main[] = {
 //current keywords list to use
 static struct keywords_t *keywords = keywords_main;
 
-static const char *Failed = "%% Failed\n\r";
+static const char *Failed = "% Failed\n\r";
 
 static const char *prompt = "esp32#>";
 static const char *prompt_old = NULL;
@@ -1856,6 +1856,7 @@ static int cmd_count(int argc, char **argv) {
 //tone PIN FREQ [DUTY]   - pwm on
 //tone PIN               - pwm off
 //FIXME: max frequency is 78277 and I don't know why
+#define MAGIC_FREQ 78227 // keywords_main[] also has this number, must be the same
 static int cmd_tone(int argc, char **argv) {
 
   int resolution = 10;
@@ -1867,7 +1868,7 @@ static int cmd_tone(int argc, char **argv) {
     return 1; // arg 1 is bad
 
   unsigned char pin = (unsigned char )(atoi(argv[1]));
-  int freq = 0, duty = 0x1ff; //default duty is 50%% assuming 10bit resolution
+  int freq = 0, duty = ((1 << resolution) - 1) / 2; //default duty is 50%
 
   if (!pin_exist(pin))
     return 1;
@@ -1877,6 +1878,10 @@ static int cmd_tone(int argc, char **argv) {
     if (!isnum(argv[2]))
       return 2; // arg 2 is bad
     freq = atoi(argv[2]);
+    if (freq < 0 || freq > MAGIC_FREQ) {
+      log_printf("%% Valid frequency range is [1 .. %u] Hz\n\r",MAGIC_FREQ);
+      return 2;
+    }
   }
 
   // duty specified?
@@ -1886,8 +1891,10 @@ static int cmd_tone(int argc, char **argv) {
     duty = atoi(argv[3]);
   }
 
-  if (duty < 0 || duty > 1023)
+  if (duty < 0 || duty > 1023) {
+    log_printf("%% Valid duty range is [1 .. %d] Hz\n\r", (1 << resolution) - 1);
     return 3; // arg 3 is bad
+  }
 
   //disable ledc at pin.
   //if pin wasn't used before then it will be a error log message from
@@ -1904,7 +1911,7 @@ static int cmd_tone(int argc, char **argv) {
     // or ledcWriteTone may fail on a first call (ESP32-WROOM-32D)
     delay(100);
     ledcWriteTone(pin, freq);
-    if (duty != 0x1ff)
+    //if (duty != 0x1ff)
       ledcWrite(pin,duty);
   }
 
@@ -2040,8 +2047,10 @@ static int cmd_i2c_if(int argc, char **argv) {
     return 1;
 
   iic = atoi(argv[1]);
-  if (iic < 0 || iic >= SOC_I2C_NUM)
+  if (iic < 0 || iic >= SOC_I2C_NUM) {
+    log_printf("%% Valid I2C interface numbers are 0..%d\n\r",SOC_I2C_NUM - 1);
     return 1;
+  }
 
   Context = iic;
   keywords = keywords_i2c;
@@ -2063,8 +2072,10 @@ static int cmd_uart_if(int argc, char **argv) {
     return 1;
 
   u = atoi(argv[1]);
-  if (u < 0 || u >= SOC_UART_NUM)
+  if (u < 0 || u >= SOC_UART_NUM) {
+    log_printf("%% Valid UART interface numbers are 0..%d\n\r",SOC_UART_NUM - 1);
     return 1;
+  }
 
   if (uart == u) {
     log_printf("%% You are configuring Serial interface shell is running on! BE CAREFUL :)\n\r");
@@ -2619,7 +2630,7 @@ cmd_uptime(int argc, char **argv) {
   uint32_t sec, min = 0, hr = 0, day = 0;
   sec = (uint32_t)(esp_timer_get_time() / 1000000) - uptime;
 
-  log_printf("%% ");
+  log_printf("%% Last boot was ");
   if (sec > 60 * 60 * 24) {
     day = sec / (60 * 60 * 24);
     sec = sec % (60 * 60 * 24);
@@ -2636,7 +2647,7 @@ cmd_uptime(int argc, char **argv) {
     log_printf("%u minutes ", min);
   }
 
-  log_printf("%u seconds\n\r", sec);
+  log_printf("%u seconds ago\n\r", sec);
   
   return 0;
 }
@@ -2646,7 +2657,10 @@ cmd_uptime(int argc, char **argv) {
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+// task handle of a task which calls Arduino's loop()
+// defined somewhere in the ESP32 Arduino Core
 extern TaskHandle_t loopTaskHandle;
+
 //"suspend"
 // suspends the Arduino loop() task
 static int cmd_suspend(int argc, char **argv) {
