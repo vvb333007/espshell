@@ -2775,8 +2775,7 @@ espshell_command(char *p) {
     if (!found)
       goto notfound;
 #endif
-	    return;
-  }
+  } else {
   
       //process command
       //find a corresponding entry in a keywords[] : match the name and minimum number of arguments
@@ -2792,14 +2791,17 @@ espshell_command(char *p) {
             // value of zero means successful execution
             int bad;
             if (keywords[i].cb) {
-              //!!! handler MAY change keywords pointer so keywords[i] may be invalid pointer
+              //!!! handler MAY change keywords pointer! keywords[i] may be invalid pointer after
+              // callback execute with return code 0
               bad = keywords[i].cb(argc, argv);
               if (bad > 0)
                 log_printf("%% Invalid argument \"%s\" (\"%s ?\" for help)\n\r", argv[bad], argv[0]);
               else if (bad < 0)
                 log_printf("%% Missing argument (\"%s ?\" for help)\n\r", argv[0]);
+              else
+                i = 0; // make sure keywords[i] is valid pointer
+              break;
             }
-            return;
           }
         }
         i++;
@@ -2817,6 +2819,7 @@ notfound:
       if (!found)
         log_printf("%% Type \"?\" to get the list of available commands\n\r");
 #endif        
+  }
 
   // free the argv list
   if (argv)
@@ -2836,8 +2839,13 @@ espshell_task(const void *prom) {
     TaskHandle_t h;
     prompt = prom;
     //call espshell_task() again but with prom=NULL
-    if (pdPASS != xTaskCreate((TaskFunction_t)espshell_task, NULL, STACKSIZE, NULL, tskIDLE_PRIORITY, &h))
+    if (pdPASS != xTaskCreate((TaskFunction_t)espshell_task, NULL, STACKSIZE, NULL, tskIDLE_PRIORITY, &h)) {
+#if AUTOSTART    
+      // uart is still down when autostart==1
+#else
       log_printf("%% espshell failed to start task\n\r");
+#endif
+    }
   } else {
 
     // wait until user code calls Serial.begin()
