@@ -29,6 +29,7 @@
  *     IDE's Serial Monitor or ( better ) thru terminal software: Linux cu, 
  *     Windows TeraTerm or PuTTY.
  *
+ *
  * SHELL BRIEF DESCRIPTION AND EXAMPLES OF USE
  * -------------------------------------------
  * 
@@ -77,11 +78,20 @@
  * modes, displaying current pin configuration. There are commands to generate PWM
  * signal on arbitrary pin, and commands to count pulses arrived on given pin
  *
+ * NOTE:
+ * -----
+ * This shell is about hardware. Thats why ere are no commands like "ping" or any other
+ * higher level commands. There are million commands to implement but I only implement those
+ * i use in my debugging/development process. What commands I miss right now is triggers &
+ * pattern generation :). Also I try to keep it small: it is just 1 file and I want to
+ * keep it like that
+ *
  * EXAMPLES:
  * ---------
- * Some real life examples of I2C and UART commands. Hardware setup is: ESP32 generic
- * devkit(ESP32-WROOM-32D), with SIMCOM SIM7600E modem on pins 18(RX),19(TX) and
- * DS3231+EEPROM breakout board on pins 21 (SDA),22(SCL)
+ * Some real life examples of I2C and UART commands. The hardware setup is: ESP32 generic
+ * devkit(ESP32-WROOM-32D, 30 pin breakout board), with SIMCOM SIM7600E modem on pins 18(RX),
+ * 19(TX) and  DS3231+EEPROM breakout board on pins 21 (SDA),22(SCL)
+ *
  *  
  * Example #1:
  * A DS3231 RTC clock chip is connected to pins 21 and 22. Check if device is accessible via
@@ -151,5 +161,6 @@
  * 137 bytes read
  * esp32#>
  * -------------------- End ------------------------------------
+ *
  *
  *  Enjoy!
