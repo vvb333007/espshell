@@ -1,3 +1,4 @@
+
 /* 
  * ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
  * Latest source code is at: https://github.com/vvb333007/espshell/
@@ -1388,7 +1389,7 @@ static int cmd_uptime(int , char **);
 static int cmd_pin(int , char **);
 static int cmd_cpu(int , char **);
 static int cmd_mem(int , char **);
-static int cmd_restart(int , char **);
+static int cmd_reload(int , char **);
 static int cmd_nap(int , char **);
 static int cmd_i2c_if(int , char **);
 static int cmd_i2c_clock(int, char **);
@@ -1571,6 +1572,14 @@ static struct keywords_t keywords_i2c[] = {
   KEYWORDS_END
 };
 
+//Custom SPI commands (spi subderictory)
+//TAG:kspi
+static struct keywords_t keywords_spi[] = {
+  
+  KEYWORDS_BEGIN,
+
+  KEYWORDS_END
+};
 
 
 
@@ -1625,7 +1634,7 @@ static struct keywords_t keywords_main[] = {
 
   { "mem", cmd_mem, 0,  "% Show memory usage info", "Memory usage" },
 
-  { "reset", cmd_restart, 0, "% Restarts CPU", "Reset CPU" },
+  { "reload", cmd_reload, 0, "% Restarts CPU", "Reset CPU" },
 
   { "nap", cmd_nap, 1, 
 #if WITH_HELP
@@ -2532,10 +2541,9 @@ static int cmd_tty(int argc, char **argv) {
 }
 
 
-//TAG:restart
-//TAG:reset
-//"restart"
-static int cmd_restart(int argc, char **argv) {
+//TAG:reload
+//"reload"
+static int cmd_reload(int argc, char **argv) {
   esp_restart();
   /* NOT REACHED */
   return 0;
@@ -2815,14 +2823,17 @@ espshell_command(char *p) {
   if (argc > 1 && *(argv[1]) == '?') {
 #if WITH_HELP
     // run thru keywords[] and print out "help" for every entriy.
+    int cmd_len = strlen(argv[0]);
     while (keywords[i].cmd) {
       if (keywords[i].help || keywords[i].brief) { //skip hidden commands
-        if (!strcmp(keywords[i].cmd, argv[0])) {
-          found = 1;
-          if (keywords[i].help)
-            log_printf("\n\r%s\n\r", keywords[i].help); //display long help
-          else
-            log_printf("\n\r%s\n\r", keywords[i].brief); //display brief (MUST not happen)
+        if (strlen(keywords[i].cmd) >= cmd_len) { // allow for partial name match
+          if (!strncmp(keywords[i].cmd, argv[0], cmd_len)) {
+            found = 1;
+            if (keywords[i].help)
+              log_printf("\n\r%s\n\r", keywords[i].help); //display long help
+            else
+              log_printf("\n\r%s\n\r", keywords[i].brief); //display brief (MUST not happen)
+          }
         }
       }
       i++;
@@ -2835,9 +2846,14 @@ espshell_command(char *p) {
       
       //process command
       //find a corresponding entry in a keywords[] : match the name and minimum number of arguments
+      int cmd_len = strlen(argv[0]);
+
       while (keywords[i].cmd) {
         // command name match
-        if (!strcmp(keywords[i].cmd, argv[0])) {
+        
+        if (strlen(keywords[i].cmd) >= cmd_len) {
+        
+        if (!strncmp(keywords[i].cmd, argv[0], cmd_len)) {
           found = 1;
           // number of arguments match
           if (((argc - 1) == keywords[i].min_argc) || (keywords[i].min_argc < 0)) {
@@ -2859,6 +2875,7 @@ espshell_command(char *p) {
               break;
             }
           }
+        }
         }
         i++;
       }
