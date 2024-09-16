@@ -58,11 +58,12 @@
                            // (usually at the end of sketch's setup() function)
 #define WITH_HELP       1  // set to 0 to save some program space by excluding help strings/functions
 #define UNIQUE_HISTORY  1  // wheither to discard repeating commands from the history or not
-#define HIST_SIZE      20 // history buffer size (number of commands to remember)
-#define SCREEN_WIDTH   80 // terminal width
-#define SCREEN_ROWS    24 // terminal height
-#define STACKSIZE   10240 //Shell task stack size
+#define HIST_SIZE      20  // history buffer size (number of commands to remember)
+#define SCREEN_WIDTH   80  // terminal width
+#define SCREEN_ROWS    24  // terminal height
+#define STACKSIZE   10240  //Shell task stack size
 #define BREAK_KEY       3  // Keycode of a "Exit" key: CTRL+C to exit "uart NUM tap" mode
+#define SEQUENCES_NUM  10  // max number of sequences available for command "sequence"
 
 
 #include "espshell.h"
@@ -1385,6 +1386,7 @@ STATIC CONST KEYMAP MetaMap[16] = {
 #define MAGIC_FREQ 78227 // max allowed frequency for the "tone" command
 
 static int cmd_question(int , char **);
+
 static int cmd_uptime(int , char **);
 static int cmd_pin(int , char **);
 static int cmd_cpu(int , char **);
@@ -1403,11 +1405,46 @@ static int cmd_resume(int , char **);
 static int cmd_tone(int , char **);
 static int cmd_count(int , char **);
 static int cmd_exit(int , char **);
+static int cmd_show(int, char **);
 
+static int cmd_seq_if(int, char **);
+static int cmd_seq_eot(int argc, char **argv);
+static int cmd_seq_modulation(int argc, char **argv);
+static int cmd_seq_zeroone(int argc, char **argv);
+static int cmd_seq_tick(int argc, char **argv);
+static int cmd_seq_bits(int argc, char **argv);
+static int cmd_seq_levels(int argc, char **argv);
+static int cmd_seq_show(int argc, char **argv);
+
+//TAG:sequences
+//
+// Sequences: the data structure defining a sequence of pulses (levels) to
+// be transmitted. Sequences are used to generate an user-defined LOW/HIGH 
+// pulses train on an arbitrary GPIO pin using ESP32's hardware RMT peri
+//
+// These are used by "sequence X" command (and by a sequence subdirectory
+// commands as well)
+//
+// TODO: bytes, head, tail (NEC protocol support)
+//
+#include <esp32-hal-rmt.h>
+
+struct sequence {
+	
+	float        tick;          // uSeconds.  1000000 = 1 second.   0.1 = 0.1uS
+	float        mod_duty;      // modulator duty
+	unsigned int mod_freq : 30; // modulator frequency
+	unsigned int mod_high : 1;  // modulate "1"s or "0"s
+	unsigned int eot : 1;       // end of transmission level
+	int          seq_len;       // how may rmt_data_t items is in "seq"
+	rmt_data_t  *seq;           // array of rmt_data_t
+	rmt_data_t   alph[2];       // alphabet. representation of "0" and "1"
+	char        *bits;          // asciiz
+};
 
 
 // TAG:keywords
-
+//
 // Shell commands list structure
 struct keywords_t {
   const char *cmd;                   // command keyword ex.: "pin"
@@ -1572,6 +1609,117 @@ static struct keywords_t keywords_i2c[] = {
   KEYWORDS_END
 };
 
+
+//'sequence' subderictory keywords list
+static struct keywords_t keywords_sequence[] = {
+
+  KEYWORDS_BEGIN,
+  { "eot", cmd_seq_eot, 1, 
+#if WITH_HELP
+                       "% \"eot high|low\"\n\r" \
+                       "%\n\r" \
+                       "% End of transmission: pull the line high or low at the\n\r" \
+                       "% end of a sequence. Default is \"low\"",
+#else
+                       "",
+#endif
+                       "End-of-Transmission pin state" },
+  { "tick",cmd_seq_tick,1, 
+#if WITH_HELP
+                       "% \"tick TIME\"\n\r" \
+                       "%\n\r" \
+                       "% Set the sequence tick time: defines a resolution of a pulse sequence.\n\r" \
+                       "% Expressed in microseconds, can be anything between 0.0125 and 3.2\n\r" \
+                       "% Ex.: tick 0.1 - set resolution to 0.1 microsecond",
+#else
+                       "",
+#endif                       
+                       "Set resolution" },
+
+
+  { "zero", cmd_seq_zeroone, 2, 
+#if WITH_HELP  
+                       "% \"zero LEVEL/DURATION [LEVEL2/DURATION2]\"\n\r"
+                       "%\n\r" \
+                       "% Define a logic \"0\"\n\r" \
+                       "% Ex.: zero 0/50      - 0 is a level: LOW for 50 ticks" \
+                       "% Ex.: zero 1/50 0/20 - 0 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks",
+
+#else
+                      "",
+#endif                       
+                       "Define a zero" },
+  {"zero", cmd_seq_zeroone, 1, NULL, NULL}, //HIDDEN
+
+  { "one", cmd_seq_zeroone, 2, 
+#if WITH_HELP  
+                       "% \"one LEVEL/DURATION [LEVEL2/DURATION2]\"\n\r"
+                       "%\n\r" \
+                       "% Define a logic \"1\"\n\r" \
+                       "% Ex.: one 1/50       - 1 is a level: HIGH for 50 ticks" \
+                       "% Ex.: one 1/50 0/20  - 1 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks",
+
+#else
+                      "",
+#endif                       
+                       "Define an one" },
+
+  {"one", cmd_seq_zeroone, 1, NULL, NULL}, //HIDDEN
+
+
+  { "bits", cmd_seq_bits, 1, 
+  #if WITH_HELP
+                        "% \"bits STRING\"\n\r" \
+                        "%\n\r" \
+                        "% A bit pattern to be used as a sequence. STRING must contain only 0 and 1 (arbitrary amount)" \
+                        "% Overrides previously set \"levels\" command\n\r" \
+                        "% See commands \"one\" and \"zero\" to describe \"1\" and \"0\"\n\r" \
+                        "%\n\r" \
+                        "% Ex.: bits 11101000010111100  - 17 bit sequence",
+#else
+                        "",
+#endif                        
+                        "Set pattern to transmit" },
+
+  { "levels", cmd_seq_levels, -1, 
+#if WITH_HELP  
+                        "% \"levels L/D L/D ... L/D\"\n\r" \
+                        "%\n\r" \
+                        "% A bit pattern to be used as a sequnce. L is either 1 or 0 and \n\r" \
+                        "% D is the duration measured in ticks [0..32767] \n\r" \
+                        "% Overrides previously set \"bits\" command\n\r" \
+                        "%\n\r" \
+                        "% Ex.: levels 1/50 0/20 1/100 0/500  - HIGH 50 ticks, LOW 20, HIGH 100 and 0 for 500 ticks\n\r" \
+                        "% Ex.: levels 1/32767 1/17233 0/32767 0/7233 - HIGH for 50000 ticks, LOW for 40000 ticks",
+#else
+                        "",
+#endif                        
+                        "Set levels to transmit" },
+
+  { "modulation", cmd_seq_modulation,3, 
+#if WITH_HELP  
+                       "% \"modulation FREQ [DUTY [low|high]]\"\n\r" \
+                       "%\n\r" \
+                       "% Enables/disables an output signal modulation with frequency FREQ\n\r" \
+                       "% Optional parameters are: DUTY (from 0 to 1) and LEVEL (either high or low)\n\r" \
+                       "%\n\r" \
+                       "% Ex.: modulation 100         - modulate all 1s with 100Hz, 50%% duty cycle\n\r" \
+                       "% Ex.: modulation 100 0.3 low - modulate all 0s with 100Hz, 30%% duty cycle\n\r" \
+                       "% Ex.: modulation 0           - disable modulation\n\r",
+#else
+                       "",
+#endif
+                       "Enable/disable modulation" },
+
+  { "modulation", cmd_seq_modulation,2,NULL,NULL},  // HIDDEN
+  { "modulation", cmd_seq_modulation,1,NULL,NULL},  // HIDDEN
+
+  { "show", cmd_seq_show,0, "Show sequence" },
+
+  KEYWORDS_END
+};
+
+
 //Custom SPI commands (spi subderictory)
 //TAG:kspi
 static struct keywords_t keywords_spi[] = {
@@ -1589,9 +1737,15 @@ static struct keywords_t keywords_main[] = {
   //{ "?", cmd_question, -1, "Show the list of available commands", NULL },
   KEYWORDS_BEGIN,
 
-  { "uptime", cmd_uptime, 0, "Time passed since last boot", NULL },
-  // entries with min_argc < 0 are not checked for number of arguments.
-  // these checks are up to a command handler
+  { "uptime", cmd_uptime, 0, "% \"uptime\" - Shows time passed since last boot", "System uptime" },
+
+  { "show", cmd_show, 2, 
+#if WITH_HELP
+                        "\"show seq X\" - display sequence X\n\r" ,
+#else
+                        "",
+#endif  
+                        "Display information"},
   { "pin", cmd_pin, -1, 
 #if WITH_HELP
                         "% \"pin X (pullup|pulldown|out|in|analog|open|high|low)...\"\n\r" \
@@ -1603,6 +1757,20 @@ static struct keywords_t keywords_main[] = {
                         "",
 #endif
                         "GPIO commands" },
+  //never called, shadowed by previous entry. for helptext only
+  { "pin", cmd_pin, 2, 
+#if WITH_HELP
+                        "% \"pin X seq Y\"\n\r" \
+                        "%\n\r" \
+                        "% Set GPIO pin X to output the sequence Y\n\r" \
+                        "% Sequence must be configured in advance (see command \"sequence\")\n\r" \
+                        "%\n\r"
+                        "% Ex.: pin 18 seq 0       - output Sequence0 on GPIO18" ,
+#else
+                        "",
+#endif
+                        "GPIO commands" },
+                  
 
   //never called, shadowed by previous entry. for helptext only
   { "pin", cmd_pin,  2, 
@@ -1634,7 +1802,7 @@ static struct keywords_t keywords_main[] = {
 
   { "mem", cmd_mem, 0,  "% Show memory usage info", "Memory usage" },
 
-  { "reload", cmd_reload, 0, "% Restarts CPU", "Reset CPU" },
+  { "reload", cmd_reload, 0, "% \"reload\" - Restarts CPU", "Reset CPU" },
 
   { "nap", cmd_nap, 1, 
 #if WITH_HELP
@@ -1676,6 +1844,16 @@ static struct keywords_t keywords_main[] = {
                        "",
 #endif                       
                        "UART commands" },
+  { "sequence",cmd_seq_if,1, 
+#if WITH_HELP
+                       "% \"sequence X\"\n\r" \
+                       "%\n\r" \
+                       "% Create/configure a sequence\n\r" \
+                       "% Ex.: sequence 0 - configure Sequence0",
+#else
+                       "",
+#endif                       
+                       "Pulses/levels sequence configuration" },
 
   { "tty", cmd_tty,   1, "% \"tty X\" Use uart X for command line interface.\n\r",
                          "IO redirect" },
@@ -1734,21 +1912,38 @@ static struct keywords_t keywords_main[] = {
 //current keywords list to use
 static struct keywords_t *keywords = keywords_main;
 
+//common Failed message
 static const char *Failed = "% Failed\n\r";
 
+// prompts
 static const char *prompt = "esp32#>";
 static const char *prompt_old = NULL;
+
+// sequences
+static struct sequence sequences[SEQUENCES_NUM];
 
 // interface unit number when entering a subderictory.
 static int Context = 0;
 
-
+//TAG:utility
 //check if given ascii string is a decimal number. Ex.: "12345"
 static const inline bool isnum(char *p) {
   while (*p >= '0' && *p <= '9')
     p++;
   return !(*p);  //if *p is 0 then all the chars were digits (end of line reached).
 }
+
+static const bool isfloat(char *p) {
+  bool dot = false;
+  while ((*p >= '0' && *p <= '9') || (*p == '.' && !dot)) {
+    if (*p == '.')
+      dot = true;
+    p++;
+  }
+  return !(*p);  //if *p is 0 then all the chars were digits (end of line reached).
+}
+
+
 
 //check if given ascii string is a hex number. Only first two bytes are checked
 //TODO: rewrite
@@ -1790,7 +1985,6 @@ static unsigned char ascii2hex(char *p) {
 
 // checks if pin (GPIO) number is in valid range.
 // display a message if pin is out of range
-
 static bool pin_exist(int pin) {
 
   if (pin < 0 || pin >= SOC_GPIO_PIN_COUNT) {
@@ -1799,6 +1993,294 @@ static bool pin_exist(int pin) {
   }
   return true;
 }
+
+// calculate frequency from tick length
+// 0.1uS = 10Mhz
+unsigned long seq_tick2freq(float tick_us) {
+
+	return tick_us ? (unsigned long)((float)1000000 / tick_us) : 0;
+}
+
+static void seq_init() {
+	int i;
+
+	for (i = 0; i < SEQUENCES_NUM; i++) {
+		sequences[i].tick = 0;
+		sequences[i].seq = NULL;
+		sequences[i].bits = NULL;
+
+		sequences[i].alph[0].duration0 = 0;
+		sequences[i].alph[0].duration1 = 0;
+		sequences[i].alph[1].duration0 = 0;
+		sequences[i].alph[1].duration1 = 0;
+	}
+}
+
+static const char *Notset = "is not set yet\n\r";
+
+// dump sequence content
+static void seq_dump(int seq) {
+
+	struct sequence *s;
+  
+  if (seq < 0 || seq >= SEQUENCES_NUM) {
+    log_printf("%% Sequence %d does not exist\n\r");
+    return ;
+  }
+
+  s = &sequences[seq];
+
+	log_printf("%%\n\r%% Sequence #%d:\n\r%% Resolution ",seq);
+
+  if (s->tick)
+    log_printf(": %.4fuS  (Frequency: %lu Hz)\n\r",seq,s->tick,seq_tick2freq(s->tick));
+  else
+    log_printf(Notset);
+
+  log_printf("%% Levels ");
+	if (s->seq) {
+    
+		int i;
+    unsigned long total = 0;
+
+    log_printf("are :");
+
+		for (i = 0; i<s->seq_len; i++) {
+      if (!(i&3))
+        log_printf("\n\r%% ");
+			log_printf("%d/%d, %d/%d, ",s->seq[i].level0,s->seq[i].duration0,s->seq[i].level1,s->seq[i].duration1);
+      total += s->seq[i].duration0 + s->seq[i].duration1;
+    }
+		log_printf("\n\r%% Total: %d levels, duration: %lu ticks, (~%lu uS)\n\r",s->seq_len, total, (unsigned long)((float)total * s->tick));
+	} else
+		log_printf(Notset);
+
+  log_printf("%% Modulation ");
+	if (s->mod_freq)
+		log_printf(" : yes, \"%s\" are modulated at %luHz, duty %.2f%%\n\r",s->mod_high ? "HIGH" : "LOW" ,s->mod_freq, s->mod_duty * 100);
+  else
+    log_printf("is not used\n\r");
+
+	log_printf("%% Bit sequence ");
+
+	if (s->bits)
+		log_printf(": (%d bits) \"%s\"\n\r",strlen(s->bits),s->bits);
+	else
+		log_printf(Notset);
+
+	log_printf("%% Zero ");
+
+	if (s->alph[0].duration0) {
+		if (s->alph[0].duration1)
+			log_printf("%d/%d %d/%d\n\r",s->alph[0].level0,s->alph[0].duration0,s->alph[0].level1,s->alph[0].duration1);
+		else
+			log_printf("%d/%d\n\r",s->alph[0].level0,s->alph[0].duration0);
+	} else 
+		log_printf(Notset);
+
+	log_printf("%% One ");
+
+	if (s->alph[1].duration0) {
+		if (s->alph[1].duration1)
+			log_printf("%d/%d %d/%d\n\r",s->alph[1].level0,s->alph[1].duration0,s->alph[1].level1,s->alph[1].duration1);
+		else
+			log_printf("%d/%d\n\r",s->alph[1].level0,s->alph[1].duration0);
+	} else 
+		log_printf(Notset);
+	log_printf("%% Pull pin %s after transmission is done\n\r",s->eot ? "high" : "low");
+}
+
+// convert a level string to numerical values:
+// "1/500" gets converted to level=1 and duration=500
+//
+static int seq_atol(int *level, int *duration, char *p) {
+
+	char *lp = p;
+	char *dp = NULL;
+
+	while(*p) {
+		if (*p == '/' || *p == '\\') {
+			if (dp)
+				return -1; // separator was found already
+			if (level)
+				*p = '\0';         // spli the string for atoi
+			dp = p + 1;
+		} else if (*p < '0' || *p > '9')
+				return -1;
+		p++;
+	}
+	if (!dp) // no separator found
+		return -2;
+	if (!*lp) // separator was the first symbol
+		return -3;
+
+	if (level) {
+		*level = atoi(lp);
+		*(dp - 1) = '\\'; // restore separator
+	}
+	if (duration)
+		*duration = atoi(dp);
+	
+
+	return 0;
+}
+
+
+// free memory buffers associated with the sequence:
+// ->"bits" and ->"seq"
+static void seq_freemem(int seq) {
+
+	if (sequences[seq].bits) {
+		free(sequences[seq].bits); 
+		sequences[seq].bits = NULL;
+	}
+	if (sequences[seq].seq) {
+		free(sequences[seq].seq); 
+		sequences[seq].seq = NULL;
+	}
+}
+
+// check if sequence is configured and an be used
+// to generate pulses. The criteria is:
+// ->seq must be initialized
+// ->tick must be set
+static int seq_isready(int seq) {
+
+  if (seq < 0 || seq >= SEQUENCES_NUM)
+    return 0;
+
+  return (sequences[seq].seq != NULL) && (sequences[seq].tick != 0.0f);
+}
+
+// compile 'bits' to 'seq'
+// compilation is done when following conditions are met:
+//   1. both 'zero' and 'one' are set. Both must be of the 
+//      same type: either pulse (long form) or level (short form)
+//   2. 'bits' are set
+//   3. 'seq' is NULL : i.e. is not compiled yet
+static int seq_compile(int seq) {
+
+	struct sequence *s = &sequences[seq];
+
+	if (s->seq) //already compiled
+		return 0;
+
+	if (s->alph[0].duration0 && s->alph[1].duration0 && s->bits) {
+
+
+		// if "0" is defined as a "pulse" (i.e. both parts of rmt_data_t used
+                // to define a symbol (IR protocols-type encoding) then we need "1" to 
+		// be defined as a "pulse" as well.
+		//
+		// allocate strlen(bits) items for a 'seq', initialize 'seq' items with
+		// either "alph[0]" or "alph[1]" according to "bits"
+		if (s->alph[0].duration1) {
+			//long form
+			if (!s->alph[1].duration1) {
+				log_printf("%% \"One\" defined as a level, but \"Zero\" is a pulse\n\r");
+				return -1;
+			}
+
+			// long-form. 1 rmt symbol = 1 bit;
+			int j,i = strlen(s->bits);
+			if (!i)
+				return -2;
+
+			s->seq = (rmt_data_t *)malloc(sizeof(rmt_data_t) * i);
+			if (!s->seq)
+				return -3;
+			s->seq_len = i;
+			for (j =0; j < i; j++) {
+
+				if (s->bits[j] == '0') 
+					s->seq[j] = s->alph[0]; 
+				else 
+					s->seq[j] = s->alph[1];
+			}
+		} else {
+			// short form
+			// 1 rmt symbol can carry 2 bits so we want out "bits" to be of even size so
+			// we add an extra '0' to the bits. It is probably not what user wants so
+			// report it to user
+
+			if (s->alph[1].duration1) {
+				log_printf("%% \"One\" defined as a pulse, but \"Zero\" is a level\n\r");
+				return -4;
+			}
+
+			int k,j,i = strlen(s->bits);
+			if (i & 1) {
+				char *r = (char *)realloc(s->bits, i + 2);
+				if (!r)
+					return -5;
+				s->bits = r;
+				s->bits[i + 0] = '0';
+				s->bits[i + 1] = '\0';
+				log_printf("%% Bitstring was padded with one extra \"0\"\n\r");
+				i++;
+			}
+
+
+
+			s->seq_len = i / 2;
+			s->seq = (rmt_data_t *)malloc(sizeof(rmt_data_t) * s->seq_len);
+
+			if (!s->seq)
+				return -6;
+
+			
+			j = 0;
+			k = 0;
+
+			while (j < i) {
+
+				if (s->bits[j] == '1') {
+					s->seq[k].level0 = s->alph[1].level0;
+					s->seq[k].duration0 = s->alph[1].duration0;
+				} else {
+					s->seq[k].level0 = s->alph[0].level0;
+					s->seq[k].duration0 = s->alph[0].duration0;
+				}
+
+				j++;
+
+				if (s->bits[j] == '1') {
+					s->seq[k].level1 = s->alph[1].level0;
+					s->seq[k].duration1 = s->alph[1].duration0;
+				} else {
+					s->seq[k].level1 = s->alph[0].level0;
+					s->seq[k].duration1 = s->alph[0].duration0;
+				}
+
+				j++;
+				k++;
+			}
+		} // short form end
+	} //if compilation criteria are met
+	return 0;
+}
+
+
+//Send sequence 'seq' using GPIO 'pin'
+//Sequence is fully configured
+static int seq_send(int pin, int seq) {
+
+  struct sequence *s = &sequences[seq];
+
+  if (!rmtInit(pin, RMT_TX_MODE, RMT_MEM_NUM_BLOCKS_1, seq_tick2freq(s->tick)))
+    return -1;
+  if (!rmtSetCarrier(pin, s->mod_freq ? true : false, s->mod_high == 1 ? false : true, s->mod_freq, s->mod_duty))
+    return -2;
+  if (!rmtSetEOT(pin,s->eot))
+    return -3;
+  if (!rmtWrite(pin,s->seq,s->seq_len,RMT_WAIT_FOR_EVER))
+    return -4;
+
+  return 0;
+}
+
+
+
 
 
 // COMMAND HANDLERS
@@ -1825,6 +2307,371 @@ static int cmd_exit(int argc, char **argv) {
   }
   return 0;
 }
+
+//TAG:show
+//show KEYWORD ARG1 ARG2 .. ARGN
+static int cmd_show(int argc, char **argv) {
+
+    if (argc < 2)
+      return -1;
+    if (!strcmp("seq",argv[1]))
+      return cmd_seq_show(argc,argv);
+    else
+      return 1;
+
+    //NOTREACHED
+    return 1;
+}
+
+//TAG:seq
+//"sequence X"
+// save context, switch command list, change the prompt
+static int cmd_seq_if(int argc, char **argv) {
+
+  int seq;
+  if (argc < 2)
+    return -1;
+
+  if (!isnum(argv[1]))
+    return 1;
+
+  seq = atoi(argv[1]);
+  if (seq < 0 || seq >= SEQUENCES_NUM) {
+    log_printf("%% Sequence numbers are 0..%d\n\r",SEQUENCES_NUM - 1);
+    return 1;
+  }
+
+  Context = seq;
+  keywords = keywords_sequence;
+  prompt_old = prompt;
+  prompt = "esp32-seq#>";
+
+  return 0;
+}
+
+
+//TAG:eot
+//eot high|low
+//
+// set End-Of-Transmission line status. Once transmission is finished
+// the esp32 hardware will pull the line either HIGH or LOW depending 
+// on the EoT setting. Default is LOW
+//
+static int cmd_seq_eot(int argc, char **argv) {
+
+	if (argc < 2)
+		return -1;
+
+	if (!strcmp(argv[1],"high") || argv[1][0] == '1')
+		sequences[Context].eot = 1;
+	else
+		sequences[Context].eot = 0;
+
+	return 0;
+}
+
+//TAG:modulation
+//
+//modulation FREQ [DUTY [low|high]]
+//
+static int cmd_seq_modulation(int argc, char **argv) {
+
+	int high = 1;
+	float duty = 0.5;
+	int freq;
+
+	// at least FREQ must be provided
+	if (argc < 2)
+		return -1;
+
+	// must be a number
+	if (!isnum(argv[1])) 
+		return 1;
+
+	freq = atoi(argv[1]);
+
+	// More arguments are available
+	if (argc > 2) {
+
+		// read DUTY. 
+		// Duty cycle is a float number on range (0..1]
+		if (!isfloat(argv[2])) 
+			return 2;
+
+		duty = atof(argv[2]);
+
+		if (duty <= 0.0f || duty > 1.0f) {
+			log_printf("%% Duty cycle is a number in range (0 .. 1] : 0.5 means 50%% duty\n\r");
+			return 2;
+		}
+	}
+
+	
+	//third argument: "high" or "1" means moduleate when line is HIGH (modulate 1's)
+	// "low" or "0" - modulate when line is LOW (modulate zeros)
+	if (argc > 3) {
+		if (!strcmp(argv[3],"low") || argv[3][0] == '1')
+			high = 0;
+		else if (!strcmp(argv[3],"high") || argv[3][0] == '0')
+			high = 1;
+		else
+			return 3; // 3rd argument was not understood
+		
+	}
+
+	sequences[Context].mod_freq = freq;
+	sequences[Context].mod_duty = duty;
+	sequences[Context].mod_high = high;
+
+	return 0;
+}
+
+//one 1/100 [0/10]
+//zero 1/100 [0/10]
+//
+// Setup the alphabet to be used when encoding "bits". there are
+// two symbols in alphabet: 0 and 1. Both of them can be defined
+// as a level (short form) or a pulse (long form):
+//
+// short scheme example:  
+// one 1/50 , zero 0/50 : 1 is HIGH for 50 ticks, 0 is LOW for 50 ticks
+// one RMT symbol is used to transmit 2 bits
+//
+// long scheme example: 
+// one 1/50 0/10 , zero 1/100 0/10 : 1 is "HIGH/50ticks then LOW for 10 tiks"
+// and 0 is "HIGH for 100 ticks then LOW for 10 ticks"
+// one RMT symbol is used to transmit 1 bit.
+// 
+static int cmd_seq_zeroone(int argc, char **argv) {
+
+	struct sequence *s = &sequences[Context];
+
+	int i = 0;
+	int level, duration;
+
+	// which alphabet entry to set?
+	if (!strcmp(argv[0],"one"))
+		i = 1;
+
+	//entry is short form by default
+	s->alph[i].level1 = 0;
+	s->alph[i].duration1 = 0;
+
+
+	switch(argc) {
+		// two arguments = a pulse
+		// (long form)
+		case 3: if (seq_atol(&level,&duration,argv[2]) < 0)
+				return 2;
+			s->alph[i].level1 = level;
+			s->alph[i].duration1 = duration;
+		
+
+		//FALLTHRU
+		// single value = a level
+		// (short form)
+		case 2: if (seq_atol(&level,&duration,argv[1]) < 0)
+				return 1;
+			s->alph[i].level0 = level;
+			s->alph[i].duration0 = duration;
+			break;
+		
+
+		default: 
+			return -1; // wrong number of arguments
+	};
+
+
+	if ((i = seq_compile(Context)) < 0)
+		log_printf("Attempted compilation: %d\n\r",i);
+
+	return 0;
+}
+
+//TAG:tick
+//
+// tick TIME
+// sets resolution of a sequence:
+// the duration of pulses and levels are measured in 'ticks':
+// level of "1/100" means "hold line HIGH for 100 ticks".
+// ticks are measured in microseconds and can be <1: lower limit
+// is 0.0125 microsecond/tick which corresponds to RMT hardware
+// frequency of 80MHz
+static int cmd_seq_tick(int argc, char **argv) {
+
+
+	if (argc < 2)
+		return -1;
+
+  if (!isfloat(argv[1]))
+    return 1;
+
+	sequences[Context].tick = atof(argv[1]);
+
+	if (sequences[Context].tick < 0.0125 || sequences[Context].tick > 3.2f) {
+		log_printf("%% Tick must be in range 0.0125..3.2 microseconds\n\r");
+		return 1;
+	}
+
+	// either "0" or not number was entered
+	if (!sequences[Context].tick)
+		return 1;
+
+	if ((argc = seq_compile(Context)) < 0)
+		log_printf("Attempted compilation: %d\n\r",argc);
+
+	return 0;
+	
+}
+
+        
+
+//TAG:bits
+//
+// sets a bit string as a sequence.
+// "zero" and "one" must be set as well to tell the hardware
+// what 1 and 0 are
+//
+// depending of values of "one" and "zero" (short or long form)
+// the pulse or level train will be generated
+//
+// long form (pulses) are used mostly for IR remote control
+// or similar application where 0 and 1 is not just levels but
+// complete pulses: going up AND down when transmitting one single bit
+static int cmd_seq_bits(int argc, char **argv) {
+
+	struct sequence *s =  &sequences[Context];
+
+	if (argc < 2)
+		return -1;
+
+	char *bits = argv[1];
+
+	while (*bits == '1' || *bits == '0')
+		bits++;
+
+	if (*bits != '\0')
+		return 1;
+
+	seq_freemem(Context);
+	s->bits = strdup(argv[1]);
+
+	if (!s->bits)
+		return -1;
+
+	// attempt to compile.
+	if ((argc = seq_compile(Context)) < 0)
+		log_printf("Attempted compilation: %d\n\r",argc);
+
+	return 0;
+
+}
+
+//TAG:levels
+//
+// instead setting up an alphabet ("zero", "one") and a bit string,
+// the pattern can be set as simple sequence of levels.
+//
+// sequence of levels does not require compiling
+//
+static int cmd_seq_levels(int argc, char **argv) {
+
+	int i,j;
+	struct sequence *s=  &sequences[Context];
+
+	if (argc < 2)
+		return -1;
+
+	// check if all levels have correct syntax
+	for(i = 1; i < argc; i++ ) {
+		int e;
+		if ((e  = seq_atol(NULL,NULL,argv[i])) < 0) {
+			//log_printf("seq_atol() : %d\n",e);
+			return i;
+		}
+	}
+	
+	seq_freemem(Context);
+
+	i = argc - 1;
+
+	if (i & 1) {
+		log_printf("%% Uneven number if levels. Please add 1 more\n\r");
+		return 0;
+	}
+
+
+        s->seq_len = i / 2;
+	s->seq = (rmt_data_t *)malloc(sizeof(rmt_data_t) * s->seq_len);
+
+	if (!s->seq)
+		return -1;
+
+	
+	memset(s->seq,0,sizeof(rmt_data_t) * s->seq_len);
+
+	// each RMT symbol (->seq entry) can hold 2 levels
+	for (i = 0,j=0; i < s->seq_len * 2; i += 2) {
+
+		int level, duration;
+		if (seq_atol(&level,&duration,argv[i+1]) < 0)
+			return i + 1;
+
+		s->seq[j].level0 = level;
+		s->seq[j].duration0 = duration;
+
+		if (seq_atol(&level,&duration,argv[i+2]) < 0)
+			return i + 2;
+
+		s->seq[j].level1 = level;
+		s->seq[j].duration1 = duration;
+
+		j++;
+
+	}
+
+	//log_printf("%d levels encoded to %d rmt_data_t\n\r",i,j);
+	
+	return 0;
+
+}
+
+
+//TAG:show
+// 
+// display the sequence content.
+// can be called either from 'sequence' command subderictory
+// or from the root:
+// esp32-seq#> show
+// esp32#> show seq 0
+//
+static int cmd_seq_show(int argc, char **argv) {
+
+	int seq;
+
+	if (argc < 2) {
+	
+		seq_dump(Context);
+		return 0;
+	}
+
+	if (argc != 3)
+		return -1;	
+	
+	if (strcmp(argv[1],"seq"))
+		return 1;
+
+	if (!isnum(argv[2]))
+		return 2;
+
+	seq = atoi(argv[2]);
+	if (seq < 0 || seq >= SEQUENCES_NUM)
+		return 2;
+
+	seq_dump(seq);
+	return 0;
+}
+
 
 
 #include "driver/gpio.h"
@@ -1993,6 +2840,29 @@ static int cmd_pin(int argc, char **argv) {
 
     gpio_dump_io_configuration(stdout, 1 << pin);  // works only on default UART
     return 0;
+  }
+
+  // pin X seq Y
+  if (argc > 2) {
+    if (!strcmp(argv[2],"seq")) {
+      if (argc < 4)
+        return -1;
+      if (!isnum(argv[3]))
+        return 3;
+      int seq = atoi(argv[3]);
+      if (seq < 0 || seq >= SEQUENCES_NUM)
+        return 3;
+      if (!seq_isready(seq)) {
+        log_printf("%% Sequence %d is not fully configured\n\r",seq);
+        return 0;
+      }
+      // enable RMT sequence 'seq' on pin 'pin'
+      // TODO:
+      log_printf("%% Sending sequence %d over GPIO %d\n\r",seq,pin);
+      if (seq_send(pin,seq) < 0)
+        log_printf(Failed);
+      return 0;
+    }
   }
 
   //more than 2 tokens: read all the options and set the parameters
@@ -2653,19 +3523,23 @@ static unsigned int uptime = 0;
 //
 // the function gets called right before entering main()
 // FreeRTOS is initialized but task scheduler is not started yet.
-__attribute__((constructor)) static void autostart() {
+#if AUTOSTART
+__attribute__((constructor)) static 
+#endif
+void espshell_start() {
 
-// save the counter value (seconds) on program start
-// must be 0 but once I saw strange glitch when the timer was not
-// reset on reboot resulting in a wrong "uptime" command values 
+  // save the counter value (seconds) on program start
+  // must be 0 but once I saw strange glitch when the timer was not
+ // reset on reboot resulting in a wrong "uptime" command values 
 	uptime = (uint32_t)(esp_timer_get_time() / 1000000);
-#if AUTOSTART  
 
-//start shell task.
-//task have to wait until Serial.begin() in order to start
-//reading and process user input
+  //initialize sequences
+  seq_init();
+  
+  //start shell task.
+  //task have to wait until Serial.begin() in order to start
+  //reading and process user input
   espshell_task("esp32#>");
-#endif  
 }
 
 //TAG:uptime
@@ -2765,23 +3639,26 @@ static int cmd_question(int argc, char **argv) {
   //Run thru the keywords[] and print brief info for every command
   //For entries with the same base command only the first entry's description used
   //Entries with both help lines (help and brief) set to NULL are hidden commands
-  while (keywords[i].cmd && (keywords[i].help || keywords[i].brief)) {
+  while (keywords[i].cmd) {
 
-    if (strcmp(prev, keywords[i].cmd)) {  // previous != current
-      const char *brief;
-      if (!(brief = keywords[i].brief))  //use "brief" or fallback to "help"
-        if (!(brief = keywords[i].help))
-          brief = "";
+    if  (keywords[i].help || keywords[i].brief) {
+      if (strcmp(prev, keywords[i].cmd)) {  // previous != current
+        const char *brief;
+        if (!(brief = keywords[i].brief))  //use "brief" or fallback to "help"
+          if (!(brief = keywords[i].help))
+            brief = "";
 
-      // indent list: short commands are padded with spaces so
-      // total length is always INDENT bytes. Commands which size
-      // is bigger than INDENT will not be padded
-      int clen;
-      spaces = &indent[INDENT];  //points to \0
-      if ((clen = strlen(keywords[i].cmd)) < INDENT)
-        spaces = &indent[clen];
-      log_printf("%% \"%s\"%s : %s\n\r", keywords[i].cmd, spaces, brief);
+        // indent list: short commands are padded with spaces so
+        // total length is always INDENT bytes. Commands which size
+        // is bigger than INDENT will not be padded
+        int clen;
+        spaces = &indent[INDENT];  //points to \0
+        if ((clen = strlen(keywords[i].cmd)) < INDENT)
+          spaces = &indent[clen];
+        log_printf("%% \"%s\"%s : %s\n\r", keywords[i].cmd, spaces, brief);
+      }
     }
+
     prev = keywords[i].cmd;
     i++;
   }
@@ -2791,6 +3668,7 @@ static int cmd_question(int argc, char **argv) {
 #endif
   return 0;
 }
+
 
 // Parse a string: split it to tokens, find an appropriate entry in keywords[] array
 // and execute coresponding callback. 
@@ -2819,7 +3697,7 @@ espshell_command(char *p) {
   if (argc < 1)
     return;
 
-  // process "?" argument to a command: Ex.: "pin ?"
+  // process "?" argument to a  command: Ex.: "pin ?"
   if (argc > 1 && *(argv[1]) == '?') {
 #if WITH_HELP
     // run thru keywords[] and print out "help" for every entriy.
@@ -2852,31 +3730,30 @@ espshell_command(char *p) {
         // command name match
         
         if (strlen(keywords[i].cmd) >= cmd_len) {
-        
-        if (!strncmp(keywords[i].cmd, argv[0], cmd_len)) {
-          found = 1;
-          // number of arguments match
-          if (((argc - 1) == keywords[i].min_argc) || (keywords[i].min_argc < 0)) {
+          if (!strncmp(keywords[i].cmd, argv[0], cmd_len)) {
+            found = 1;
+            // number of arguments match
+            if (((argc - 1) == keywords[i].min_argc) || (keywords[i].min_argc < 0)) {
 
-            // execute the command. if nonzero value is returned then it is an index of the "failed" argument
-            // value of 3 means argv[3] was bad (for values > 0)
-            // value of zero means successful execution
-            int bad;
-            if (keywords[i].cb) {
-              //!!! handler MAY change keywords pointer! keywords[i] may be invalid pointer after
-              // callback execute with return code 0
-              bad = keywords[i].cb(argc, argv);
-              if (bad > 0)
-                log_printf("%% Invalid argument \"%s\" (\"%s ?\" for help)\n\r", argv[bad], argv[0]);
-              else if (bad < 0)
-                log_printf("%% Missing argument (\"%s ?\" for help)\n\r", argv[0]);
-              else
-                i = 0; // make sure keywords[i] is valid pointer
-              break;
-            }
-          }
-        }
-        }
+              // execute the command. if nonzero value is returned then it is an index of the "failed" argument
+              // value of 3 means argv[3] was bad (for values > 0)
+              // value of zero means successful execution
+              int bad;
+              if (keywords[i].cb) {
+                //!!! handler MAY change keywords pointer! keywords[i] may be invalid pointer after
+                // callback execute with return code 0
+                bad = keywords[i].cb(argc, argv);
+                if (bad > 0)
+                  log_printf("%% Invalid argument \"%s\" (\"%s ?\" for help)\n\r", argv[bad], argv[0]);
+                else if (bad < 0)
+                  log_printf("%% Missing argument (\"%s ?\" for help)\n\r", argv[0]);
+                else
+                  i = 0; // make sure keywords[i] is valid pointer
+                break;
+              } // if callback is provided
+            } // if argc matched
+          } // if name matched
+        } // if command length is ok
         i++;
       }
 
@@ -2923,8 +3800,10 @@ espshell_task(const void *prom) {
 
     // wait until user code calls Serial.begin()
     // it is assumed that user console is using UART, not a native USB interface
-    while (!uart_isup(uart)) delay(1000);
+    while (!uart_isup(uart))
+      delay(1000);
 
+    
 #if WITH_HELP    
     log_printf("%% ESP Shell. Type \"?\" and press enter for help\n\r");
 #endif    
