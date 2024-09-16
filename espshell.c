@@ -1642,7 +1642,7 @@ static struct keywords_t keywords_sequence[] = {
                        "% \"zero LEVEL/DURATION [LEVEL2/DURATION2]\"\n\r"
                        "%\n\r" \
                        "% Define a logic \"0\"\n\r" \
-                       "% Ex.: zero 0/50      - 0 is a level: LOW for 50 ticks" \
+                       "% Ex.: zero 0/50      - 0 is a level: LOW for 50 ticks\n\r" \
                        "% Ex.: zero 1/50 0/20 - 0 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks",
 
 #else
@@ -1656,7 +1656,7 @@ static struct keywords_t keywords_sequence[] = {
                        "% \"one LEVEL/DURATION [LEVEL2/DURATION2]\"\n\r"
                        "%\n\r" \
                        "% Define a logic \"1\"\n\r" \
-                       "% Ex.: one 1/50       - 1 is a level: HIGH for 50 ticks" \
+                       "% Ex.: one 1/50       - 1 is a level: HIGH for 50 ticks\n\r" \
                        "% Ex.: one 1/50 0/20  - 1 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks",
 
 #else
@@ -1671,9 +1671,9 @@ static struct keywords_t keywords_sequence[] = {
   #if WITH_HELP
                         "% \"bits STRING\"\n\r" \
                         "%\n\r" \
-                        "% A bit pattern to be used as a sequence. STRING must contain only 0 and 1 (arbitrary amount)" \
+                        "% A bit pattern to be used as a sequence. STRING must contain only 0s and 1s\n\r" \
                         "% Overrides previously set \"levels\" command\n\r" \
-                        "% See commands \"one\" and \"zero\" to describe \"1\" and \"0\"\n\r" \
+                        "% See commands \"one\" and \"zero\" to define \"1\" and \"0\"\n\r" \
                         "%\n\r" \
                         "% Ex.: bits 11101000010111100  - 17 bit sequence",
 #else
@@ -1776,7 +1776,7 @@ static struct keywords_t keywords_main[] = {
   { "pin", cmd_pin,  2, 
 #if WITH_HELP
                         "% \"pin X\" read|aread\n\r" \
-                        "\n\r" \
+                        "% \n\r" \
                         "% Get digital (read) or analog (aread) value on pin X\n\r" \
                         "% Ex.: pin 18 aread - read analog pin 18",
 #else
@@ -2114,14 +2114,16 @@ static int seq_atol(int *level, int *duration, char *p) {
 	if (!*lp) // separator was the first symbol
 		return -3;
 
+  //FIXME: check that the level is either 1 or 0
 	if (level) {
 		*level = atoi(lp);
 		*(dp - 1) = '\\'; // restore separator
 	}
+
+  //FIXME: check that the duration is < 32768
 	if (duration)
 		*duration = atoi(dp);
 	
-
 	return 0;
 }
 
