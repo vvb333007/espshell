@@ -1,5 +1,4 @@
  * ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
- * Uses editline library (see copyright information below)
  *
  * WHAT IS THIS:
  * -------------
@@ -33,12 +32,12 @@
  * SHELL BRIEF DESCRIPTION AND EXAMPLES OF USE
  * -------------------------------------------
  * 
- * Shell commands include i2c, uart, pin manipulation, tone generator
+ * Shell commands include i2c, uart, pin manipulation, tone generator, pattern generator (RMT)
  * and a pulse counter. There are some basic 'information' commands:
  * memory usage, cpuid, pin; commands for execution flow control: suspend/resume
  * main Arduino loop(), restart and light sleep
  * 
- * Full list of commands is available by typing "?" and pressing <Enter>
+ * Full list of commands is available by typing "?" and pressing "Enter"
  * Description of arguments to the command can be obtained by typing a command
  * with "?" like this:
  * 
@@ -76,7 +75,9 @@
  *
  * Pin commands allow for changing pin modes, writing/reading  values, changing pullup
  * modes, displaying current pin configuration. There are commands to generate PWM
- * signal on arbitrary pin, and commands to count pulses arrived on given pin
+ * signal on arbitrary pin, and commands to count pulses arrived on given pin. There
+ * are commands to create custom patterns with precise timing ( "sequence" ) and command
+ * to send sequences over an arbitrary GPIO ("pin X seq Y")
  *
  * NOTE:
  * -----
