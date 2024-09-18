@@ -2006,12 +2006,23 @@ static bool pin_exist(int pin) {
   if ((pin >= 0) && (pin < SOC_GPIO_PIN_COUNT) && (((uint64_t )1 << pin) & SOC_GPIO_VALID_GPIO_MASK))
     return true;
 
-  log_printf("%% Available pins are 0..%d, except pins ",SOC_GPIO_PIN_COUNT-1);
+  log_printf("%% Available pin numbers are are 0..%d, except ",SOC_GPIO_PIN_COUNT-1);
   for (pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++)
     if (!(((uint64_t )1 << pin) & SOC_GPIO_VALID_GPIO_MASK))
       log_printf("%d,",pin);
-  log_printf("\n\r");  
+#if 0      
+  log_printf("\n\r%% Reserved pins (used internally): ");  
   
+  int count;
+  for (pin = count = 0; pin < SOC_GPIO_PIN_COUNT; pin++)
+    if (esp_gpio_is_reserved(BIT64(pin))) {
+      count++;
+      log_printf("%d, ",pin);
+    }
+  if (!count)
+    log_printf("none");
+#endif    
+  log_printf(CRLF);
   return false;
 }
 
@@ -2939,12 +2950,11 @@ static int cmd_pin(int argc, char **argv) {
     // Example: pin 2 save out high in read load
     if (!strcmp(argv[i], "save")) pin_save(pin);
     else if (!strcmp(argv[i], "load")) pin_load(pin);
-    else if (!strcmp(argv[i], "pullup"))    { flags |= PULLUP; pinMode(pin, flags); }
-    else if (!strcmp(argv[i], "pulldown"))  { flags |= PULLDOWN; pinMode(pin, flags); }
+    else if (!strcmp(argv[i], "up"))    { flags |= PULLUP; pinMode(pin, flags); }
+    else if (!strcmp(argv[i], "down"))  { flags |= PULLDOWN; pinMode(pin, flags); }
     else if (!strcmp(argv[i], "open"))      { flags |= OPEN_DRAIN; pinMode(pin, flags); }
     else if (!strcmp(argv[i], "in"))        { flags |= INPUT; pinMode(pin, flags); }
     else if (!strcmp(argv[i], "out"))       { flags |= OUTPUT; pinMode(pin, flags); }
-    else if (!strcmp(argv[i], "analog"))    { flags |= ANALOG; pinMode(pin, flags); }
     else if (!strcmp(argv[i], "low"))       digitalWrite(pin, LOW);
     else if (!strcmp(argv[i], "high"))      digitalWrite(pin, HIGH);
     else if (!strcmp(argv[i], "read"))      log_printf("%% GPIO%d : logic %d\n\r", pin, digitalRead(pin) == HIGH ? 1 : 0);
