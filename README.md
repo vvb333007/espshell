@@ -7,28 +7,33 @@ WHAT IS THIS:
  running in parallel to user Arduino sketch. This tool assumes that Arduino's
  Serial is uart0 at startup
 
- User can enter and execute commands in a way similar to Linux shell: either
- using Arduino IDE's Serial Monitor or better using a proper serial communication
- software (TeraTerm, PuTTY or similar or Windows or 'cu' on Linux)
+ User can enter and execute commands (there are many built-in commands) in a way 
+ similar to Linux shell: either using Arduino IDE's Serial Monitor or better using
+ proper serial communication software (TeraTerm, PuTTY or similar on Windows or 
+ 'cu' on Linux)
  
- Look at Settings1.jpg and Settings2.jpg for preferred settings of ArduinoIDE Serial
- Monitor and TeraTerm. Please note that some features will be unavailable if using
- Arduino Serial Monitor: you will not be able to send Ctrl+C and Ctrl+Z sequences
+ Screenshots Settings1.jpg and Settings2.jpg shows preferred settings of ArduinoIDE 
+ Serial Monitor and TeraTerm. Please note that some features will be unavailable if 
+ using Arduino Serial Monitor: you will not be able to send Ctrl+C and Ctrl+Z sequences
  which are useful in debugging GSM modems
  
 HOW TO USE IT IN ARDUINO PROJECT:
 ---------------------------------
- This tool does not require user to do ANY changes to their existing
+ This tool DOES NOT REQUIRE user to do ANY changes to their existing
  sketch/project.
+ 
  Follow these steps:
+ 
  a. Copy espshell.c to your sketch directory (where your .ino file is).
+ 
  b. Compile & upload your sketch as usual. (espshell will gain control 
     automatically on startup)
+    
  c. Enjoy! Now you can access the command line interface via Arduino 
     IDE's Serial Monitor or ( better ) thru terminal software: Linux cu, 
     Windows TeraTerm or PuTTY.
 
-SHELL BRIEF DESCRIPTION AND EXAMPLES OF USE
+SHELL BRIEF DESCRIPTION
 -------------------------------------------
 
  Shell commands include i2c, uart, pin manipulation, tone generator
@@ -69,4 +74,7 @@ higher level commands. There are million commands to implement but I only implem
 i use in my debugging/development process. What commands I miss right now is triggers &
 pattern generation :). Also I try to keep it small: it is just 1 file and I want to
 keep it like that
+
+The shell itself is one single .c file; you can use supplied espshell.ino sketch as an 
+example: it is a simple LED blink sketch.
 
