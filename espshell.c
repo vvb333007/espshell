@@ -2006,7 +2006,7 @@ static bool pin_exist(int pin) {
   if ((pin >= 0) && (pin < SOC_GPIO_PIN_COUNT) && (((uint64_t )1 << pin) & SOC_GPIO_VALID_GPIO_MASK))
     return true;
 
-  log_printf("%% Available pin numbers are are 0..%d, except ",SOC_GPIO_PIN_COUNT-1);
+  log_printf("%% Available pin numbers are 0..%d, except ",SOC_GPIO_PIN_COUNT-1);
   for (pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++)
     if (!(((uint64_t )1 << pin) & SOC_GPIO_VALID_GPIO_MASK))
       log_printf("%d,",pin);
@@ -3101,7 +3101,7 @@ static int cmd_i2c_clock(int argc, char **argv) {
 //"iic NUM / scan"
 //"iic NUM / write ADDR A1 A2 A3 ... AN"
 //"iic NUM / read ADDR NUM_BYTES"
-#define IIC_MAX_TBUF 256  //max of 256 bytes as arguments to the "uart NUM write Arg1 [Arg2 .. Arg256]"
+#define I2C_RXTX_BUF 1024  
 
 static int cmd_i2c(int argc, char **argv) {
 
@@ -3109,7 +3109,7 @@ static int cmd_i2c(int argc, char **argv) {
   unsigned int clock = 0;
   int i;
   unsigned char addr;
-  unsigned char data[IIC_MAX_TBUF];
+  
   int size;
 
   iic = Context;
@@ -3144,8 +3144,10 @@ static int cmd_i2c(int argc, char **argv) {
   } else if (!strcmp(argv[0], "write")) {  //write 4B 1 2 3 4
 
     // at least 1 but not more than 255 bytes
-    if (argc < 3 || argc > sizeof(data))
+    if (argc < 3 || argc > I2C_RXTX_BUF)
       return -1;
+
+    unsigned char data[argc];
 
     if (!i2c_isup(iic))
       goto noinit;
@@ -3188,15 +3190,23 @@ static int cmd_i2c(int argc, char **argv) {
 
     size = atoi(argv[2]);
 
-    if (size > sizeof(data)) {
-      size = sizeof(data);
+    if (size < 0 || size > I2C_RXTX_BUF) {
+      size = I2C_RXTX_BUF;
       log_printf("%% Max read size buffer is %d bytes\n\r", size);
     }
+
+    got = 0;
+    unsigned char data[size];
 
     if (i2cRead(iic, addr, data, size, 2000, &got) != ESP_OK)
       log_printf(Failed);
     else {
+      if (got != size) {
+        log_printf("% Requested %d bytes but read %d\n\r",size,got);
+        got = size;
+      }
       log_printf("%% I2C%d received %d bytes:\n\r", iic, got);
+      
       for (i = 0; i < got; i++)
         log_printf("%02X ", data[i]);
       log_printf("\n\r");
@@ -3885,7 +3895,7 @@ void espshell_task(const void *arg) {
 #endif
     }
   } else {
- 
+
     // wait until user code calls Serial.begin()
     // it is assumed that user console is using UART, not a native USB interface
     while (!uart_isup(uart))
@@ -3898,6 +3908,6 @@ void espshell_task(const void *arg) {
     while (1)
       espshell_command(readline(prompt));
     delay(100);  //delay between commands to prevent flooding from
-                  //failed readline() (if any)
+                 //failed readline() (if any)
   }
 }
