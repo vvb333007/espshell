@@ -1,0 +1,146 @@
+Pulse pattern generation
+------------------------
+
+ESP32 has dedicated perephireal for pulse train generation called RMT.
+Pulse pattern generation is available via "sequence Y" and "pin X seq Y"
+commands.
+
+The first one defines a sequence of pulses to be generated, while second 
+actually sends it.
+
+Lets solve a simple task: we want to generate number of pulses on pin2
+as follows:
+
+"Set pin2 HIGH for 10uS, then LOW for 20uS then HIGH again for 30uS and 
+finally LOW."
+
+We start from entering a sequence configuration mode:
+
+esp32#>sequence 0
+esp32-seq#>
+
+Command "sequence 0"  enter sequence0 configuration mode (numbers must
+be in range 0..9 so only 10 sequences can be created). This command changes 
+the espshell prompt to "esp32-seq#>" indicating that user is in sequence
+configuration mode. To exit this mode type "exit".
+
+
+First we need to set a resolution for the sequence, a tick length. Pulse
+length, and all the timings in a sequence are expressed in ticks. Tick 
+length can be anything from 0.0125 to 3.2 microseconds. Lets choose tick
+to be 1 microsecond long:
+
+esp32#>sequence 0
+esp32-seq#>tick 1
+
+Now input our sequence:
+
+
+esp32#>sequence 0
+esp32-seq#>tick 1
+esp32-seq#>levels 1/800 0/50 1/17 0/999
+
+Command "levels" takes arguments in form LEVEL/LENGTH_IN_TICKS where LEVEL
+is either "1" or "0" and LENGTH_IN_TICKS tells how long this level must be
+held (1..32767 ticks). Using command "show" one can check the sequence total
+length in ticks and microseconds
+
+
+Another way to do the same is to use "bits", "one" and "zero" commands instead
+of encoding all individual values using "levels" command. Command "bits" 
+defines a bit stream to be sent while "one" and "zero" define what 1 and 0 
+actuually are in terms of LOW/HIGH. Give the example task above we can enter
+following commands:
+
+
+esp32#>sequence 0
+esp32-seq#>tick 1
+esp32-seq#>bits 100111
+esp32-seq#>one 1/10
+esp32-seq#>zero 0/10
+
+Commands "one" and "zero" define a 1 to be 10uS long and 0 to be 10uS long
+as well. Then we use proper number of 1s and 0s to achieve timings we need:
+
+1   - 10uS
+00  - 20uS
+111 - 30uS
+
+Command "bits" discards previously set "levels" and vice versa: setting "levels"
+will reset "bits". Once "tick", "bits", "one" and "zero" are set then levels
+are automatically generated and can be seen with "show" command:
+
+
+esp32-seq#>show
+%
+% Sequence #0:
+% Resolution : 1.0000uS  (Frequency: 1000000 Hz)
+% Levels are :
+% 1/10, 0/10, 0/10, 1/10, 1/10, 1/10,                   <------------------
+% Total: 6 levels, duration: 60 ticks, (~60 uS)
+
+
+The ESP32's hardware behind this pulse generation is a remote-control perephirial
+which is designed for IR protocols encoding. The difference is that 1 and 0 are 
+not simple levels (say 1 for X microseconds) but pulses. Pulses can be configured
+using "one" and "zero" commands extra arguments. Lets say we want to send a bit 
+string "100111" where logic 1 is a pulse (HIGH 150uS then LOW 50uS) and logic 0 
+is a pulse as well (HIGH 50uS then LOW for 150uS):
+
+
+esp32#>seq 0
+esp32-seq#>tick 1
+esp32-seq#>one 1/150 0/50
+esp32-seq#>zero 1/50 0/150
+esp32-seq#>bits 100111
+esp32-seq#>show
+%
+% Sequence #0:
+% Resolution : 1.0000uS  (Frequency: 1000000 Hz)
+% Levels are :
+% 1/150, 0/50, 1/50, 0/150, 1/50, 0/150, 1/150, 0/50,
+% 1/150, 0/50, 1/150, 0/50,
+% Total: 12 levels, duration: 1200 ticks, (~1200 uS)
+
+
+Finaly lets create pattern which blink LED connected to GPIO2. We want that LED
+to blink around 1Hz.
+
+Given the frequency of 1Hz the tick must be as long as possible and duration of
+each 1 or 0 should be maximal. The maximum tick allowed is 3.2uS so we just 
+choose 3.2 and define "one" and "zero" to maximum length:
+
+esp32-seq#>tick 3.2
+esp32-seq#>one 1/32767
+esp32-seq#>zero 0/32767
+esp32-seq#>bits 11111111000000001111111100000000
+
+Exit sequence configuration mode using "exit" command. Note that commands can 
+be entered in their short form (say "seq" instead of "sequence" or "ex" instead 
+"exit" of)
+
+Assign sequence to the pin (start the sequence). If you have LED connected to 
+pin 2 you'll see it blinking
+
+esp32-seq#>ex
+esp32#>pin 2 seq 0
+% Sending sequence 0 over GPIO 2
+esp32#>
+
+
+There are some extra commands in "sequence" category which were not covered
+in this text. Explore them by typing "?" after command name and pressing
+<Enter>
+
+
+Summary:
+--------
+
+* There are up to 10 sequences (patterns) could be configured
+* Use command "sequence" or "seq" to create sequences
+* Use command "pin X seq Y" to send sequence Y over pin X
+* "tick" MUST be set before sequence can be fed to any pin
+* "levels" : sequences can be set up manually setting level/durations pairs
+* "bits"   : sequences can be set up as a bit strings with defined 1 and 0 lengths
+
+
