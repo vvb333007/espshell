@@ -3885,7 +3885,7 @@ void espshell_task(const void *arg) {
 #endif
     }
   } else {
-
+ 
     // wait until user code calls Serial.begin()
     // it is assumed that user console is using UART, not a native USB interface
     while (!uart_isup(uart))
