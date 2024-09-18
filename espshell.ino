@@ -1,3 +1,6 @@
+// Minimal sketch - example, blining LED
+// to use together with espshell.
+
 #include <Arduino.h>
 
 // Small blue LED on many ESP32 Devkit clones, 
