@@ -69,3 +69,10 @@ Byte string received contains current time: 22:25:24 Third day of the week, 18
 of September 2024. Having datasheet of connected I2C device one can send and
 receive data to the device. Might be useful when developing a library for a new
 I2C device
+
+Command "clock" is used to change I2C clock: for axample "clock 150000" sets I2C
+clock to 150kHz.  Maximum value supported is 1 MHz.
+
+Command "down" shudowns I2C interface.
+
+Use command "exit" to exit I2C configuration mode
