@@ -6,6 +6,16 @@ Commands can be entered in shortened form: "seq" or even "se" instead of
 "sequence" or "rel" instead of "reload". ESPShell's parser does a partial match
 of the command name to user input allowing for shortening command names.
 
+Same applies to command arguments:
+For example, instead of entering "pin 2 out open high" one can type something
+like "pi 2 ou h" to get the same result. If there is ambiguity happens then
+parser just chooses first match:
+
+"pi 2 o h" will expand to "pin 2 open high" not "pin 2 out high" because "open"
+is the first in the list for partial match, not "out". Make sure that you use
+"short" but not very short commands and arguments
+
+
 Here is the list of currently supported commands:
 
 % "?"        : Show the list of available commands
