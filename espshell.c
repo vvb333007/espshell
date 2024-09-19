@@ -119,6 +119,20 @@ typedef unsigned char CHAR;
 #include <driver/uart.h>
 static uart_port_t uart = UART_NUM_0;
 
+
+/* strcmp() which deoes partial match. It us used
+ * to match commands and parameters which are incomplete
+ */
+ static int q_strcmp(const char *partial, const char *full) {
+
+    int plen = strlen(partial);
+
+    if (plen > strlen(full))
+      return 1;
+  return strncmp(partial,full, plen);
+
+ }
+
 /* Get/Set UART to use: UART_NUM_0, UART_NUM_1,... etc.
  * By default all the IO happens on UART0 but it can be changed to any other
  * UART. After this call the shell will use uart "i" to perform all the IO
@@ -2348,7 +2362,7 @@ static int cmd_show(int argc, char **argv) {
 
   if (argc < 2)
     return -1;
-  if (!strcmp("seq", argv[1]))
+  if (!q_strcmp(argv[1],"seq"))
     return cmd_seq_show(argc, argv);
   else
     return 1;
@@ -2396,7 +2410,7 @@ static int cmd_seq_eot(int argc, char **argv) {
   if (argc < 2)
     return -1;
 
-  if (!strcmp(argv[1], "high") || argv[1][0] == '1')
+  if (!q_strcmp(argv[1], "high") || argv[1][0] == '1')
     sequences[Context].eot = 1;
   else
     sequences[Context].eot = 0;
@@ -2444,9 +2458,9 @@ static int cmd_seq_modulation(int argc, char **argv) {
   //third argument: "high" or "1" means moduleate when line is HIGH (modulate 1's)
   // "low" or "0" - modulate when line is LOW (modulate zeros)
   if (argc > 3) {
-    if (!strcmp(argv[3], "low") || argv[3][0] == '1')
+    if (!q_strcmp(argv[3], "low") || argv[3][0] == '1')
       high = 0;
-    else if (!strcmp(argv[3], "high") || argv[3][0] == '0')
+    else if (!q_strcmp(argv[3], "high") || argv[3][0] == '0')
       high = 1;
     else
       return 3;  // 3rd argument was not understood
@@ -2483,7 +2497,7 @@ static int cmd_seq_zeroone(int argc, char **argv) {
   int level, duration;
 
   // which alphabet entry to set?
-  if (!strcmp(argv[0], "one"))
+  if (!q_strcmp(argv[0], "one"))
     i = 1;
 
   //entry is short form by default
@@ -2689,7 +2703,7 @@ static int cmd_seq_show(int argc, char **argv) {
   if (argc != 3)
     return -1;
 
-  if (strcmp(argv[1], "seq"))
+  if (q_strcmp(argv[1], "seq"))
     return 1;
 
   if (!isnum(argv[2]))
@@ -2743,9 +2757,9 @@ static int cmd_count(int argc, char **argv) {
 
   // user has provided second argument?
   if (argc > 2) {
-    if (!strcmp(argv[2], "pos")) pos = PCNT_COUNT_INC;
-    else if (!strcmp(argv[2], "neg")) neg = PCNT_COUNT_INC;
-    else if (!strcmp(argv[2], "both")) {
+    if (!q_strcmp(argv[2], "pos")) pos = PCNT_COUNT_INC;
+    else if (!q_strcmp(argv[2], "neg")) neg = PCNT_COUNT_INC;
+    else if (!q_strcmp(argv[2], "both")) {
       neg = pos = PCNT_COUNT_INC;
     } else
       return 2;
@@ -2921,7 +2935,7 @@ static int cmd_pin(int argc, char **argv) {
   if (argc > 2) {
 
     // pin X seq Y
-    if (!strcmp(argv[2], "seq")) {
+    if (!q_strcmp(argv[2], "seq")) {
       if (argc < 4)
         return -1;
       if (!isnum(argv[3]))
@@ -2948,17 +2962,17 @@ static int cmd_pin(int argc, char **argv) {
     // execute parameters in sequence. this allows for reading and writing, saving
     // and restoring in one command:
     // Example: pin 2 save out high in read load
-    if (!strcmp(argv[i], "save")) pin_save(pin);
-    else if (!strcmp(argv[i], "load")) pin_load(pin);
-    else if (!strcmp(argv[i], "up"))    { flags |= PULLUP; pinMode(pin, flags); }
-    else if (!strcmp(argv[i], "down"))  { flags |= PULLDOWN; pinMode(pin, flags); }
-    else if (!strcmp(argv[i], "open"))      { flags |= OPEN_DRAIN; pinMode(pin, flags); }
-    else if (!strcmp(argv[i], "in"))        { flags |= INPUT; pinMode(pin, flags); }
-    else if (!strcmp(argv[i], "out"))       { flags |= OUTPUT; pinMode(pin, flags); }
-    else if (!strcmp(argv[i], "low"))       digitalWrite(pin, LOW);
-    else if (!strcmp(argv[i], "high"))      digitalWrite(pin, HIGH);
-    else if (!strcmp(argv[i], "read"))      log_printf("%% GPIO%d : logic %d\n\r", pin, digitalRead(pin) == HIGH ? 1 : 0);
-    else if (!strcmp(argv[i], "aread"))     log_printf("%% GPIO%d : analog %d (%d mV)\n\r", pin, analogRead(pin), analogReadMilliVolts(pin));
+    if (!q_strcmp(argv[i], "save")) pin_save(pin);
+    else if (!q_strcmp(argv[i], "load")) pin_load(pin);
+    else if (!q_strcmp(argv[i], "up"))    { flags |= PULLUP; pinMode(pin, flags); }
+    else if (!q_strcmp(argv[i], "down"))  { flags |= PULLDOWN; pinMode(pin, flags); }
+    else if (!q_strcmp(argv[i], "open"))      { flags |= OPEN_DRAIN; pinMode(pin, flags); }
+    else if (!q_strcmp(argv[i], "in"))        { flags |= INPUT; pinMode(pin, flags); }
+    else if (!q_strcmp(argv[i], "out"))       { flags |= OUTPUT; pinMode(pin, flags); }
+    else if (!q_strcmp(argv[i], "low"))       digitalWrite(pin, LOW);
+    else if (!q_strcmp(argv[i], "high"))      digitalWrite(pin, HIGH);
+    else if (!q_strcmp(argv[i], "read"))      log_printf("%% GPIO%d : logic %d\n\r", pin, digitalRead(pin) == HIGH ? 1 : 0);
+    else if (!q_strcmp(argv[i], "aread"))     log_printf("%% GPIO%d : analog %d (%d mV)\n\r", pin, analogRead(pin), analogReadMilliVolts(pin));
     else
       return i;  // argument i was not recognized
     i++;
@@ -3115,7 +3129,7 @@ static int cmd_i2c(int argc, char **argv) {
   iic = Context;
 
   //IIC UP
-  if (!strcmp(argv[0], "up")) {
+  if (!q_strcmp(argv[0], "up")) {
 
     if (argc < 4)
       return -1;
@@ -3137,11 +3151,11 @@ static int cmd_i2c(int argc, char **argv) {
 
     if (ESP_OK != i2cInit(iic, sda, scl, clock))
       log_printf(Failed);
-  } else if (!strcmp(argv[0], "down")) {
+  } else if (!q_strcmp(argv[0], "down")) {
     if (!i2c_isup(iic))
       goto noinit;
     i2cDeinit(iic);
-  } else if (!strcmp(argv[0], "write")) {  //write 4B 1 2 3 4
+  } else if (!q_strcmp(argv[0], "write")) {  //write 4B 1 2 3 4
 
     // at least 1 but not more than 255 bytes
     if (argc < 3 || argc > I2C_RXTX_BUF)
@@ -3170,7 +3184,7 @@ static int cmd_i2c(int argc, char **argv) {
     log_printf("%% Sending %d bytes over I2C%d\n\r", size, iic);
     if (ESP_OK != i2cWrite(iic, addr, data, size, 2000))
       log_printf(Failed);
-  } else if (!strcmp(argv[0], "read")) {  //read 68 7
+  } else if (!q_strcmp(argv[0], "read")) {  //read 68 7
 
     size_t got;
 
@@ -3211,7 +3225,7 @@ static int cmd_i2c(int argc, char **argv) {
         log_printf("%02X ", data[i]);
       log_printf("\n\r");
     }
-  } else if (!strcmp(argv[0], "scan")) {
+  } else if (!q_strcmp(argv[0], "scan")) {
     if (!i2c_isup(iic)) {
       log_printf("%% I2C %d is not initialized\n\r", iic);
       return 0;
@@ -3231,7 +3245,7 @@ static int cmd_i2c(int argc, char **argv) {
       log_printf("%% Nothing found\n\r");
     else
       log_printf("%% %d devices found\n\r", i);
-  } else return 2;
+  } else return 0;
 
   return 0;
 noinit:
@@ -3357,7 +3371,7 @@ static int cmd_uart(int argc, char **argv) {
   uart = Context;
 
   // UART TAP
-  if (!strcmp(argv[0], "tap")) {
+  if (!q_strcmp(argv[0], "tap")) {
     //do not tap to the same uart
     if (uart == rl_set_uart(-1)) {
       log_printf("%% Can not tap on itself\n\r");
@@ -3371,7 +3385,7 @@ static int cmd_uart(int argc, char **argv) {
     uart_tap(uart);
     log_printf("\n\r%% Ctrl+C, exiting\n\r");
     return 0;
-  } else if (!strcmp(argv[0], "up")) {  //up RX TX SPEED
+  } else if (!q_strcmp(argv[0], "up")) {  //up RX TX SPEED
     if (argc < 4)
       return -1;
     // uart number, rx/tx pins and speed must be numbers
@@ -3388,12 +3402,12 @@ static int cmd_uart(int argc, char **argv) {
 
     if (NULL == uartBegin(uart, speed, SERIAL_8N1, rx, tx, 256, 0, false, 112))
       log_printf(Failed);
-  } else if (!strcmp(argv[0], "down")) {  // down
+  } else if (!q_strcmp(argv[0], "down")) {  // down
     if (!uart_isup(uart))
       goto noinit;
     else
       uartEnd(uart);
-  } else if (!strcmp(argv[0], "write")) {  //write TEXT
+  } else if (!q_strcmp(argv[0], "write")) {  //write TEXT
     if (argc < 2)
       return -1;
 
@@ -3461,7 +3475,7 @@ static int cmd_uart(int argc, char **argv) {
     } while (i < argc);
 
     log_printf("%% %u bytes sent\n\r", sent);
-  } else if (!strcmp(argv[0], "read")) {  // read
+  } else if (!q_strcmp(argv[0], "read")) {  // read
     size_t available = 0, tmp;
     if (ESP_OK != uart_get_buffered_data_len(uart, &available))
       goto noinit;
