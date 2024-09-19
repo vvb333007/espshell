@@ -1,3 +1,5 @@
+ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
+
 Pulse pattern generation
 ------------------------
 
