@@ -13,9 +13,15 @@
  *
  * NAVIGATING THROUGH THE SOURCE CODE (THIS FILE):
  * ----------------------------------------------
- * Search for "TAG:" lines (TAG:pin TAG:uart etc)  to locate corresponding command handlers
- * Search for TAG:keywords to locate the command list
- *            TAG:shell to find the command line parser code
+ * Search for "TAG:" lines (TAG:pin TAG:uart etc)  to locate corresponding command 
+ * handlers
+ *
+ * 1. Common routines are at the beginning (pin_exist(), q_strcmp() ...)
+ *
+ * 2. Structures and #includes are all over the file: they are in close proximity
+ *    to the code which needs them.
+ *
+ * 3. Command handlers are prefixed with "cmd_" : cmd_tone(...)
  */
 
 /* -*- Mode: C; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
@@ -90,16 +96,12 @@ extern int __attribute__((format(printf, 1, 2))) log_printf(const char *format, 
 // arg != NULL : async call. starts the task and returns immediately
 void espshell_task(const void *arg);
 
-////////////////// EDITLINE CODE BELOW (modified ancient version)
 
-typedef unsigned char CHAR;
+//========>=========>======= EDITLINE CODE BELOW (modified ancient version) =======>=======>
+
+
 
 #define CRLF "\r\n"
-
-#define SIZE_T unsigned int
-#define STATIC static
-#define FORWARD static
-#define CONST const
 
 #define MEM_INC 64      // "Line" buffer realloc increments
 #define SCREEN_INC 256  // "Screen" buffer granularity
@@ -119,19 +121,6 @@ typedef unsigned char CHAR;
 #include <driver/uart.h>
 static uart_port_t uart = UART_NUM_0;
 
-
-/* strcmp() which deoes partial match. It us used
- * to match commands and parameters which are incomplete
- */
- static int q_strcmp(const char *partial, const char *full) {
-
-    int plen = strlen(partial);
-
-    if (plen > strlen(full))
-      return 1;
-  return strncmp(partial,full, plen);
-
- }
 
 /* Get/Set UART to use: UART_NUM_0, UART_NUM_1,... etc.
  * By default all the IO happens on UART0 but it can be changed to any other
@@ -186,7 +175,7 @@ typedef enum _CASE {
 **  Key to command mapping.
 */
 typedef struct _KEYMAP {
-  CHAR Key;
+  unsigned char Key;
   STATUS(*Function)
   ();
 } KEYMAP;
@@ -197,7 +186,7 @@ typedef struct _KEYMAP {
 typedef struct _HISTORY {
   int Size;
   int Pos;
-  CHAR *Lines[HIST_SIZE];
+  unsigned char *Lines[HIST_SIZE];
 } HISTORY;
 
 /*
@@ -214,30 +203,30 @@ static unsigned rl_intr = 0;
 static unsigned rl_kill = 0;
 static unsigned rl_quit = 0;
 
-STATIC CHAR NIL[] = "";
-STATIC CONST CHAR *Input = NIL;
-STATIC CHAR *Line = NULL;
-STATIC CONST char *Prompt = NULL;
-STATIC CHAR *Yanked;
-STATIC char *Screen = NULL;
-STATIC CONST char NEWLINE[] = CRLF;
-STATIC HISTORY H;
-STATIC int Repeat;
-STATIC int End;
-STATIC int Mark;
-STATIC int OldPoint;
-STATIC int Point;
-STATIC int PushBack;
-STATIC int Pushed;
-STATIC int Signal = 0;
-FORWARD CONST KEYMAP Map[32];
-FORWARD CONST KEYMAP MetaMap[16];
-STATIC SIZE_T Length;
-STATIC SIZE_T ScreenCount;
-STATIC SIZE_T ScreenSize;
-STATIC char *backspace = NULL;
-STATIC int TTYwidth = SCREEN_WIDTH;
-STATIC int TTYrows = SCREEN_ROWS;
+static unsigned char NIL[] = "";
+static const unsigned char *Input = NIL;
+static unsigned char *Line = NULL;
+static const char *Prompt = NULL;
+static unsigned char *Yanked;
+static char *Screen = NULL;
+static const char NEWLINE[] = CRLF;
+static HISTORY H;
+static int Repeat;
+static int End;
+static int Mark;
+static int OldPoint;
+static int Point;
+static int PushBack;
+static int Pushed;
+static int Signal = 0;
+static const KEYMAP Map[32];
+static const KEYMAP MetaMap[16];
+static unsigned int Length;
+static unsigned int ScreenCount;
+static unsigned int ScreenSize;
+static char *backspace = NULL;
+static int TTYwidth = SCREEN_WIDTH;
+static int TTYrows = SCREEN_ROWS;
 
 /* Display print 8-bit chars as `M-x' or as the actual 8-bit char? */
 static int rl_meta_chars = 0;
@@ -245,7 +234,7 @@ static int rl_meta_chars = 0;
 /*
 **  Declarations.
 */
-STATIC CHAR *editinput();
+static unsigned char *editinput();
 
 /*
  * Termios stuff
@@ -255,12 +244,15 @@ STATIC CHAR *editinput();
  */
 static void
 rl_ttyset(int Reset) {
+#if 1
+  Reset = Reset;
+#else  
   static struct termios old;
   struct termios new;
 
   //no point to use termios: we are not using stdin/stdout
   //we also don't do read()/write() to the serial port
-#if 0
+
 
   if (Reset == 0) {
 
@@ -290,7 +282,7 @@ rl_ttyset(int Reset) {
 }
 
 // Print buffered (by TTYputc/TTYputs) data
-STATIC void
+static void
 TTYflush() {
 
   if (ScreenCount) {
@@ -304,8 +296,8 @@ TTYflush() {
 }
 
 // queue a char to be printed
-STATIC void
-TTYput(CHAR c) {
+static void
+TTYput(unsigned char c) {
 
   Screen[ScreenCount] = c;
   if (++ScreenCount >= ScreenSize - 1) {
@@ -315,8 +307,8 @@ TTYput(CHAR c) {
 }
 
 //queue a string to be printed
-STATIC void
-TTYputs(CONST CHAR *p) {
+static void
+TTYputs(const unsigned char *p) {
   while (*p)
     TTYput(*p++);
 }
@@ -325,8 +317,8 @@ TTYputs(CONST CHAR *p) {
 // normal chars are displayed as is
 // CTRL/ALT+Key sequences are displayed as ^Key or M-Key
 // DEL is "^?"
-STATIC void
-TTYshow(CHAR c) {
+static void
+TTYshow(unsigned char c) {
   if (c == DEL) {
     TTYput('^');
     TTYput('?');
@@ -342,17 +334,17 @@ TTYshow(CHAR c) {
 }
 
 // same as above but for the string
-STATIC void
-TTYstring(CHAR *p) {
+static void
+TTYstring(unsigned char *p) {
   while (*p)
     TTYshow(*p++);
 }
 
 //read a character from user
-STATIC unsigned int
+static unsigned int
 TTYget() {
 
-  CHAR c;
+  unsigned char c;
   int i;
 
   TTYflush();
@@ -370,15 +362,15 @@ TTYget() {
     return EOF;
 #else
   // poll stdin and read 1 byte when it becomes available
-  while ((i = read(0, &c, (SIZE_T)1)) < 1)
+  while ((i = read(0, &c, (unsigned int)1)) < 1)
     delay(1);  //make WDT happy
 #endif
   return c;
 }
 
-#define TTYback() (backspace ? TTYputs((CHAR *)backspace) : TTYput('\b'))
+#define TTYback() (backspace ? TTYputs((unsigned char *)backspace) : TTYput('\b'))
 
-STATIC void
+static void
 TTYbackn(int n) {
   while (--n >= 0)
     TTYback();
@@ -386,18 +378,18 @@ TTYbackn(int n) {
 
 
 
-STATIC void
+static void
 reposition() {
   int i;
-  CHAR *p;
+  unsigned char *p;
 
   TTYput('\r');
-  TTYputs((CONST CHAR *)Prompt);
+  TTYputs((const unsigned char *)Prompt);
   for (i = Point, p = Line; --i >= 0; p++)
     TTYshow(*p);
 }
 
-STATIC void
+static void
 left(STATUS Change) {
   TTYback();
   if (Point) {
@@ -412,14 +404,14 @@ left(STATUS Change) {
     Point--;
 }
 
-STATIC void
+static void
 right(STATUS Change) {
   TTYshow(Line[Point]);
   if (Change == CSmove)
     Point++;
 }
 
-STATIC STATUS
+static STATUS
 ring_bell() {
   TTYput('\07');
   TTYflush();
@@ -428,26 +420,26 @@ ring_bell() {
 
 
 //TODO: remove
-STATIC STATUS
+static STATUS
 do_macro(unsigned int c) {
-  CHAR name[4];
+  unsigned char name[4];
 
   name[0] = '_';
   name[1] = c;
   name[2] = '_';
   name[3] = '\0';
 
-  if ((Input = (CHAR *)getenv((char *)name)) == NULL) {
+  if ((Input = (unsigned char *)getenv((char *)name)) == NULL) {
     Input = NIL;
     return ring_bell();
   }
   return CSstay;
 }
 
-STATIC STATUS
+static STATUS
 do_forward(STATUS move) {
   int i;
-  CHAR *p;
+  unsigned char *p;
 
   i = 0;
   do {
@@ -467,12 +459,12 @@ do_forward(STATUS move) {
   return CSstay;
 }
 
-STATIC STATUS
+static STATUS
 do_case(CASE type) {
   int i;
   int end;
   int count;
-  CHAR *p;
+  unsigned char *p;
 
   (void)do_forward(CSstay);
   if (OldPoint != Point) {
@@ -493,21 +485,21 @@ do_case(CASE type) {
   return CSstay;
 }
 
-STATIC STATUS
+static STATUS
 case_down_word() {
   return do_case(TOlower);
 }
 
-STATIC STATUS
+static STATUS
 case_up_word() {
   return do_case(TOupper);
 }
 
-STATIC void
+static void
 ceol() {
   int extras;
   int i;
-  CHAR *p;
+  unsigned char *p;
 
   for (extras = 0, i = Point, p = &Line[i]; i <= End; i++, p++) {
     TTYput(' ');
@@ -525,7 +517,7 @@ ceol() {
     TTYback();
 }
 
-STATIC void
+static void
 clear_line() {
   Point = -strlen(Prompt);
   TTYput('\r');
@@ -535,16 +527,16 @@ clear_line() {
   Line[0] = '\0';
 }
 
-STATIC STATUS
-insert_string(CHAR *p) {
-  SIZE_T len;
+static STATUS
+insert_string(unsigned char *p) {
+  unsigned int len;
   int i;
-  CHAR *new;
-  CHAR *q;
+  unsigned char *new;
+  unsigned char *q;
 
   len = strlen((char *)p);
   if (End + len >= Length) {
-    if ((new = NEW(CHAR, Length + len + MEM_INC)) == NULL)
+    if ((new = NEW(unsigned char, Length + len + MEM_INC)) == NULL)
       return CSstay;
     if (Length) {
       COPYFROMTO(new, Line, Length);
@@ -565,33 +557,33 @@ insert_string(CHAR *p) {
   return Point == End ? CSstay : CSmove;
 }
 
-STATIC STATUS
+static STATUS
 redisplay() {
-  TTYputs((CONST CHAR *)NEWLINE);
-  TTYputs((CONST CHAR *)Prompt);
+  TTYputs((const unsigned char *)NEWLINE);
+  TTYputs((const unsigned char *)Prompt);
   TTYstring(Line);
   return CSmove;
 }
 
-STATIC STATUS
+static STATUS
 toggle_meta_mode() {
   rl_meta_chars = !rl_meta_chars;
   return redisplay();
 }
 
 
-STATIC CHAR *
+static unsigned char *
 next_hist() {
   return H.Pos >= H.Size - 1 ? NULL : H.Lines[++H.Pos];
 }
 
-STATIC CHAR *
+static unsigned char *
 prev_hist() {
   return H.Pos == 0 ? NULL : H.Lines[--H.Pos];
 }
 
-STATIC STATUS
-do_insert_hist(CHAR *p) {
+static STATUS
+do_insert_hist(unsigned char *p) {
   if (p == NULL)
     return ring_bell();
   Point = 0;
@@ -601,9 +593,9 @@ do_insert_hist(CHAR *p) {
   return insert_string(p);
 }
 
-STATIC STATUS
-do_hist(CHAR *(*move)()) {
-  CHAR *p;
+static STATUS
+do_hist(unsigned char *(*move)()) {
+  unsigned char *p;
   int i;
 
   i = 0;
@@ -614,22 +606,22 @@ do_hist(CHAR *(*move)()) {
   return do_insert_hist(p);
 }
 
-STATIC STATUS
+static STATUS
 h_next() {
   return do_hist(next_hist);
 }
 
-STATIC STATUS
+static STATUS
 h_prev() {
   return do_hist(prev_hist);
 }
 
-STATIC STATUS
+static STATUS
 h_first() {
   return do_insert_hist(H.Lines[H.Pos = 0]);
 }
 
-STATIC STATUS
+static STATUS
 h_last() {
   return do_insert_hist(H.Lines[H.Pos = H.Size - 1]);
 }
@@ -637,7 +629,7 @@ h_last() {
 /*
 **  Return zero if pat appears as a substring in text.
 */
-STATIC int
+static int
 substrcmp(char *text, char *pat, size_t len) {
   char c;
 
@@ -649,9 +641,9 @@ substrcmp(char *text, char *pat, size_t len) {
   return 1;
 }
 
-STATIC CHAR *
-search_hist(CHAR *search, CHAR *(*move)()) {
-  static CHAR *old_search;
+static unsigned char *
+search_hist(unsigned char *search, unsigned char *(*move)()) {
+  static unsigned char *old_search;
   int len;
   int pos;
   int (*match)(char *, char *, size_t);
@@ -661,7 +653,7 @@ search_hist(CHAR *search, CHAR *(*move)()) {
   if (search && *search) {
     if (old_search)
       DISPOSE(old_search);
-    old_search = (CHAR *)strdup((char *)search);
+    old_search = (unsigned char *)strdup((char *)search);
   } else {
     if (old_search == NULL || *old_search == '\0')
       return NULL;
@@ -687,12 +679,12 @@ search_hist(CHAR *search, CHAR *(*move)()) {
 
 // CTRL+R : reverse history search
 // start typing partial command and press <Enter>
-STATIC STATUS
+static STATUS
 h_search() {
   static int Searching;
-  CONST char *old_prompt;
-  CHAR *(*move)();
-  CHAR *p;
+  const char *old_prompt;
+  unsigned char *(*move)();
+  unsigned char *p;
 
   if (Searching)
     return ring_bell();
@@ -701,13 +693,13 @@ h_search() {
   clear_line();
   old_prompt = Prompt;
   Prompt = "Search: ";
-  TTYputs((CONST CHAR *)Prompt);
+  TTYputs((const unsigned char *)Prompt);
   move = Repeat == NO_ARG ? prev_hist : next_hist;
   p = editinput();
   Prompt = old_prompt;
   Searching = 0;
   //imperfection on CTRL+R: prompt is displayed at the end of the line
-  //TTYputs((CONST CHAR *)Prompt);
+  //TTYputs((const unsigned char *)Prompt);
   if (p == NULL && Signal > 0) {
     Signal = 0;
     clear_line();
@@ -722,7 +714,7 @@ h_search() {
   return do_insert_hist(p);
 }
 
-STATIC STATUS
+static STATUS
 fd_char() {
   int i;
 
@@ -735,7 +727,7 @@ fd_char() {
   return CSstay;
 }
 
-STATIC void
+static void
 save_yank(int begin, int i) {
   if (Yanked) {
     DISPOSE(Yanked);
@@ -745,16 +737,16 @@ save_yank(int begin, int i) {
   if (i < 1)
     return;
 
-  if ((Yanked = NEW(CHAR, (SIZE_T)i + 1)) != NULL) {
+  if ((Yanked = NEW(unsigned char, (unsigned int)i + 1)) != NULL) {
     COPYFROMTO(Yanked, &Line[begin], i);
     Yanked[i] = '\0';
   }
 }
 
-STATIC STATUS
+static STATUS
 delete_string(int count) {
   int i;
-  CHAR *p;
+  unsigned char *p;
 
   if (count <= 0 || End == Point)
     return ring_bell();
@@ -791,7 +783,7 @@ delete_string(int count) {
   return CSmove;
 }
 
-STATIC STATUS
+static STATUS
 bk_char() {
   int i;
 
@@ -805,7 +797,7 @@ bk_char() {
   return CSstay;
 }
 
-STATIC STATUS
+static STATUS
 bk_del_char() {
   int i;
 
@@ -819,7 +811,7 @@ bk_del_char() {
   return delete_string(i);
 }
 
-STATIC STATUS
+static STATUS
 kill_line() {
   int i;
 
@@ -843,12 +835,12 @@ kill_line() {
   return CSstay;
 }
 
-STATIC STATUS
+static STATUS
 insert_char(int c) {
   STATUS s;
-  CHAR buff[2];
-  CHAR *p;
-  CHAR *q;
+  unsigned char buff[2];
+  unsigned char *p;
+  unsigned char *q;
   int i;
 
   if (Repeat == NO_ARG || Repeat < 2) {
@@ -857,7 +849,7 @@ insert_char(int c) {
     return insert_string(buff);
   }
 
-  if ((p = NEW(CHAR, Repeat + 1)) == NULL)
+  if ((p = NEW(unsigned char, Repeat + 1)) == NULL)
     return CSstay;
   for (i = Repeat, q = p; --i >= 0;)
     *q++ = c;
@@ -868,10 +860,10 @@ insert_char(int c) {
   return s;
 }
 
-STATIC STATUS
+static STATUS
 meta() {
   unsigned int c;
-  CONST KEYMAP *kp;
+  const KEYMAP *kp;
 
   if ((int)(c = TTYget()) == EOF)
     return CSeof;
@@ -907,7 +899,7 @@ meta() {
   return ring_bell();
 }
 
-STATIC STATUS
+static STATUS
 emacs(unsigned int c) {
   STATUS s;
   const KEYMAP *kp;
@@ -927,7 +919,7 @@ emacs(unsigned int c) {
   return s;
 }
 
-STATIC STATUS
+static STATUS
 TTYspecial(unsigned int c) {
   if (ISMETA(c))
     return CSdispatch;
@@ -962,7 +954,7 @@ TTYspecial(unsigned int c) {
   return CSdispatch;
 }
 
-STATIC CHAR *
+static unsigned char *
 editinput() {
   unsigned int c;
   char tmp[2] = { 0, 0 };
@@ -981,7 +973,7 @@ editinput() {
       case CSeof:
         return NULL;
       case CSsignal:
-        return (CHAR *)"";
+        return (unsigned char *)"";
       case CSmove:
         reposition();
         break;
@@ -992,7 +984,7 @@ editinput() {
           case CSeof:
             return NULL;
           case CSsignal:
-            return (CHAR *)"";
+            return (unsigned char *)"";
           case CSmove:
             reposition();
             break;
@@ -1014,11 +1006,11 @@ editinput() {
   return (Line = NULL);
 }
 
-STATIC void
-hist_add(CHAR *p) {
+static void
+hist_add(unsigned char *p) {
   int i;
 
-  if ((p = (CHAR *)strdup((char *)p)) == NULL)
+  if ((p = (unsigned char *)strdup((char *)p)) == NULL)
     return;
   if (H.Size < HIST_SIZE)
     H.Lines[H.Size++] = p;
@@ -1034,13 +1026,13 @@ hist_add(CHAR *p) {
 
 // old good readline()
 char *
-readline(CONST char *prompt) {
-  CHAR *line;
+readline(const char *prompt) {
+  unsigned char *line;
   int s;
 
   if (Line == NULL) {
     Length = MEM_INC;
-    if ((Line = NEW(CHAR, Length)) == NULL)
+    if ((Line = NEW(unsigned char, Length)) == NULL)
       return NULL;
   }
 
@@ -1050,12 +1042,12 @@ readline(CONST char *prompt) {
   ScreenSize = SCREEN_INC;
   Screen = NEW(char, ScreenSize);
   Prompt = prompt ? prompt : (char *)NIL;
-  TTYputs((CONST CHAR *)Prompt);
+  TTYputs((const unsigned char *)Prompt);
   TTYflush();
 
   if ((line = editinput()) != NULL) {
-    line = (CHAR *)strdup((char *)line);
-    TTYputs((CONST CHAR *)NEWLINE);
+    line = (unsigned char *)strdup((char *)line);
+    TTYputs((const unsigned char *)NEWLINE);
     TTYflush();
   }
 
@@ -1075,7 +1067,7 @@ readline(CONST char *prompt) {
 // ARROW UP and ARROW DOWN are history navigation keys
 // CTRL+R is history search key
 //
-void rl_add_history(char *p) {
+static void rl_add_history(char *p) {
   if (p == NULL || *p == '\0')
     return;
 
@@ -1083,11 +1075,11 @@ void rl_add_history(char *p) {
   if (H.Size && strcmp(p, (char *)H.Lines[H.Size - 1]) == 0)
     return;
 #endif
-  hist_add((CHAR *)p);
+  hist_add((unsigned char *)p);
 }
 
 
-STATIC STATUS
+static STATUS
 beg_line() {
   if (Point) {
     Point = 0;
@@ -1096,12 +1088,12 @@ beg_line() {
   return CSstay;
 }
 
-STATIC STATUS
+static STATUS
 del_char() {
   return delete_string(Repeat == NO_ARG ? 1 : Repeat);
 }
 
-STATIC STATUS
+static STATUS
 end_line() {
   if (Point != End) {
     Point = End;
@@ -1110,15 +1102,15 @@ end_line() {
   return CSstay;
 }
 
-STATIC STATUS
+static STATUS
 accept_line() {
   Line[End] = '\0';
   return CSdone;
 }
 
-STATIC STATUS
+static STATUS
 transpose() {
-  CHAR c;
+  unsigned char c;
 
   if (Point) {
     if (Point == End)
@@ -1133,14 +1125,14 @@ transpose() {
   return CSstay;
 }
 
-STATIC STATUS
+static STATUS
 quote() {
   unsigned int c;
 
   return (int)(c = TTYget()) == EOF ? CSeof : insert_char((int)c);
 }
 
-STATIC STATUS
+static STATUS
 wipe() {
   int i;
 
@@ -1157,13 +1149,13 @@ wipe() {
   return delete_string(Mark - Point);
 }
 
-STATIC STATUS
+static STATUS
 mk_set() {
   Mark = Point;
   return CSstay;
 }
 
-STATIC STATUS
+static STATUS
 exchange() {
   unsigned int c;
 
@@ -1178,14 +1170,14 @@ exchange() {
   return CSstay;
 }
 
-STATIC STATUS
+static STATUS
 yank() {
   if (Yanked && *Yanked)
     return insert_string(Yanked);
   return CSstay;
 }
 
-STATIC STATUS
+static STATUS
 copy_region() {
   if (Mark > End)
     return ring_bell();
@@ -1198,11 +1190,11 @@ copy_region() {
   return CSstay;
 }
 
-STATIC STATUS
+static STATUS
 move_to_char() {
   unsigned int c;
   int i;
-  CHAR *p;
+  unsigned char *p;
 
   if ((int)(c = TTYget()) == EOF)
     return CSeof;
@@ -1214,12 +1206,12 @@ move_to_char() {
   return CSstay;
 }
 
-STATIC STATUS
+static STATUS
 fd_word() {
   return do_forward(CSmove);
 }
 
-STATIC STATUS
+static STATUS
 fd_kill_word() {
   int i;
 
@@ -1232,10 +1224,10 @@ fd_kill_word() {
   return CSstay;
 }
 
-STATIC STATUS
+static STATUS
 bk_word() {
   int i;
-  CHAR *p;
+  unsigned char *p;
 
   i = 0;
   do {
@@ -1252,7 +1244,7 @@ bk_word() {
   return CSstay;
 }
 
-STATIC STATUS
+static STATUS
 bk_kill_word() {
   (void)bk_word();
   if (OldPoint != Point)
@@ -1267,16 +1259,16 @@ bk_kill_word() {
 // Original string p gets modified ('\0' are inserted)
 //
 // Use: int argc; char **argv; argc = argify(p,&argv);
-STATIC int
-argify(CHAR *line, CHAR ***avp) {
-  CHAR *c;
-  CHAR **p;
-  CHAR **new;
+static int
+argify(unsigned char *line, unsigned char ***avp) {
+  unsigned char *c;
+  unsigned char **p;
+  unsigned char **new;
   int ac;
   int i;
 
   i = MEM_INC;
-  if ((*avp = p = NEW(CHAR *, i)) == NULL)
+  if ((*avp = p = NEW(unsigned char *, i)) == NULL)
     return 0;
 
   /* skip leading whitespace */
@@ -1293,7 +1285,7 @@ argify(CHAR *line, CHAR ***avp) {
 
         if (ac + 1 == i) {
 
-          new = NEW(CHAR *, i + MEM_INC);
+          new = NEW(unsigned char *, i + MEM_INC);
 
           if (new == NULL) {
             p[ac] = NULL;
@@ -1324,17 +1316,17 @@ argify(CHAR *line, CHAR ***avp) {
 }
 
 
-STATIC STATUS
+static STATUS
 last_argument() {
-  CHAR **av;
-  CHAR *p;
+  unsigned char **av;
+  unsigned char *p;
   STATUS s;
   int ac;
 
   if (H.Size == 1 || (p = H.Lines[H.Size - 2]) == NULL)
     return ring_bell();
 
-  if ((p = (CHAR *)strdup((char *)p)) == NULL)
+  if ((p = (unsigned char *)strdup((char *)p)) == NULL)
     return CSstay;
   ac = argify(p, &av);
 
@@ -1349,7 +1341,7 @@ last_argument() {
   return s;
 }
 
-STATIC CONST KEYMAP Map[32] = {
+static const KEYMAP Map[32] = {
   { CTL('@'), ring_bell },
   { CTL('A'), beg_line },
   { CTL('B'), bk_char },
@@ -1382,7 +1374,7 @@ STATIC CONST KEYMAP Map[32] = {
   { 0, NULL }
 };
 
-STATIC CONST KEYMAP MetaMap[16] = {
+static const KEYMAP MetaMap[16] = {
   { CTL('H'), bk_kill_word },
   { DEL, bk_kill_word },
   { ' ', mk_set },
@@ -1401,13 +1393,17 @@ STATIC CONST KEYMAP MetaMap[16] = {
 };
 
 
-////////////////////////////// SHELL CODE BELOW
+////////////////////////////// EDITLINE CODE END
+
+
 //TAG:forwards
 //GCC stringify magic.
 #define xstr(s) ystr(s)
 #define ystr(s) #s
 
 #define MAGIC_FREQ 78227  // max allowed frequency for the "tone" command
+
+static bool Exit = false;
 
 static int cmd_question(int, char **);
 
@@ -1440,6 +1436,19 @@ static int cmd_seq_bits(int argc, char **argv);
 static int cmd_seq_levels(int argc, char **argv);
 static int cmd_seq_show(int argc, char **argv);
 
+/* strcmp() which deoes partial match. It us used
+ * to match commands and parameters which are incomplete
+ */
+ static int q_strcmp(const char *partial, const char *full) {
+
+    int plen = strlen(partial);
+
+    if (plen > strlen(full))
+      return 1;
+  return strncmp(partial,full, plen);
+
+ }
+
 //TAG:sequences
 //
 // Sequences: the data structure defining a sequence of pulses (levels) to
@@ -1471,15 +1480,16 @@ struct sequence {
 //
 // Shell commands list structure
 struct keywords_t {
-  const char *cmd;                   // command keyword ex.: "pin"
-  int (*cb)(int argc, char **argv);  // callback to call
-  int min_argc;                      // minimum number of arguments required. Negative values mean "any"
-  const char *help;                  // help text displayed on "command ?"
-  const char *brief;                 // brief text displayed on "?". NULL means "use help text, not brief"
+  const char *cmd;                   // Command keyword ex.: "pin"
+  int (*cb)(int argc, char **argv);  // Callback to call (one of cmd_xxx functions)
+  int min_argc;                      // Number of arguments required. Negative values mean "any"
+  const char *help;                  // Help text displayed on "command ?"
+  const char *brief;                 // Brief text displayed on "?". NULL means "use help text, not brief"
 };
 
 #define KEYWORDS_BEGIN \
   { "?", cmd_question, -1, "Show the list of available commands", NULL }
+
 #define KEYWORDS_END \
   { "exit", cmd_exit, 0, "Exit", NULL }, { \
     NULL, NULL, 0, NULL, NULL \
@@ -1488,7 +1498,7 @@ struct keywords_t {
 
 //Custom uart commands (uart subderictory)
 //Those displayed after executing "uart 2" (or any other uart interface)
-//TAG:kuart
+//TAG:keywords_uart
 static struct keywords_t keywords_uart[] = {
   //{ "?", cmd_question, -1, "Show the list of available commands", NULL },
   KEYWORDS_BEGIN,
@@ -1563,13 +1573,12 @@ static struct keywords_t keywords_uart[] = {
   KEYWORDS_END
 };
 
-
+//TAG:keywords_iic
 //i2c subderictory keywords list
 //cmd_exit() and cmd_i2c_if are responsible for selecting keywords list
 //to use
 static struct keywords_t keywords_i2c[] = {
 
-  //{ "?", cmd_question, -1, "Show the list of available commands", NULL },
   KEYWORDS_BEGIN,
   { "up", cmd_i2c, 3,
 #if WITH_HELP
@@ -1637,7 +1646,7 @@ static struct keywords_t keywords_i2c[] = {
   KEYWORDS_END
 };
 
-
+//TAG:keywords_seq
 //'sequence' subderictory keywords list
 static struct keywords_t keywords_sequence[] = {
 
@@ -1749,7 +1758,7 @@ static struct keywords_t keywords_sequence[] = {
 
 
 //Custom SPI commands (spi subderictory)
-//TAG:kspi
+//TAG:keywords_spi
 static struct keywords_t keywords_spi[] = {
 
   KEYWORDS_BEGIN,
@@ -1762,7 +1771,6 @@ static struct keywords_t keywords_spi[] = {
 // root directory commands
 static struct keywords_t keywords_main[] = {
 
-  //{ "?", cmd_question, -1, "Show the list of available commands", NULL },
   KEYWORDS_BEGIN,
 
   { "uptime", cmd_uptime, 0, "% \"uptime\" - Shows time passed since last boot", "System uptime" },
@@ -3654,7 +3662,7 @@ __attribute__((constructor)) static
   //start shell task.
   //task have to wait until Serial.begin() in order to start
   //reading and process user input
-  espshell_task(PROMPT);
+  espshell_task((const void *)1);
 }
 
 //TAG:uptime
@@ -3716,9 +3724,8 @@ static int cmd_resume(int argc, char **argv) {
 }
 
 
-///////////////////////////////// PARSE AND EXECUTE
-//
-#define INDENT 8  //TODO: use a variable calculated at the shell task startup
+
+#define INDENT 8  //TODO: use a variable calculated at shell task startup
 
 //TAG:?
 // "?"
@@ -3785,8 +3792,8 @@ static int cmd_question(int argc, char **argv) {
 }
 
 
-// Parse a string: split it to tokens, find an appropriate entry in keywords[] array
-// and execute coresponding callback.
+// Parse & execute: split user input to tokens, find an appropriate 
+// entry in keywords[] array and execute coresponding callback.
 //
 //TAG:shell
 static void
@@ -3804,7 +3811,7 @@ espshell_command(char *p) {
 
   //tokenize. argv points inside p. original string is split by injecting '\0'
   // directly to the source string
-  argc = argify((CHAR *)p, (CHAR ***)&argv);
+  argc = argify((unsigned char *)p, (unsigned char ***)&argv);
 
   //argc must be at least 1 if tokenization was successful. the very first token is a command while
   //others are arguments. argc of zero means there was a memory allocation error, or input string was
@@ -3819,13 +3826,13 @@ espshell_command(char *p) {
     int cmd_len = strlen(argv[0]);
     while (keywords[i].cmd) {
       if (keywords[i].help || keywords[i].brief) {  //skip hidden commands
-        if (strlen(keywords[i].cmd) >= cmd_len) {   // allow for partial name match
+        if (strlen(keywords[i].cmd) >= cmd_len) {   
           if (!strncmp(keywords[i].cmd, argv[0], cmd_len)) {
             found = 1;
             if (keywords[i].help)
               log_printf("\n\r%s\n\r", keywords[i].help);  //display long help
-            else
-              log_printf("\n\r%s\n\r", keywords[i].brief);  //display brief (MUST not happen)
+            else if (keywords[i].brief)
+              log_printf("\n\r%s\n\r", keywords[i].brief);  //display brief (must not happen)
           }
         }
       }
@@ -3843,7 +3850,7 @@ espshell_command(char *p) {
 
     while (keywords[i].cmd) {
       // command name match
-
+      // TODO: rewrite to use q_strcmp()
       if (strlen(keywords[i].cmd) >= cmd_len) {
         if (!strncmp(keywords[i].cmd, argv[0], cmd_len)) {
           found = 1;
@@ -3882,7 +3889,7 @@ notfound:
     }
 #if WITH_HELP
     if (!found)
-      log_printf("%% Type \"?\" to get the list of available commands\n\r");
+      log_printf("%% Type \"?\" to show the list of commands available\n\r");
 #endif
   }
 
@@ -3913,15 +3920,18 @@ void espshell_task(const void *arg) {
     // wait until user code calls Serial.begin()
     // it is assumed that user console is using UART, not a native USB interface
     while (!uart_isup(uart))
-      delay(1000);
-
+      delay(100);
 
 #if WITH_HELP
     log_printf("%% ESP Shell. Type \"?\" and press enter for help\n\r");
 #endif
-    while (1)
+    while (!Exit) {
       espshell_command(readline(prompt));
-    delay(100);  //delay between commands to prevent flooding from
-                 //failed readline() (if any)
+      delay(100);  //delay between commands to prevent flooding from failed readline()
+    }
+#if WITH_HELP    
+    log_printf("%% Bye!");
+#endif    
+    vTaskDelete(NULL);
   }
 }
