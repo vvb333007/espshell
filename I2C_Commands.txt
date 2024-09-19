@@ -1,3 +1,9 @@
+ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
+
+
+I2C Commands
+------------
+
 ESP32 has 2 hardware I2C interfaces. Default pins are different from model
 to model: ESP32-WROOM-32D chip has its I2C0 pins at 21(SDA) and 22(SCL).
 
