@@ -58,6 +58,7 @@
 #undef SCREEN_ROWS
 #undef STACKSIZE
 #undef BREAK_KEY
+#undef USE_UART
 
 #define AUTOSTART      1     // start the shell automatically (no extra code needed to user sketch) \
                              // if set to 0, then the user sketch must call espshell_task("my-prompt") \
@@ -70,6 +71,7 @@
 #define STACKSIZE      10240 //Shell task stack size
 #define BREAK_KEY      3     // Keycode of a "Exit" key: CTRL+C to exit "uart NUM tap" mode
 #define SEQUENCES_NUM  10    // max number of sequences available for command "sequence"
+#define USE_UART       UART_NUM_0 // uart where shell will be deployed
 
 #define PROMPT      "esp32#>"
 #define PROMPT_I2C  "esp32-i2c#>"
@@ -80,13 +82,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include <stdarg.h>
 
 #include <Arduino.h>
-
-// defined in IDF-Arduino glue code ( esp32-hal-uart.c, arduino core )
-// !!! add -Wformat to compiler options
-extern int __attribute__((format(printf, 1, 2))) log_printf(const char *format, ...);
 
 // start espshell:
 // called automatically if AUTOSTART==1 (default). if autostart is disabled (==0) then use
@@ -119,7 +117,7 @@ void espshell_task(const void *arg);
 #include <sys/termios.h>
 
 #include <driver/uart.h>
-static uart_port_t uart = UART_NUM_0;
+static uart_port_t uart = USE_UART;
 
 
 /* Get/Set UART to use: UART_NUM_0, UART_NUM_1,... etc.
@@ -1025,7 +1023,7 @@ hist_add(unsigned char *p) {
 
 
 // old good readline()
-char *
+static char *
 readline(const char *prompt) {
   unsigned char *line;
   int s;
@@ -1403,7 +1401,7 @@ static const KEYMAP MetaMap[16] = {
 
 #define MAGIC_FREQ 78227  // max allowed frequency for the "tone" command
 
-static bool Exit = false;
+static bool Exit = false; // True == close the shell and kill its FreeRTOS task
 
 static int cmd_question(int, char **);
 
@@ -1436,9 +1434,11 @@ static int cmd_seq_bits(int argc, char **argv);
 static int cmd_seq_levels(int argc, char **argv);
 static int cmd_seq_show(int argc, char **argv);
 
-/* strcmp() which deoes partial match. It us used
- * to match commands and parameters which are incomplete
- */
+//TAG:utils
+
+// strcmp() which deoes partial match. It us used
+// to match commands and parameters which are incomplete
+//
  static int q_strcmp(const char *partial, const char *full) {
 
     int plen = strlen(partial);
@@ -1448,6 +1448,55 @@ static int cmd_seq_show(int argc, char **argv);
   return strncmp(partial,full, plen);
 
  }
+
+
+// adopted from esp32-hal-uart.c Arduino Core
+// Modified to support multiple uarts via uart_write_bytes()
+//
+
+
+
+static int __printfv(const char *format, va_list arg) {
+
+  static char buf[128 + 1];
+  char *temp = buf;
+  uint32_t len;
+  int ret;
+  va_list copy;
+
+  va_copy(copy, arg);
+  len = vsnprintf(NULL, 0, format, copy);
+  va_end(copy);
+
+  if (len >= sizeof(buf))
+    if ((temp = (char *)malloc(len + 1)) == NULL)
+	return 0;
+
+  vsnprintf(temp, len + 1, format, arg);
+
+  ret = uart_write_bytes(uart, temp, len);
+
+  if (len >= sizeof(buf))
+    free(temp);
+ 
+//  while (!uart_ll_is_tx_idle(UART_LL_GET_HW(uart)));   // flushes TX - make sure that the log message is completely sent.
+ 
+
+  return ret;
+}
+
+// same as printf() but uses global var 'uart' to direct
+// its output to different uarts
+//
+static int __attribute__((format(printf, 1, 2))) q_printf(const char *format, ...) {
+  int len;
+  va_list arg;
+  va_start(arg, format);
+  len =__printfv(format, arg);
+  va_end(arg);
+  return len;
+}
+
 
 //TAG:sequences
 //
@@ -2028,23 +2077,23 @@ static bool pin_exist(int pin) {
   if ((pin >= 0) && (pin < SOC_GPIO_PIN_COUNT) && (((uint64_t )1 << pin) & SOC_GPIO_VALID_GPIO_MASK))
     return true;
 
-  log_printf("%% Available pin numbers are 0..%d, except ",SOC_GPIO_PIN_COUNT-1);
+  q_printf("%% Available pin numbers are 0..%d, except ",SOC_GPIO_PIN_COUNT-1);
   for (pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++)
     if (!(((uint64_t )1 << pin) & SOC_GPIO_VALID_GPIO_MASK))
-      log_printf("%d,",pin);
+      q_printf("%d,",pin);
 #if 0      
-  log_printf("\n\r%% Reserved pins (used internally): ");  
+  q_printf("\n\r%% Reserved pins (used internally): ");  
   
   int count;
   for (pin = count = 0; pin < SOC_GPIO_PIN_COUNT; pin++)
     if (esp_gpio_is_reserved(BIT64(pin))) {
       count++;
-      log_printf("%d, ",pin);
+      q_printf("%d, ",pin);
     }
   if (!count)
-    log_printf("none");
+    q_printf("none");
 #endif    
-  log_printf(CRLF);
+  q_printf(CRLF);
   return false;
 }
 
@@ -2078,70 +2127,70 @@ static void seq_dump(int seq) {
   struct sequence *s;
 
   if (seq < 0 || seq >= SEQUENCES_NUM) {
-    log_printf("%% Sequence %d does not exist\n\r");
+    q_printf("%% Sequence %d does not exist\n\r");
     return;
   }
 
   s = &sequences[seq];
 
-  log_printf("%%\n\r%% Sequence #%d:\n\r%% Resolution ", seq);
+  q_printf("%%\n\r%% Sequence #%d:\n\r%% Resolution ", seq);
 
   if (s->tick)
-    log_printf(": %.4fuS  (Frequency: %lu Hz)\n\r", seq, s->tick, seq_tick2freq(s->tick));
+    q_printf(": %.4fuS  (Frequency: %lu Hz)\n\r", seq, s->tick, seq_tick2freq(s->tick));
   else
-    log_printf(Notset);
+    q_printf(Notset);
 
-  log_printf("%% Levels ");
+  q_printf("%% Levels ");
   if (s->seq) {
 
     int i;
     unsigned long total = 0;
 
-    log_printf("are :");
+    q_printf("are :");
 
     for (i = 0; i < s->seq_len; i++) {
       if (!(i & 3))
-        log_printf("\n\r%% ");
-      log_printf("%d/%d, %d/%d, ", s->seq[i].level0, s->seq[i].duration0, s->seq[i].level1, s->seq[i].duration1);
+        q_printf("\n\r%% ");
+      q_printf("%d/%d, %d/%d, ", s->seq[i].level0, s->seq[i].duration0, s->seq[i].level1, s->seq[i].duration1);
       total += s->seq[i].duration0 + s->seq[i].duration1;
     }
-    log_printf("\n\r%% Total: %d levels, duration: %lu ticks, (~%lu uS)\n\r", s->seq_len * 2, total, (unsigned long)((float)total * s->tick));
+    q_printf("\n\r%% Total: %d levels, duration: %lu ticks, (~%lu uS)\n\r", s->seq_len * 2, total, (unsigned long)((float)total * s->tick));
   } else
-    log_printf(Notset);
+    q_printf(Notset);
 
-  log_printf("%% Modulation ");
+  q_printf("%% Modulation ");
   if (s->mod_freq)
-    log_printf(" : yes, \"%s\" are modulated at %luHz, duty %.2f%%\n\r", s->mod_high ? "HIGH" : "LOW", s->mod_freq, s->mod_duty * 100);
+    q_printf(" : yes, \"%s\" are modulated at %luHz, duty %.2f%%\n\r", s->mod_high ? "HIGH" : "LOW", s->mod_freq, s->mod_duty * 100);
   else
-    log_printf("is not used\n\r");
+    q_printf("is not used\n\r");
 
-  log_printf("%% Bit sequence ");
+  q_printf("%% Bit sequence ");
 
   if (s->bits)
-    log_printf(": (%d bits) \"%s\"\n\r", strlen(s->bits), s->bits);
+    q_printf(": (%d bits) \"%s\"\n\r", strlen(s->bits), s->bits);
   else
-    log_printf(Notset);
+    q_printf(Notset);
 
-  log_printf("%% Zero ");
+  q_printf("%% Zero ");
 
   if (s->alph[0].duration0) {
     if (s->alph[0].duration1)
-      log_printf("%d/%d %d/%d\n\r", s->alph[0].level0, s->alph[0].duration0, s->alph[0].level1, s->alph[0].duration1);
+      q_printf("%d/%d %d/%d\n\r", s->alph[0].level0, s->alph[0].duration0, s->alph[0].level1, s->alph[0].duration1);
     else
-      log_printf("%d/%d\n\r", s->alph[0].level0, s->alph[0].duration0);
+      q_printf("%d/%d\n\r", s->alph[0].level0, s->alph[0].duration0);
   } else
-    log_printf(Notset);
+    q_printf(Notset);
 
-  log_printf("%% One ");
+  q_printf("%% One ");
 
   if (s->alph[1].duration0) {
     if (s->alph[1].duration1)
-      log_printf("%d/%d %d/%d\n\r", s->alph[1].level0, s->alph[1].duration0, s->alph[1].level1, s->alph[1].duration1);
+      q_printf("%d/%d %d/%d\n\r", s->alph[1].level0, s->alph[1].duration0, s->alph[1].level1, s->alph[1].duration1);
     else
-      log_printf("%d/%d\n\r", s->alph[1].level0, s->alph[1].duration0);
+      q_printf("%d/%d\n\r", s->alph[1].level0, s->alph[1].duration0);
   } else
-    log_printf(Notset);
-  log_printf("%% Pull pin %s after transmission is done\n\r", s->eot ? "high" : "low");
+    q_printf(Notset);
+  q_printf("%% Pull pin %s after transmission is done\n\r", s->eot ? "high" : "low");
 }
 
 // convert a level string to numerical values:
@@ -2165,13 +2214,19 @@ static int seq_atol(int *level, int *duration, char *p) {
   }
   if (!dp)  // no separator found
     return -2;
-  if (!*lp)  // separator was the first symbol
+  if (!*lp)  { // separator was the first symbol
+    *lp = '/'; // make parser happy: "invalid argument" message will contain failed element, not ""
     return -3;
+  }
 
   //FIXME: check that the level is either 1 or 0
   if (level) {
     *level = atoi(lp);
-    *(dp - 1) = '\\';  // restore separator
+    if (*level > 1) {
+      q_printf("%% Level %s read as \"1\"\n\r",lp);
+      *level = 1;
+    }
+    *(dp - 1) = '/';  // restore separator
   }
 
   //FIXME: check that the duration is < 32768
@@ -2233,7 +2288,7 @@ static int seq_compile(int seq) {
     if (s->alph[0].duration1) {
       //long form
       if (!s->alph[1].duration1) {
-        log_printf("%% \"One\" defined as a level, but \"Zero\" is a pulse\n\r");
+        q_printf("%% \"One\" defined as a level, but \"Zero\" is a pulse\n\r");
         return -1;
       }
 
@@ -2260,7 +2315,7 @@ static int seq_compile(int seq) {
       // report it to user
 
       if (s->alph[1].duration1) {
-        log_printf("%% \"One\" defined as a pulse, but \"Zero\" is a level\n\r");
+        q_printf("%% \"One\" defined as a pulse, but \"Zero\" is a level\n\r");
         return -4;
       }
 
@@ -2272,7 +2327,7 @@ static int seq_compile(int seq) {
         s->bits = r;
         s->bits[i + 0] = '0';
         s->bits[i + 1] = '\0';
-        log_printf("%% Bitstring was padded with one extra \"0\"\n\r");
+        q_printf("%% Bitstring was padded with one extra \"0\"\n\r");
         i++;
       }
 
@@ -2393,7 +2448,7 @@ static int cmd_seq_if(int argc, char **argv) {
 
   seq = atoi(argv[1]);
   if (seq < 0 || seq >= SEQUENCES_NUM) {
-    log_printf("%% Sequence numbers are 0..%d\n\r", SEQUENCES_NUM - 1);
+    q_printf("%% Sequence numbers are 0..%d\n\r", SEQUENCES_NUM - 1);
     return 1;
   }
 
@@ -2457,7 +2512,7 @@ static int cmd_seq_modulation(int argc, char **argv) {
     duty = atof(argv[2]);
 
     if (duty <= 0.0f || duty > 1.0f) {
-      log_printf("%% Duty cycle is a number in range (0 .. 1] : 0.5 means 50%% duty\n\r");
+      q_printf("%% Duty cycle is a number in range (0 .. 1] : 0.5 means 50%% duty\n\r");
       return 2;
     }
   }
@@ -2540,7 +2595,7 @@ static int cmd_seq_zeroone(int argc, char **argv) {
 
 
   if ((i = seq_compile(Context)) < 0)
-    log_printf("Attempted compilation: %d\n\r", i);
+    q_printf("Attempted compilation: %d\n\r", i);
 
   return 0;
 }
@@ -2566,7 +2621,7 @@ static int cmd_seq_tick(int argc, char **argv) {
   sequences[Context].tick = atof(argv[1]);
 
   if (sequences[Context].tick < 0.0125 || sequences[Context].tick > 3.2f) {
-    log_printf("%% Tick must be in range 0.0125..3.2 microseconds\n\r");
+    q_printf("%% Tick must be in range 0.0125..3.2 microseconds\n\r");
     return 1;
   }
 
@@ -2575,7 +2630,7 @@ static int cmd_seq_tick(int argc, char **argv) {
     return 1;
 
   if ((argc = seq_compile(Context)) < 0)
-    log_printf("Attempted compilation: %d\n\r", argc);
+    q_printf("Attempted compilation: %d\n\r", argc);
 
   return 0;
 }
@@ -2617,7 +2672,7 @@ static int cmd_seq_bits(int argc, char **argv) {
 
   // attempt to compile.
   if ((argc = seq_compile(Context)) < 0)
-    log_printf("Attempted compilation: %d\n\r", argc);
+    q_printf("Attempted compilation: %d\n\r", argc);
 
   return 0;
 }
@@ -2641,7 +2696,7 @@ static int cmd_seq_levels(int argc, char **argv) {
   for (i = 1; i < argc; i++) {
     int e;
     if ((e = seq_atol(NULL, NULL, argv[i])) < 0) {
-      //log_printf("seq_atol() : %d\n",e);
+      //q_printf("seq_atol() : %d\n",e);
       return i;
     }
   }
@@ -2651,7 +2706,7 @@ static int cmd_seq_levels(int argc, char **argv) {
   i = argc - 1;
 
   if (i & 1) {
-    log_printf("%% Uneven number if levels. Please add 1 more\n\r");
+    q_printf("%% Uneven number if levels. Please add 1 more\n\r");
     return 0;
   }
 
@@ -2684,7 +2739,7 @@ static int cmd_seq_levels(int argc, char **argv) {
     j++;
   }
 
-  //log_printf("%d levels encoded to %d rmt_data_t\n\r",i,j);
+  //q_printf("%d levels encoded to %d rmt_data_t\n\r",i,j);
 
   return 0;
 }
@@ -2784,7 +2839,7 @@ static int cmd_count(int argc, char **argv) {
   cfg.pos_mode = pos;
   cfg.neg_mode = neg;
 
-  log_printf("%% Counting pulses on GPIO%d.. ", pin);
+  q_printf("%% Counting pulses on GPIO%d.. ", pin);
 
   pcnt_unit_config(&cfg);
   pcnt_counter_pause(PCNT_UNIT_0);
@@ -2793,7 +2848,7 @@ static int cmd_count(int argc, char **argv) {
   delay(wait);
   pcnt_counter_pause(PCNT_UNIT_0);
   pcnt_get_counter_value(PCNT_UNIT_0, &count);
-  log_printf("%lu pulses (%.3f sec)\n\r", (unsigned int)count, (float)wait / 1000.0f);
+  q_printf("%lu pulses (%.3f sec)\n\r", (unsigned int)count, (float)wait / 1000.0f);
   return 0;
 }
 
@@ -2829,7 +2884,7 @@ static int cmd_tone(int argc, char **argv) {
       return 2;  // arg 2 is bad
     freq = atoi(argv[2]);
     if (freq < 0 || freq > MAGIC_FREQ) {
-      log_printf("%% Valid frequency range is [1 .. %u] Hz\n\r", MAGIC_FREQ);
+      q_printf("%% Valid frequency range is [1 .. %u] Hz\n\r", MAGIC_FREQ);
       return 2;
     }
   }
@@ -2842,7 +2897,7 @@ static int cmd_tone(int argc, char **argv) {
   }
 
   if (duty < 0 || duty > 1023) {
-    log_printf("%% Valid duty range is [1 .. %d] Hz\n\r", (1 << resolution) - 1);
+    q_printf("%% Valid duty range is [1 .. %d] Hz\n\r", (1 << resolution) - 1);
     return 3;  // arg 3 is bad
   }
 
@@ -2858,7 +2913,7 @@ static int cmd_tone(int argc, char **argv) {
 
   if (freq) {
     if (ledcAttach(pin, freq, resolution) == 0) {
-      log_printf(Failed);
+      q_printf(Failed);
       return 0;
     }
     // delay is required.
@@ -2933,7 +2988,7 @@ static int cmd_pin(int argc, char **argv) {
   if (argc == 2) {
 
     level = digitalRead(pin);  //FIXME: check if pin is readable
-    log_printf("%% Digital pin value = %d\n\r", level);
+    q_printf("%% Digital pin value = %d\n\r", level);
 
     gpio_dump_io_configuration(stdout, (uint64_t)1 << pin);  // works only on default UART
     return 0;
@@ -2952,14 +3007,14 @@ static int cmd_pin(int argc, char **argv) {
       if (seq < 0 || seq >= SEQUENCES_NUM)
         return 3;
       if (!seq_isready(seq)) {
-        log_printf("%% Sequence %d is not fully configured\n\r", seq);
+        q_printf("%% Sequence %d is not fully configured\n\r", seq);
         return 0;
       }
       // enable RMT sequence 'seq' on pin 'pin'
       // TODO:
-      log_printf("%% Sending sequence %d over GPIO %d\n\r", seq, pin);
+      q_printf("%% Sending sequence %d over GPIO %d\n\r", seq, pin);
       if (seq_send(pin, seq) < 0)
-        log_printf(Failed);
+        q_printf(Failed);
       return 0;
     }
   }
@@ -2979,8 +3034,8 @@ static int cmd_pin(int argc, char **argv) {
     else if (!q_strcmp(argv[i], "out"))       { flags |= OUTPUT; pinMode(pin, flags); }
     else if (!q_strcmp(argv[i], "low"))       digitalWrite(pin, LOW);
     else if (!q_strcmp(argv[i], "high"))      digitalWrite(pin, HIGH);
-    else if (!q_strcmp(argv[i], "read"))      log_printf("%% GPIO%d : logic %d\n\r", pin, digitalRead(pin) == HIGH ? 1 : 0);
-    else if (!q_strcmp(argv[i], "aread"))     log_printf("%% GPIO%d : analog %d (%d mV)\n\r", pin, analogRead(pin), analogReadMilliVolts(pin));
+    else if (!q_strcmp(argv[i], "read"))      q_printf("%% GPIO%d : logic %d\n\r", pin, digitalRead(pin) == HIGH ? 1 : 0);
+    else if (!q_strcmp(argv[i], "aread"))     q_printf("%% GPIO%d : analog %d (%d mV)\n\r", pin, analogRead(pin), analogReadMilliVolts(pin));
     else
       return i;  // argument i was not recognized
     i++;
@@ -2994,7 +3049,7 @@ static int cmd_pin(int argc, char **argv) {
 //"mem"
 static int cmd_mem(int argc, char **argv) {
 
-  log_printf("%% Chip memory total: %lu, free: %lu\n\r"
+  q_printf("%% Chip memory total: %lu, free: %lu\n\r"
              "%% External SPI RAM total:%luKB, free: %luKB\n\r",
              heap_caps_get_total_size(MALLOC_CAP_INTERNAL),
              heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
@@ -3026,9 +3081,9 @@ static int cmd_nap(int argc, char **argv) {
       esp_sleep_enable_timer_wakeup(1000000UL * (unsigned long)atoi(argv[1]));
     }
 
-  log_printf("%% Light sleep..");
+  q_printf("%% Light sleep..");
   esp_light_sleep_start();
-  log_printf("Resuming\n\r");
+  q_printf("Resuming\n\r");
   return 0;
 }
 
@@ -3056,7 +3111,7 @@ static int cmd_i2c_if(int argc, char **argv) {
 
   iic = atoi(argv[1]);
   if (iic < 0 || iic >= SOC_I2C_NUM) {
-    log_printf("%% Valid I2C interface numbers are 0..%d\n\r", SOC_I2C_NUM - 1);
+    q_printf("%% Valid I2C interface numbers are 0..%d\n\r", SOC_I2C_NUM - 1);
     return 1;
   }
 
@@ -3081,12 +3136,12 @@ static int cmd_uart_if(int argc, char **argv) {
 
   u = atoi(argv[1]);
   if (u < 0 || u >= SOC_UART_NUM) {
-    log_printf("%% Valid UART interface numbers are 0..%d\n\r", SOC_UART_NUM - 1);
+    q_printf("%% Valid UART interface numbers are 0..%d\n\r", SOC_UART_NUM - 1);
     return 1;
   }
 
   if (uart == u) {
-    log_printf("%% You are configuring Serial interface shell is running on! BE CAREFUL :)\n\r");
+    q_printf("%% You are configuring Serial interface shell is running on! BE CAREFUL :)\n\r");
   }
   Context = u;
   keywords = keywords_uart;
@@ -3108,12 +3163,12 @@ static int cmd_i2c_clock(int argc, char **argv) {
     return 1;
 
   if (!i2c_isup(iic)) {
-    log_printf("%% I2C %d is not initialized. use command \"up\" to initialize\n\r", iic);
+    q_printf("%% I2C %d is not initialized. use command \"up\" to initialize\n\r", iic);
     return 0;
   }
 
   if (ESP_OK != i2cSetClock(iic, atoi(argv[1])))
-    log_printf(Failed);
+    q_printf(Failed);
 
   return 0;
 }
@@ -3143,7 +3198,7 @@ static int cmd_i2c(int argc, char **argv) {
       return -1;
 
     if (i2c_isup(iic)) {
-      log_printf("%% I2C%d is already initialized\n\r", iic);
+      q_printf("%% I2C%d is already initialized\n\r", iic);
       return 0;
     }
 
@@ -3158,7 +3213,7 @@ static int cmd_i2c(int argc, char **argv) {
     clock = atoi(argv[3]);
 
     if (ESP_OK != i2cInit(iic, sda, scl, clock))
-      log_printf(Failed);
+      q_printf(Failed);
   } else if (!q_strcmp(argv[0], "down")) {
     if (!i2c_isup(iic))
       goto noinit;
@@ -3189,9 +3244,9 @@ static int cmd_i2c(int argc, char **argv) {
       data[size++] = ascii2hex(argv[i]);
     }
     // send over
-    log_printf("%% Sending %d bytes over I2C%d\n\r", size, iic);
+    q_printf("%% Sending %d bytes over I2C%d\n\r", size, iic);
     if (ESP_OK != i2cWrite(iic, addr, data, size, 2000))
-      log_printf(Failed);
+      q_printf(Failed);
   } else if (!q_strcmp(argv[0], "read")) {  //read 68 7
 
     size_t got;
@@ -3214,51 +3269,51 @@ static int cmd_i2c(int argc, char **argv) {
 
     if (size < 0 || size > I2C_RXTX_BUF) {
       size = I2C_RXTX_BUF;
-      log_printf("%% Max read size buffer is %d bytes\n\r", size);
+      q_printf("%% Max read size buffer is %d bytes\n\r", size);
     }
 
     got = 0;
     unsigned char data[size];
 
     if (i2cRead(iic, addr, data, size, 2000, &got) != ESP_OK)
-      log_printf(Failed);
+      q_printf(Failed);
     else {
       if (got != size) {
-        log_printf("% Requested %d bytes but read %d\n\r",size,got);
+        q_printf("% Requested %d bytes but read %d\n\r",size,got);
         got = size;
       }
-      log_printf("%% I2C%d received %d bytes:\n\r", iic, got);
+      q_printf("%% I2C%d received %d bytes:\n\r", iic, got);
       
       for (i = 0; i < got; i++)
-        log_printf("%02X ", data[i]);
-      log_printf("\n\r");
+        q_printf("%02X ", data[i]);
+      q_printf("\n\r");
     }
   } else if (!q_strcmp(argv[0], "scan")) {
     if (!i2c_isup(iic)) {
-      log_printf("%% I2C %d is not initialized\n\r", iic);
+      q_printf("%% I2C %d is not initialized\n\r", iic);
       return 0;
     }
 
-    log_printf("%% Scanning I2C bus %d...\n\r", iic);
+    q_printf("%% Scanning I2C bus %d...\n\r", iic);
 
     for (addr = 1, i = 0; addr < 128; addr++) {
       char b;
       if (ESP_OK == i2cWrite(iic, addr, &b, 0, 500)) {
         i++;
-        log_printf("%% Device found at address %02X\n\r", addr);
+        q_printf("%% Device found at address %02X\n\r", addr);
       }
     }
 
     if (!i)
-      log_printf("%% Nothing found\n\r");
+      q_printf("%% Nothing found\n\r");
     else
-      log_printf("%% %d devices found\n\r", i);
+      q_printf("%% %d devices found\n\r", i);
   } else return 0;
 
   return 0;
 noinit:
   // love gotos
-  log_printf("%% I2C %d is not initialized\n\r", iic);
+  q_printf("%% I2C %d is not initialized\n\r", iic);
   return 0;
 }
 
@@ -3289,12 +3344,12 @@ static int cmd_uart_baud(int argc, char **argv) {
     return 1;
 
   if (!uart_isup(u)) {
-    log_printf("%% uart %d is not initialized. use command \"up\" to initialize\n\r", u);
+    q_printf("%% uart %d is not initialized. use command \"up\" to initialize\n\r", u);
     return 0;
   }
 
   if (ESP_OK != uart_set_baudrate(u, atoi(argv[1])))
-    log_printf(Failed);
+    q_printf(Failed);
 
   return 0;
 }
@@ -3323,7 +3378,7 @@ uart_tap(int remote) {
 
       // must not happen unless UART FIFO sizes were changed in ESP-IDF
       if (av > sizeof(buf)) {
-        log_printf("%% RX buffer overflow\n\r");
+        q_printf("%% RX buffer overflow\n\r");
         return;
       }
 
@@ -3346,11 +3401,11 @@ uart_tap(int remote) {
 
       // return here or we get flooded by driver messages
       if (ESP_OK != uart_get_buffered_data_len(remote, &av)) {
-        log_printf("%% UART%d is not initialized\n\r", remote);
+        q_printf("%% UART%d is not initialized\n\r", remote);
         return;
       }
       if (av > sizeof(buf)) {
-        log_printf("%% RX buffer overflow\n\r");
+        q_printf("%% RX buffer overflow\n\r");
         return;
       }
 
@@ -3382,16 +3437,16 @@ static int cmd_uart(int argc, char **argv) {
   if (!q_strcmp(argv[0], "tap")) {
     //do not tap to the same uart
     if (uart == rl_set_uart(-1)) {
-      log_printf("%% Can not tap on itself\n\r");
+      q_printf("%% Can not tap on itself\n\r");
       return 0;
     }
 
     if (!uart_isup(uart))
       goto noinit;
 
-    log_printf("%% Tapping to UART%d, CTRL+C to exit\n\r", uart);
+    q_printf("%% Tapping to UART%d, CTRL+C to exit\n\r", uart);
     uart_tap(uart);
-    log_printf("\n\r%% Ctrl+C, exiting\n\r");
+    q_printf("\n\r%% Ctrl+C, exiting\n\r");
     return 0;
   } else if (!q_strcmp(argv[0], "up")) {  //up RX TX SPEED
     if (argc < 4)
@@ -3409,7 +3464,7 @@ static int cmd_uart(int argc, char **argv) {
     else speed = atoi(argv[3]);  //TODO: check speed
 
     if (NULL == uartBegin(uart, speed, SERIAL_8N1, rx, tx, 256, 0, false, 112))
-      log_printf(Failed);
+      q_printf(Failed);
   } else if (!q_strcmp(argv[0], "down")) {  // down
     if (!uart_isup(uart))
       goto noinit;
@@ -3460,7 +3515,7 @@ static int cmd_uart(int argc, char **argv) {
               if (ishex(p))
                 c = ascii2hex(p);
               else {
-                log_printf("%% Unknown escape sequence: \"%s\"\n\r", p);
+                q_printf("%% Unknown escape sequence: \"%s\"\n\r", p);
                 return i;
               }
               p++;
@@ -3482,7 +3537,7 @@ static int cmd_uart(int argc, char **argv) {
       }
     } while (i < argc);
 
-    log_printf("%% %u bytes sent\n\r", sent);
+    q_printf("%% %u bytes sent\n\r", sent);
   } else if (!q_strcmp(argv[0], "read")) {  // read
     size_t available = 0, tmp;
     if (ESP_OK != uart_get_buffered_data_len(uart, &available))
@@ -3492,18 +3547,18 @@ static int cmd_uart(int argc, char **argv) {
       unsigned char c;
       if (uart_read_bytes(uart, &c, 1, portMAX_DELAY /* TODO: make short delay! */) == 1) {
         if (c >= ' ' || c == '\r' || c == '\n' || c == '\t')
-          log_printf("%c", c);
+          q_printf("%c", c);
         else
-          log_printf("\\x%02x", c);
+          q_printf("\\x%02x", c);
       }
     }
-    log_printf("\n\r%% %d bytes read\n\r", tmp);
+    q_printf("\n\r%% %d bytes read\n\r", tmp);
   }
 
   // command executed or was not understood
   return 0;
 noinit:
-  log_printf("%% UART%d is not initialized\n\r", uart);
+  q_printf("%% UART%d is not initialized\n\r", uart);
   return 0;
 }
 
@@ -3522,10 +3577,10 @@ static int cmd_tty(int argc, char **argv) {
     return 1;
   u = atoi(argv[1]);
   if (!uart_isup(u))
-    log_printf("%% UART%d is not initialized\n\r", u);
+    q_printf("%% UART%d is not initialized\n\r", u);
   else {
 #if WITH_HELP
-    log_printf("%% See you on UART%d. Bye!\n\r", u);
+    q_printf("%% See you on UART%d. Bye!\n\r", u);
 #endif
     rl_set_uart(u);
   }
@@ -3573,16 +3628,16 @@ static int cmd_cpu(int argc, char **argv) {
 
       if ((freq == xtal) || (freq == xtal / 2)) break;
       if ((xtal >= 40) && (freq == xtal / 4)) break;
-      log_printf("%% Supported frequencies are: 240, 160, 120, 80, ");
+      q_printf("%% Supported frequencies are: 240, 160, 120, 80, ");
       if (xtal >= 40)
-        log_printf("%u, %u and %u\n\r", xtal, xtal / 2, xtal / 4);
+        q_printf("%u, %u and %u\n\r", xtal, xtal / 2, xtal / 4);
       else
-        log_printf("%u and %u\n\r", xtal, xtal / 2);
+        q_printf("%u and %u\n\r", xtal, xtal / 2);
       return 1;
     }
 
     if (!setCpuFrequencyMhz(freq))
-      log_printf(Failed);
+      q_printf(Failed);
 
     return 0;
   }
@@ -3602,7 +3657,7 @@ static int cmd_cpu(int argc, char **argv) {
     case EFUSE_RD_CHIP_VER_PKG_ESP32PICOD4: chipid = "ESP32-PICO-D4"; break;
     case EFUSE_RD_CHIP_VER_PKG_ESP32PICOV302: chipid = "ESP32-PICO-V3-02"; break;
     case EFUSE_RD_CHIP_VER_PKG_ESP32D0WDR2V3: chipid = "ESP32-D0WDR2-V3"; break;
-    default: log_printf("%% Detected PKG_VER=%04x\n\r", pkg_ver);
+    default: q_printf("%% Detected PKG_VER=%04x\n\r", pkg_ver);
   }
 #elif CONFIG_IDF_TARGET_ESP32S2
   pkg_ver = REG_GET_FIELD(EFUSE_RD_MAC_SPI_SYS_3_REG, EFUSE_PKG_VERSION);
@@ -3621,7 +3676,7 @@ static int cmd_cpu(int argc, char **argv) {
   }
 #endif
 
-  log_printf("%% CPU ID: %s, Rev.: %d.%d\n\r%% CPU %luMhz, Xtal %luMhz, Bus %luMhz, Temperature: %.1fC\n\r",
+  q_printf("%% CPU ID: %s, Rev.: %d.%d\n\r%% CPU %luMhz, Xtal %luMhz, Bus %luMhz, Temperature: %.1fC\n\r",
              chipid,
              (chip_info.revision >> 8) & 0xf,
              chip_info.revision & 0xff,
@@ -3674,24 +3729,24 @@ cmd_uptime(int argc, char **argv) {
   uint32_t sec, min = 0, hr = 0, day = 0;
   sec = (uint32_t)(esp_timer_get_time() / 1000000) - uptime;
 
-  log_printf("%% Last boot was ");
+  q_printf("%% Last boot was ");
   if (sec > 60 * 60 * 24) {
     day = sec / (60 * 60 * 24);
     sec = sec % (60 * 60 * 24);
-    log_printf("%u days ", day);
+    q_printf("%u days ", day);
   }
   if (sec > 60 * 60) {
     hr = sec / (60 * 60);
     sec = sec % (60 * 60);
-    log_printf("%u hours ", hr);
+    q_printf("%u hours ", hr);
   }
   if (sec > 60) {
     min = sec / 60;
     sec = sec % 60;
-    log_printf("%u minutes ", min);
+    q_printf("%u minutes ", min);
   }
 
-  log_printf("%u seconds ago\n\r", sec);
+  q_printf("%u seconds ago\n\r", sec);
 
   return 0;
 }
@@ -3740,7 +3795,7 @@ static int cmd_question(int argc, char **argv) {
   // user typed "? text" by mistake
   if (argc > 1) {
 #if WITH_HELP
-    log_printf("%% To get help try \"%s ?\" instead!\n\r", argv[1]);
+    q_printf("%% To get help try \"%s ?\" instead!\n\r", argv[1]);
     return 0;
 #else
     // in no-help mode try to get a hint
@@ -3754,7 +3809,7 @@ static int cmd_question(int argc, char **argv) {
   indent[INDENT] = 0;
   char *spaces;
 
-  log_printf("%% Enter \"command ?\" to get details about the command.\n\r"
+  q_printf("%% Enter \"command ?\" to get details about the command.\n\r"
              "%% List of available commands:\n\r"
              "%% \n\r");
 
@@ -3777,7 +3832,7 @@ static int cmd_question(int argc, char **argv) {
         spaces = &indent[INDENT];  //points to \0
         if ((clen = strlen(keywords[i].cmd)) < INDENT)
           spaces = &indent[clen];
-        log_printf("%% \"%s\"%s : %s\n\r", keywords[i].cmd, spaces, brief);
+        q_printf("%% \"%s\"%s : %s\n\r", keywords[i].cmd, spaces, brief);
       }
     }
 
@@ -3830,9 +3885,9 @@ espshell_command(char *p) {
           if (!strncmp(keywords[i].cmd, argv[0], cmd_len)) {
             found = 1;
             if (keywords[i].help)
-              log_printf("\n\r%s\n\r", keywords[i].help);  //display long help
+              q_printf("\n\r%s\n\r", keywords[i].help);  //display long help
             else if (keywords[i].brief)
-              log_printf("\n\r%s\n\r", keywords[i].brief);  //display brief (must not happen)
+              q_printf("\n\r%s\n\r", keywords[i].brief);  //display brief (must not happen)
           }
         }
       }
@@ -3863,12 +3918,12 @@ espshell_command(char *p) {
             int bad;
             if (keywords[i].cb) {
               //!!! handler MAY change keywords pointer! keywords[i] may be invalid pointer after
-              // callback execute with return code 0
+              // cb() call with return code 0
               bad = keywords[i].cb(argc, argv);
               if (bad > 0)
-                log_printf("%% Invalid argument \"%s\" (\"%s ?\" for help)\n\r", argv[bad], argv[0]);
+                q_printf("%% Invalid argument \"%s\" (\"%s ?\" for help)\n\r", argv[bad], argv[0]);
               else if (bad < 0)
-                log_printf("%% Missing argument (\"%s ?\" for help)\n\r", argv[0]);
+                q_printf("%% Missing argument (\"%s ?\" for help)\n\r", argv[0]);
               else
                 i = 0;  // make sure keywords[i] is valid pointer
               break;
@@ -3882,14 +3937,14 @@ espshell_command(char *p) {
     // reached the end of the list and didn't find any exact match
     if (!keywords[i].cmd) {
       if (found)  //we had a name match but number of arguments was wrong
-        log_printf("%% \"%s\": wrong number of arguments (\"%s ?\" for help)\n\r", argv[0], argv[0]);
+        q_printf("%% \"%s\": wrong number of arguments (\"%s ?\" for help)\n\r", argv[0], argv[0]);
       else
 notfound:
-        log_printf("%% \"%s\": command not found\n\r", argv[0]);
+        q_printf("%% \"%s\": command not found\n\r", argv[0]);
     }
 #if WITH_HELP
     if (!found)
-      log_printf("%% Type \"?\" to show the list of commands available\n\r");
+      q_printf("%% Type \"?\" to show the list of commands available\n\r");
 #endif
   }
 
@@ -3912,7 +3967,7 @@ void espshell_task(const void *arg) {
 #if AUTOSTART
       // uart is still down when autostart==1
 #else
-      log_printf("%% espshell failed to start task\n\r");
+      q_printf("%% espshell failed to start task\n\r");
 #endif
     }
   } else {
@@ -3923,14 +3978,14 @@ void espshell_task(const void *arg) {
       delay(100);
 
 #if WITH_HELP
-    log_printf("%% ESP Shell. Type \"?\" and press enter for help\n\r");
+    q_printf("%% ESP Shell. Type \"?\" and press enter for help\n\r");
 #endif
     while (!Exit) {
       espshell_command(readline(prompt));
       delay(100);  //delay between commands to prevent flooding from failed readline()
     }
 #if WITH_HELP    
-    log_printf("%% Bye!");
+    q_printf("%% Bye!");
 #endif    
     vTaskDelete(NULL);
   }
