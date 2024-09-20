@@ -59,6 +59,9 @@
 #undef STACKSIZE
 #undef BREAK_KEY
 #undef USE_UART
+#undef DO_ECHO
+
+//#define ESPCAM             //include ESP32CAM commands. not yet
 
 #define AUTOSTART      1     // start the shell automatically (no extra code needed to user sketch) \
                              // if set to 0, then the user sketch must call espshell_task("my-prompt") \
@@ -71,7 +74,26 @@
 #define STACKSIZE      10240 //Shell task stack size
 #define BREAK_KEY      3     // Keycode of a "Exit" key: CTRL+C to exit "uart NUM tap" mode
 #define SEQUENCES_NUM  10    // max number of sequences available for command "sequence"
+
+#define DO_ECHO        true  // espshell echoes userinput back (default). set to false for automated output processing
 #define USE_UART       UART_NUM_0 // uart where shell will be deployed
+
+#define COMPILING_ESPSHELL 1//dont touch this. it is used by external commands (if any) to prevent
+                           //external files to be compiled by Arduino IDE. Instead they are included
+                           //in this file
+
+// include user-defined commands and their handlers
+// if any.
+#ifdef ESPCAM
+#  define EXTERNAL_PROTOTYPES  "esp32cam_prototypes.h"
+#  define EXTERNAL_KEYWORDS  "esp32cam_keywords.c"
+#  define EXTERNAL_HANDLERS  "esp32cam_handlers.c"
+#else
+#  undef EXTERNAL_PROTOTYPES
+#  undef EXTERNAL_KEYWORDS
+#  undef EXTERNAL_HANDLERS
+#endif
+
 
 #define PROMPT      "esp32#>"
 #define PROMPT_I2C  "esp32-i2c#>"
@@ -225,6 +247,7 @@ static unsigned int ScreenSize;
 static char *backspace = NULL;
 static int TTYwidth = SCREEN_WIDTH;
 static int TTYrows = SCREEN_ROWS;
+static bool Echo = DO_ECHO;
 
 /* Display print 8-bit chars as `M-x' or as the actual 8-bit char? */
 static int rl_meta_chars = 0;
@@ -284,11 +307,9 @@ static void
 TTYflush() {
 
   if (ScreenCount) {
-#if 1
-    uart_write_bytes(uart, Screen, ScreenCount);
-#else
-    write(1, Screen, ScreenCount);
-#endif
+
+    if (Echo)
+      uart_write_bytes(uart, Screen, ScreenCount);
     ScreenCount = 0;
   }
 }
@@ -1403,27 +1424,35 @@ static const KEYMAP MetaMap[16] = {
 
 static bool Exit = false; // True == close the shell and kill its FreeRTOS task
 
+static int q_strcmp(const char *, const char *); // loose strcmp
+static int q_printf(const char *, ...);          // printf to specific uart
+
 static int cmd_question(int, char **);
 
-static int cmd_uptime(int, char **);
 static int cmd_pin(int, char **);
+
 static int cmd_cpu(int, char **);
+static int cmd_uptime(int, char **);
 static int cmd_mem(int, char **);
 static int cmd_reload(int, char **);
 static int cmd_nap(int, char **);
+
 static int cmd_i2c_if(int, char **);
 static int cmd_i2c_clock(int, char **);
 static int cmd_i2c(int, char **);
+
 static int cmd_uart_if(int, char **);
 static int cmd_uart_baud(int, char **);
 static int cmd_uart(int, char **);
+
 static int cmd_tty(int, char **);
+static int cmd_echo(int,char **);
+
 static int cmd_suspend(int, char **);
 static int cmd_resume(int, char **);
+
 static int cmd_tone(int, char **);
 static int cmd_count(int, char **);
-static int cmd_exit(int, char **);
-static int cmd_show(int, char **);
 
 static int cmd_seq_if(int, char **);
 static int cmd_seq_eot(int argc, char **argv);
@@ -1433,6 +1462,15 @@ static int cmd_seq_tick(int argc, char **argv);
 static int cmd_seq_bits(int argc, char **argv);
 static int cmd_seq_levels(int argc, char **argv);
 static int cmd_seq_show(int argc, char **argv);
+
+static int cmd_show(int, char **);
+
+static int cmd_exit(int, char **);
+
+// suport for user-defined commands
+#ifdef EXTERNAL_PROTOTYPES
+#include EXTERNAL_PROTOTYPES
+#endif
 
 //TAG:utils
 
@@ -1488,7 +1526,7 @@ static int __printfv(const char *format, va_list arg) {
 // same as printf() but uses global var 'uart' to direct
 // its output to different uarts
 //
-static int __attribute__((format(printf, 1, 2))) q_printf(const char *format, ...) {
+static int q_printf(const char *format, ...) {
   int len;
   va_list arg;
   va_start(arg, format);
@@ -1540,7 +1578,7 @@ struct keywords_t {
   { "?", cmd_question, -1, "Show the list of available commands", NULL }
 
 #define KEYWORDS_END \
-  { "exit", cmd_exit, 0, "Exit", NULL }, { \
+  { "exit", cmd_exit, -1, "Exit", NULL }, { \
     NULL, NULL, 0, NULL, NULL \
   }
 
@@ -1818,6 +1856,7 @@ static struct keywords_t keywords_spi[] = {
 
 
 // root directory commands
+//TAG:keywords_main
 static struct keywords_t keywords_main[] = {
 
   KEYWORDS_BEGIN,
@@ -1934,8 +1973,10 @@ static struct keywords_t keywords_main[] = {
 #endif
     "Pulses/levels sequence configuration" },
 
-  { "tty", cmd_tty, 1, "% \"tty X\" Use uart X for command line interface.\n\r",
-    "IO redirect" },
+  { "tty", cmd_tty, 1, "% \"tty X\" Use uart X for command line interface", "IO redirect" },
+
+  { "echo", cmd_echo, 1, "% \"echo on|off\" Echo user input on/off (default is on)", "Enable/Disable user input echo" },
+  { "echo", cmd_echo, 0, NULL, NULL}, //hidden command
 
   { "suspend", cmd_suspend, 0, "% \"suspend\" : Suspend main loop()\n\r", "Suspend sketch execution" },
   { "resume", cmd_resume, 0, "% \"resume\" : Resume main loop()\n\r", "Resume sketch execution" },
@@ -1982,7 +2023,9 @@ static struct keywords_t keywords_main[] = {
     "Pulse counter" },
   { "count", cmd_count, 2, NULL, NULL },  //HIDDEN COMMAND (help=brief=NULL)
   { "count", cmd_count, 1, NULL, NULL },  //HIDDEN COMMAND (help=brief=NULL)
-
+#ifdef EXTERNAL_KEYWORDS
+#include EXTERNAL_KEYWORDS
+#endif
   KEYWORDS_END
 };
 
@@ -2415,7 +2458,10 @@ static int cmd_exit(int argc, char **argv) {
     // restore prompt & keywords list to use
     keywords = keywords_main;
     prompt = prompt_old;
-  }
+  } else // "exit exit" secret command. kills shell task, does not remove history tho
+    if (argc > 1 && !q_strcmp(argv[1],"exit"))
+      Exit = true;
+
   return 0;
 }
 
@@ -3365,7 +3411,7 @@ static void
 uart_tap(int remote) {
 
   size_t av;
-  char buf[256];
+  char buf[256]; //TODO: make it dynamically allocated on stack
 
   while (1) {
 
@@ -3587,6 +3633,21 @@ static int cmd_tty(int argc, char **argv) {
   return 0;
 }
 
+//TAG:echo
+//"echo on|off"
+//
+// Enable/disable local echo. Normally enabled it lets software
+// like TeraTerm and PuTTY to be used. Turning echo off supresses
+// all shell output (except for command handlers output)
+static int cmd_echo(int argc, char **argv) {
+
+  if (argc < 2)
+    q_printf("%% Echo %s\n\r",Echo ? "on" : "off");
+  else
+    Echo = !strcmp("on",argv[1]);
+  return 0;
+}
+
 
 //TAG:reload
 //"reload"
@@ -3689,6 +3750,10 @@ static int cmd_cpu(int argc, char **argv) {
   return 0;
 }
 
+// external user-defined command handler functions here
+#ifdef EXTERNAL_HANDLERS
+#include EXTERNAL_HANDLERS
+#endif
 
 //Time counter value (in seconds) right before entering
 //main()/app_main()
@@ -3780,7 +3845,7 @@ static int cmd_resume(int argc, char **argv) {
 
 
 
-#define INDENT 8  //TODO: use a variable calculated at shell task startup
+#define INDENT 10  //TODO: use a variable calculated at shell task startup
 
 //TAG:?
 // "?"
