@@ -79,8 +79,8 @@
 #define USE_UART       UART_NUM_0 // uart where shell will be deployed
 
 #define COMPILING_ESPSHELL 1//dont touch this. it is used by external commands (if any) to prevent
-                           //external files to be compiled by Arduino IDE. Instead they are included
-                           //in this file
+                            //external files to be compiled by Arduino IDE. Instead they are included
+                            //in this file
 
 // include user-defined commands and their handlers
 // if any.
@@ -1424,6 +1424,10 @@ static const KEYMAP MetaMap[16] = {
 
 static bool Exit = false; // True == close the shell and kill its FreeRTOS task
 
+
+void espshell_exec(const char *p); //execute 1 command line
+
+
 static int q_strcmp(const char *, const char *); // loose strcmp
 static int q_printf(const char *, ...);          // printf to specific uart
 
@@ -2035,11 +2039,10 @@ static struct keywords_t keywords_main[] = {
 static struct keywords_t *keywords = keywords_main;
 
 //common Failed message
-static const char *Failed = "% Failed\n\r";
+static const char *Failed = "%% Failed\n\r";
 
-// prompts
+// prompt
 static const char *prompt = PROMPT;
-static const char *prompt_old = NULL;
 
 // sequences
 static struct sequence sequences[SEQUENCES_NUM];
@@ -2457,7 +2460,7 @@ static int cmd_exit(int argc, char **argv) {
   if (keywords != keywords_main) {
     // restore prompt & keywords list to use
     keywords = keywords_main;
-    prompt = prompt_old;
+    prompt = PROMPT;
   } else // "exit exit" secret command. kills shell task, does not remove history tho
     if (argc > 1 && !q_strcmp(argv[1],"exit"))
       Exit = true;
@@ -2500,7 +2503,6 @@ static int cmd_seq_if(int argc, char **argv) {
 
   Context = seq;
   keywords = keywords_sequence;
-  prompt_old = prompt;
   prompt = PROMPT_SEQ;
 
   return 0;
@@ -3163,7 +3165,6 @@ static int cmd_i2c_if(int argc, char **argv) {
 
   Context = iic;
   keywords = keywords_i2c;
-  prompt_old = prompt;
   prompt = PROMPT_I2C;
 
   return 0;
@@ -3191,7 +3192,6 @@ static int cmd_uart_if(int argc, char **argv) {
   }
   Context = u;
   keywords = keywords_uart;
-  prompt_old = prompt;
   prompt = PROMPT_UART;
   return 0;
 }
@@ -3916,15 +3916,15 @@ static int cmd_question(int argc, char **argv) {
 // entry in keywords[] array and execute coresponding callback.
 //
 //TAG:shell
-static void
+static int
 espshell_command(char *p) {
 
   char **argv = NULL;
   int argc;
-  int i = 0, found = 0;
+  int i = 0, found = 0, bad = -1;
 
   if (!p)
-    return;
+    return bad;
 
   //make a history entry
   rl_add_history(p);
@@ -3937,7 +3937,7 @@ espshell_command(char *p) {
   //others are arguments. argc of zero means there was a memory allocation error, or input string was
   //empty/consisting completely of whitespace
   if (argc < 1)
-    return;
+    return bad;
 
   // process "?" argument to a  command: Ex.: "pin ?"
   if (argc > 1 && *(argv[1]) == '?') {
@@ -3953,6 +3953,7 @@ espshell_command(char *p) {
               q_printf("\n\r%s\n\r", keywords[i].help);  //display long help
             else if (keywords[i].brief)
               q_printf("\n\r%s\n\r", keywords[i].brief);  //display brief (must not happen)
+            bad = 0;
           }
         }
       }
@@ -3980,7 +3981,7 @@ espshell_command(char *p) {
             // execute the command. if nonzero value is returned then it is an index of the "failed" argument
             // value of 3 means argv[3] was bad (for values > 0)
             // value of zero means successful execution
-            int bad;
+            
             if (keywords[i].cb) {
               //!!! handler MAY change keywords pointer! keywords[i] may be invalid pointer after
               // cb() call with return code 0
@@ -4018,7 +4019,24 @@ notfound:
     free(argv);
 
   free(p);
+  return bad;
 }
+
+
+// execute arbitrary shell command (1 string per call!).
+// basically it is just a wrapper for espshell_command()
+// dealing with const char * input
+void
+espshell_exec(const char *p) {
+
+  char *pp = strdup(p);
+  if (pp) {
+    espshell_command(pp);
+    free(pp);
+  }
+}
+
+
 
 //TAG:task
 // shell task
