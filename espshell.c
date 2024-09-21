@@ -1425,7 +1425,7 @@ static const KEYMAP MetaMap[16] = {
 static bool Exit = false; // True == close the shell and kill its FreeRTOS task
 
 
-void espshell_exec(const char *p); //execute 1 command line
+int espshell_exec(const char *p); //execute 1 command line
 
 
 static int q_strcmp(const char *, const char *); // loose strcmp
@@ -4026,14 +4026,16 @@ notfound:
 // execute arbitrary shell command (1 string per call!).
 // basically it is just a wrapper for espshell_command()
 // dealing with const char * input
-void
+int
 espshell_exec(const char *p) {
 
+  int err = -1;
   char *pp = strdup(p);
   if (pp) {
-    espshell_command(pp);
+    err = espshell_command(pp);
     free(pp);
   }
+  return err;
 }
 
 
