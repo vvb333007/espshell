@@ -63,17 +63,17 @@
 
 //#define ESPCAM             //include ESP32CAM commands. not yet
 
-#define AUTOSTART      1     // start the shell automatically (no extra code needed to user sketch) \
-                             // if set to 0, then the user sketch must call espshell_task("my-prompt") \
+#define AUTOSTART      1     // Start the shell automatically (no extra code needed to user sketch)
+                             // If set to 0, then the user sketch must call espshell_task((const void *)1))
                              // (usually at the end of sketch's setup() function)
-#define WITH_HELP      1     // set to 0 to save some program space by excluding help strings/functions
-#define UNIQUE_HISTORY 1     // wheither to discard repeating commands from the history or not
-#define HIST_SIZE      20    // history buffer size (number of commands to remember)
-#define SCREEN_WIDTH   80    // terminal width
-#define SCREEN_ROWS    24    // terminal height
-#define STACKSIZE      10240 //Shell task stack size
+#define WITH_HELP      1     // Set to 0 to save some program space by excluding help strings/functions
+#define UNIQUE_HISTORY 1     // Wheither to discard repeating commands from the history or not
+#define HIST_SIZE      20    // History buffer size (number of commands to remember)
+#define SCREEN_WIDTH   80    // Terminal width
+#define SCREEN_ROWS    24    // Terminal height
+#define STACKSIZE      10240 // Shell task stack size
 #define BREAK_KEY      3     // Keycode of a "Exit" key: CTRL+C to exit "uart NUM tap" mode
-#define SEQUENCES_NUM  10    // max number of sequences available for command "sequence"
+#define SEQUENCES_NUM  10    // Max number of sequences available for command "sequence"
 
 #define DO_ECHO        true  // espshell echoes userinput back (default). set to false for automated output processing
 #define USE_UART       UART_NUM_0 // uart where shell will be deployed
@@ -109,7 +109,7 @@
 #include <Arduino.h>
 
 // start espshell:
-// called automatically if AUTOSTART==1 (default). if autostart is disabled (==0) then use
+// called automatically if AUTOSTART==1 (default). if autostart is disabled (==0) then user
 // must declare this function in ther sketch .ino file as extern "C" espshell_task(const void *);
 // and call it explicitly
 // arg == NULL : blocking call. does not return.
@@ -124,7 +124,7 @@ void espshell_task(const void *arg);
 #define CRLF "\r\n"
 
 #define MEM_INC 64      // "Line" buffer realloc increments
-#define SCREEN_INC 256  // "Screen" buffer granularity
+#define SCREEN_INC 256  // "Screen" buffer realloc increments
 
 
 /* Memory buffer macros */
@@ -3728,8 +3728,8 @@ static int cmd_cpu(int argc, char **argv) {
 
   switch (pkg_ver) {
 
-    case EFUSE_RD_CHIP_VER_PKG_ESP32D0WDQ6: chipid = "ESP32-D0WD-Q6"; break;
-    case EFUSE_RD_CHIP_VER_PKG_ESP32D0WDQ5: chipid = "ESP32-D0WD-Q5"; break;
+    case EFUSE_RD_CHIP_VER_PKG_ESP32D0WDQ6: if (chip_info.revision / 100 == 3) chipid = "ESP32-D0WDQ6-V3"; else chipid = "ESP32-D0WDQ6"; break;
+    case EFUSE_RD_CHIP_VER_PKG_ESP32D0WDQ5: if (chip_info.revision / 100 == 3) chipid = "ESP32-D0WD-V3"; else chipid = "ESP32-D0WD"; break;
     case EFUSE_RD_CHIP_VER_PKG_ESP32D2WDQ5: chipid = "ESP32-D2WD-Q5"; break;
     case EFUSE_RD_CHIP_VER_PKG_ESP32PICOD2: chipid = "ESP32-PICO-D2"; break;
     case EFUSE_RD_CHIP_VER_PKG_ESP32PICOD4: chipid = "ESP32-PICO-D4"; break;
