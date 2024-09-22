@@ -5,6 +5,8 @@
 
 #define PROMPT_ESPCAM "esp32-cam#>"
 
+static camera_config_t config;
+
 //"gain auto"
 //"gain 0..30"
 static int cam_set_gain(int argc, char **argv) {
@@ -244,8 +246,8 @@ static struct keywords_t keywords_espcam[] = {
   KEYWORDS_END
 };
 
-static int            cam_width  = 1600;
-static int            cam_height = 1200;
+//static int            cam_width  = 1600;
+//static int            cam_height = 1200;
 static camera_fb_t   *cam_fb     = NULL;  // last captured picture
 static bool           cam_good   = false; // initialized or not
 
@@ -316,7 +318,14 @@ static int cam_deinit(int argc, char **argv) {
        cam_fb = NULL;
     }
     esp_camera_deinit();
-    q_printf("%% Camera off\n\r");
+    q_print("% Camera deinitialized\n\r");
+    delay(100);
+    if (config.pin_pwdn >= 0) {          // Enable POWER_DOWN
+      pinMode(config.pin_pwdn,OUTPUT);
+      digitalWrite(config.pin_pwdn,HIGH);
+      q_printf("%% Camera power down (GPIO#%d is HIGH)\n\r",config.pin_pwdn);
+      //TODO: gpio hold when sleeping
+    }
   }
   return 0;
 }
@@ -324,14 +333,21 @@ static int cam_deinit(int argc, char **argv) {
 //"init"
 static int cam_init() {
 
-  camera_config_t config;
+  
   esp_err_t err;
-
-  pinMode(4 , OUTPUT); // high power LED
-  pinMode(33, OUTPUT); // small red LED
 
   if (cam_good) // already initialized
     return 0;
+
+  pinMode(4 , OUTPUT);                 // High power LED
+  pinMode(33, OUTPUT);                 // Small red LED
+  if (config.pin_pwdn >= 0) {          // Disable POWER_DOWN
+    pinMode(config.pin_pwdn,OUTPUT);
+    digitalWrite(config.pin_pwdn,LOW);
+    //TODO: gpio hold when sleeping
+    q_printf("%% Camera power up (GPIO%d is LOW)\n\r",config.pin_pwdn);
+    delay(100);
+  }
 
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -361,6 +377,10 @@ static int cam_init() {
   config.frame_size = FRAMESIZE_UXGA;
   config.jpeg_quality = 4;
   config.fb_count = 2;                          // if more than one, i2s runs in continuous mode. Use only with JPEG
+
+   config.fb_location = CAMERA_FB_IN_PSRAM;
+   config.grab_mode = CAMERA_GRAB_LATEST;
+
 
   sensor_t *s = NULL;
   if (ESP_OK == (err = esp_camera_init(&config))) {
