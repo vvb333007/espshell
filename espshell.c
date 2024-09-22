@@ -2288,7 +2288,7 @@ static int seq_atol(int *level, int *duration, char *p) {
     return -5;
 
   if (duration)
-    *duration = atol(dp);
+    *duration = d;
 
   return 0;
 }
@@ -2651,11 +2651,7 @@ static int cmd_seq_zeroone(int argc, char **argv) {
     default:
       return -1;  // wrong number of arguments
   };
-
-
-  if ((i = seq_compile(Context)) < 0)
-    q_printf("Attempted compilation: %d\n\r", i);
-
+  seq_compile(Context);
   return 0;
 }
 
@@ -2688,8 +2684,7 @@ static int cmd_seq_tick(int argc, char **argv) {
   if (!sequences[Context].tick)
     return 1;
 
-  if ((argc = seq_compile(Context)) < 0)
-    q_printf("Attempted compilation: %d\n\r", argc);
+  seq_compile(Context);
 
   return 0;
 }
@@ -2729,9 +2724,7 @@ static int cmd_seq_bits(int argc, char **argv) {
   if (!s->bits)
     return -1;
 
-  // attempt to compile.
-  if ((argc = seq_compile(Context)) < 0)
-    q_printf("Attempted compilation: %d\n\r", argc);
+  seq_compile(Context);
 
   return 0;
 }
@@ -2776,6 +2769,10 @@ static int cmd_seq_levels(int argc, char **argv) {
   memset(s->seq, 0, sizeof(rmt_data_t) * s->seq_len);
 
   // each RMT symbol (->seq entry) can hold 2 levels
+  // run thru all arguments and read level/duration pairs
+  // into ->seq[]. 
+  // i - index to arguments
+  // j - index to ->seq[] (RMT entries)
   for (i = 0, j = 0; i < s->seq_len * 2; i += 2) {
 
     int level, duration;
@@ -2794,8 +2791,6 @@ static int cmd_seq_levels(int argc, char **argv) {
     j++;
   }
 
-  //q_printf("%d levels encoded to %d rmt_data_t\n\r",i,j);
-
   return 0;
 }
 
@@ -2812,12 +2807,15 @@ static int cmd_seq_show(int argc, char **argv) {
 
   int seq;
 
+  // command executed as "show" within sequence
+  // command tree (no arguments)
   if (argc < 2) {
-
     seq_dump(Context);
     return 0;
   }
 
+  // command executaed as "show seq NUMBER".
+  // two arguments (argc=3)
   if (argc != 3)
     return -1;
 
@@ -2900,6 +2898,8 @@ static int cmd_count(int argc, char **argv) {
   pcnt_counter_pause(PCNT_UNIT_0);
   pcnt_counter_clear(PCNT_UNIT_0);
   pcnt_counter_resume(PCNT_UNIT_0);
+  //TODO: more precise is to setup an interrupt & timer.
+  //      yeah, one day.
   delay(wait);
   pcnt_counter_pause(PCNT_UNIT_0);
   pcnt_get_counter_value(PCNT_UNIT_0, &count);
@@ -3068,8 +3068,11 @@ static int cmd_pin(int argc, char **argv) {
       // enable RMT sequence 'seq' on pin 'pin'
       // TODO:
       q_printf("%% Sending sequence %d over GPIO %d\n\r", seq, pin);
-      if (seq_send(pin, seq) < 0)
+
+      if ((i = seq_send(pin, seq)) < 0) {
         q_print(Failed);
+        q_printf("%% Error code is: %d\n\r",i);
+      }
       return 0;
     }
   }
