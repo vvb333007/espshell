@@ -4044,7 +4044,7 @@ espshell_exec(const char *p) {
 //TAG:task
 // shell task
 // only one shell task can be started
-void espshell_task(const void *arg) {
+static void espshell_task(const void *arg) {
 
   //start task and return
   if (arg) {
