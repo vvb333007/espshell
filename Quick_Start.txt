@@ -6,7 +6,7 @@ FOR THOSE WHO DON'T WANT TO READ DOCUMENTATION:
  a. Copy espshell.c to your sketch directory (where your .ino file is).
  
  b. Compile & upload your sketch as usual. (espshell will gain control 
-    automatically on startup)
+    automatically on startup and runs its service in a background)
     
  c. Yes! Now you can access the command line interface via Arduino 
     IDE's Serial Monitor or ( better ) thru terminal software: Linux cu, 
