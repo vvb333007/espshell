@@ -12,10 +12,10 @@ WHAT IS THIS:
  proper serial communication software (TeraTerm, PuTTY or similar on Windows or 
  'cu' on Linux)
  
- Screenshots Settings1.jpg and Settings2.jpg shows preferred settings of ArduinoIDE 
- Serial Monitor and TeraTerm. Please note that some features will be unavailable if 
- using Arduino Serial Monitor: you will not be able to send Ctrl+C and Ctrl+Z sequences
- which are useful in debugging GSM modems
+ Screenshots docs/Settings1.jpg and docs/Settings2.jpg shows preferred settings of 
+ ArduinoIDE Serial Monitor and TeraTerm. Please note that some features will be 
+ unavailable if using Arduino Serial Monitor: you will not be able to send Ctrl+C 
+ and Ctrl+Z sequences which are useful in debugging GSM modems.
  
 HOW TO USE IT IN ARDUINO PROJECT:
 ---------------------------------
