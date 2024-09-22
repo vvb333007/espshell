@@ -61,10 +61,10 @@
 #undef USE_UART
 #undef DO_ECHO
 
-//#define ESPCAM             //include ESP32CAM commands. not yet
+#define ESPCAM               //include ESP32CAM commands (read extra/README.md).
 
 #define AUTOSTART      1     // Start the shell automatically (no extra code needed to user sketch)
-                             // If set to 0, then the user sketch must call espshell_task((const void *)1))
+                             // If set to 0, then the user sketch must call espshell_start()
                              // (usually at the end of sketch's setup() function)
 #define WITH_HELP      1     // Set to 0 to save some program space by excluding help strings/functions
 #define UNIQUE_HISTORY 1     // Wheither to discard repeating commands from the history or not
@@ -75,7 +75,7 @@
 #define BREAK_KEY      3     // Keycode of a "Exit" key: CTRL+C to exit "uart NUM tap" mode
 #define SEQUENCES_NUM  10    // Max number of sequences available for command "sequence"
 
-#define DO_ECHO        true  // espshell echoes userinput back (default). set to false for automated output processing
+#define DO_ECHO        true       // espshell echoes user input back or not. set to false for automated output processing
 #define USE_UART       UART_NUM_0 // uart where shell will be deployed
 
 #define COMPILING_ESPSHELL 1//dont touch this. it is used by external commands (if any) to prevent
@@ -2062,7 +2062,7 @@ static int Context = 0;
 
 //TAG:utility
 //check if given ascii string is a decimal number. Ex.: "12345", "-12"
-static const inline bool isnum(char *p) {
+static bool isnum(char *p) {
   if (*p == '-')
     p++;
   while (*p >= '0' && *p <= '9')
@@ -2070,7 +2070,7 @@ static const inline bool isnum(char *p) {
   return !(*p);  //if *p is 0 then all the chars were digits (end of line reached).
 }
 
-static const bool isfloat(char *p) {
+static bool isfloat(char *p) {
   bool dot = false;
   
   while ((*p >= '0' && *p <= '9') || (*p == '.' && !dot)) {
@@ -2085,7 +2085,7 @@ static const bool isfloat(char *p) {
 
 //check if given ascii string is a hex number. Only first two bytes are checked
 //TODO: rewrite
-static const inline bool ishex(char *p) {
+static bool ishex(char *p) {
   if ((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F')) {
     p++;
     if ((*p == 0) || (*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F'))
