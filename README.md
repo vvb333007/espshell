@@ -66,6 +66,13 @@ SHELL BRIEF DESCRIPTION
 
  For pattern generation please read Pulse_Generator.txt
 
+ For ESP32Cam support read extra/README.md
+ 
+MEMORY FOOTPRINT/OVERHEAD
+-------------------------
+
+ESPShell uses about 28Kbytes of program memory and around 2Kbytes of variables. There is also
+ESPShell task stack size of 10kbytes (can be changed see STACKSIZE macro in espshell.c)
 
 NOTE:
 -----
