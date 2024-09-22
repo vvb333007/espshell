@@ -4,7 +4,7 @@
  * Latest source code is at: https://github.com/vvb333007/espshell/
  * Uses editline library ( (c) 1992,1993 by Simmule Turner and Rich Salz)
  *
- * WHAT IS THIS:
+ * WHAT  IS THIS:
  * -------------
  * This is a debugging/development tool for use with Arduino projects on
  * ESP32 hardware. Provides a command line interface running in parallel
@@ -237,8 +237,8 @@ static unsigned int Length;
 static unsigned int ScreenCount;
 static unsigned int ScreenSize;
 static char *backspace = NULL;
-static int TTYwidth = SCREEN_WIDTH;
-static int TTYrows = SCREEN_ROWS;
+//static int TTYwidth = SCREEN_WIDTH;
+//static int TTYrows = SCREEN_ROWS;
 static bool Echo = DO_ECHO;
 
 /* Display print 8-bit chars as `M-x' or as the actual 8-bit char? */
@@ -356,7 +356,7 @@ static unsigned int
 TTYget() {
 
   unsigned char c;
-  int i;
+  
 
   TTYflush();
 
@@ -968,7 +968,7 @@ TTYspecial(unsigned int c) {
 static unsigned char *
 editinput() {
   unsigned int c;
-  char tmp[2] = { 0, 0 };
+  //char tmp[2] = { 0, 0 };
 
 
   Repeat = NO_ARG;
@@ -1039,7 +1039,7 @@ hist_add(unsigned char *p) {
 static char *
 readline(const char *prompt) {
   unsigned char *line;
-  int s;
+  //int s;
 
   if (Line == NULL) {
     Length = MEM_INC;
@@ -1067,7 +1067,7 @@ readline(const char *prompt) {
   DISPOSE(H.Lines[--H.Size]);
   //TODO: remove signal processing
   if (Signal > 0) {
-    s = Signal;
+    //s = Signal;
     Signal = 0;
     //(void)kill(getpid(), s);
   }
@@ -1848,7 +1848,7 @@ static struct keywords_t keywords_sequence[] = {
   KEYWORDS_END
 };
 
-
+#if 0 //not yet
 //Custom SPI commands (spi subderictory)
 //TAG:keywords_spi
 static struct keywords_t keywords_spi[] = {
@@ -1857,7 +1857,7 @@ static struct keywords_t keywords_spi[] = {
 
   KEYWORDS_END
 };
-
+#endif
 
 
 // root directory commands
@@ -3026,7 +3026,7 @@ static void pin_load(int pin) {
 static int cmd_pin(int argc, char **argv) {
 
   unsigned int flags = 0;
-  int i = 2, level = -1, pin, read = 0, aread = 0;
+  int i = 2, level = -1, pin;
 
   if (argc < 2)
     return -1;  //missing argument
@@ -3355,7 +3355,7 @@ static int cmd_i2c(int argc, char **argv) {
     q_printf("%% Scanning I2C bus %d...\n\r", iic);
 
     for (addr = 1, i = 0; addr < 128; addr++) {
-      char b;
+      unsigned char b;
       if (ESP_OK == i2cWrite(iic, addr, &b, 0, 500)) {
         i++;
         q_printf("%% Device found at address %02X\n\r", addr);
@@ -3530,7 +3530,7 @@ static int cmd_uart(int argc, char **argv) {
     if (argc < 2)
       return -1;
 
-    int i = 1, j;
+    int i = 1;
 
     if (!uart_isup(u))
       goto noinit;
@@ -3539,7 +3539,7 @@ static int cmd_uart(int argc, char **argv) {
     do {
       char *p = argv[i];
 
-      // char by char. parse escape sequences if any: \n \r \t \XY and \\ 
+      // char by char. parse c-style escape sequences if any
       // XY are hexadecimal characters
       // hexadecimals at the end of every token allowed to be in a short form as well: \X
       // valid: "write Hello\20World!\9"
