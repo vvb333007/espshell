@@ -61,7 +61,7 @@
 #undef USE_UART
 #undef DO_ECHO
 
-#define ESPCAM               //include ESP32CAM commands (read extra/README.md).
+//#define ESPCAM               //include ESP32CAM commands (read extra/README.md).
 
 #define AUTOSTART      1     // Start the shell automatically (no extra code needed to user sketch)
                              // If set to 0, then the user sketch must call espshell_start()
@@ -108,13 +108,9 @@
 
 #include <Arduino.h>
 
-// start espshell:
-// called automatically if AUTOSTART==1 (default). if autostart is disabled (==0) then user
-// must declare this function in ther sketch .ino file as extern "C" espshell_task(const void *);
-// and call it explicitly
-// arg == NULL : blocking call. does not return.
-// arg != NULL : async call. starts the task and returns immediately
-void espshell_task(const void *arg);
+// main espshell task. started by espshell_start() on application
+// startup (if AUTOSTART == 1)
+static void espshell_task(const void *arg);
 
 
 //========>=========>======= EDITLINE CODE BELOW (modified ancient version) =======>=======>
@@ -142,14 +138,10 @@ void espshell_task(const void *arg);
 static uart_port_t uart = USE_UART;
 
 
-/* Get/Set UART to use: UART_NUM_0, UART_NUM_1,... etc.
- * By default all the IO happens on UART0 but it can be changed to any other
- * UART. After this call the shell will use uart "i" to perform all the IO
- * leaving previously used uart to the sketch
- *
- * Used by "tty NUM" shell command
- */
-int rl_set_uart(uart_port_t i) {
+// Get/Set UART to use: UART_NUM_0, UART_NUM_1,... etc.
+// By default all the IO happens on UART0 but it can be changed to any other
+// UART.
+ int rl_set_uart(uart_port_t i) {
 
   if (i >= UART_NUM_MAX)
     return -1;
@@ -3131,8 +3123,8 @@ static int cmd_nap(int argc, char **argv) {
   // plan "nap" command: sleep until we receive at least 3 positive edges on UART pin
   // (press any key for a wakeup)
   if (argc == 1) {
-    esp_sleep_enable_uart_wakeup(rl_set_uart(-1));  //wakeup by uart
-    uart_set_wakeup_threshold(rl_set_uart(-1), 3);  // 3 positive edges on RX pin to wake up ('spacebar' button two times)
+    esp_sleep_enable_uart_wakeup(uart);  //wakeup by uart
+    uart_set_wakeup_threshold(uart, 3);  // 3 positive edges on RX pin to wake up ('spacebar' button two times)
   } else
     // "nap NUM" command: sleep NUM seconds. Wakeup by a timer
     if (argc == 2) {
@@ -3389,9 +3381,9 @@ noinit:
 #define SERIAL_8N1 0x800001c
 
 //check if UART has its driver installed
-static inline bool uart_isup(int uart) {
+static inline bool uart_isup(int u) {
 
-  return (uart < 0 || uart >= SOC_UART_NUM) ? 0 : uart_is_driver_installed(uart);
+  return (u < 0 || u >= SOC_UART_NUM) ? 0 : uart_is_driver_installed(u);
 }
 
 
@@ -3411,7 +3403,7 @@ static int cmd_uart_baud(int argc, char **argv) {
     return 0;
   }
 
-  if (ESP_OK != uart_set_baudrate(u, atoi(argv[1])))
+  if (ESP_OK != uart_set_baudrate(u, atol(argv[1])))
     q_print(Failed);
 
   return 0;
@@ -3491,24 +3483,24 @@ uart_tap(int remote) {
 //TODO: split to separate functions
 static int cmd_uart(int argc, char **argv) {
 
-  int uart, sent = 0;
+  int u, sent = 0;
 
 
-  uart = Context;
+  u = Context;
 
   // UART TAP
   if (!q_strcmp(argv[0], "tap")) {
     //do not tap to the same uart
-    if (uart == rl_set_uart(-1)) {
+    if (uart == u) {
       q_print("% Can not tap on itself\n\r");
       return 0;
     }
 
-    if (!uart_isup(uart))
+    if (!uart_isup(u))
       goto noinit;
 
-    q_printf("%% Tapping to UART%d, CTRL+C to exit\n\r", uart);
-    uart_tap(uart);
+    q_printf("%% Tapping to UART%d, CTRL+C to exit\n\r", u);
+    uart_tap(u);
     q_print("\n\r% Ctrl+C, exiting\n\r");
     return 0;
   } else if (!q_strcmp(argv[0], "up")) {  //up RX TX SPEED
@@ -3516,30 +3508,28 @@ static int cmd_uart(int argc, char **argv) {
       return -1;
     // uart number, rx/tx pins and speed must be numbers
 
-    int rx, tx, speed;
-    if (!isnum(argv[1])) return 1;
-    else rx = atoi(argv[1]);
-    if (!pin_exist(rx)) return 1;
-    if (!isnum(argv[2])) return 2;
-    else tx = atoi(argv[2]);
-    if (!pin_exist(tx)) return 2;
+    unsigned int rx, tx, speed;
+    if (!isnum(argv[1])) return 1; else rx = atol(argv[1]);
+    if (!pin_exist(rx))  return 1;
+    if (!isnum(argv[2])) return 2; else tx = atol(argv[2]);
+    if (!pin_exist(tx))  return 2;
     if (!isnum(argv[3])) return 3;
-    else speed = atoi(argv[3]);  //TODO: check speed
+    else speed = atol(argv[3]);  //TODO: check speed
 
-    if (NULL == uartBegin(uart, speed, SERIAL_8N1, rx, tx, 256, 0, false, 112))
+    if (NULL == uartBegin(u, speed, SERIAL_8N1, rx, tx, 256, 0, false, 112))
       q_print(Failed);
   } else if (!q_strcmp(argv[0], "down")) {  // down
-    if (!uart_isup(uart))
+    if (!uart_isup(u))
       goto noinit;
     else
-      uartEnd(uart);
+      uartEnd(u);
   } else if (!q_strcmp(argv[0], "write")) {  //write TEXT
     if (argc < 2)
       return -1;
 
     int i = 1, j;
 
-    if (!uart_isup(uart))
+    if (!uart_isup(u))
       goto noinit;
 
     // go thru all the arguments and send them. the space is inserted between arguments
@@ -3547,33 +3537,21 @@ static int cmd_uart(int argc, char **argv) {
       char *p = argv[i];
 
       // char by char. parse escape sequences if any: \n \r \t \XY and \\ 
-            // XY are hexadecimal characters
+      // XY are hexadecimal characters
       // hexadecimals at the end of every token allowed to be in a short form as well: \X
-      // valid: "uart 0 write Hello\20World!\9"
-      // valid: "uart 0 write Hello\9 World"
-      // invalid: "uart 0 write Hello\9World" (Must be \09)
+      // valid: "write Hello\20World!\9"
+      // valid: "write Hello\9 World"
+      // invalid: "write Hello\9World" (Must be \09)
       while (*p) {
         char c = *p;
         p++;
         if (c == '\\') {
 
           switch (*p) {
-            case '\\':
-              p++;
-              c = '\\';
-              break;
-            case 'n':
-              p++;
-              c = '\n';
-              break;
-            case 'r':
-              p++;
-              c = '\r';
-              break;
-            case 't':
-              p++;
-              c = '\r';
-              break;
+            case '\\': p++; c = '\\'; break;
+            case 'n' : p++; c = '\n'; break;
+            case 'r' : p++; c = '\r'; break;
+            case 't' : p++; c = '\r'; break;
             default:
               if (ishex(p))
                 c = ascii2hex(p);
@@ -3587,7 +3565,7 @@ static int cmd_uart(int argc, char **argv) {
         }
         sent++;
         //TODO: check result, count succesfull writes, report if there were errors
-        uart_write_bytes(uart, &c, 1);
+        uart_write_bytes(u, &c, 1);
       }
 
       i++;
@@ -3595,20 +3573,21 @@ static int cmd_uart(int argc, char **argv) {
       if (i < argc) {
         char space = ' ';
         //TODO: check result
-        uart_write_bytes(uart, &space, 1);
+        uart_write_bytes(u, &space, 1);
         sent++;
       }
     } while (i < argc);
 
     q_printf("%% %u bytes sent\n\r", sent);
-  } else if (!q_strcmp(argv[0], "read")) {  // read
+  } else 
+  if (!q_strcmp(argv[0], "read")) {  // read
     size_t available = 0, tmp;
-    if (ESP_OK != uart_get_buffered_data_len(uart, &available))
+    if (ESP_OK != uart_get_buffered_data_len(u, &available))
       goto noinit;
     tmp = available;
     while (available--) {
       unsigned char c;
-      if (uart_read_bytes(uart, &c, 1, portMAX_DELAY /* TODO: make short delay! */) == 1) {
+      if (uart_read_bytes(u, &c, 1, portMAX_DELAY /* TODO: make short delay! */) == 1) {
         if (c >= ' ' || c == '\r' || c == '\n' || c == '\t')
           q_printf("%c", c);
         else
@@ -3621,7 +3600,7 @@ static int cmd_uart(int argc, char **argv) {
   // command executed or was not understood
   return 0;
 noinit:
-  q_printf("%% UART%d is not initialized\n\r", uart);
+  q_printf("%% UART%d is not initialized\n\r", u);
   return 0;
 }
 
@@ -3645,7 +3624,7 @@ static int cmd_tty(int argc, char **argv) {
 #if WITH_HELP
     q_printf("%% See you on UART%d. Bye!\n\r", u);
 #endif
-    rl_set_uart(u);
+    uart = u;
   }
   return 0;
 }
