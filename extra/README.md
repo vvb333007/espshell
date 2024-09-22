@@ -40,12 +40,4 @@ and look into it: there are pin assignments. Change them to fit your camera/boar
 How POWER_DOWN pin is controlled?
 ---------------------------------
 
-Manually, via "pin" command. By default camera is in POWER_ON state, but you can
-power down it via pin 32 (Ai Thinker ESP32Cam): "pin 32 out low" and "pin 32 out high". Note if your
-camera was initialized ("camera init") then powering down will deinitialize it without telling
-the shell about doing so: if camera was initialized and then powered down, then the proper
-power-on sequence is:
-
-"camera deinit"
-"pin 32 out high"
-"camera init"
+"camera init" pulls PWDN pin LOW, "camera deinit" pulls it HIGH
