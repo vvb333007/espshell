@@ -66,7 +66,11 @@ SHELL BRIEF DESCRIPTION
 
  For pattern generation please read Pulse_Generator.txt
 
- For ESP32Cam support read extra/README.md
+
+DOES THIS SHELL HAS ANY COMMANDS TO CONTROL ESP32Cam?
+-----------------------------------------------------
+Yes it has. Read extra/README.md for more information on how
+to enable ESPCam support.
  
 MEMORY FOOTPRINT/OVERHEAD
 -------------------------
