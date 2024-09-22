@@ -321,10 +321,12 @@ static int cam_deinit(int argc, char **argv) {
     q_print("% Camera deinitialized\n\r");
     delay(100);
     if (config.pin_pwdn >= 0) {          // Enable POWER_DOWN
+      //gpio_hold_dis(config.pin_pwdn);
       pinMode(config.pin_pwdn,OUTPUT);
       digitalWrite(config.pin_pwdn,HIGH);
+      //gpio_hold_en(config.pin_pwdn);
       q_printf("%% Camera power down (GPIO#%d is HIGH)\n\r",config.pin_pwdn);
-      //TODO: gpio hold when sleeping
+      
     }
   }
   return 0;
@@ -341,13 +343,6 @@ static int cam_init() {
 
   pinMode(4 , OUTPUT);                 // High power LED
   pinMode(33, OUTPUT);                 // Small red LED
-  if (config.pin_pwdn >= 0) {          // Disable POWER_DOWN
-    pinMode(config.pin_pwdn,OUTPUT);
-    digitalWrite(config.pin_pwdn,LOW);
-    //TODO: gpio hold when sleeping
-    q_printf("%% Camera power up (GPIO%d is LOW)\n\r",config.pin_pwdn);
-    delay(100);
-  }
 
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -380,6 +375,15 @@ static int cam_init() {
 
    config.fb_location = CAMERA_FB_IN_PSRAM;
    config.grab_mode = CAMERA_GRAB_LATEST;
+
+  if (config.pin_pwdn >= 0) {          // Disable POWER_DOWN
+    //gpio_hold_dis(config.pin_pwdn);
+    pinMode(config.pin_pwdn,OUTPUT);
+    digitalWrite(config.pin_pwdn,LOW);
+    //gpio_hold_en(config.pin_pwdn);
+    q_printf("%% Camera power up (GPIO%d is LOW)\n\r",config.pin_pwdn);
+    delay(100);
+  }
 
 
   sensor_t *s = NULL;
