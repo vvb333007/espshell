@@ -80,7 +80,7 @@ ESPShell task stack size of 10kbytes (can be changed see STACKSIZE macro in esps
 
 NOTE:
 -----
-This shell is about hardware. Thats why ere are no commands like "ping" or any other
+This shell is about hardware. Thats why here are no commands like "ping" or any other
 higher level commands. There are million commands to implement but I only implement those
 i use in my debugging/development process. What commands I miss right now is triggers &
 pattern generation :). Also I try to keep it small: it is just 1 file and I want to
