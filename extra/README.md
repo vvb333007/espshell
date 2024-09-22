@@ -9,17 +9,24 @@ Explore new commands: "camera ?".
 
 Enter camera configuration subtree: "camera settings" (or "cam set")
 
-Standart command sequence to take shot is:
+Typical command sequence to take shot is:
+
+"pin 32 out low"    = optional
 "camera init"
 "camera capture"
+"camera filesize"
+"camera download"
+....
+"camera deinit"
+"pin 32 out high"   = optional
 
 Captured picture filesize:
-"camera filesize"
+"camera filesize" - prints out captured picture (JPEG) filesize, something like "% 1234567" followed by CR,LF
 
 Transfer picture over UART:
 "camera download"
 Once "camera download" command is entered the ESPCam replies with filesize and follows with
-picture content encoded in hex ascii bytes. It is up to user to decode this. Pictures are JPEG
+picture content encoded in hex ascii bytes (it is up to user to decode this). Pictures are JPEG
 files
 
 More commands is under "camera ?"
