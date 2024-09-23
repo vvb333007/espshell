@@ -136,12 +136,15 @@ static int cam_set_qbcss(int argc, char **argv) {
   if (argc < 2)
     return -1;
 
-  if (!isnum(argv[1]))
+  if (!isnum(argv[1])) {
+    q_print("% Integer value expected\n\r");
     return 1;
+  }
 
   val = atoi(argv[1]);
 
-  if (!q_strcmp(argv[0],"quality")) {
+  if (!q_strcmp(argv[0],"quality")) { // quality has range from 2 to 63. Better than 2
+                                      // causes random lockups
     if (val < 2 || val > 63)
       return 1;
   } else {
@@ -226,13 +229,13 @@ static struct keywords_t keywords_espcam[] = {
   {"sharpness",  cam_set_qbcss, 1,"% \"sharpness\" - Adjust sharpness: -2..2",
                          "Sharpness"},
 
-  {"size",       cam_set_size, 1,"% \"size vga|svga|xga|uxga\"\n\r\n\r" \
+  {"size",       cam_set_size, 1,"% \"size vga|svga|xga|hd|sxga|uxga\"\n\r\n\r" \
                          "% Set frame size:\n\r" \
                          "% vga  - 640x480\n\r" \
                          "% svga - 800x600\n\r" \
                          "% xga  - 1024x760\n\r" \
-                         "% hd   - \n\r" \
-                         "% sxga - \n\r" \
+                         "% hd   - 1280x720\n\r" \
+                         "% sxga - 1280x1024\n\r" \
                          "% uxga - 1600x1200 (Default)",
                          "Resolution"},
 
@@ -246,12 +249,8 @@ static struct keywords_t keywords_espcam[] = {
   KEYWORDS_END
 };
 
-//static int            cam_width  = 1600;
-//static int            cam_height = 1200;
 static camera_fb_t   *cam_fb     = NULL;  // last captured picture
 static bool           cam_good   = false; // initialized or not
-
-
 
 //"capture"
 //
