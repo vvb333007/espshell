@@ -14,9 +14,9 @@ Lets solve a simple task: we want to generate number of pulses on pin2
 as follows:
 
 "Set pin2 HIGH for 10uS, then LOW for 20uS then HIGH again for 30uS and 
-finally LOW."
+finally LOW for 999 microseconds"
 
-We start from entering a sequence configuration mode:
+We start from entering sequence configuration mode:
 
 esp32#>sequence 0
 esp32-seq#>
@@ -47,21 +47,43 @@ is either "1" or "0" and LENGTH_IN_TICKS tells how long this level must be
 held (1..32767 ticks). Using command "show" one can check the sequence total
 length in ticks and microseconds
 
-
-Another way to do the same is to use "bits", "one" and "zero" commands instead
-of encoding all individual values using "levels" command. Command "bits" 
-defines a bit stream to be sent while "one" and "zero" define what 1 and 0 
-actuually are in terms of LOW/HIGH. Give the example task above we can enter
-following commands:
-
+Now we have configured sequence number 0. Lets send it on GPIO2:
 
 esp32#>sequence 0
 esp32-seq#>tick 1
-esp32-seq#>bits 100111
+esp32-seq#>levels 1/800 0/50 1/17 0/999
+esp32-seq#>exit
+esp32#>pin 2 seq 0
+
+Or, send it 4 times in a row:
+
+esp32#>sequence 0
+esp32-seq#>tick 1
+esp32-seq#>levels 1/800 0/50 1/17 0/999
+esp32-seq#>exit
+esp32#>pin 2 seq 0
+esp32#>pin 2 seq 0 seq 0 seq 0 seq 0
+
+
+
+Another way to define a sequence is to use  "bits", "one" and "zero" 
+commands instead of encoding all individual values using "levels" command. 
+
+Command "bits" defines a bit stream to be sent while "one" and "zero" define 
+what 1 and 0 actually are in terms of LOW/HIGH. Lets say we want to send 
+sequence of pulses like follows:
+
+"high for 10us, low 20us, high 30us,low 100us"
+
+And here are shell commands which do the job:
+
+esp32#>sequence 0
+esp32-seq#>tick 1
+esp32-seq#>bits 1001110000000000
 esp32-seq#>one 1/10
 esp32-seq#>zero 0/10
 
-Commands "one" and "zero" define a 1 to be 10uS long and 0 to be 10uS long
+Commands "one" and "zero" define "1" to be 10uS long and 0 to be 10uS long
 as well. Then we use proper number of 1s and 0s to achieve timings we need:
 
 1   - 10uS
@@ -78,8 +100,8 @@ esp32-seq#>show
 % Sequence #0:
 % Resolution : 1.0000uS  (Frequency: 1000000 Hz)
 % Levels are :
-% 1/10, 0/10, 0/10, 1/10, 1/10, 1/10,                   <------------------
-% Total: 6 levels, duration: 60 ticks, (~60 uS)
+% 1/10, 0/10, 0/10, 1/10, 1/10, 1/10 ....              <----------
+
 
 
 The ESP32's hardware behind this pulse generation is a remote-control perephirial
@@ -142,7 +164,7 @@ Summary:
 * Use command "sequence" or "seq" to create sequences
 * Use command "pin X seq Y" to send sequence Y over pin X
 * "tick" MUST be set before sequence can be fed to any pin
-* "levels" : sequences can be set up manually setting level/durations pairs
+* "levels" : sequences can be set up manually by setting level/durations pairs
 * "bits"   : sequences can be set up as a bit strings with defined 1 and 0 lengths
 
 
