@@ -21,8 +21,13 @@ with these pins only if your program is fully in processor cache
 
 Some pins are configured to be OUTPUT only and this can not be changed
 
+
+PURPOSE
+-------
 In ESPShell one can play with GPIOs using "pin" command which is used
-both for displaying pin information and configuring.
+both for displaying pin information and configuring. Turning pin high
+or low, sending various pulse patterns through pins, setting pin direction 
+etc can be done without need to recompile user sketch
 
 ESPShell provides commands for
 
