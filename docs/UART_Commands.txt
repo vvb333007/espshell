@@ -21,12 +21,6 @@ Serial.begin(115200);
 Once espshell detects that uart0 is up and running it start to read and execute
 user commands.
 
-At any moment the user sketch can instruct the shell to use another UART by
-calling "rl_set_uart( uart_number )". If one wants to leave UART0 purely for 
-the sketch and use another UART for the shell - the rl_set_uart() is just
-for that. Note that it will also require to add (#include "espshell.h") to
-the sketch.
-
 UARTs are configured by entering "uart N" where N is the UART number. After this
 command is executed the espshell prompt changes from "esp32#>" to "esp32-uart#>"
 indicating that you are in UART configuration mode. Entering "?" and pressing 
