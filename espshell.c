@@ -54,8 +54,6 @@
 #undef WITH_HELP
 #undef UNIQUE_HISTORY
 #undef HIST_SIZE
-#undef SCREEN_WIDTH
-#undef SCREEN_ROWS
 #undef STACKSIZE
 #undef BREAK_KEY
 #undef USE_UART
@@ -69,9 +67,7 @@
 #define WITH_HELP      1     // Set to 0 to save some program space by excluding help strings/functions
 #define UNIQUE_HISTORY 1     // Wheither to discard repeating commands from the history or not
 #define HIST_SIZE      20    // History buffer size (number of commands to remember)
-#define SCREEN_WIDTH   80    // Terminal width
-#define SCREEN_ROWS    24    // Terminal height
-#define STACKSIZE      10240 // Shell task stack size
+#define STACKSIZE      5000  // Shell task stack size
 #define BREAK_KEY      3     // Keycode of a "Exit" key: CTRL+C to exit "uart NUM tap" mode
 #define SEQUENCES_NUM  10    // Max number of sequences available for command "sequence"
 
@@ -237,8 +233,6 @@ static unsigned int Length;
 static unsigned int ScreenCount;
 static unsigned int ScreenSize;
 static char *backspace = NULL;
-//static int TTYwidth = SCREEN_WIDTH;
-//static int TTYrows = SCREEN_ROWS;
 static bool Echo = DO_ECHO;
 
 /* Display print 8-bit chars as `M-x' or as the actual 8-bit char? */
@@ -1877,11 +1871,11 @@ static struct keywords_t keywords_main[] = {
     "Display information" },
   { "pin", cmd_pin, -1,
 #if WITH_HELP
-    "% \"pin X (up|down|out|in|open|high|low|save|load|read|aread)...\"\n\r" \
+    "% \"pin X (hold|release|up|down|out|in|open|high|low|save|load|read|aread|delay)...\"\n\r" \
     "%\n\r" \
     "% Set/Save/Load pin X configuration: pull/direction/digital value\n\r" \
     "% Multiple arguments must be separated with spaces, see examples below:\n\r" \
-    "%\n\r" \
+    "% Ex.: pin 18 hold               - freeze pin state\n\r" \
     "% Ex.: pin 18 read aread         - read digital and then analog values\n\r" \
     "% Ex.: pin 18 save               - save pin state\n\r" \
     "% Ex.: pin 18 save out high load - save pin state and set it to OUTPUT HIGH then restore\n\r" \
@@ -1910,9 +1904,7 @@ static struct keywords_t keywords_main[] = {
   //never called, shadowed by previous entry. for helptext only
   { "pin", cmd_pin, 1,
 #if WITH_HELP
-    "% \"pin X\"\n\r"
-    "%\n\r"
-    "% Show pin X configuration",
+    "% \"pin X\" - % Show pin X configuration",
 #else
     "",
 #endif
@@ -3080,20 +3072,30 @@ static int cmd_pin(int argc, char **argv) {
   //more than 2 tokens: read all the options and set the parameters
   while (i < argc) {
 
-    // execute parameters in sequence. this allows for reading and writing, saving
-    // and restoring in one command:
-    // Example: pin 2 save out high in read load
-    if (!q_strcmp(argv[i], "save")) pin_save(pin);
-    else if (!q_strcmp(argv[i], "load")) pin_load(pin);
-    else if (!q_strcmp(argv[i], "up"))    { flags |= PULLUP; pinMode(pin, flags); }
-    else if (!q_strcmp(argv[i], "down"))  { flags |= PULLDOWN; pinMode(pin, flags); }
-    else if (!q_strcmp(argv[i], "open"))      { flags |= OPEN_DRAIN; pinMode(pin, flags); }
-    else if (!q_strcmp(argv[i], "in"))        { flags |= INPUT; pinMode(pin, flags); }
-    else if (!q_strcmp(argv[i], "out"))       { flags |= OUTPUT; pinMode(pin, flags); }
-    else if (!q_strcmp(argv[i], "low"))       digitalWrite(pin, LOW);
-    else if (!q_strcmp(argv[i], "high"))      digitalWrite(pin, HIGH);
-    else if (!q_strcmp(argv[i], "read"))      q_printf("%% GPIO%d : logic %d\n\r", pin, digitalRead(pin) == HIGH ? 1 : 0);
-    else if (!q_strcmp(argv[i], "aread"))     q_printf("%% GPIO%d : analog %d (%d mV)\n\r", pin, analogRead(pin), analogReadMilliVolts(pin));
+    // Run thru keywords and execute them in sequence
+    
+    if (!q_strcmp(argv[i],"delay")) {
+      if ((i + 1) >= argc) {
+        q_print("% Delay value expected after keyword \"delay\"\n\r");
+        return 0;
+      }
+      i++;
+      if (!isnum(argv[i]))
+        return i;
+      delay(atol(argv[i]));
+    } else if (!q_strcmp(argv[i], "save"))  pin_save(pin);
+    else if (!q_strcmp(argv[i], "load"))    pin_load(pin);
+    else if (!q_strcmp(argv[i], "hold"))    gpio_hold_en(pin);
+    else if (!q_strcmp(argv[i], "release")) gpio_hold_dis(pin);
+    else if (!q_strcmp(argv[i], "up"))      { flags |= PULLUP;     pinMode(pin, flags); }
+    else if (!q_strcmp(argv[i], "down"))    { flags |= PULLDOWN;   pinMode(pin, flags); }
+    else if (!q_strcmp(argv[i], "open"))    { flags |= OPEN_DRAIN; pinMode(pin, flags); }
+    else if (!q_strcmp(argv[i], "in"))      { flags |= INPUT;      pinMode(pin, flags); }
+    else if (!q_strcmp(argv[i], "out"))     { flags |= OUTPUT;     pinMode(pin, flags); }
+    else if (!q_strcmp(argv[i], "low"))     digitalWrite(pin, LOW);
+    else if (!q_strcmp(argv[i], "high"))    digitalWrite(pin, HIGH);
+    else if (!q_strcmp(argv[i], "read"))    q_printf("%% GPIO%d : logic %d\n\r", pin, digitalRead(pin) == HIGH ? 1 : 0);
+    else if (!q_strcmp(argv[i], "aread"))   q_printf("%% GPIO%d : analog %d (%d mV)\n\r", pin, analogRead(pin), analogReadMilliVolts(pin));
     else
       return i;  // argument i was not recognized
     i++;
@@ -3123,10 +3125,12 @@ static int cmd_mem(int argc, char **argv) {
 //"nap"
 static int cmd_nap(int argc, char **argv) {
 
-  // plan "nap" command: sleep until we receive at least 3 positive edges on UART pin
+  static bool isen = false;
+  // "nap" command: sleep until we receive at least 3 positive edges on UART pin
   // (press any key for a wakeup)
   if (argc == 1) {
     esp_sleep_enable_uart_wakeup(uart);  //wakeup by uart
+    isen = true;
     uart_set_wakeup_threshold(uart, 3);  // 3 positive edges on RX pin to wake up ('spacebar' button two times)
   } else
     // "nap NUM" command: sleep NUM seconds. Wakeup by a timer
@@ -3134,13 +3138,17 @@ static int cmd_nap(int argc, char **argv) {
 
       if (!isnum(argv[1]))  //arg1 must be a number
         return 1;
-
-      esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_UART);  //disable wakeup by uart
-      esp_sleep_enable_timer_wakeup(1000000UL * (unsigned long)atoi(argv[1]));
+      if (isen) {
+        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_UART);  //disable wakeup by uart
+        isen = false;
+      }
+      esp_sleep_enable_timer_wakeup(1000000UL * (unsigned long)atol(argv[1]));
     }
 
   q_print("% Light sleep..");
+  
   esp_light_sleep_start();
+  
   q_print("Resuming\n\r");
   return 0;
 }
