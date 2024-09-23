@@ -3042,39 +3042,40 @@ static int cmd_pin(int argc, char **argv) {
   }
 
   
-  if (argc > 2) {
+  
 
-    // pin X seq Y
-    // TODO: process it in a while() below
-    if (!q_strcmp(argv[2], "seq")) {
-      if (argc < 4)
-        return -1;
-      if (!isnum(argv[3]))
-        return 3;
-      int seq = atoi(argv[3]);
-      if (seq < 0 || seq >= SEQUENCES_NUM)
-        return 3;
-      if (!seq_isready(seq)) {
-        q_printf("%% Sequence %d is not fully configured\n\r", seq);
-        return 0;
-      }
-      // enable RMT sequence 'seq' on pin 'pin'
-      q_printf("%% Sending sequence %d over GPIO %d\n\r", seq, pin);
-
-      if ((i = seq_send(pin, seq)) < 0) {
-        q_print(Failed);
-        q_printf("%% Error code is: %d\n\r",i);
-      }
-      return 0;
-    }
-  }
+  
 
   //more than 2 tokens: read all the options and set the parameters
   while (i < argc) {
 
     // Run thru keywords and execute them in sequence
-    
-    if (!q_strcmp(argv[i],"delay")) {
+    if (!q_strcmp(argv[i],"seq")) {
+      if ((i + 1) >= argc) {
+        q_print("% Sequence number expected after \"seq\"\n\r");
+        return 0;
+      }
+      i++;
+
+      if (!isnum(argv[i])) 
+        return i;
+
+      int seq = atoi(argv[i]),j;
+
+      if (seq < 0 || seq >= SEQUENCES_NUM)
+        return i;
+
+      if (seq_isready(seq)) {
+        // enable RMT sequence 'seq' on pin 'pin'
+        q_printf("%% Sending sequence %d over GPIO %d\n\r", seq, pin);
+
+        if ((j = seq_send(pin, seq)) < 0)
+          q_printf("%% Failed. Error code is: %d\n\r",j);
+
+      } else
+        q_printf("%% Sequence %d is not configured\n\r", seq);
+    } 
+    else if (!q_strcmp(argv[i],"delay")) {
       if ((i + 1) >= argc) {
         q_print("% Delay value expected after keyword \"delay\"\n\r");
         return 0;
