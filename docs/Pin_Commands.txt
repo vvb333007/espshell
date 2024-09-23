@@ -1,19 +1,21 @@
 ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
 
 
-ESP32 PINS
-----------
+ESP32 PINS (GPIOs)
+------------------
 
 ESP32 has many pins (GPIO) which can be configured to be either a
 general purpose pin (GPIO) or to bear some function: be a TX pin of
 a hardware UART interface or be a CLOCK line for an I2C interface
+for example.
 
 Some pins have system functions: so called "bootstrapping" pins.
 Their function is to tell the bootloader what to do on boot and
-how to initialize the hardware.
+how to initialize the hardware. It is ok to use them as long as 
+it does not interfere with booting process
 
 Some pins are reserved for internal use: for example pins 6-11 on
-most ESP32 Devboards are used to access internal flash: you can play
+most ESP32 Dev boards are used to access internal flash: you can play
 with these pins only if your program is fully in processor cache 
 (be within 64kb which is impossible when using espshell)
 
@@ -21,6 +23,13 @@ Some pins are configured to be OUTPUT only and this can not be changed
 
 In ESPShell one can play with GPIOs using "pin" command which is used
 both for displaying pin information and configuring.
+
+ESPShell provides commands for
+
+  * Displaying pin information: mode (INPUT or OUTPUT), pull-up/pull-down
+    configuration, digital and analog pin value and some extra information
+  * Changing pin configuration, saving/restoring pin configuration
+  * Setting pin HIGH or LOW (including simple HIGH/LOW sequences)
 
 
 DISPLAYING PIN INFORMATION
@@ -56,25 +65,33 @@ exists in this hardware 24,28,29,30,31
 SETTING PIN MODE, READING/WRITING PIN VALUES
 --------------------------------------------
 
-(or scroll to Examples below :)
+(No time to read? Scroll to Examples below!)
 
 Command "pin" takes multiple argumens which are processed in order
 from left to right. The first argument is a pin number and the rest
 of arguments are keywords to execute. One can think of arguments as
-of simple program to execute on given pin
+of simple program to execute on given pin. 
 
-Here is the list of allowed keywords:
+For example "pin 2 save out high load" is a valid command with 4 
+argument.
+
+Here is the full list of allowed keywords:
 
 
-up      - Set weak internal pull-up (~45kOhm)
-down    - Set weak internal pull-down
-out     - Set pin to be output (pinMode(OUTPUT))
+out     - Set pin to be output (i.e. pinMode(OUTPUT))
 in      - Set pin to be input
+
+up      - Set weak internal pull-up (~45 kOhm)
+down    - Set weak internal pull-down
 open    - Set pin "open drain" option
+
 high    - Write logic "1" to the pin (digitalWrite(pin,HIGH))
 low     - Write logic "0" to the pin
 
-save    - Save pin configuration. each save rewrites previous save
+delay X - Make a delay of X milliseconds before executing next
+          keyword. (see Example 5. below)
+
+save    - Save pin configuration. Each save rewrites previous save
 
 load    - Load pin configuration. reads previously saved data. reading does not
           erase saved data.
@@ -84,9 +101,9 @@ aread   - Analog read*
 
 hold    - "freeze" pin state and output value. Frozen pin remains frozen after
           reboot (as long as power to the chip is provided. rebooting via 
-          POWERUP unfreezes pin) See NOTE(*) at the end of this document.
+          POWERUP unfreezes pin) See NOTE1 at the end of this document.
 
-release - "unfreeze" pin which was "frozen" by "pin X hold" See NOTE(*) at the 
+release - "unfreeze" pin which was "frozen" by "pin X hold" See NOTE1 at the 
           end of this document
 
 Multiple keywords can be used in single "pin" command (separated by spaces):
@@ -120,8 +137,9 @@ Example 4. Read analog value from pin 33:
 
    NOTE: analog read command ("aread") is implemented via analogRead() call which
    writes new configuration to the pin in the process of reading. In other words, 
-   after "pin 18 aread" command is executed  pin 18 gets reconfigured (does not respond
-   to digitalRead() afterwards). Use "save" and "load" keywords to preserve pin state:
+   after "pin 18 aread" command is executed  pin 18 gets reconfigured (does not
+   respond to digitalRead() afterwards). Use "save" and "load" keywords to 
+   preserve pin state:
 
    esp32#>pin 33 read save aread load
 
@@ -129,16 +147,32 @@ Example 4. Read analog value from pin 33:
    on the pin, then saves its state, performs analogRead and restores pin state.
 
 
-Example 5, Save pin state, configure it for OUTPUT, set pin HIGH for 250 milliseconds then
-   set it LOW for 100ms, then HIGH again for 50ms and finally restore the pin configuration:
---------------------------------------------------------------------------------------------
+Example 5, Save pin state, configure it for OUTPUT, set pin HIGH for 250 
+           milliseconds then set it LOW for 100ms, then HIGH again for 50ms and 
+           finally restore the pin configuration:
+-------------------------------------------------------------------------------
 
   esp32#>pin 33 save out high delay 250 low delay 100 high delay 50 load
   
-  NOTE: although you can create simple signal patters with "delay" it is normally used for
-  something simple, like relay control. Complex signal sequences could be configured with
-  use of Pulse Generator (see docs/Pulse_Generator.txt)
+  NOTE: although you can create simple signal patters with "delay" it is normally 
+        used for something simple, like relay control. Complex signal sequences 
+        could be configured with use of Pulse Generator see documentation files
+        docs/Pulse_Generator.txt and docsTone_Generator_And_Counter.txt
 
+
+Example 6: Same as Example 5, but read the pin logic level after every pulse:
+-----------------------------------------------------------------------------
+
+esp32#>pin 33 save out high delay 250 read low delay 100 read high delay 50 read load
+
+
+
+Some more examples:
+
+pin 12 in up                - are equivalent of pinMode(12, INPUT_PULLUP)
+pin 12 read save aread load - read digital and analog values of a pin
+pin 12 hold                 - make pin to freeze its configuration & output value
+pin 12 release              - unfreeze pin
 
 
 (*)
@@ -150,3 +184,5 @@ pin is released then it rereads last configuration issued:
 Lets say we freeze pin 2 and then write 1 to it: since pin is frozen, it will
 not change it walue from 0 to 1. However when we release the pin it immediately
 becomes "logic 1" as if writing of an "1" was queued
+
+
