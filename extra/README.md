@@ -11,14 +11,13 @@ Enter camera configuration subtree: "camera settings" (or "cam set")
 
 Typical command sequence to take shot is:
 
-"pin 32 out low"    = optional
 "camera init"
 "camera capture"
 "camera filesize"
 "camera download"
 ....
 "camera deinit"
-"pin 32 out high"   = optional
+
 
 Captured picture filesize:
 "camera filesize" - prints out captured picture (JPEG) filesize, something like "% 1234567" followed by CR,LF
@@ -35,9 +34,5 @@ Can it be used with other ESP32-based camera boards?
 ----------------------------------------------------
 
 Yes it can be used however you need to modify pin numbers in esp32cam_handler.c : locate cam_init() function
-and look into it: there are pin assignments. Change them to fit your camera/board models and recompiles
+and look into it: there are pin assignments. Change them to fit your camera/board models and recompile
 
-How POWER_DOWN pin is controlled?
----------------------------------
-
-"camera init" pulls PWDN pin LOW, "camera deinit" pulls it HIGH
