@@ -2,7 +2,7 @@ ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
 
 WHAT IS THIS:
 -------------
- This is a debugging/development/play tool for use with Arduino projects on
+ This is a debugging/development tool for use with Arduino projects on
  ESP32 hardware. Provides a command line interface (CLI) on serial port
  running in parallel to user Arduino sketch. This tool assumes that Arduino's
  Serial is uart0 at startup
@@ -12,10 +12,10 @@ WHAT IS THIS:
  proper serial communication software (TeraTerm, PuTTY or similar on Windows or 
  'cu' on Linux)
  
- Screenshots docs/Settings1.jpg and docs/Settings2.jpg shows preferred settings of 
- ArduinoIDE Serial Monitor and TeraTerm. Please note that some features will be 
- unavailable if using Arduino Serial Monitor: you will not be able to send Ctrl+C 
- and Ctrl+Z sequences which are useful in debugging GSM modems.
+ Screenshots Settings1.jpg and Settings2.jpg shows preferred settings of ArduinoIDE 
+ Serial Monitor and TeraTerm. Please note that some features will be unavailable if 
+ using Arduino Serial Monitor: you will not be able to send Ctrl+C and Ctrl+Z sequences
+ which are useful in debugging GSM modems
  
 HOW TO USE IT IN ARDUINO PROJECT:
 ---------------------------------
@@ -66,28 +66,24 @@ SHELL BRIEF DESCRIPTION
 
  For pattern generation please read Pulse_Generator.txt
 
-
-DOES THIS SHELL HAS ANY COMMANDS TO CONTROL ESP32Cam?
------------------------------------------------------
-Yes it has. Read extra/README.md for more information on how
-to enable ESPCam support.
+ For ESP32Cam support read extra/README.md
  
 MEMORY FOOTPRINT/OVERHEAD
 -------------------------
 
-ESPShell uses about 28Kbytes of program memory and around 2Kbytes of variables. There is also
-ESPShell task stack size of 10kbytes (can be changed see STACKSIZE macro in espshell.c)
+ESPShell uses about 30Kbytes of program memory and around 2Kbytes of variables. 
+There is also ESPShell task stack size of 5kbytes (can be changed see STACKSIZE 
+macro in espshell.c)
+
 
 NOTE:
 -----
-This shell is about hardware. Thats why here are no commands like "ping" or any other
+This shell is about hardware. Thats why ere are no commands like "ping" or any other
 higher level commands. There are million commands to implement but I only implement those
 i use in my debugging/development process. What commands I miss right now is triggers &
 pattern generation :). Also I try to keep it small: it is just 1 file and I want to
 keep it like that
 
-The shell itself is one single .c file; you can use supplied espshell.ino sketch as an 
+The shell itself is one single .c file; you can use supplied example_blink.ino sketch as an 
 example: it is a simple LED blink sketch.
-
-$Id:
 
