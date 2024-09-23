@@ -17,7 +17,7 @@ static int cam_set_gain(int argc, char **argv) {
     return -1;
 
   if ((cam = esp_camera_sensor_get()) == NULL) {
-    q_printf(Failed);
+    q_print(Failed);
     return 0;
   }
 
@@ -51,7 +51,7 @@ static int cam_set_balance(int argc, char **argv) {
     return -1;
 
   if ((cam = esp_camera_sensor_get()) == NULL) {
-    q_printf(Failed);
+    q_print(Failed);
     return 0;
   }
 
@@ -87,7 +87,7 @@ static int cam_set_exposure(int argc, char **argv) {
     return -1;
 
   if ((cam = esp_camera_sensor_get()) == NULL) {
-    q_printf(Failed);
+    q_print(Failed);
     return 0;
   }
 
@@ -150,14 +150,14 @@ static int cam_set_qbcss(int argc, char **argv) {
   }
 
   if ((cam = esp_camera_sensor_get()) == NULL) {
-    q_printf(Failed);
+    q_print(Failed);
     return 0;
   }
   if (!q_strcmp(argv[0],"quality"))    cam->set_quality(cam,val);    else
   if (!q_strcmp(argv[0],"brightness")) cam->set_brightness(cam,val); else
   if (!q_strcmp(argv[0],"contrast"))   cam->set_contrast(cam,val);   else
   if (!q_strcmp(argv[0],"saturation")) cam->set_saturation(cam,val); else
-  if (!q_strcmp(argv[0],"sharpness"))  cam->set_sharpness(cam,val);  else q_printf("% \"%s\" unexpected token\n\r", argv[0]);
+  if (!q_strcmp(argv[0],"sharpness"))  cam->set_sharpness(cam,val);  else q_printf("%  unexpected token \"%s\"\n\r", argv[0]);
   
   return 0; 
 }
@@ -173,7 +173,7 @@ static int cam_set_size(int argc, char **argv) {
     return -1;
 
   if ((cam = esp_camera_sensor_get()) == NULL) {
-    q_printf(Failed);
+    q_print(Failed);
     return 0;
   }
 
@@ -399,7 +399,7 @@ static int cam_init() {
       return 0;
     } 
   }
-  q_printf(Failed);
+  q_print(Failed);
   q_printf("%% Camera init code=%d, sensor=%p\n\r",err,s);
   return 0;
 }
