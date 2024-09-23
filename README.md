@@ -2,7 +2,7 @@ ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
 
 WHAT IS THIS:
 -------------
- This is a debugging/development tool for use with Arduino projects on
+ This is a debugging/development/play tool for use with Arduino projects on
  ESP32 hardware. Provides a command line interface (CLI) on serial port
  running in parallel to user Arduino sketch. This tool assumes that Arduino's
  Serial is uart0 at startup
