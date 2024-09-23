@@ -21,33 +21,47 @@ Serial.begin(115200);
 Once espshell detects that uart0 is up and running it start to read and execute
 user commands.
 
-UARTs are configured by entering "uart N" where N is the UART number. After this
+PURPOSE
+-------
+
+The main idea is to simplify debugging uart to uart communication between ESP32
+and some other device, e.g. GSM modem or GPS chip. UART commands allow you to
+initialize uart interface on arbitrary pins and to communicate with device 
+connected to these pins.
+
+In conjuncion with "suspend" command also can be used to reconfigure uarts used
+by sketch.
+
+
+COMMANDS
+--------
+
+UARTs are accessible by entering "uart N" where N is the UART number. After this
 command is executed the espshell prompt changes from "esp32#>" to "esp32-uart#>"
 indicating that you are in UART configuration mode. Entering "?" and pressing 
-Enter will bring you full list of commands available:
+<Enter> will bring you full list of commands available:
 
 
- * esp32#>ua 1
- * esp32-uart#>?
- * % Enter "command ?" to get details about the command.
- * % List of available commands:
- * %
- * % "?"        : Show the list of available commands
- * % "up"       : Initialize uart (pins/speed)
- * % "baud"     : Set baudrate
- * % "down"     : Shutdown
- * % "read"     : Read data from UART
- * % "tap"      : Talk to UARTs device
- * % "write"    : Send bytes over this UART
- * % "exit"     : Exit
- * esp32-uart#>
+ esp32#>ua 1
+ esp32-uart#>?
+ % Enter "command ?" to get details about the command.
+ % List of available commands:
+ %
+ % "?"        : Show the list of available commands
+ % "up"       : Initialize uart (pins/speed)
+ % "baud"     : Set baudrate
+ % "down"     : Shutdown
+ % "read"     : Read data from UART
+ % "tap"      : Talk to UARTs device
+ % "write"    : Send bytes over this UART
+ % "exit"     : Exit
+ esp32-uart#>
 
 
 The shell output above shows that there are 6 commands specific to this uart
 available along with 2 common commands ("?" and "exit"): question mark will
 print the above list, and "exit" is used to exit the UART configuration mode
 
-Commands:
 
 "up" - initializes UART. If UART is already UP then this command does nothing.
 The command has 3 parameters: RX pin number, TX pin number and baudrate. Other
@@ -82,29 +96,28 @@ spaces one can use \20 to encode a space (ascii code 32): "write A\20\20\20B"
 Using this comman on UART0 results in sending these strings straight to your
 serial monitor
 
- *
- * Example: Communicate with a device over uart2, send and receive text
- * (alternative to the "uart tap"). Device connected to  pins 21 and 22 is
- * SIMCOM LTE modem SIM7600E:
- * 
- * esp32#>uart 2
- * esp32-uart#>up 21 22 115200
- * esp32-uart#>write \ff\ff\CC\r\n    // send junk bytes: 0xff 0xff 0xcc 0x0d 0x0a. ignored by SIMCOM
- * 5 bytes sent 
- * esp32-uart#>write ATI\r\n          // send ATI<CR><LF>
- * 5 bytes sent
- * esp32-uart#>read                   // read reply
- * ATI
- * Manufacturer: SIMCOM INCORPORATED
- * Model: SIMCOM_SIM7600E
- * Revision: SIM7600M21-A_V1.1
- * IMEI: 861005075537800
- * +GCAP: +CGSM
- *
- * OK
- * 
- * 137 bytes read
- * esp32#>
+ 
+  Example: Communicate with a device over uart2, send and receive text
+           Device connected to  pins 21 and 22 is SIMCOM LTE modem SIM7600E:
+  
+  esp32#>uart 2
+  esp32-uart#>up 21 22 115200
+  esp32-uart#>write \ff\ff\CC\r\n    // send junk bytes: 0xff 0xff 0xcc 0x0d 0x0a. ignored by SIMCOM
+  5 bytes sent 
+  esp32-uart#>write ATI\r\n          // send ATI<CR><LF>
+  5 bytes sent
+  esp32-uart#>read                   // read reply
+  ATI
+  Manufacturer: SIMCOM INCORPORATED
+  Model: SIMCOM_SIM7600E
+  Revision: SIM7600M21-A_V1.1
+  IMEI: 861005075537800
+  +GCAP: +CGSM
+ 
+  OK
+  
+  137 bytes read
+  esp32#>
 
 
 "tap" - makes a bridge between user and a device connected to the uart.
@@ -117,22 +130,22 @@ commands and receive modem replies. Note that sketch is better to be suspended
 NOTE!: Arduino Serial Monitor is not the best choice for this as it is 
 impossible to "Press CTRL+C" to exit "tap" mode.
 
- * Example: Communicate with SIM7600E GSM modem connected to pins 18 (RX) 
- * and 19 (TX). Issue ATI commands, read the output and exit
- *
- *
- * esp32#>uart 1
- * esp32-uart#>up 18 19 115200       // setup UART1 on pins 18/19 baudrate is 115200
- * esp32-uart#>tap                   // talk to device (connected to UART1) directly
- * Tapping to UART1, CTRL+C to exit
- * ATI                               // user input sent to modem
- * Manufacturer: SIMCOM INCORPORATED // modem reply
- * Model: SIMCOM_SIM7600E
- * Revision: SIM7600M21-A_V1.1
- * IMEI: 861005075537800
- * +GCAP: +CGSM
- *
- * OK
- * 
- * Exit                              // CTRL+C pressed
- * esp32#>
+  Example: Communicate with SIM7600E GSM modem connected to pins 18 (RX) 
+  and 19 (TX). Issue ATI commands, read the output and exit
+ 
+ 
+  esp32#>uart 1
+  esp32-uart#>up 18 19 115200       // setup UART1 on pins 18/19 baudrate is 115200
+  esp32-uart#>tap                   // talk to device (connected to UART1) directly
+  Tapping to UART1, CTRL+C to exit
+  ATI                               // user input sent to modem
+  Manufacturer: SIMCOM INCORPORATED // modem reply
+  Model: SIMCOM_SIM7600E
+  Revision: SIM7600M21-A_V1.1
+  IMEI: 861005075537800
+  +GCAP: +CGSM
+ 
+  OK
+  
+  Exit                              // CTRL+C pressed
+  esp32#>
