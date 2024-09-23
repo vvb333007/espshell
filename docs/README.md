@@ -71,8 +71,10 @@ SHELL BRIEF DESCRIPTION
 MEMORY FOOTPRINT/OVERHEAD
 -------------------------
 
-ESPShell uses about 28Kbytes of program memory and around 2Kbytes of variables. There is also
-ESPShell task stack size of 10kbytes (can be changed see STACKSIZE macro in espshell.c)
+ESPShell uses about 30Kbytes of program memory and around 2Kbytes of variables. 
+There is also ESPShell task stack size of 5kbytes (can be changed see STACKSIZE 
+macro in espshell.c)
+
 
 NOTE:
 -----
@@ -82,6 +84,6 @@ i use in my debugging/development process. What commands I miss right now is tri
 pattern generation :). Also I try to keep it small: it is just 1 file and I want to
 keep it like that
 
-The shell itself is one single .c file; you can use supplied espshell.ino sketch as an 
+The shell itself is one single .c file; you can use supplied example_blink.ino sketch as an 
 example: it is a simple LED blink sketch.
 
