@@ -3045,6 +3045,7 @@ static int cmd_pin(int argc, char **argv) {
   if (argc > 2) {
 
     // pin X seq Y
+    // TODO: process it in a while() below
     if (!q_strcmp(argv[2], "seq")) {
       if (argc < 4)
         return -1;
@@ -3058,7 +3059,6 @@ static int cmd_pin(int argc, char **argv) {
         return 0;
       }
       // enable RMT sequence 'seq' on pin 'pin'
-      // TODO:
       q_printf("%% Sending sequence %d over GPIO %d\n\r", seq, pin);
 
       if ((i = seq_send(pin, seq)) < 0) {
@@ -3096,6 +3096,7 @@ static int cmd_pin(int argc, char **argv) {
     else if (!q_strcmp(argv[i], "high"))    digitalWrite(pin, HIGH);
     else if (!q_strcmp(argv[i], "read"))    q_printf("%% GPIO%d : logic %d\n\r", pin, digitalRead(pin) == HIGH ? 1 : 0);
     else if (!q_strcmp(argv[i], "aread"))   q_printf("%% GPIO%d : analog %d (%d mV)\n\r", pin, analogRead(pin), analogReadMilliVolts(pin));
+    // TODO: accept a number as a new pin number? sounds great :) next time
     else
       return i;  // argument i was not recognized
     i++;
@@ -4084,4 +4085,3 @@ static void espshell_task(const void *arg) {
     vTaskDelete(NULL);
   }
 }
- 
