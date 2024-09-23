@@ -1,11 +1,27 @@
 ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
 
 
-I2C Commands
-------------
+I2C
+---
 
 ESP32 has 2 hardware I2C interfaces. Default pins are different from model
 to model: ESP32-WROOM-32D chip has its I2C0 pins at 21(SDA) and 22(SCL).
+
+
+PURPOSE
+-------
+
+The purpose of i2c commands is to be able to configure an i2c interface
+on arbitrary pins, scan i2c bus for devices and perform read/write operations
+on selected devices. It simplifies learning new i2c devices, simplifies 
+process of checking if i2c device is alive and responding, helps with a library
+development for new i2c devices: one can send test sequences to i2c device 
+without recompiling whole sketch
+
+
+
+COMMANDS
+--------
 
 To configure/access I2C interface command "iic X" is used where X is the
 number of I2C interface we want to configure. Once command is executed
