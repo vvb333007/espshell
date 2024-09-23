@@ -1,21 +1,26 @@
 ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
 
-Commands and their description
-------------------------------
+ESPSHELL COMMANDS AND THEIR DESCRIPTION
+---------------------------------------
 
 List of commands can be obtained at any time by typing "?" and pressing <Enter>
 Commands can be entered in shortened form: "seq" or even "se" instead of 
 "sequence" or "rel" instead of "reload". ESPShell's parser does a partial match
-of the command name to user input allowing for shortening command names.
+of the command name to user input allowing for shortening command names
+
 
 Same applies to command arguments:
-For example, instead of entering "pin 2 out open high" one can type something
-like "pi 2 ou h" to get the same result. If there is ambiguity happens then
-parser just chooses first match:
+  For example, instead of entering "pin 2 out open high" one can type something
+  like "pi 2 ou h" to get the same result. If there is ambiguity happens then
+  parser just chooses first match:
 
-"pi 2 o h" will expand to "pin 2 open high" not "pin 2 out high" because "open"
-is the first in the list for partial match, not "out". Make sure that you use
-"short" but not very short commands and arguments
+  "pi 2 o h" will expand to "pin 2 open high" not "pin 2 out high" because "open"
+  is the first in the list for partial match, not "out". Make sure that you use
+  "short" but not very short commands and arguments
+
+List of all supported command can be obtained by typing "?" and pressing <Enter>
+Help on a specific command can be obtained by typing command name , a space and
+a question mark and pressing <Enter>: "command ?"
 
 
 Here is the list of currently supported commands:
@@ -32,6 +37,7 @@ Here is the list of currently supported commands:
 % "uart"     : UART commands
 % "sequence" : Pulses/levels sequence configuration
 % "tty"      : IO redirect
+% "echo"     : Disable/enable user input echo
 % "suspend"  : Suspend sketch execution
 % "resume"   : Resume sketch execution
 % "tone"     : PWM output
@@ -39,24 +45,29 @@ Here is the list of currently supported commands:
 % "exit"     : Exit
 
 
-NOTE: "X"below denotes a number: 0, 1, 99 etc
 
+"exit"     - Executed in a command subderictory exits from that 
+           - subdirectory; executed in main command tree does nothing unless
+           - it has 1 parameter, an optional keyword "exit": if this the case 
+           - then espshell exits and removes its task. Resources associated 
+           - with espshell are not freed.
 
-"exit"     - Does nothing. Executed in a command subderictory exits from that 
-             subdirectory
+"uptime"   - Shows how much time has passed since last boot
 
-"uptime"   - Shows time passed since last boot
+"show seq" - Shows information about signal patterns see documentation file
+           - "docs/Pulse_Generator.txt" for more  information on sequences and
+           - their use
 
-"show seq" - Shows information about signal patterns (see Pulse_Generator.txt
-             for more  info)
+"pin"      - Various pin commands.Command takes multiple arguments of which
+           - 1st argument is always pin number. More information and examples
+           - on this command can be found in documentation file
+           - "docs/Pin_Commands.txt"
 
-"pin"      - Various pin commands. (see Pin_Commands for more info)
-
-"cpu"      - Shows CPUID, CPU frequency, xtal frequency and bus frequency. 
-           - Displays CPU core temperature
-
-"cpu X"    - Set CPU frequency to X MHz. List of supported frequencies is 
-           - displayed on attempt to set unsupported frequency:
+"cpu"      - 1. Shows CPUID, CPU frequency, xtal frequency and bus frequency. 
+           -    Displays CPU core temperature
+           -
+           - 2. Set CPU frequency to X MHz. List of supported frequencies is 
+           -    displayed on attempt to set unsupported frequency:
            -
            - esp32#>cpu 99
            - % Supported frequencies are: 240, 160, 120, 80, 40, 20 and 10
@@ -73,29 +84,44 @@ NOTE: "X"below denotes a number: 0, 1, 99 etc
 "nap"      - Put CPU into light sleep. CPU wakes up by UART activity (press any
            - key to wake up). Wake up condition is 3 positive edges on UART0 
            - which is almost any key (spacebar requires 2 presses).
+           -                      OR
+           - Puts CPU into light sleep for X seconds, CPU wakes up by timer.
+           - Type "nap ?" do get more information on this command
 
-"nap X"    - PutCPU into light sleep for X seconds, CPU wakes up by timer.
+"iic"      - I2C bus/interface access. Configure and use (read/write/scan) a
+           - specified I2C bus (there are number of them available).
+           - Detailed descriptin of I2C commands is in "docs/I2C_Commands.txt"
 
-"iic X"    - I2C bus/interface access. See I2C_Commands.txt for more info.
-
-"uart X"   - UART X interface access, UART commands subdirectory. 
-           - See UART_Commands.txt for more info
+"uart"     - UART X interface access. Configure and use (read/write/bridge) UART
+           - interface. Read "docs/UART_Commands.txt" for details on how to
+           - setup and use UART interfaces
 
 "sequence" - Signal generator commands. Allow for custom signal patterns with 
-           - precise timings to be generated on any pin. See Pulse_Generator.txt 
-           - for more info
+           - precise timings to be generated on any pin. See documentation file
+           - "docs/Pulse_Generator.txt" for more info. Simple patterns can also
+           - be generated by means of "pin" command (see "docs/Pin_Commands.txt")
 
-"tty X"    - Use UART X for espshell input / output. Used to run the shell on
-           - other uart leaving UART0 purely for sketch.
+"tty"      - Use specified UART for espshell input / output. Used to run the 
+           - shell on uarts other than default leaving UART0 purely for sketch.
+
+
+"echo off" - Disables ESPShell from printing out its prompt and disables user
+           - input echo. This mode is used for automated processing when UART
+           - output is going to be parsed by some software. Equivalent of common
+           - "ATE0" command for modems. When echo is disabled. user still can
+           - use line editing/history scrolling but it is just not displayed.
+
+"echo on"  - Default is to echo user input & display espshell prompt
 
 "suspend"  - Pause Arduino's loop(). Tasks that were started by the loop()
-           - task are not suspended
+           - task are not suspended by this command
 
 "resume"   - Resume execution of Arduino's loop() previously paused with
            - "suspend" command
 
-"tone X"   - Squarewave generator: generates signal of specified frequency and 
+"tone"     - Squarewave generator: generates signal of specified frequency and 
            - duty on pin X. See Tone_Generator_And_Counter.txt for details.
 
-"count X"  - Pulse counter: counts pulses arrived on pin X. Details on the
-           - counter and squarewave generator can be found in Tone_Generator_And_Counter.txt
+"count"    - Pulse counter: counts pulses arrived on pin. Details on the
+           - counter and squarewave generator can be found in documentation
+           - file "docs/Tone_Generator_And_Counter.txt"
