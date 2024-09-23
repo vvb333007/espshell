@@ -3,18 +3,31 @@ ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
 Pulse pattern generation
 ------------------------
 
-ESP32 has dedicated perephireal for pulse train generation called RMT.
-Pulse pattern generation is available via "sequence Y" and "pin X seq Y"
-commands.
+ESP32 has dedicated perephireal for pulse train generation called RMT
+which main purpose is to generate arbitrary patterns with quite high 
+resolution down to 0.0125 micriseconds.
 
-The first one defines a sequence of pulses to be generated, while second 
-actually sends it.
+
+
+PURPOSE
+-------
+
+General-purpose signal generator/ IR remote signal generator
+
+
+COMMANDS:
+---------
+
+Pulse pattern generation is available via "sequence Y" and "pin X seq Y"
+commands: the first one defines a sequence of pulses to be generated, 
+while second actually sends it. The sequence number must be in range
+0..9 thus 10 different sequences can be created and used
 
 Lets solve a simple task: we want to generate number of pulses on pin2
 as follows:
 
 "Set pin2 HIGH for 10uS, then LOW for 20uS then HIGH again for 30uS and 
-finally LOW for 999 microseconds"
+finally LOW for 100 microseconds"
 
 We start from entering sequence configuration mode:
 
@@ -40,7 +53,7 @@ Now input our sequence:
 
 esp32#>sequence 0
 esp32-seq#>tick 1
-esp32-seq#>levels 1/800 0/50 1/17 0/999
+esp32-seq#>levels 1/10 0/20 1/30 0/100
 
 Command "levels" takes arguments in form LEVEL/LENGTH_IN_TICKS where LEVEL
 is either "1" or "0" and LENGTH_IN_TICKS tells how long this level must be
@@ -51,7 +64,7 @@ Now we have configured sequence number 0. Lets send it on GPIO2:
 
 esp32#>sequence 0
 esp32-seq#>tick 1
-esp32-seq#>levels 1/800 0/50 1/17 0/999
+esp32-seq#>levels 1/10 0/20 1/30 0/100
 esp32-seq#>exit
 esp32#>pin 2 seq 0
 
@@ -59,7 +72,7 @@ Or, send it 4 times in a row:
 
 esp32#>sequence 0
 esp32-seq#>tick 1
-esp32-seq#>levels 1/800 0/50 1/17 0/999
+esp32-seq#>levels 1/10 0/20 1/30 0/100
 esp32-seq#>exit
 esp32#>pin 2 seq 0
 esp32#>pin 2 seq 0 seq 0 seq 0 seq 0
