@@ -60,7 +60,7 @@
 #undef DO_ECHO
 
 //#define SERIAL_IS_USB //Not yet
-#define ESPCAM               //include ESP32CAM commands (read extra/README.md).
+//#define ESPCAM               //include ESP32CAM commands (read extra/README.md).
 
 #define AUTOSTART      1     // Start the shell automatically (no extra code needed to user sketch)
                              // If set to 0, then the user sketch must call espshell_start()
