@@ -1,17 +1,11 @@
-FOR THOSE WHO DON'T WANT TO READ DOCUMENTATION:
------------------------------------------------
+У МЕНЯ ЕСТЬ СКЕТЧ, Я ХОЧУ ДОБАВИТЬ ТУДА ESPshell:
+-------------------------------------------------
+Отлично.
 
- Follow these steps:
- 
- a. Copy espshell.c to your sketch directory (where your .ino file is).
- 
- b. Compile & upload your sketch as usual. (espshell will gain control 
-    automatically on startup and runs its service in a background)
-    
- c. Done! Now you can access the command line interface via Arduino 
-    IDE's Serial Monitor or ( better ) thru terminal software: Linux cu, 
-    Windows TeraTerm or PuTTY.
+1. Скопируйте espshell.c в каталог с вашим скетчем, 
+2. Скомпилируйте ваш скетч обычным образом и 
+3. Залейте прошивку в вашу отладочную плату
 
-    Start with typing "?" and pressing <Enter> or go read docs/*.txt
-    Enjoy!
+Откройте ArduinoIDE Serial Monitor и введите свою первую команду: "?" и нажмите <Enter>
 
+Найдите время ознакомится с "docs/ru_RU/*.txt", там много объяснено в примерах
