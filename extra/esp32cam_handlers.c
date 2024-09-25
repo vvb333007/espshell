@@ -28,13 +28,13 @@ static int cam_set_gain(int argc, char **argv) {
 #endif    
   }
   else if (isnum(argv[1])) {
-    unsigned long val = atol(argv[1]);  // manual gain 0..30
+    unsigned int val = atol(argv[1]);  // manual gain 0..30
     if (val > 30)
       return 1;
     cam->set_gain_ctrl(cam,0);          // auto gain off
     cam->set_agc_gain(cam, val);        //
 #if WITH_HELP
-    q_printf("%% Camera gain: manual, %d\n\r",val);
+    q_printf("%% Camera gain: manual, %u\n\r",val);
 #endif    
 
   } else 
@@ -160,7 +160,7 @@ static int cam_set_qbcss(int argc, char **argv) {
   if (!q_strcmp(argv[0],"brightness")) cam->set_brightness(cam,val); else
   if (!q_strcmp(argv[0],"contrast"))   cam->set_contrast(cam,val);   else
   if (!q_strcmp(argv[0],"saturation")) cam->set_saturation(cam,val); else
-  if (!q_strcmp(argv[0],"sharpness"))  cam->set_sharpness(cam,val);  else q_printf("%  unexpected token \"%s\"\n\r", argv[0]);
+  if (!q_strcmp(argv[0],"sharpness"))  cam->set_sharpness(cam,val);  else q_printf("%%  unexpected token \"%s\"\n\r", argv[0]);
   
   return 0; 
 }
@@ -280,7 +280,7 @@ static int cam_filesize(int argc, char **argv) {
   unsigned int len = 0;
   if (cam_fb)
     len = cam_fb->len;
-  q_printf("%% %lu\n\r",len);
+  q_printf("%% %u\n\r",len);
   return 0;
 }
 
