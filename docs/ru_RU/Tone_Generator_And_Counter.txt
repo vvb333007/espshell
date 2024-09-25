@@ -1,0 +1,85 @@
+ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
+
+Squarewave generation and pulse counting
+----------------------------------------
+
+
+ESPShell includes ability to generate a squarewave signal on any pin with
+user configurable frequency and duty cycle. Frequency can be set from 1Hz
+up to 78.277kHz with duty cycle ranging from 0 (=0%) to 1023 (=100%). Default
+value for the duty cycle is 511 which means 50% duty cycle. LEDC driver is
+used for this squarewave generator.
+
+SQUAREWAVE GENERATOR
+--------------------
+
+Command "tone" starts squarewave output on given pin:
+
+esp32#>tone 2 1
+
+The command above starts a 1Hz squarewave on pin 2 (duty cycle is 50%)
+
+
+The duty cycle parameter can be set as third parameter to the "tone" 
+command: set frequency on pin 2 to 5Hz, duty cycle around 10%:
+
+esp32#>tone 2 5 100
+
+To stop squarewave generator on given pin use "tone" command with just one 
+parameter. Example below shows how to stop squarewave generation on pin 2
+
+
+esp32#>tone 2
+
+NOTE: some boards refuse to execute "tone" commands soon after startup. The
+workaround is to execute the same command again :). working on it.
+
+
+PULSE COUNTER
+-------------
+
+Command "count" is used to count pulses in given pin. It takes up to 3 
+parameters: pin to count pulses on, which pulse edge to count (positive,
+negative or both) and a time interval during which pulses are counted.
+Command can be used with just one parameter - pin on which measurement are
+made. In that case time interval defaults to 1000 milliseconds and counter
+looks for positive pulse edges
+
+Command syntax is: "count PIN pos|neg|both TIME_MS" where PIN is a pin number, 
+"pos", "neg" and "both" are pulse edge types which we want to count and TIME_MS
+is the time during which measurements are made (default is 1000 ms). Last two
+parameters can be omitted. Their default values are "pos" and "1000"
+
+Lets connect pin2 and pin4 with a jumper. Start a squarewave generator on pin2 
+and count pulses on pin4:
+
+esp32#>tone 2 10
+esp32#>count 4
+% Counting pulses on GPIO4.. 10 pulses (1.000 sec)
+esp32#>
+
+Please note that the higher the frequency the shorter should be delay time.
+The reason for that is counter limitation: it is 16 bit wide and can easily 
+overflow after counting to 65535 pulses. The delay time during which counting
+is made is controlled by 2rd parameter of "count" command.
+
+Lets set PWM to 30Khz and count pulses for 1 second or 100 milliseconds:
+
+esp32#>tone 2 70000
+esp32#>count 4
+% Counting pulses on GPIO4.. 4413 pulses (1.000 sec)
+esp32#>
+
+
+Example above shows counter overflow: after 1 second it counted only 4413 pulses
+while should count 70000. Lets try to decrease our delay:
+
+esp32#>count 4 neg 100
+% Counting pulses on GPIO4.. 7011 pulses (0.100 sec)
+esp32#>
+
+Now results are correct ~7000 pulses in 0.1sec means 70kHz oscillation
+
+NOTE: Use "pin X save" and "pin X load" to save/restore pin state. Configuring
+pin as a squarewave generator rewrites pin settings so previous settings can be
+lost. On "pin save" and "pin load" please refer to Pin_Commands.txt
