@@ -60,7 +60,7 @@
 #undef DO_ECHO
 
 //#define SERIAL_IS_USB //Not yet
-//#define ESPCAM               //include ESP32CAM commands (read extra/README.md).
+#define ESPCAM               //include ESP32CAM commands (read extra/README.md).
 
 #define AUTOSTART      1     // Start the shell automatically (no extra code needed to user sketch)
                              // If set to 0, then the user sketch must call espshell_start()
@@ -3041,14 +3041,9 @@ static int cmd_pin(int argc, char **argv) {
     level = digitalRead(pin);  //FIXME: check if pin is readable
     q_printf("%% Digital pin value = %d\n\r", level);
 
-    gpio_dump_io_configuration(stdout, (uint64_t)1 << pin);  // works only on default UART
+    gpio_dump_io_configuration(stdout, (uint64_t)1 << pin);  // FIXME: works only on default UART0
     return 0;
   }
-
-  
-  
-
-  
 
   //more than 2 tokens: read all the options and set the parameters
   while (i < argc) {
@@ -3101,7 +3096,11 @@ static int cmd_pin(int argc, char **argv) {
     else if (!q_strcmp(argv[i], "high"))    digitalWrite(pin, HIGH);
     else if (!q_strcmp(argv[i], "read"))    q_printf("%% GPIO%d : logic %d\n\r", pin, digitalRead(pin) == HIGH ? 1 : 0);
     else if (!q_strcmp(argv[i], "aread"))   q_printf("%% GPIO%d : analog %d\n\r", pin, analogRead(pin));
-    // TODO: accept a number as a new pin number? sounds great :) next time
+    else if (isnum(argv[i])) { // change pin number
+      pin = atoi(argv[i]);
+      if (!pin_exist(pin))
+        return i;
+    }
     else
       return i;  // argument i was not recognized
     i++;
