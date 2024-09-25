@@ -59,7 +59,8 @@
 #undef USE_UART
 #undef DO_ECHO
 
-//#define ESPCAM               //include ESP32CAM commands (read extra/README.md).
+//#define SERIAL_IS_USB //Not yet
+#define ESPCAM               //include ESP32CAM commands (read extra/README.md).
 
 #define AUTOSTART      1     // Start the shell automatically (no extra code needed to user sketch)
                              // If set to 0, then the user sketch must call espshell_start()
@@ -71,12 +72,17 @@
 #define BREAK_KEY      3     // Keycode of a "Exit" key: CTRL+C to exit "uart NUM tap" mode
 #define SEQUENCES_NUM  10    // Max number of sequences available for command "sequence"
 
-#define DO_ECHO        true       // espshell echoes user input back or not. set to false for automated output processing
-#define USE_UART       UART_NUM_0 // uart where shell will be deployed
+#define DO_ECHO        true       // espshell echoes user input back by default. set to false for easier 
+                                  // automated output processing
+#define USE_UART       UART_NUM_0 // uart where shell will be deployed at startup
 
 #define COMPILING_ESPSHELL 1//dont touch this. it is used by external commands (if any) to prevent
                             //external files to be compiled by Arduino IDE. Instead they are included
                             //in this file
+
+//BIG FAT TODO: 
+// consider using stdin/stdout for USB-OTG enabled boards
+// consider using idf api for reading/writing USB port char by char
 
 // include user-defined commands and their handlers
 // if any.
@@ -238,9 +244,6 @@ static bool Echo = DO_ECHO;
 /* Display print 8-bit chars as `M-x' or as the actual 8-bit char? */
 static int rl_meta_chars = 0;
 
-/*
-**  Declarations.
-*/
 static unsigned char *editinput();
 
 /*
@@ -1984,7 +1987,7 @@ static struct keywords_t keywords_main[] = {
     "%\n\r"
     "% Start PWM generator on pin X, frequency FREQ Hz and duty cycle of DUTY\n\r"
     "% Max frequency is " xstr(MAGIC_FREQ) " Hz\n\r"
-                                           "% Value of DUTY is in range [0..1023] with 511 being a 50% duty cycle",
+    "% Value of DUTY is in range [0..1] with 0.123 being a 12.3% duty cycle",
 #else
     "",
 #endif
@@ -2920,7 +2923,7 @@ static int cmd_tone(int argc, char **argv) {
     return 1;  // arg 1 is bad
 
   unsigned char pin = (unsigned char)(atoi(argv[1]));
-  int freq = 0, duty = ((1 << resolution) - 1) / 2;  //default duty is 50%
+  int freq = 0, duty = ((1 << resolution) - 1);
 
   if (!pin_exist(pin))
     return 1;
@@ -2938,16 +2941,16 @@ static int cmd_tone(int argc, char **argv) {
 
   // duty specified?
   if (argc > 3) {
-    if (!isnum(argv[3]))
+    if (!isfloat(argv[3]))
       return 3;
-    duty = atoi(argv[3]);
-  }
+    duty *= atof(argv[3]);
+  } else
+    duty /= 2;
 
-  if (duty < 0 || duty > 1023) {
-    q_printf("%% Valid duty range is [1 .. %d] Hz\n\r", (1 << resolution) - 1);
+  printf("duty=%d\n",duty);
+
+  if (duty < 0 || duty > (1 << resolution))
     return 3;  // arg 3 is bad
-  }
-
 
   pinMode(pin,OUTPUT);
 
@@ -2967,7 +2970,6 @@ static int cmd_tone(int argc, char **argv) {
     // or ledcWriteTone may fail on a first call (ESP32-WROOM-32D)
     delay(100);
     ledcWriteTone(pin, freq);
-    //if (duty != 0x1ff)
     ledcWrite(pin, duty);
   }
 
