@@ -125,7 +125,7 @@ release - "разморозить" пин, который перед этим б
 --------------------------------------------------------------
    esp32#>pin 33 aread
 
-   Обратите внимание: команда чтения аналогового значения в Ардуино сделана так,
+   Обратите внимание: функция чтения аналогового значения в Ардуино сделана так,
    что она перенастраивает пин. И если вы вслед за "aread" попытаетесь прочитать
    логичесий уровень, то произойдет ошибка: пин надо конфигурить по-новой, чтобы 
    он выполнял функцию GPIO и отвечал на digitalRead().
@@ -161,7 +161,7 @@ esp32#>pin 33 save out high delay 250 read low delay 100 read high delay 50 read
 
 pin 12 out high             - pinMode(12,OUTPUT); digitalWrite(12,HIGH);
 pin 12 out up open          - pinMode(12, OUTPUT | PULLUP | OPEN_DRAIN);
-pin 12 in up                - зinMode(12, INPUT_PULLUP);
+pin 12 in up                - pinMode(12, INPUT_PULLUP);
 pin 12 read save aread load - digitalRead(12); analogRead(12);
 
 
