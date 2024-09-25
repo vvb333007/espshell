@@ -165,10 +165,10 @@ Example 5, Save pin state, configure it for OUTPUT, set pin HIGH for 250
         docs/Pulse_Generator.txt and docsTone_Generator_And_Counter.txt
 
 
-Example 6: Same as Example 5, but read the pin logic level after every pulse:
+Example 7: Set pin 2 high, pin 3 low, wait for 1 second and invert pin values
 -----------------------------------------------------------------------------
 
-esp32#>pin 33 save out high delay 250 read low delay 100 read high delay 50 read load
+esp32#>pin 2 out high 3 out low delay 1000 2 low 3 high
 
 
 
