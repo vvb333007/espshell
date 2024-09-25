@@ -60,7 +60,7 @@
 #undef DO_ECHO
 
 //#define SERIAL_IS_USB //Not yet
-//#define ESPCAM               //include ESP32CAM commands (read extra/README.md).
+#define ESPCAM               //include ESP32CAM commands (read extra/README.md).
 
 #define AUTOSTART      1     // Start the shell automatically (no extra code needed to user sketch)
                              // If set to 0, then the user sketch must call espshell_start()
@@ -1520,7 +1520,7 @@ static int __printfv(const char *format, va_list arg) {
 // same as printf() but uses global var 'uart' to direct
 // its output to different uarts
 //
-static int q_printf(const char *format, ...) {
+static int __attribute__((format (printf, 1, 2))) q_printf(const char *format, ...) {
   int len;
   va_list arg;
   va_start(arg, format);
@@ -2144,16 +2144,18 @@ static bool pin_exist(int pin) {
 
 // calculate frequency from tick length
 // 0.1uS = 10Mhz
-unsigned long seq_tick2freq(float tick_us) {
+unsigned long __attribute__((const)) seq_tick2freq(float tick_us) {
 
   return tick_us ? (unsigned long)((float)1000000 / tick_us) : 0;
 }
 
+// initialize sequences to default values
+//
 static void seq_init() {
   int i;
 
   for (i = 0; i < SEQUENCES_NUM; i++) {
-    sequences[i].tick = 0;
+    sequences[i].tick = 1;
     sequences[i].seq = NULL;
     sequences[i].bits = NULL;
 
@@ -2181,7 +2183,7 @@ static void seq_dump(int seq) {
   q_printf("%%\n\r%% Sequence #%d:\n\r%% Resolution ", seq);
 
   if (s->tick)
-    q_printf(": %.4fuS  (Frequency: %lu Hz)\n\r", seq, s->tick, seq_tick2freq(s->tick));
+    q_printf(": %.4fuS  (Frequency: %lu Hz)\n\r", s->tick, seq_tick2freq(s->tick));
   else
     q_print(Notset);
 
@@ -2205,7 +2207,7 @@ static void seq_dump(int seq) {
 
   q_print("% Modulation ");
   if (s->mod_freq)
-    q_printf(" : yes, \"%s\" are modulated at %luHz, duty %.2f%%\n\r", s->mod_high ? "HIGH" : "LOW", s->mod_freq, s->mod_duty * 100);
+    q_printf(" : yes, \"%s\" are modulated at %luHz, duty %.2f%%\n\r", s->mod_high ? "HIGH" : "LOW", (unsigned long)s->mod_freq, s->mod_duty * 100);
   else
     q_print("is not used\n\r");
 
@@ -2898,7 +2900,7 @@ static int cmd_count(int argc, char **argv) {
   delay(wait);
   pcnt_counter_pause(PCNT_UNIT_0);
   pcnt_get_counter_value(PCNT_UNIT_0, &count);
-  q_printf("%lu pulses (%.3f sec)\n\r", (unsigned int)count, (float)wait / 1000.0f);
+  q_printf("%lu pulses (%.3f sec)\n\r", (unsigned long)count, (float)wait / 1000.0f);
   return 0;
 }
 
@@ -3098,7 +3100,7 @@ static int cmd_pin(int argc, char **argv) {
     else if (!q_strcmp(argv[i], "low"))     digitalWrite(pin, LOW);
     else if (!q_strcmp(argv[i], "high"))    digitalWrite(pin, HIGH);
     else if (!q_strcmp(argv[i], "read"))    q_printf("%% GPIO%d : logic %d\n\r", pin, digitalRead(pin) == HIGH ? 1 : 0);
-    else if (!q_strcmp(argv[i], "aread"))   q_printf("%% GPIO%d : analog %d (%d mV)\n\r", pin, analogRead(pin), analogReadMilliVolts(pin));
+    else if (!q_strcmp(argv[i], "aread"))   q_printf("%% GPIO%d : analog %d\n\r", pin, analogRead(pin));
     // TODO: accept a number as a new pin number? sounds great :) next time
     else
       return i;  // argument i was not recognized
@@ -3113,8 +3115,8 @@ static int cmd_pin(int argc, char **argv) {
 //"mem"
 static int cmd_mem(int argc, char **argv) {
 
-  q_printf("%% Chip memory total: %lu, free: %lu\n\r"
-             "%% External SPI RAM total:%luKB, free: %luKB\n\r",
+  q_printf("%% Chip memory total: %u, free: %u\n\r"
+             "%% External SPI RAM total:%uKB, free: %uKB\n\r",
              heap_caps_get_total_size(MALLOC_CAP_INTERNAL),
              heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
              heap_caps_get_total_size(MALLOC_CAP_SPIRAM)/1024,
@@ -3348,7 +3350,7 @@ static int cmd_i2c(int argc, char **argv) {
       q_print(Failed);
     else {
       if (got != size) {
-        q_printf("% Requested %d bytes but read %d\n\r",size,got);
+        q_printf("%% Requested %d bytes but read %d\n\r",size,got);
         got = size;
       }
       q_printf("%% I2C%d received %d bytes:\n\r", iic, got);
@@ -3729,7 +3731,7 @@ static int cmd_cpu(int argc, char **argv) {
     case EFUSE_RD_CHIP_VER_PKG_ESP32PICOD4: chipid = "ESP32-PICO-D4"; break;
     case EFUSE_RD_CHIP_VER_PKG_ESP32PICOV302: chipid = "ESP32-PICO-V3-02"; break;
     case EFUSE_RD_CHIP_VER_PKG_ESP32D0WDR2V3: chipid = "ESP32-D0WDR2-V3"; break;
-    default: q_printf("%% Detected PKG_VER=%04x\n\r", pkg_ver);
+    default: q_printf("%% Detected PKG_VER=%04x\n\r", (unsigned int)pkg_ver);
   }
 #elif CONFIG_IDF_TARGET_ESP32S2
   pkg_ver = REG_GET_FIELD(EFUSE_RD_MAC_SPI_SYS_3_REG, EFUSE_PKG_VERSION);
@@ -3802,8 +3804,8 @@ __attribute__((constructor)) static
 static int
 cmd_uptime(int argc, char **argv) {
 
-  uint32_t sec, min = 0, hr = 0, day = 0;
-  sec = (uint32_t)(esp_timer_get_time() / 1000000) - uptime;
+  unsigned int sec, min = 0, hr = 0, day = 0;
+  sec = (unsigned int)(esp_timer_get_time() / 1000000) - uptime;
 
   q_print("% Last boot was ");
   if (sec > 60 * 60 * 24) {
