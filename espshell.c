@@ -3045,6 +3045,9 @@ static int cmd_pin(int argc, char **argv) {
     return 0;
   }
 
+  unsigned int count = 1;
+  do {
+
   //more than 2 tokens: read all the options and set the parameters
   while (i < argc) {
 
@@ -3083,7 +3086,24 @@ static int cmd_pin(int argc, char **argv) {
       if (!isnum(argv[i]))
         return i;
       delay(atol(argv[i]));
-    } else if (!q_strcmp(argv[i], "save"))  pin_save(pin);
+    } else if (!q_strcmp(argv[i],"loop")) {
+      if ((i + 1) >= argc) {
+        q_print("% Loop count expected after keyword \"loop\"\n\r");
+        return 0;
+      }
+      i++;
+      if (!isnum(argv[i]))
+        return i;
+      if ((i + 1) < argc) {
+        q_print("% \"loop\" must be the last keyword\n\r");
+        return i + 1;
+      }
+      count = atol(argv[i]);
+      q_printf("Count=%u\n\r",count);
+      //i = 1;    //start from a pin number
+      argc -= 2;//strip "loop NUMBER" keyword
+    }
+    else if (!q_strcmp(argv[i], "save"))  pin_save(pin);
     else if (!q_strcmp(argv[i], "load"))    pin_load(pin);
     else if (!q_strcmp(argv[i], "hold"))    gpio_hold_en(pin);
     else if (!q_strcmp(argv[i], "release")) gpio_hold_dis(pin);
@@ -3105,6 +3125,9 @@ static int cmd_pin(int argc, char **argv) {
       return i;  // argument i was not recognized
     i++;
   }
+
+  i = 1;
+  } while (--count > 0);
 
 
   return 0;
