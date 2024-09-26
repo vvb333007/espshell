@@ -3099,7 +3099,7 @@ static int cmd_pin(int argc, char **argv) {
         return i + 1;
       }
       count = atol(argv[i]);
-      q_printf("Count=%u\n\r",count);
+      //q_printf("Count=%u\n\r",count);
       //i = 1;    //start from a pin number
       argc -= 2;//strip "loop NUMBER" keyword
     }
