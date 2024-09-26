@@ -263,50 +263,6 @@ static int rl_meta_chars = 0;
 
 static unsigned char *editinput();
 
-/*
- * Termios stuff
- * if Reset !=0 then restore previous termios settings.
- * if Reset == 0 then save previous termios settings, read control characters, set VMIN and VTIME
- * for non-blocking IO. First call to this function must be rl_ttyset(0)
- */
-static void
-rl_ttyset(int Reset) {
-#if 1
-  Reset = Reset;
-#else  
-  static struct termios old;
-  struct termios new;
-
-  //no point to use termios: we are not using stdin/stdout
-  //we also don't do read()/write() to the serial port
-
-
-  if (Reset == 0) {
-
-    tcgetattr(0, &old);
-
-    rl_erase = old.c_cc[VERASE];
-    rl_kill = old.c_cc[VKILL];
-    rl_eof = old.c_cc[VEOF];
-    rl_intr = old.c_cc[VINTR];
-    rl_quit = old.c_cc[VQUIT];
-
-    new = old;
-
-    new.c_cc[VINTR] = -1;
-    new.c_cc[VQUIT] = -1;
-    new.c_lflag &= ~(ECHO | ICANON);  // no echo
-    new.c_iflag &= ~(ISTRIP | INPCK);
-
-    /* Non-blocking IO, min 1 character */
-    new.c_cc[VMIN] = 1;
-    new.c_cc[VTIME] = 0;
-
-    tcsetattr(0, TCSADRAIN, &new);
-  } else
-    tcsetattr(0, TCSADRAIN, &old);
-#endif
-}
 
 // Print buffered (by TTYputc/TTYputs) data
 static void
@@ -1062,7 +1018,7 @@ readline(const char *prompt) {
   }
 
 
-  rl_ttyset(0);
+  
   hist_add(NIL);
   ScreenSize = SCREEN_INC;
   Screen = NEW(char, ScreenSize);
@@ -1076,7 +1032,7 @@ readline(const char *prompt) {
     TTYflush();
   }
 
-  rl_ttyset(1);
+  
   DISPOSE(Screen);
   DISPOSE(H.Lines[--H.Size]);
   //TODO: remove signal processing
@@ -3994,13 +3950,9 @@ static int cmd_question(int argc, char **argv) {
 
   // user typed "? text" by mistake
   if (argc > 1) {
-#if WITH_HELP
+
     q_printf("%% To get help try \"%s ?\" instead!\n\r", argv[1]);
     return 0;
-#else
-    // in no-help mode try to get a hint
-    return 1;
-#endif
   }
 
   // commands which are shorter than INDENT will be padded with extra
@@ -4009,8 +3961,8 @@ static int cmd_question(int argc, char **argv) {
   indent[INDENT] = 0;
   char *spaces;
 
-  q_print("% Enter \"command ?\" to get details about the command.\n\r"
-          "% List of available commands:\n\r"
+  q_print("% Enter \"command ?\" to get details about the command.\n\r" \
+          "% List of available commands:\n\r" \
           "%\n\r");
 
   //Run thru the keywords[] and print brief info for every command
@@ -4074,9 +4026,12 @@ espshell_command(char *p) {
   if (argc < 1)
     return bad;
 
-  // process "?" argument to a  command: Ex.: "pin ?"
-  if (argc > 1 && *(argv[1]) == '?') {
+  // process "?": "command ?" and "? command"
+  if (argc > 1 && (*(argv[1]) == '?' || *(argv[0]) == '?')) {
+    if (*(argv[0]) == '?')
+    argv[0] = argv[1];
 #if WITH_HELP
+
     // run thru keywords[] and print out "help" for every entriy.
     int cmd_len = strlen(argv[0]);
     while (keywords[i].cmd) {
