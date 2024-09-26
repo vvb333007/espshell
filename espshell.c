@@ -154,6 +154,23 @@ static uart_port_t uart = USE_UART;
 }
 
 
+#ifdef SERIAL_IS_USB // Serial is class USBCDC
+static int console_write_bytes(int u, const void *buf, size_t len) {
+#  error "USB-OTG console port is not supported yet"  
+  return 0;
+}
+static int console_read_bytes(int u, void *buf, uint32_t len, TickType_t wait) {
+#  error "USB-OTG console port is not supported yet"  
+  return 0;
+}
+#else // Serial is class HardwareSerial
+static int inline __attribute__((always_inline)) console_write_bytes(int u, const void *buf, size_t len) {
+  return uart_write_bytes((uart_port_t)u,buf,len);
+}
+static int inline __attribute__((always_inline)) console_read_bytes(int u, void *buf, uint32_t len, TickType_t wait) {
+  return uart_read_bytes((uart_port_t)u,buf,len,wait);
+}
+#endif //SERIAL_IS_USB
 
 
 #define NO_ARG (-1)
@@ -298,7 +315,7 @@ TTYflush() {
   if (ScreenCount) {
 
     if (Echo)
-      uart_write_bytes(uart, Screen, ScreenCount);
+      console_write_bytes(uart, Screen, ScreenCount);
     ScreenCount = 0;
   }
 }
@@ -366,7 +383,7 @@ TTYget() {
     return *Input++;
 #if 1
   // read 1 byte from UART
-  if (uart_read_bytes(uart, &c, 1, portMAX_DELAY) < 1)
+  if (console_read_bytes(uart, &c, 1, portMAX_DELAY) < 1)
     return EOF;
 #else
   // poll stdin and read 1 byte when it becomes available
@@ -1485,9 +1502,6 @@ static int cmd_exit(int, char **);
 // adopted from esp32-hal-uart.c Arduino Core
 // Modified to support multiple uarts via uart_write_bytes()
 //
-
-
-
 static int __printfv(const char *format, va_list arg) {
 
   static char buf[128 + 1];
@@ -1506,7 +1520,7 @@ static int __printfv(const char *format, va_list arg) {
 
   vsnprintf(temp, len + 1, format, arg);
 
-  ret = uart_write_bytes(uart, temp, len);
+  ret = console_write_bytes(uart, temp, len);
 
   if (len >= sizeof(buf))
     free(temp);
@@ -1533,7 +1547,7 @@ static int __attribute__((format (printf, 1, 2))) q_printf(const char *format, .
 static int q_print(const char *str) {
   size_t len = strlen(str);
   if (len)
-    len = uart_write_bytes(uart, str, len);
+    len = console_write_bytes(uart, str, len);
   return len;
 }
 
@@ -1891,30 +1905,19 @@ static struct keywords_t keywords_main[] = {
     "Display information" },
   { "pin", cmd_pin, -1,
 #if WITH_HELP
-    "% \"pin X (hold|release|up|down|out|in|open|high|low|save|load|read|aread|delay|loop)...\"\n\r" \
+    "% \"pin X (hold|release|up|down|out|in|open|high|low|save|load|read|aread|delay|loop|tone|seq)...\"\n\r" \
     "%\n\r" \
     "% Set/Save/Load pin X configuration: pull/direction/digital value\n\r" \
     "% Multiple arguments must be separated with spaces, see examples below:\n\r" \
-    "% Ex.: pin 18 hold               - freeze pin state\n\r" \
-    "% Ex.: pin 18 read aread         - read digital and then analog values\n\r" \
-    "% Ex.: pin 18 save               - save pin state\n\r" \
-    "% Ex.: pin 18 save out high load - save pin state and set it to OUTPUT HIGH then restore\n\r" \
-    "% Ex.: pin 18 out high           - set pin18 to OUTPUT logic \"1\"\n\r" \
-    "% Ex.: pin 18 in up down open    - set pin18 INPUT, PULL-UP, PULL-DOWN, OPEN_DRAIN\n\r",
-#else
-    "",
-#endif
-    "GPIO commands" },
-
-
-  //never called, shadowed by previous entry. for helptext only
-  { "pin", cmd_pin, 3,
-#if WITH_HELP
-    "% \"pin X seq Y\"\n\r"
-    "%\n\r"
-    "% Set GPIO pin X to output the sequence Y\n\r"
-    "% Sequence must be configured in advance (see command \"sequence\")\n\r"
-    "% Ex.: pin 18 seq 0       - start Sequence0 on GPIO18",
+    "% Ex.: pin 1 read aread         -pin1: read digital and then analog values\n\r" \
+    "% Ex.: pin 1 out up             -pin1 is OUTPUT with PULLUP\n\r" \
+    "% Ex.: pin 1 save               -save pin state\n\r" \
+    "% Ex.: pin 1 out high           -pin1 set to logic \"1\"\n\r" \
+    "% Ex.: pin 1 out hi del 100 low -set pin1 to logic \"1\", after 100ms to \"0\"\n\r" \
+    "% Ex.: pin 1 tone 2000 0.3      -set 5kHz, 30% duty square wave output\n\r" \
+    "% Ex.: pin 1 tone 0 0           -disable generation\n\r" \
+    "% Ex.: pin 1 out high delay 500 low delay 500 loop 10 \n\r" \
+    "% (see \"docs/Pin_commands.txt\" for more details & examples)\n\r",
 #else
     "",
 #endif
@@ -1924,7 +1927,7 @@ static struct keywords_t keywords_main[] = {
   //never called, shadowed by previous entry. for helptext only
   { "pin", cmd_pin, 1,
 #if WITH_HELP
-    "% \"pin X\" - % Show pin X configuration",
+    "% \"pin X\" - Show pin X configuration",
 #else
     "",
 #endif
@@ -3576,7 +3579,7 @@ uart_tap(int remote) {
 
       char buf[av];
 
-      uart_read_bytes(uart, buf, av, portMAX_DELAY);
+      console_read_bytes(uart, buf, av, portMAX_DELAY);
       // CTRL+C. most likely sent as a single byte (av == 1), so get away with
       // just checking if buf[0] == CTRL+C
       if (buf[0] == BREAK_KEY)
@@ -3605,7 +3608,7 @@ uart_tap(int remote) {
       char *buf[av];
 
       uart_read_bytes(remote, buf, av, portMAX_DELAY);
-      uart_write_bytes(uart, buf, av);
+      console_write_bytes(uart, buf, av);
       delay(1);
     }
   }
@@ -3700,18 +3703,17 @@ static int cmd_uart(int argc, char **argv) {
               if (*p) p++;
           }
         }
-        sent++;
-        //TODO: check result, count succesfull writes, report if there were errors
-        uart_write_bytes(u, &c, 1);
+        if (uart_write_bytes(u, &c, 1) == 1)
+          sent++;
       }
 
       i++;
       //if there are more arguments - insert a space
       if (i < argc) {
         char space = ' ';
-        //TODO: check result
-        uart_write_bytes(u, &space, 1);
-        sent++;
+        
+        if (uart_write_bytes(u, &space, 1) == 1)
+          sent++;
       }
     } while (i < argc);
 
