@@ -1537,6 +1537,23 @@ static int q_print(const char *str) {
   return len;
 }
 
+//detects if ANY key is pressed
+static bool
+anykey_pressed() {
+
+#ifdef SERIAL_IS_USB
+#  error "USB-CDC is not supported yet, sorry"
+#else
+  size_t av = 0;
+
+  if (ESP_OK == uart_get_buffered_data_len(uart, &av))
+    if (av > 0)
+      return true;
+
+  return false;
+#endif
+}
+
 
 //TAG:sequences
 //
@@ -3035,7 +3052,7 @@ static int cmd_pin(int argc, char **argv) {
   if (!pin_exist(pin))
     return 1;
 
-  //two tokens: "pin NUM". Display pin configuration
+  //"pin X" command is executed here
   if (argc == 2) {
 
     level = digitalRead(pin);  //FIXME: check if pin is readable
@@ -3045,88 +3062,110 @@ static int cmd_pin(int argc, char **argv) {
     return 0;
   }
 
-  unsigned int count = 1;
+  // repeat whole command "count" times
+  // this number can be changed by "loop" keyword
+  unsigned int count = 1; 
   do {
 
-  //more than 2 tokens: read all the options and set the parameters
-  while (i < argc) {
+    //more than 2 tokens: read all the options and set the parameters
+    while (i < argc) {
 
-    // Run thru keywords and execute them in sequence
-    if (!q_strcmp(argv[i],"seq")) {
-      if ((i + 1) >= argc) {
-        q_print("% Sequence number expected after \"seq\"\n\r");
-        return 0;
+      // Run thru keywords and execute them in sequence
+
+      //"seq" keyword:
+      if (!q_strcmp(argv[i],"seq")) {
+        if ((i + 1) >= argc) {
+          q_print("% Sequence number expected after \"seq\"\n\r");
+          return 0;
+        }
+        i++;
+
+        //sequence number
+        if (!isnum(argv[i])) 
+          return i;
+
+        int seq = atoi(argv[i]),j;
+
+        if (seq < 0 || seq >= SEQUENCES_NUM)
+          return i;
+
+
+        if (seq_isready(seq)) {
+          // enable RMT sequence 'seq' on pin 'pin'
+          q_printf("%% Sending sequence %d over GPIO %d\n\r", seq, pin);
+
+          if ((j = seq_send(pin, seq)) < 0)
+            q_printf("%% Failed. Error code is: %d\n\r",j);
+
+        } else
+          q_printf("%% Sequence %d is not configured\n\r", seq);
+      } 
+      //"delay" keyword
+      else if (!q_strcmp(argv[i],"delay")) {
+        if ((i + 1) >= argc) {
+          q_print("% Delay value expected after keyword \"delay\"\n\r");
+          return 0;
+        }
+        i++;
+        if (!isnum(argv[i]))
+          return i;
+        delay(atol(argv[i]));
+      } 
+      //"loop" keyword
+      else if (!q_strcmp(argv[i],"loop")) {
+        //must have an extra argument (loop count)
+        if ((i + 1) >= argc) {
+          q_print("% Loop count expected after keyword \"loop\"\n\r");
+          return 0;
+        }
+        i++;
+        // loop count must be a number
+        if (!isnum(argv[i]))
+          return i;
+
+        // loop must be the last keyword, so we can strip it later
+        if ((i + 1) < argc) {
+          q_print("% \"loop\" must be the last keyword\n\r");
+          return i + 1;
+        }
+        count = atol(argv[i]);
+        argc -= 2;//strip "loop NUMBER" keyword
+#if WITH_HELP        
+        q_print("% Press/Enter any key to exit\n\r");
+#endif
       }
+      //Now all the single-line keywords:
+      else if (!q_strcmp(argv[i], "save"))    pin_save(pin);
+      else if (!q_strcmp(argv[i], "load"))    pin_load(pin);
+      else if (!q_strcmp(argv[i], "hold"))    gpio_hold_en(pin);
+      else if (!q_strcmp(argv[i], "release")) gpio_hold_dis(pin);
+      else if (!q_strcmp(argv[i], "up"))      { flags |= PULLUP;     pinMode(pin, flags); } // set flags immediately as we read them
+      else if (!q_strcmp(argv[i], "down"))    { flags |= PULLDOWN;   pinMode(pin, flags); }
+      else if (!q_strcmp(argv[i], "open"))    { flags |= OPEN_DRAIN; pinMode(pin, flags); }
+      else if (!q_strcmp(argv[i], "in"))      { flags |= INPUT;      pinMode(pin, flags); }
+      else if (!q_strcmp(argv[i], "out"))     { flags |= OUTPUT;     pinMode(pin, flags); }
+      else if (!q_strcmp(argv[i], "low"))     digitalWrite(pin, LOW);
+      else if (!q_strcmp(argv[i], "high"))    digitalWrite(pin, HIGH);
+      else if (!q_strcmp(argv[i], "read"))    q_printf("%% GPIO%d : logic %d\n\r", pin, digitalRead(pin) == HIGH ? 1 : 0);
+      else if (!q_strcmp(argv[i], "aread"))   q_printf("%% GPIO%d : analog %d\n\r", pin, analogRead(pin));
+      //"new pin number" keyword. when we see a number we use it as a pin number
+      //for subsequent keywords. must be valid GPIO number.
+      else if (isnum(argv[i])) { 
+        pin = atoi(argv[i]);
+        if (!pin_exist(pin))
+          return i;
+      }
+      else
+        return i;  // argument i was not recognized
       i++;
-
-      if (!isnum(argv[i])) 
-        return i;
-
-      int seq = atoi(argv[i]),j;
-
-      if (seq < 0 || seq >= SEQUENCES_NUM)
-        return i;
-
-      if (seq_isready(seq)) {
-        // enable RMT sequence 'seq' on pin 'pin'
-        q_printf("%% Sending sequence %d over GPIO %d\n\r", seq, pin);
-
-        if ((j = seq_send(pin, seq)) < 0)
-          q_printf("%% Failed. Error code is: %d\n\r",j);
-
-      } else
-        q_printf("%% Sequence %d is not configured\n\r", seq);
-    } 
-    else if (!q_strcmp(argv[i],"delay")) {
-      if ((i + 1) >= argc) {
-        q_print("% Delay value expected after keyword \"delay\"\n\r");
-        return 0;
-      }
-      i++;
-      if (!isnum(argv[i]))
-        return i;
-      delay(atol(argv[i]));
-    } else if (!q_strcmp(argv[i],"loop")) {
-      if ((i + 1) >= argc) {
-        q_print("% Loop count expected after keyword \"loop\"\n\r");
-        return 0;
-      }
-      i++;
-      if (!isnum(argv[i]))
-        return i;
-      if ((i + 1) < argc) {
-        q_print("% \"loop\" must be the last keyword\n\r");
-        return i + 1;
-      }
-      count = atol(argv[i]);
-      //q_printf("Count=%u\n\r",count);
-      //i = 1;    //start from a pin number
-      argc -= 2;//strip "loop NUMBER" keyword
     }
-    else if (!q_strcmp(argv[i], "save"))  pin_save(pin);
-    else if (!q_strcmp(argv[i], "load"))    pin_load(pin);
-    else if (!q_strcmp(argv[i], "hold"))    gpio_hold_en(pin);
-    else if (!q_strcmp(argv[i], "release")) gpio_hold_dis(pin);
-    else if (!q_strcmp(argv[i], "up"))      { flags |= PULLUP;     pinMode(pin, flags); }
-    else if (!q_strcmp(argv[i], "down"))    { flags |= PULLDOWN;   pinMode(pin, flags); }
-    else if (!q_strcmp(argv[i], "open"))    { flags |= OPEN_DRAIN; pinMode(pin, flags); }
-    else if (!q_strcmp(argv[i], "in"))      { flags |= INPUT;      pinMode(pin, flags); }
-    else if (!q_strcmp(argv[i], "out"))     { flags |= OUTPUT;     pinMode(pin, flags); }
-    else if (!q_strcmp(argv[i], "low"))     digitalWrite(pin, LOW);
-    else if (!q_strcmp(argv[i], "high"))    digitalWrite(pin, HIGH);
-    else if (!q_strcmp(argv[i], "read"))    q_printf("%% GPIO%d : logic %d\n\r", pin, digitalRead(pin) == HIGH ? 1 : 0);
-    else if (!q_strcmp(argv[i], "aread"))   q_printf("%% GPIO%d : analog %d\n\r", pin, analogRead(pin));
-    else if (isnum(argv[i])) { // change pin number
-      pin = atoi(argv[i]);
-      if (!pin_exist(pin))
-        return i;
+    i = 1; // start over again
+    if (anykey_pressed()) {
+#if WITH_HELP
+      q_print("\n\r% Key pressed, exiting..\n\r");
+#endif
+      break;
     }
-    else
-      return i;  // argument i was not recognized
-    i++;
-  }
-
-  i = 1;
   } while (--count > 0);
 
 
