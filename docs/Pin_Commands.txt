@@ -112,7 +112,9 @@ release - "unfreeze" pin which was "frozen" by "pin X hold" See NOTE1 at the
           end of this document
 
 loop X  - repeat whole command X times. The "loop X" keyword must be the last
-          argument of the command
+          argument of the command. Pressing anykey in your terminal software
+          or sending any character from Arduino IDE Serial Monitor interrupts
+          loop
 
 Multiple keywords can be used in single "pin" command (separated by spaces):
 "pin 2 out open up" is a valid command, executing 3 keywords in sequence
