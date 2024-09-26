@@ -1874,7 +1874,7 @@ static struct keywords_t keywords_main[] = {
     "Display information" },
   { "pin", cmd_pin, -1,
 #if WITH_HELP
-    "% \"pin X (hold|release|up|down|out|in|open|high|low|save|load|read|aread|delay)...\"\n\r" \
+    "% \"pin X (hold|release|up|down|out|in|open|high|low|save|load|read|aread|delay|loop)...\"\n\r" \
     "%\n\r" \
     "% Set/Save/Load pin X configuration: pull/direction/digital value\n\r" \
     "% Multiple arguments must be separated with spaces, see examples below:\n\r" \
