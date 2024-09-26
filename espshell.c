@@ -3033,7 +3033,7 @@ static void pin_load(int pin) {
 
 }
 //TAG:pin
-// "pin NUM arg1 arg2 ... argN"
+// "pin NUM arg1 arg2 .. NUMn... argn"
 // "pin NUM"
 static int cmd_pin(int argc, char **argv) {
 
@@ -3070,8 +3070,7 @@ static int cmd_pin(int argc, char **argv) {
     while (i < argc) {
 
       // Run thru keywords and execute them in sequence
-
-      //"seq" keyword:
+      //1. "seq" keyword:
       if (!q_strcmp(argv[i],"seq")) {
         if ((i + 1) >= argc) {
           q_print("% Sequence number expected after \"seq\"\n\r");
@@ -3091,22 +3090,25 @@ static int cmd_pin(int argc, char **argv) {
 
         if (seq_isready(seq)) {
           // enable RMT sequence 'seq' on pin 'pin'
+#if WITH_HELP          
           q_printf("%% Sending sequence %d over GPIO %d\n\r", seq, pin);
-
+#endif
           if ((j = seq_send(pin, seq)) < 0)
             q_printf("%% Failed. Error code is: %d\n\r",j);
 
         } else
           q_printf("%% Sequence %d is not configured\n\r", seq);
       } 
-      //"tone" keyword. takes 2 parameters. unlike global ""tone command
+      //2. "tone" keyword. takes 2 parameters. unlike global ""tone command
       // the duty and frequency are not an optional parameter anymore
       else if (!q_strcmp(argv[i],"tone")) {
 
         unsigned int freq; float duty;
         // make sure that there are 2 extra arguments after "tone" keyword
         if ((i+2) >= argc) {
+#if WITH_HELP          
           q_print("% Frequency (integer) and duty cycle (float 0..1) are expected\n\r");
+#endif          
           return i;
         }
 
@@ -3135,7 +3137,7 @@ static int cmd_pin(int argc, char **argv) {
           return 0;
         }
       }
-      //"delay X" keyword
+      //3. "delay X" keyword
       //creates delay for X milliseconds
       else if (!q_strcmp(argv[i],"delay")) {
         if ((i + 1) >= argc) {
@@ -3149,11 +3151,13 @@ static int cmd_pin(int argc, char **argv) {
           return i;
         delay(atol(argv[i]));
       } 
-      //"loop" keyword
+      //4. "loop" keyword
       else if (!q_strcmp(argv[i],"loop")) {
         //must have an extra argument (loop count)
         if ((i + 1) >= argc) {
+#if WITH_HELP
           q_print("% Loop count expected after keyword \"loop\"\n\r");
+#endif          
           return i;
         }
         i++;
@@ -3163,7 +3167,9 @@ static int cmd_pin(int argc, char **argv) {
 
         // loop must be the last keyword, so we can strip it later
         if ((i + 1) < argc) {
+#if WITH_HELP          
           q_print("% \"loop\" must be the last keyword\n\r");
+#endif          
           return i + 1;
         }
         count = atol(argv[i]);
@@ -3204,8 +3210,7 @@ static int cmd_pin(int argc, char **argv) {
 #endif
       break;
     }
-  } while (--count > 0);
-
+  } while (--count > 0); // repeat if "loop X" command was found
 
   return 0;
 }
@@ -3234,7 +3239,7 @@ static int cmd_nap(int argc, char **argv) {
   // "nap" command: sleep until we receive at least 3 positive edges on UART pin
   // (press any key for a wakeup)
   if (argc == 1) {
-    esp_sleep_enable_uart_wakeup(uart);  //wakeup by uart
+    esp_sleep_enable_uart_wakeup(uart);  // wakeup by uart
     isen = true;
     uart_set_wakeup_threshold(uart, 3);  // 3 positive edges on RX pin to wake up ('spacebar' button two times)
   } else
@@ -3283,7 +3288,9 @@ static int cmd_i2c_if(int argc, char **argv) {
 
   iic = atoi(argv[1]);
   if (iic < 0 || iic >= SOC_I2C_NUM) {
+#if WITH_HELP    
     q_printf("%% Valid I2C interface numbers are 0..%d\n\r", SOC_I2C_NUM - 1);
+#endif    
     return 1;
   }
 
@@ -3307,7 +3314,9 @@ static int cmd_uart_if(int argc, char **argv) {
 
   u = atoi(argv[1]);
   if (u < 0 || u >= SOC_UART_NUM) {
+#if WITH_HELP    
     q_printf("%% Valid UART interface numbers are 0..%d\n\r", SOC_UART_NUM - 1);
+#endif    
     return 1;
   }
 #if WITH_HELP
@@ -3334,7 +3343,9 @@ static int cmd_i2c_clock(int argc, char **argv) {
     return 1;
 
   if (!i2c_isup(iic)) {
+#if WITH_HELP    
     q_printf("%% I2C %d is not initialized. use command \"up\" to initialize\n\r", iic);
+#endif    
     return 0;
   }
 
@@ -3369,7 +3380,9 @@ static int cmd_i2c(int argc, char **argv) {
       return -1;
 
     if (i2c_isup(iic)) {
+#if WITH_HELP      
       q_printf("%% I2C%d is already initialized\n\r", iic);
+#endif      
       return 0;
     }
 
@@ -3462,7 +3475,9 @@ static int cmd_i2c(int argc, char **argv) {
     }
   } else if (!q_strcmp(argv[0], "scan")) {
     if (!i2c_isup(iic)) {
+#if WITH_HELP      
       q_printf("%% I2C %d is not initialized\n\r", iic);
+#endif      
       return 0;
     }
 
@@ -3485,7 +3500,9 @@ static int cmd_i2c(int argc, char **argv) {
   return 0;
 noinit:
   // love gotos
+#if WITH_HELP  
   q_printf("%% I2C %d is not initialized\n\r", iic);
+#endif  
   return 0;
 }
 
@@ -3516,7 +3533,9 @@ static int cmd_uart_baud(int argc, char **argv) {
     return 1;
 
   if (!uart_isup(u)) {
+#if WITH_HELP    
     q_printf("%% uart %d is not initialized. use command \"up\" to initialize\n\r", u);
+#endif    
     return 0;
   }
 
@@ -3536,8 +3555,8 @@ static int cmd_uart_baud(int argc, char **argv) {
 static void
 uart_tap(int remote) {
 
+#define UART_RXTX_BUF 512
   size_t av;
-  char buf[256]; //TODO: make it dynamically allocated on stack
 
   while (1) {
 
@@ -3549,14 +3568,13 @@ uart_tap(int remote) {
         break;
 
       // must not happen unless UART FIFO sizes were changed in ESP-IDF
-      if (av > sizeof(buf)) {
-        q_print("% RX buffer overflow\n\r");
-        return;
-      }
+      if (av > UART_RXTX_BUF)
+        av = UART_RXTX_BUF;
 
-      //nothing to read?
-      if (!av)
+      else if (!av)  //nothing to read?
         break;
+
+      char buf[av];
 
       uart_read_bytes(uart, buf, av, portMAX_DELAY);
       // CTRL+C. most likely sent as a single byte (av == 1), so get away with
@@ -3573,16 +3591,18 @@ uart_tap(int remote) {
 
       // return here or we get flooded by driver messages
       if (ESP_OK != uart_get_buffered_data_len(remote, &av)) {
+#if WITH_HELP        
         q_printf("%% UART%d is not initialized\n\r", remote);
-        return;
-      }
-      if (av > sizeof(buf)) {
-        q_print("% RX buffer overflow\n\r");
+#endif        
         return;
       }
 
-      if (!av)
+      if (av > UART_RXTX_BUF)
+        av = UART_RXTX_BUF;
+      else if (!av)
         break;
+      
+      char *buf[av];
 
       uart_read_bytes(remote, buf, av, portMAX_DELAY);
       uart_write_bytes(uart, buf, av);
