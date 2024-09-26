@@ -2927,71 +2927,70 @@ static int cmd_count(int argc, char **argv) {
 #include "soc/soc_caps.h"
 #include "esp32-hal-ledc.h"
 
+// enable or disable (freq==0) tone generation on
+// pin. freq is in (0..78kHz), duty is [0..1]
+//
+static int tone_enable(unsigned int pin, unsigned int freq, float duty) {
+
+  int resolution = 10;
+
+  if (!pin_exist(pin))
+    return -1;
+
+  if (freq > MAGIC_FREQ) freq = MAGIC_FREQ;
+  if (duty > 1.0f)       duty = 1.0f;
+
+  pinMode(pin,OUTPUT);
+  ledcWriteTone(pin, 0); //disable ledc at pin.
+
+  if (freq) {
+    if (ledcAttach(pin, freq, resolution) == 0)
+      return -1;
+    ledcWriteTone(pin, freq);
+    ledcWrite(pin, (unsigned int)(duty * ((1 << resolution) - 1)));
+  }
+
+  return 0;
+}
+
 //tone PIN FREQ [DUTY]   - pwm on
 //tone PIN               - pwm off
 //FIXME: max frequency is 78277 and I don't know why
 
 static int cmd_tone(int argc, char **argv) {
 
-  int resolution = 10;
+  unsigned int  freq = 0;
+  float         duty = 0.5f;
+  unsigned char pin;
 
-  if (argc < 2)
-    return -1;  //missing arg
+  if (argc < 2)        return -1;  // missing arg
+  if (!isnum(argv[1])) return  1;  // arg 1 is bad
 
-  if (!isnum(argv[1]))
-    return 1;  // arg 1 is bad
+  // first parameter is pin number
+  pin  = (unsigned char)(atol(argv[1]));
 
-  unsigned char pin = (unsigned char)(atoi(argv[1]));
-  int freq = 0, duty = ((1 << resolution) - 1);
-
-  if (!pin_exist(pin))
-    return 1;
-
-  // frequency parameter?
+  //frequency is the second one (optional)
   if (argc > 2) {
-    if (!isnum(argv[2]))
-      return 2;  // arg 2 is bad
-    freq = atoi(argv[2]);
-    if (freq < 0 || freq > MAGIC_FREQ) {
-      q_print("% Valid frequency range is [1 .. " xstr(MAGIC_FREQ) "] Hz\n\r");
-      return 2;
-    }
+    if (!isnum(argv[2])) return 2;
+    freq = atol(argv[2]);
+#if WITH_HELP
+    if (freq > MAGIC_FREQ)
+      q_print("% Frequency will be adjusted to maximum which is " xstr(MAGIC_FREQ) "] Hz\n\r");
+#endif      
   }
 
-  // duty specified?
+  // duty is the third argument (optional)
   if (argc > 3) {
-    if (!isfloat(argv[3]))
+    if (!isfloat(argv[3])) 
       return 3;
-    duty *= atof(argv[3]);
-  } else
-    duty /= 2;
-
-  printf("duty=%d\n",duty);
-
-  if (duty < 0 || duty > (1 << resolution))
-    return 3;  // arg 3 is bad
-
-  pinMode(pin,OUTPUT);
-
-  //disable ledc at pin.
-  //if pin wasn't used before then it will be a error log message from
-  //the IDF. Just ignore it
-  ledcWriteTone(pin, 0);
-  //ledcWriteTone(PIN,0) detaches pin?! TODO: check Arduino Core
-  //ledcDetach(pin);
-
-  if (freq) {
-    if (ledcAttach(pin, freq, resolution) == 0) {
-      q_print(Failed);
-      return 0;
-    }
-    // delay is required.
-    // or ledcWriteTone may fail on a first call (ESP32-WROOM-32D)
-    delay(100);
-    ledcWriteTone(pin, freq);
-    ledcWrite(pin, duty);
+    duty = atof(argv[3]);
   }
 
+  if (tone_enable(pin,freq,duty) < 0) {
+#if WITH_HELP
+    q_print(Failed);
+#endif    
+  }
   return 0;
 }
 
@@ -3100,11 +3099,50 @@ static int cmd_pin(int argc, char **argv) {
         } else
           q_printf("%% Sequence %d is not configured\n\r", seq);
       } 
-      //"delay" keyword
+      //"tone" keyword. takes 2 parameters. unlike global ""tone command
+      // the duty and frequency are not an optional parameter anymore
+      else if (!q_strcmp(argv[i],"tone")) {
+
+        unsigned int freq; float duty;
+        // make sure that there are 2 extra arguments after "tone" keyword
+        if ((i+2) >= argc) {
+          q_print("% Frequency (integer) and duty cycle (float 0..1) are expected\n\r");
+          return i;
+        }
+
+        i++;
+
+        // frequency must be an integer number and duty must be a float point number
+        if (!isnum(argv[i])) {
+#if WITH_HELP
+          q_printf("Integer number expected instead of \"%s\"\n\r",argv[i]);
+#endif          
+          return i; 
+        }
+        freq = atol(argv[i++]);
+        if (!isfloat(argv[i])) {
+#if WITH_HELP
+          q_printf("Float number expected instead of \"%s\"\n\r",argv[i]);
+#endif          
+          return i; 
+        }
+        duty = atof(argv[i]);
+
+        if (tone_enable(pin,freq,duty) < 0) {
+#if WITH_HELP
+          q_print(Failed);
+#endif          
+          return 0;
+        }
+      }
+      //"delay X" keyword
+      //creates delay for X milliseconds
       else if (!q_strcmp(argv[i],"delay")) {
         if ((i + 1) >= argc) {
+#if WITH_HELP          
           q_print("% Delay value expected after keyword \"delay\"\n\r");
-          return 0;
+#endif          
+          return i;
         }
         i++;
         if (!isnum(argv[i]))
@@ -3116,7 +3154,7 @@ static int cmd_pin(int argc, char **argv) {
         //must have an extra argument (loop count)
         if ((i + 1) >= argc) {
           q_print("% Loop count expected after keyword \"loop\"\n\r");
-          return 0;
+          return i;
         }
         i++;
         // loop count must be a number
@@ -3211,12 +3249,13 @@ static int cmd_nap(int argc, char **argv) {
       }
       esp_sleep_enable_timer_wakeup(1000000UL * (unsigned long)atol(argv[1]));
     }
-
+#if WITH_HELP
   q_print("% Light sleep..");
-  
+#endif  
   esp_light_sleep_start();
-  
+#if WITH_HELP  
   q_print("Resuming\n\r");
+#endif  
   return 0;
 }
 
@@ -3226,7 +3265,7 @@ static int cmd_nap(int argc, char **argv) {
 static inline bool i2c_isup(int iic) {
 
   extern bool i2cIsInit(uint8_t i2c_num);  //not a public API, no .h file
-  return (iic < 0 || iic >= SOC_I2C_NUM) ? 0 : i2cIsInit(iic);
+  return (iic < 0 || iic >= SOC_I2C_NUM) ? false : i2cIsInit(iic);
 }
 
 
