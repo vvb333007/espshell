@@ -171,7 +171,14 @@ Example 5, Save pin state, configure it for OUTPUT, set pin HIGH for 250
 Example 7: Set pin 2 high, pin 3 low, wait for 1 second and invert pin values
 -----------------------------------------------------------------------------
 
-esp32#>pin 2 out high 3 out low delay 1000 2 low 3 high
+  esp32#>pin 2 out high 3 out low delay 1000 2 low 3 high
+
+
+Example 8: Blink LED on GPIO2 with 500ms delay, for 20 times
+------------------------------------------------------------
+
+  esp32#>pin 2 out high delay 500 low delay 500 loop 20
+
 
 
 
