@@ -89,8 +89,9 @@ up       - Set weak internal pull-up (~45 kOhm)
 down     - Set weak internal pull-down
 open     - Set pin "open drain" option
 
-high     - Write logic "1" to the pin (digitalWrite(pin,HIGH))
-low      - Write logic "0" to the pin
+high     - Write logic "1" to the pin (digitalWrite(pin,HIGH)). Also sets OUTPUT
+           flag for the pin.
+low      - Write logic "0" to the pin. Also sets OUTPUT flag for the pin.
 seq X    - Send sequence number X over the pin. See documentation file
           "docs/Pulse_Generator" on sequences and how to use them
 tone X Y - Enable frequency generator on fiven pin. X is the frequency in Hertz
@@ -169,7 +170,7 @@ Example 5, Save pin state, configure it for OUTPUT, set pin HIGH for 250
            finally restore the pin configuration:
 -------------------------------------------------------------------------------
 
-  esp32#>pin 33 save out high delay 250 low delay 100 high delay 50 load
+  esp32#>pin 33 save high delay 250 low delay 100 high delay 50 load
   
   NOTE: although you can create simple signal patters with "delay" it is normally 
         used for something simple, like relay control. Complex signal sequences 
