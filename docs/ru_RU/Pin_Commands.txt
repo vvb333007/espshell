@@ -112,7 +112,7 @@ loop X   - повторять всю комманду X раз.
            Пример: установить пины 3 и 4 в значение логической 1, а пины 5 и 6 - в
            логический ноль
 
-               esp32#>pin 3 out high 4 out high 4 out low 6 out low
+               esp32#>pin 3 high 4 high 5 low 6 low
 
 
 
