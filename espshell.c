@@ -256,8 +256,8 @@ static int Point;
 static int PushBack;
 static int Pushed;
 static int Signal = 0;
-//static const KEYMAP Map[32];
-//static const KEYMAP MetaMap[16];
+
+
 static unsigned int Length;
 static unsigned int ScreenCount;
 static unsigned int ScreenSize;
@@ -269,42 +269,36 @@ static int rl_meta_chars = 0;
 
 static unsigned char *editinput();
 static STATUS ring_bell();
-
 static STATUS beg_line();
 static STATUS end_line();
 static STATUS kill_line();
 static STATUS accept_line();
-
 static STATUS bk_char();
 static STATUS del_char();
 static STATUS fd_char();
 static STATUS bk_del_char();
 static STATUS move_to_char();
-
-
 static STATUS redisplay();
 static STATUS h_next();
 static STATUS h_prev();
 static STATUS h_search();
+static STATUS h_first();
+static STATUS h_last();
 static STATUS transpose();
 static STATUS quote();
 static STATUS wipe();
 static STATUS exchange();
 static STATUS yank();
 static STATUS meta();
-
-
-static STATUS bk_kill_word();
 static STATUS mk_set();
 static STATUS last_argument();
-static STATUS h_first();
-static STATUS h_last();
+static STATUS bk_kill_word();
 static STATUS bk_word();
 static STATUS fd_kill_word();
 static STATUS fd_word();
 static STATUS case_down_word();
-static STATUS toggle_meta_mode();
 static STATUS case_up_word();
+static STATUS toggle_meta_mode();
 static STATUS copy_region();
 
 static const KEYMAP Map[32] = {
@@ -1601,8 +1595,18 @@ anykey_pressed() {
 
 // same as delay() but for times > 5 seconds. Interrupted by user input
 // duration - delay time in milliseconds
-static void delay_interruptible(unsigned int duration) {
-
+// returns true if was interrupted by a keypress
+//
+static bool delay_interruptible(unsigned int duration) {
+  while (duration >= 250) {
+    delay(250);
+    if (anykey_pressed())
+      return true;
+    duration -= 250;
+  }
+  if (duration)
+    delay(duration);
+  return false;
 }
 
 
@@ -1656,7 +1660,7 @@ struct keywords_t {
 //Custom uart commands (uart subderictory)
 //Those displayed after executing "uart 2" (or any other uart interface)
 //TAG:keywords_uart
-static struct keywords_t keywords_uart[] = {
+static const struct keywords_t keywords_uart[] = {
 #if WITH_HELP  
   KEYWORDS_BEGIN,
 #endif  
@@ -1735,7 +1739,7 @@ static struct keywords_t keywords_uart[] = {
 //i2c subderictory keywords list
 //cmd_exit() and cmd_i2c_if are responsible for selecting keywords list
 //to use
-static struct keywords_t keywords_i2c[] = {
+static const struct keywords_t keywords_i2c[] = {
 #if WITH_HELP
   KEYWORDS_BEGIN,
 #endif  
@@ -1807,7 +1811,7 @@ static struct keywords_t keywords_i2c[] = {
 
 //TAG:keywords_seq
 //'sequence' subderictory keywords list
-static struct keywords_t keywords_sequence[] = {
+static const struct keywords_t keywords_sequence[] = {
 #if WITH_HELP
   KEYWORDS_BEGIN,
 #endif  
@@ -1930,7 +1934,7 @@ static struct keywords_t keywords_spi[] = {
 
 // root directory commands
 //TAG:keywords_main
-static struct keywords_t keywords_main[] = {
+static const struct keywords_t keywords_main[] = {
 #if WITH_HELP
   KEYWORDS_BEGIN,
 #endif
@@ -2092,7 +2096,7 @@ static struct keywords_t keywords_main[] = {
 
 //TAG:globals
 //current keywords list to use
-static struct keywords_t *keywords = keywords_main;
+static const struct keywords_t  *keywords = keywords_main;
 
 //common Failed message
 static const char *Failed = "% Failed\n\r";
@@ -3080,6 +3084,7 @@ static int cmd_pin(int argc, char **argv) {
 
   unsigned int flags = 0;
   int i = 2, level = -1, pin;
+  bool informed = false;
 
   if (argc < 2)
     return -1;  //missing argument
@@ -3197,8 +3202,16 @@ static int cmd_pin(int argc, char **argv) {
         duration = atol(argv[i]);
         if (duration < 5000)
           delay(duration);
-        else
-          delay_interruptible(duration);
+        else {
+#if WITH_HELP
+          if (!informed) {
+            informed = true;
+            q_print("% Hint: Press/Enter any key to interrupt the command\r\n");
+          }
+#endif          
+          if (delay_interruptible(duration) == true) // was interrupted by keypress? abort whole command
+            return 0;
+        }
       } 
       //4. "loop" keyword
       else if (!q_strcmp(argv[i],"loop")) {
@@ -3224,7 +3237,7 @@ static int cmd_pin(int argc, char **argv) {
         count = atol(argv[i]);
         argc -= 2;//strip "loop NUMBER" keyword
 #if WITH_HELP        
-        q_print("% Press/Enter any key to exit\n\r");
+        q_printf("%% Repeating command %u times. Press/Enter any key to abort\n\r",count);
 #endif
       }
       //Now all the single-line keywords:
@@ -3255,7 +3268,7 @@ static int cmd_pin(int argc, char **argv) {
     i = 1; // start over again
     if (anykey_pressed()) {
 #if WITH_HELP
-      q_print("\n\r% Key pressed, exiting..\n\r");
+      q_print("% Key pressed, aborting..\n\r");
 #endif
       break;
     }
