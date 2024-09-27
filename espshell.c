@@ -2312,10 +2312,10 @@ static void seq_freemem(int seq) {
 // to generate pulses. The criteria is:
 // ->seq must be initialized
 // ->tick must be set
-static int seq_isready(int seq) {
+static bool seq_isready(int seq) {
 
   if (seq < 0 || seq >= SEQUENCES_NUM)
-    return 0;
+    return false;
 
   return (sequences[seq].seq != NULL) && (sequences[seq].tick != 0.0f);
 }
@@ -3201,12 +3201,14 @@ static int cmd_pin(int argc, char **argv) {
 //"mem"
 static int cmd_mem(int argc, char **argv) {
 
-  q_printf("%% Chip memory total: %u, free: %u\n\r"
-             "%% External SPI RAM total:%uKB, free: %uKB\n\r",
-             heap_caps_get_total_size(MALLOC_CAP_INTERNAL),
-             heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
-             heap_caps_get_total_size(MALLOC_CAP_SPIRAM)/1024,
-             heap_caps_get_free_size(MALLOC_CAP_SPIRAM)/1024);
+  unsigned int total;
+
+  q_print("% -- Memory information --\r\n");
+  q_printf("%% malloc():\r\n%% %u bytes total, %u available, %u max per allocation\n\r", heap_caps_get_total_size(MALLOC_CAP_DEFAULT), heap_caps_get_free_size(MALLOC_CAP_DEFAULT),heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+  q_printf("%% heap_caps_malloc():\r\n%% %u bytes total,  %u available, %u max per allocation\n\r", heap_caps_get_total_size(MALLOC_CAP_INTERNAL), heap_caps_get_free_size(MALLOC_CAP_INTERNAL),heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+
+  if ((total = heap_caps_get_total_size(MALLOC_CAP_SPIRAM)/1024) > 0)
+    q_printf("%% External SPIRAM(PSRAM) total: %uMbytes, free: %u bytes\n\r",total / 1024,heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
 
   return 0;
 }
