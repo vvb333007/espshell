@@ -131,7 +131,7 @@ static void espshell_task(const void *arg);
 #define RENEW(p, T, c) (p = (T *)realloc((char *)(p), (unsigned int)(sizeof(T) * (c))))
 #define COPYFROMTO(new, p, len) (void)memcpy((char *)(new), (char *)(p), (int)(len))
 
-#include <signal.h>  //TODO: remove
+//#include <signal.h>
 #include <ctype.h>
 #include <unistd.h>
 #include <sys/termios.h>
@@ -229,10 +229,6 @@ typedef struct _HISTORY {
  * keycodes. However on ESP-IDF these are all set to 0
  */
 static unsigned rl_eof = 0;
-static unsigned rl_erase = 0;
-static unsigned rl_intr = 0;
-static unsigned rl_kill = 0;
-static unsigned rl_quit = 0;
 
 static unsigned char NIL[] = "";
 static const unsigned char *Input = NIL;
@@ -337,15 +333,10 @@ TTYget() {
 
   if (*Input)
     return *Input++;
-#if 1
+
   // read 1 byte from UART
   if (console_read_bytes(uart, &c, 1, portMAX_DELAY) < 1)
     return EOF;
-#else
-  // poll stdin and read 1 byte when it becomes available
-  while ((i = read(0, &c, (unsigned int)1)) < 1)
-    delay(1);  //make WDT happy
-#endif
   return c;
 }
 
@@ -400,22 +391,6 @@ ring_bell() {
 }
 
 
-//TODO: remove
-static STATUS
-do_macro(unsigned int c) {
-  unsigned char name[4];
-
-  name[0] = '_';
-  name[1] = c;
-  name[2] = '_';
-  name[3] = '\0';
-
-  if ((Input = (unsigned char *)getenv((char *)name)) == NULL) {
-    Input = NIL;
-    return ring_bell();
-  }
-  return CSstay;
-}
 
 static STATUS
 do_forward(STATUS move) {
@@ -869,9 +844,8 @@ meta() {
     return CSstay;
   }
 
-  //TODO: remove macro
   if (isupper(c))
-    return do_macro(c);
+    return ring_bell();
 
   for (OldPoint = Point, kp = MetaMap; kp->Function; kp++)
     if (kp->Key == c)
@@ -905,9 +879,9 @@ TTYspecial(unsigned int c) {
   if (ISMETA(c))
     return CSdispatch;
 
-  if (c == rl_erase || (int)c == DEL)
+  if (/*c == rl_erase ||*/ (int)c == DEL)
     return bk_del_char();
-
+/*
   if (c == rl_kill) {
     if (Point != 0) {
       Point = 0;
@@ -916,21 +890,9 @@ TTYspecial(unsigned int c) {
     Repeat = NO_ARG;
     return kill_line();
   }
-
+*/
   if (c == rl_eof && Point == 0 && End == 0)
     return CSeof;
-
-  //TODO: remove
-  if (c == rl_intr) {
-    Signal = SIGINT;
-    return CSsignal;
-  }
-
-  //TODO: remove
-  if (c == rl_quit) {
-    Signal = SIGQUIT;
-    return CSeof;
-  }
 
   return CSdispatch;
 }
@@ -1291,7 +1253,7 @@ argify(unsigned char *line, unsigned char ***avp) {
   }
 
   *c = '\0';
-  p[ac] = NULL;  // NULL? TODO: check & replace with '\0'
+  p[ac] = NULL;  
 
   return ac;
 }
@@ -1399,6 +1361,7 @@ static int cmd_question(int, char **);
 static int cmd_pin(int, char **);
 
 static int cmd_cpu(int, char **);
+static int cmd_cpu_freq(int, char **);
 static int cmd_uptime(int, char **);
 static int cmd_mem(int, char **);
 static int cmd_reload(int, char **);
@@ -1489,7 +1452,7 @@ static int __printfv(const char *format, va_list arg) {
 
 // same as printf() but uses global var 'uart' to direct
 // its output to different uarts
-//
+// NOTE: add -Wall or at least -Wformat to Arduino's c_flags
 static int __attribute__((format (printf, 1, 2))) q_printf(const char *format, ...) {
   int len;
   va_list arg;
@@ -1507,12 +1470,74 @@ static int q_print(const char *str) {
   return len;
 }
 
-//detects if ANY key is pressed
+// make fancy hex data output: mixed hex values
+// and ASCII. Useful to examine EEPROM contents
+//
+static void q_printhex(const unsigned char *p, unsigned int len) {
+
+  if (!p || !len)
+    return;
+
+  if (len < 16) {
+    // data array is too small. just do simple output
+    do {
+      q_printf("%02x ", *p++);
+    } while (--len);
+    q_print(CRLF);
+    return;
+  }
+
+  
+  char ascii[16+1];
+  unsigned int space = 1;
+
+  q_print("      0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F   |0123456789ABCDEF\r\n");
+  q_print("----------------------------------------------------------+----------------\r\n");
+
+  for (unsigned int i = 0, j = 0; i < len; i++) {
+    // add offset at the beginning of every line. it doesnt hurt to have it.
+    // and it is useful when exploring eeprom contens
+    if (!j)
+      q_printf("%04x: ",i);
+    
+    q_printf("%02x ", p[i]);
+    if ((space++ & 3) == 0) // add an extra space after each 4 bytes printed
+      q_print(" ");
+    ascii[j++] = (p[i] <= ' ') ? '.' : p[i]; // dont print anything with codes 32 or less
+    
+    // one complete line could be printed:
+    // we had 16 bytes or it was the last byte
+    if ((j > 15) || (i + 1) >= len) { 
+
+      // short string? pad with spaces
+      if (j < 16) {
+        unsigned char spaces = (16 - j)*3 + (j <= 4 ? 3 : (j <=8 ? 2 : (j <= 12 ? 1 : 0)));
+        char tmp[spaces + 1];
+        memset(tmp,' ',spaces);
+        tmp[spaces] = '\0';
+        q_print(tmp);
+      }
+
+      q_print("|");
+      ascii[j] = '\0';
+      q_print(ascii);
+      q_print(CRLF);
+      j = 0;
+    }
+  }
+  
+  
+
+}
+
+//detects if ANY key is pressed in serial terminal
+// or any character was sent in Arduino IDE Serial Monitor
+//
 static bool
 anykey_pressed() {
 
 #ifdef SERIAL_IS_USB
-#  error "USB-CDC is not supported yet, sorry"
+#  error "USB-CDC is not supported yet, sorry brother"
 #else
   size_t av = 0;
 
@@ -1576,8 +1601,9 @@ struct keywords_t {
 //Those displayed after executing "uart 2" (or any other uart interface)
 //TAG:keywords_uart
 static struct keywords_t keywords_uart[] = {
-  //{ "?", cmd_question, -1, "Show the list of available commands", NULL },
+#if WITH_HELP  
   KEYWORDS_BEGIN,
+#endif  
   { "up", cmd_uart, 3,
 #if WITH_HELP
     "% \"up RX TX BAUD\"\n\r"
@@ -1654,13 +1680,14 @@ static struct keywords_t keywords_uart[] = {
 //cmd_exit() and cmd_i2c_if are responsible for selecting keywords list
 //to use
 static struct keywords_t keywords_i2c[] = {
-
+#if WITH_HELP
   KEYWORDS_BEGIN,
+#endif  
   { "up", cmd_i2c, 3,
 #if WITH_HELP
-    "% \"up SDA SCL CLK\"\n\r"
+    "% \"up SDA SCL CLOCK\"\n\r"
     "%\n\r"
-    "% Initialize I2C interface X, use pins SDA/SCL, clock rate CLK\n\r"
+    "% Initialize I2C interface X, use pins SDA/SCL, clock rate CLOCK\n\r"
     "% Ex.: up 21 22 100000 - enable i2c at pins sda=21, scl=22, 100kHz clock",
 #else
     "",
@@ -1725,8 +1752,9 @@ static struct keywords_t keywords_i2c[] = {
 //TAG:keywords_seq
 //'sequence' subderictory keywords list
 static struct keywords_t keywords_sequence[] = {
-
+#if WITH_HELP
   KEYWORDS_BEGIN,
+#endif  
   { "eot", cmd_seq_eot, 1,
 #if WITH_HELP
     "% \"eot high|low\"\n\r"
@@ -1847,9 +1875,9 @@ static struct keywords_t keywords_spi[] = {
 // root directory commands
 //TAG:keywords_main
 static struct keywords_t keywords_main[] = {
-
+#if WITH_HELP
   KEYWORDS_BEGIN,
-
+#endif
   { "uptime", cmd_uptime, 0, "% \"uptime\" - Shows time passed since last boot", "System uptime" },
 
   { "show", cmd_show, 2,
@@ -1889,7 +1917,7 @@ static struct keywords_t keywords_main[] = {
 #endif
     NULL },
 
-  { "cpu", cmd_cpu, 1, "% \"cpu FREQ\" : Set CPU frequency to FREQ Mhz",
+  { "cpu", cmd_cpu_freq, 1, "% \"cpu FREQ\" : Set CPU frequency to FREQ Mhz",
     "Set/show CPU parameters" },
 
   { "cpu", cmd_cpu, 0, "% \"cpu\" : Show CPUID and CPU/XTAL/APB frequencies", NULL },
@@ -2025,7 +2053,7 @@ static int Context = 0;
 
 //TAG:utility
 //check if given ascii string is a decimal number. Ex.: "12345", "-12"
-static bool isnum(char *p) {
+static bool isnum(const char *p) {
   if (*p == '-')
     p++;
   while (*p >= '0' && *p <= '9')
@@ -2033,7 +2061,7 @@ static bool isnum(char *p) {
   return !(*p);  //if *p is 0 then all the chars were digits (end of line reached).
 }
 
-static bool isfloat(char *p) {
+static bool isfloat(const char *p) {
   bool dot = false;
   
   while ((*p >= '0' && *p <= '9') || (*p == '.' && !dot)) {
@@ -2046,22 +2074,21 @@ static bool isfloat(char *p) {
 
 
 
-//check if given ascii string is a hex number. Only first two bytes are checked
-//TODO: rewrite
-static bool ishex(char *p) {
+// check if given ascii string is a hex BYTE.
+// first 1 or 2 characters are checked
+static bool ishex(const char *p) {
   if ((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F')) {
     p++;
     if ((*p == 0) || (*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F'))
       return true;
   }
-
   return false;
 }
 
 //convert hex ascii byte.
 //input strings are 1 or 2 chars long:  Ex.:  "0A", "A","6E"
-//TODO: rewrite
-static unsigned char ascii2hex(char *p) {
+//TODO: rewrite. as of now it accepts whole latin1 set not just ABCDEF
+static unsigned char ascii2hex(const char *p) {
 
   unsigned char f, l;  //first and last
 
@@ -2814,7 +2841,6 @@ static int cmd_seq_show(int argc, char **argv) {
 #define PULSE_WAIT 1000
 
 //TAG:count
-//TODO: convert to new PCNT api as this one is deprecated
 //"count PIN [neg|pos|both [DELAY_MS]]"
 //
 // To deal with counter overflows interrupts must be used.
@@ -2871,8 +2897,6 @@ static int cmd_count(int argc, char **argv) {
   pcnt_counter_pause(PCNT_UNIT_0);
   pcnt_counter_clear(PCNT_UNIT_0);
   pcnt_counter_resume(PCNT_UNIT_0);
-  //TODO: more precise is to setup an interrupt & timer.
-  //      yeah, one day.
   delay(wait);
   pcnt_counter_pause(PCNT_UNIT_0);
   pcnt_get_counter_value(PCNT_UNIT_0, &count);
@@ -2991,9 +3015,11 @@ static void pin_load(int pin) {
   // TODO: restore perephireal connections (FUNC_SEL,)
 
 }
-//TAG:pin
-// "pin NUM arg1 arg2 .. NUMn... argn"
+
+// "pin NUM arg1 arg2 .. argn"
 // "pin NUM"
+// Big fat "pin" command. Processes multiple arguments
+//
 static int cmd_pin(int argc, char **argv) {
 
   unsigned int flags = 0;
@@ -3002,18 +3028,13 @@ static int cmd_pin(int argc, char **argv) {
   if (argc < 2)
     return -1;  //missing argument
 
-  if (!isnum(argv[1]))  //first argument must be a decimal number
-    return 1;
-
-  pin = atoi(argv[1]);
-
-  if (!pin_exist(pin))
+  if (!isnum(argv[1]) || !pin_exist((pin = atoi(argv[1]))))  //first argument must be a decimal number
     return 1;
 
   //"pin X" command is executed here
   if (argc == 2) {
 
-    level = digitalRead(pin);  //FIXME: check if pin is readable
+    level = digitalRead(pin);
     q_printf("%% Digital pin value = %d\n\r", level);
 
     gpio_dump_io_configuration(stdout, (uint64_t)1 << pin);  // FIXME: works only on default UART0
@@ -3032,8 +3053,10 @@ static int cmd_pin(int argc, char **argv) {
       //1. "seq" keyword:
       if (!q_strcmp(argv[i],"seq")) {
         if ((i + 1) >= argc) {
+#if WITH_HELP
           q_print("% Sequence number expected after \"seq\"\n\r");
-          return 0;
+#endif          
+          return i;
         }
         i++;
 
@@ -3346,14 +3369,12 @@ static int cmd_i2c(int argc, char **argv) {
     }
 
 
-    if (!isnum(argv[1])) return 1;
-    sda = atoi(argv[1]);
-    if (!pin_exist(sda)) return 1;
-    if (!isnum(argv[2])) return 2;
-    scl = atoi(argv[2]);
-    if (!pin_exist(scl)) return 2;
-    if (!isnum(argv[3])) return 3;
-    clock = atoi(argv[3]);
+    if (!isnum(argv[1]))                   return 1; // sda must be a number
+    if (!pin_exist((sda = atoi(argv[1])))) return 1; // and be a valid pin
+    if (!isnum(argv[2]))                   return 2; // same for scl
+    if (!pin_exist((scl = atoi(argv[2])))) return 2;
+    if (!isnum(argv[3]))                   return 3; // clock must be a number
+    clock = atol(argv[3]);
 
     if (ESP_OK != i2cInit(iic, sda, scl, clock))
       q_print(Failed);
@@ -3405,6 +3426,7 @@ static int cmd_i2c(int argc, char **argv) {
     if (addr < 1 || addr > 127)
       return 1;
 
+    // second parameter: requested size
     if (!isnum(argv[2]))
       return 2;
 
@@ -3412,7 +3434,9 @@ static int cmd_i2c(int argc, char **argv) {
 
     if (size < 0 || size > I2C_RXTX_BUF) {
       size = I2C_RXTX_BUF;
+#if WITH_HELP      
       q_printf("%% Max read size buffer is %d bytes\n\r", size);
+#endif      
     }
 
     got = 0;
@@ -3427,10 +3451,12 @@ static int cmd_i2c(int argc, char **argv) {
       }
       q_printf("%% I2C%d received %d bytes:\n\r", iic, got);
       
-      //TODO: make nice output
-      for (i = 0; i < got; i++)
-        q_printf("%02X ", data[i]);
-      q_print(CRLF);
+      
+      //for (i = 0; i < got; i++)
+      //  q_printf("%02X ", data[i]);
+      //q_print(CRLF);
+      q_printhex(data,got);
+
     }
   } else if (!q_strcmp(argv[0], "scan")) {
     if (!i2c_isup(iic)) {
@@ -3757,11 +3783,12 @@ extern bool setCpuFrequencyMhz(uint32_t cpu_freq_mhz);
 extern uint32_t getXtalFrequencyMhz();
 extern uint32_t getApbFrequency();
 
-//TAG:cpu
+
 //"cpu"
-//"cpu CLOCK"
-//TODO: check the code on all ESP32 models, not just ESP32-WROOM-32D
-//TODO: split to 2 functions: cmd_cpu & cmd_cpu_freq
+//
+// Display CPU ID information, frequencies and 
+// chip temperature
+//
 static int cmd_cpu(int argc, char **argv) {
 
   esp_chip_info_t chip_info;
@@ -3769,30 +3796,6 @@ static int cmd_cpu(int argc, char **argv) {
   uint32_t chip_ver;
   uint32_t pkg_ver;
   const char *chipid = "ESP32-(Unknown)>";
-
-  //cpu FREQUENCY command
-  if (argc > 1) {
-    unsigned int freq = atoi(argv[1]);
-
-    while (freq != 240 && freq != 160 && freq != 120 && freq != 80) {
-
-      unsigned int xtal = getXtalFrequencyMhz();
-
-      if ((freq == xtal) || (freq == xtal / 2)) break;
-      if ((xtal >= 40) && (freq == xtal / 4)) break;
-      q_print("% Supported frequencies are: 240, 160, 120, 80, ");
-      if (xtal >= 40)
-        q_printf("%u, %u and %u\n\r", xtal, xtal / 2, xtal / 4);
-      else
-        q_printf("%u and %u\n\r", xtal, xtal / 2);
-      return 1;
-    }
-
-    if (!setCpuFrequencyMhz(freq))
-      q_print(Failed);
-
-    return 0;
-  }
 
   esp_chip_info(&chip_info);
 
@@ -3803,10 +3806,10 @@ static int cmd_cpu(int argc, char **argv) {
   switch (pkg_ver) {
 
     case EFUSE_RD_CHIP_VER_PKG_ESP32D0WDQ6: if (chip_info.revision / 100 == 3) chipid = "ESP32-D0WDQ6-V3"; else chipid = "ESP32-D0WDQ6"; break;
-    case EFUSE_RD_CHIP_VER_PKG_ESP32D0WDQ5: if (chip_info.revision / 100 == 3) chipid = "ESP32-D0WD-V3"; else chipid = "ESP32-D0WD"; break;
-    case EFUSE_RD_CHIP_VER_PKG_ESP32D2WDQ5: chipid = "ESP32-D2WD-Q5"; break;
-    case EFUSE_RD_CHIP_VER_PKG_ESP32PICOD2: chipid = "ESP32-PICO-D2"; break;
-    case EFUSE_RD_CHIP_VER_PKG_ESP32PICOD4: chipid = "ESP32-PICO-D4"; break;
+    case EFUSE_RD_CHIP_VER_PKG_ESP32D0WDQ5: if (chip_info.revision / 100 == 3) chipid = "ESP32-D0WD-V3";   else chipid = "ESP32-D0WD";   break;
+    case EFUSE_RD_CHIP_VER_PKG_ESP32D2WDQ5:   chipid = "ESP32-D2WD-Q5"; break;
+    case EFUSE_RD_CHIP_VER_PKG_ESP32PICOD2:   chipid = "ESP32-PICO-D2"; break;
+    case EFUSE_RD_CHIP_VER_PKG_ESP32PICOD4:   chipid = "ESP32-PICO-D4"; break;
     case EFUSE_RD_CHIP_VER_PKG_ESP32PICOV302: chipid = "ESP32-PICO-V3-02"; break;
     case EFUSE_RD_CHIP_VER_PKG_ESP32D0WDR2V3: chipid = "ESP32-D0WDR2-V3"; break;
     default: q_printf("%% Detected PKG_VER=%04x\n\r", (unsigned int)pkg_ver);
@@ -3826,7 +3829,7 @@ static int cmd_cpu(int argc, char **argv) {
     case CHIP_ESP32C6: chipid = "ESP32-C6"; break;
     case CHIP_ESP32H2: chipid = "ESP32-H2"; break;
   }
-#endif
+#endif //CONFIG_IDF_TARGET_XXX
 
   q_printf("%% CPU ID: %s, Rev.: %d.%d\n\r%% CPU %luMhz, Xtal %luMhz, Bus %luMhz, Temperature: %.1fC\n\r",
              chipid,
@@ -3841,6 +3844,42 @@ static int cmd_cpu(int argc, char **argv) {
   return 0;
 }
 
+//"cpu CLOCK"
+//
+// Set cpu frequency. 
+//
+static int cmd_cpu_freq(int argc, char **argv) {
+
+  if (argc < 2)
+    return -1; // not enough arguments
+
+  if (!isnum(argv[1]))
+    return 1;
+
+  unsigned int freq = atol(argv[1]);
+
+  while (freq != 240 && freq != 160 && freq != 120 && freq != 80) {
+
+    unsigned int xtal = getXtalFrequencyMhz();
+
+    if ((freq == xtal) || (freq == xtal / 2)) break;
+    if ((xtal >= 40) && (freq == xtal / 4))   break;
+
+    q_print("% Supported frequencies are: 240, 160, 120, 80, ");
+
+    if (xtal >= 40)
+      q_printf("%u, %u and %u\n\r", xtal, xtal / 2, xtal / 4);
+    else
+      q_printf("%u and %u\n\r", xtal, xtal / 2);
+      return 1;
+  }
+
+  if (!setCpuFrequencyMhz(freq))
+    q_print(Failed);
+
+  return 0;
+}
+
 // external user-defined command handler functions here
 #ifdef EXTERNAL_HANDLERS
 #include EXTERNAL_HANDLERS
@@ -3849,7 +3888,6 @@ static int cmd_cpu(int argc, char **argv) {
 //Time counter value (in seconds) right before entering
 //main()/app_main()
 static unsigned int uptime = 0;
-
 
 
 // pre-main() hook
@@ -3863,8 +3901,7 @@ __attribute__((constructor)) static
   espshell_start() {
 
   // save the counter value (seconds) on program start
-  // must be 0 but once I saw strange glitch when the timer was not
-  // reset on reboot resulting in a wrong "uptime" command values
+  // must be 0 but just in case
   uptime = (uint32_t)(esp_timer_get_time() / 1000000);
 
   //initialize sequences
@@ -3876,8 +3913,10 @@ __attribute__((constructor)) static
   espshell_task((const void *)1);
 }
 
-//TAG:uptime
+
 // "uptime"
+//
+// Displays system uptime as returned by esp_timer_get_time() counter.
 //
 static int
 cmd_uptime(int argc, char **argv) {
@@ -3925,8 +3964,8 @@ static int cmd_suspend(int argc, char **argv) {
   return 0;
 }
 
-//TAG:resume
 //"resume"
+// Resume previously suspended loop() task
 static int cmd_resume(int argc, char **argv) {
 
   vTaskResume(loopTaskHandle);
@@ -3935,15 +3974,14 @@ static int cmd_resume(int argc, char **argv) {
 }
 
 
-
-#define INDENT 10  //TODO: use a variable calculated at shell task startup
-
-//TAG:?
 // "?"
+//
 // question mark command: display all commands available
 // along with their brief description.
+//
 static int cmd_question(int argc, char **argv) {
 #if WITH_HELP
+#define INDENT 10  //TODO: use a variable calculated at shell task startup
   int i = 0;
   const char *prev = "";
   char indent[INDENT + 1];
@@ -3994,15 +4032,17 @@ static int cmd_question(int argc, char **argv) {
 #else
   argc = argc;
   argv = argv;
-#endif
+#endif // WITH_HELP
   return 0;
 }
 
 
-// Parse & execute: split user input to tokens, find an appropriate 
+// Parse & execute: split user input "p" to tokens, find an appropriate 
 // entry in keywords[] array and execute coresponding callback.
+// String p - is the user input as returned by readline()
 //
-//TAG:shell
+// returns 0 on success
+//
 static int
 espshell_command(char *p) {
 
@@ -4028,15 +4068,17 @@ espshell_command(char *p) {
 
   // process "?": "command ?" and "? command"
   if (argc > 1 && (*(argv[1]) == '?' || *(argv[0]) == '?')) {
+#if WITH_HELP    
+
+    // change "? command" to "command ?"
     if (*(argv[0]) == '?')
-    argv[0] = argv[1];
-#if WITH_HELP
+      argv[0] = argv[1];
 
     // run thru keywords[] and print out "help" for every entriy.
     int cmd_len = strlen(argv[0]);
     while (keywords[i].cmd) {
       if (keywords[i].help || keywords[i].brief) {  //skip hidden commands
-        if (strlen(keywords[i].cmd) >= cmd_len) {   
+        if (strlen(keywords[i].cmd) >= cmd_len) {   // partial match (TODO: use q_strcmp here)
           if (!strncmp(keywords[i].cmd, argv[0], cmd_len)) {
             found = 1;
             if (keywords[i].help)
@@ -4113,11 +4155,10 @@ notfound:
 }
 
 
-// execute arbitrary shell command (1 string per call).
-// basically it is just a wrapper for espshell_command()
-// dealing with const char * input
-// return 0 on success, -1 if error, >0 if error and error
-// code is failed argument index
+// Execute arbitrary shell command (1 string per call).
+// Basically it is just a wrapper for espshell_command() dealing with 
+// const char * input. Return 0 on success, -1 on failure, >0 - failed 
+// argument index
 int
 espshell_exec(const char *p) {
 
@@ -4132,9 +4173,12 @@ espshell_exec(const char *p) {
 
 
 
-//TAG:task
-// shell task
-// only one shell task can be started
+
+// shell task. reads and processes user input.
+//
+// only one shell task can be started!
+// this task started from espshell_start()
+//
 static void espshell_task(const void *arg) {
 
   //start task and return
