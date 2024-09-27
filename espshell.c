@@ -49,8 +49,8 @@
  * 4. This notice may not be removed or altered.
  */
 
-////////////////// COMPILE TIME SETTINGS
-#undef AUTOSTART
+
+
 #undef WITH_HELP
 #undef UNIQUE_HISTORY
 #undef HIST_SIZE
@@ -59,12 +59,11 @@
 #undef USE_UART
 #undef DO_ECHO
 
-//#define SERIAL_IS_USB //Not yet
+// COMPILE TIME SETTINGS
+// ---------------------
+//#define SERIAL_IS_USB        //Not yet
 //#define ESPCAM               //include ESP32CAM commands (read extra/README.md).
 
-#define AUTOSTART      1     // Start the shell automatically (no extra code needed to user sketch)
-                             // If set to 0, then the user sketch must call espshell_start()
-                             // (usually at the end of sketch's setup() function)
 #define WITH_HELP      1     // Set to 0 to save some program space by excluding help strings/functions
 #define UNIQUE_HISTORY 1     // Wheither to discard repeating commands from the history or not
 #define HIST_SIZE      20    // History buffer size (number of commands to remember)
@@ -110,9 +109,9 @@
 
 #include <Arduino.h>
 
-// main espshell task. started by espshell_start() on application
-// startup (if AUTOSTART == 1)
+
 static void espshell_task(const void *arg);
+static void __attribute__((constructor)) espshell_start();
 
 
 //========>=========>======= EDITLINE CODE BELOW (modified ancient version) =======>=======>
@@ -129,7 +128,7 @@ static void espshell_task(const void *arg);
 #define DISPOSE(p) free((char *)(p))
 #define NEW(T, c) ((T *)malloc((unsigned int)(sizeof(T) * (c))))
 #define RENEW(p, T, c) (p = (T *)realloc((char *)(p), (unsigned int)(sizeof(T) * (c))))
-#define COPYFROMTO(new, p, len) (void)memcpy((char *)(new), (char *)(p), (int)(len))
+#define COPYFROMTO(_new, p, len) (void)memcpy((char *)(_new), (char *)(p), (int)(len))
 
 //#include <signal.h>
 #include <ctype.h>
@@ -155,21 +154,32 @@ static uart_port_t uart = USE_UART;
 
 
 #ifdef SERIAL_IS_USB // Serial is class USBCDC
-static int console_write_bytes(int u, const void *buf, size_t len) {
-#  error "USB-OTG console port is not supported yet"  
+static int console_write_bytes(const void *buf, size_t len) {
+#  error "Uconsole_write_bytes() is not implemented"  
   return 0;
 }
-static int console_read_bytes(int u, void *buf, uint32_t len, TickType_t wait) {
-#  error "USB-OTG console port is not supported yet"  
+static int console_read_bytes(void *buf, uint32_t len, TickType_t wait) {
+#  error "console_read_bytes() is not implemented"  
   return 0;
+}
+static bool console_isup(int u) {
+#  error "console_isup() is not implemented"
+  return false;
 }
 #else // Serial is class HardwareSerial
-static int inline __attribute__((always_inline)) console_write_bytes(int u, const void *buf, size_t len) {
-  return uart_write_bytes((uart_port_t)u,buf,len);
+static int inline __attribute__((always_inline)) console_write_bytes(const void *buf, size_t len) {
+  return uart_write_bytes(uart,buf,len);
 }
-static int inline __attribute__((always_inline)) console_read_bytes(int u, void *buf, uint32_t len, TickType_t wait) {
-  return uart_read_bytes((uart_port_t)u,buf,len,wait);
+static int inline __attribute__((always_inline)) console_read_bytes(void *buf, uint32_t len, TickType_t wait) {
+  return uart_read_bytes(uart,buf,len,wait);
 }
+
+static inline bool uart_isup(int u);
+static bool inline __attribute__((always_inline)) console_isup() {
+  
+  return uart_isup(uart);
+}
+
 #endif //SERIAL_IS_USB
 
 
@@ -246,8 +256,8 @@ static int Point;
 static int PushBack;
 static int Pushed;
 static int Signal = 0;
-static const KEYMAP Map[32];
-static const KEYMAP MetaMap[16];
+//static const KEYMAP Map[32];
+//static const KEYMAP MetaMap[16];
 static unsigned int Length;
 static unsigned int ScreenCount;
 static unsigned int ScreenSize;
@@ -258,6 +268,96 @@ static bool Echo = DO_ECHO;
 static int rl_meta_chars = 0;
 
 static unsigned char *editinput();
+static STATUS ring_bell();
+
+static STATUS beg_line();
+static STATUS end_line();
+static STATUS kill_line();
+static STATUS accept_line();
+
+static STATUS bk_char();
+static STATUS del_char();
+static STATUS fd_char();
+static STATUS bk_del_char();
+static STATUS move_to_char();
+
+
+static STATUS redisplay();
+static STATUS h_next();
+static STATUS h_prev();
+static STATUS h_search();
+static STATUS transpose();
+static STATUS quote();
+static STATUS wipe();
+static STATUS exchange();
+static STATUS yank();
+static STATUS meta();
+
+
+static STATUS bk_kill_word();
+static STATUS mk_set();
+static STATUS last_argument();
+static STATUS h_first();
+static STATUS h_last();
+static STATUS bk_word();
+static STATUS fd_kill_word();
+static STATUS fd_word();
+static STATUS case_down_word();
+static STATUS toggle_meta_mode();
+static STATUS case_up_word();
+static STATUS copy_region();
+
+static const KEYMAP Map[32] = {
+  { CTL('@'), ring_bell },
+  { CTL('A'), beg_line },
+  { CTL('B'), bk_char },
+  { CTL('D'), del_char },
+  { CTL('E'), end_line },
+  { CTL('F'), fd_char },
+  { CTL('G'), ring_bell },
+  { CTL('H'), bk_del_char },
+  { CTL('J'), accept_line },
+  { CTL('K'), kill_line },
+  { CTL('L'), redisplay },
+  { CTL('M'), accept_line },
+  { CTL('N'), h_next },
+  { CTL('O'), ring_bell },
+  { CTL('P'), h_prev },
+  { CTL('Q'), ring_bell },
+  { CTL('R'), h_search },
+  { CTL('S'), ring_bell },
+  { CTL('T'), transpose },
+  { CTL('U'), ring_bell },
+  { CTL('V'), quote },
+  { CTL('W'), wipe },
+  { CTL('X'), exchange },
+  { CTL('Y'), yank },
+  { CTL('Z'), ring_bell },
+  { CTL('['), meta },
+  { CTL(']'), move_to_char },
+  { CTL('^'), ring_bell },
+  { CTL('_'), ring_bell },
+  { 0, NULL }
+};
+
+static const KEYMAP MetaMap[16] = {
+  { CTL('H'), bk_kill_word },
+  { DEL, bk_kill_word },
+  { ' ', mk_set },
+  { '.', last_argument },
+  { '<', h_first },
+  { '>', h_last },
+  { 'b', bk_word },
+  { 'd', fd_kill_word },
+  { 'f', fd_word },
+  { 'l', case_down_word },
+  { 'm', toggle_meta_mode },
+  { 'u', case_up_word },
+  { 'y', yank },
+  { 'w', copy_region },
+  { 0, NULL }
+};
+
 
 
 // Print buffered (by TTYputc/TTYputs) data
@@ -267,7 +367,7 @@ TTYflush() {
   if (ScreenCount) {
 
     if (Echo)
-      console_write_bytes(uart, Screen, ScreenCount);
+      console_write_bytes(Screen, ScreenCount);
     ScreenCount = 0;
   }
 }
@@ -334,8 +434,8 @@ TTYget() {
   if (*Input)
     return *Input++;
 
-  // read 1 byte from UART
-  if (console_read_bytes(uart, &c, 1, portMAX_DELAY) < 1)
+  // read 1 byte from user
+  if (console_read_bytes(&c, 1, portMAX_DELAY) < 1)
     return EOF;
   return c;
 }
@@ -487,18 +587,18 @@ static STATUS
 insert_string(unsigned char *p) {
   unsigned int len;
   int i;
-  unsigned char *new;
+  unsigned char *_new;
   unsigned char *q;
 
   len = strlen((char *)p);
   if (End + len >= Length) {
-    if ((new = NEW(unsigned char, Length + len + MEM_INC)) == NULL)
+    if ((_new = NEW(unsigned char, Length + len + MEM_INC)) == NULL)
       return CSstay;
     if (Length) {
-      COPYFROMTO(new, Line, Length);
+      COPYFROMTO(_new, Line, Length);
       DISPOSE(Line);
     }
-    Line = new;
+    Line = _new;
     Length += len + MEM_INC;
   }
 
@@ -826,7 +926,7 @@ meta() {
 
   /* Also include VT-100 arrows. */
   if (c == '[' || c == 'O')
-    switch (c = TTYget()) {
+    switch ((int)(c = TTYget())) {
       default: return ring_bell();
       case EOF: return CSeof;
       case 'A': return h_prev();   // Arrow UP
@@ -1206,7 +1306,7 @@ static int
 argify(unsigned char *line, unsigned char ***avp) {
   unsigned char *c;
   unsigned char **p;
-  unsigned char **new;
+  unsigned char **_new;
   int ac;
   int i;
 
@@ -1228,17 +1328,17 @@ argify(unsigned char *line, unsigned char ***avp) {
 
         if (ac + 1 == i) {
 
-          new = NEW(unsigned char *, i + MEM_INC);
+          _new = NEW(unsigned char *, i + MEM_INC);
 
-          if (new == NULL) {
+          if (_new == NULL) {
             p[ac] = NULL;
             return ac;
           }
 
-          COPYFROMTO(new, p, i * sizeof(char **));
+          COPYFROMTO(_new, p, i * sizeof(char **));
           i += MEM_INC;
           DISPOSE(p);
-          *avp = p = new;
+          *avp = p = _new;
         }
 
         /*skip spaces */
@@ -1284,56 +1384,6 @@ last_argument() {
   return s;
 }
 
-static const KEYMAP Map[32] = {
-  { CTL('@'), ring_bell },
-  { CTL('A'), beg_line },
-  { CTL('B'), bk_char },
-  { CTL('D'), del_char },
-  { CTL('E'), end_line },
-  { CTL('F'), fd_char },
-  { CTL('G'), ring_bell },
-  { CTL('H'), bk_del_char },
-  { CTL('J'), accept_line },
-  { CTL('K'), kill_line },
-  { CTL('L'), redisplay },
-  { CTL('M'), accept_line },
-  { CTL('N'), h_next },
-  { CTL('O'), ring_bell },
-  { CTL('P'), h_prev },
-  { CTL('Q'), ring_bell },
-  { CTL('R'), h_search },
-  { CTL('S'), ring_bell },
-  { CTL('T'), transpose },
-  { CTL('U'), ring_bell },
-  { CTL('V'), quote },
-  { CTL('W'), wipe },
-  { CTL('X'), exchange },
-  { CTL('Y'), yank },
-  { CTL('Z'), ring_bell },
-  { CTL('['), meta },
-  { CTL(']'), move_to_char },
-  { CTL('^'), ring_bell },
-  { CTL('_'), ring_bell },
-  { 0, NULL }
-};
-
-static const KEYMAP MetaMap[16] = {
-  { CTL('H'), bk_kill_word },
-  { DEL, bk_kill_word },
-  { ' ', mk_set },
-  { '.', last_argument },
-  { '<', h_first },
-  { '>', h_last },
-  { 'b', bk_word },
-  { 'd', fd_kill_word },
-  { 'f', fd_word },
-  { 'l', case_down_word },
-  { 'm', toggle_meta_mode },
-  { 'u', case_up_word },
-  { 'y', yank },
-  { 'w', copy_region },
-  { 0, NULL }
-};
 
 
 ////////////////////////////// EDITLINE CODE END
@@ -1439,7 +1489,7 @@ static int __printfv(const char *format, va_list arg) {
 
   vsnprintf(temp, len + 1, format, arg);
 
-  ret = console_write_bytes(uart, temp, len);
+  ret = console_write_bytes(temp, len);
 
   if (len >= sizeof(buf))
     free(temp);
@@ -1466,7 +1516,7 @@ static int __attribute__((format (printf, 1, 2))) q_printf(const char *format, .
 static int q_print(const char *str) {
   size_t len = strlen(str);
   if (len)
-    len = console_write_bytes(uart, str, len);
+    len = console_write_bytes(str, len);
   return len;
 }
 
@@ -1547,6 +1597,12 @@ anykey_pressed() {
 
   return false;
 #endif
+}
+
+// same as delay() but for times > 5 seconds. Interrupted by user input
+// duration - delay time in milliseconds
+static void delay_interruptible(unsigned int duration) {
+
 }
 
 
@@ -1897,7 +1953,7 @@ static struct keywords_t keywords_main[] = {
     "% Ex.: pin 1 out up             -pin1 is OUTPUT with PULLUP\n\r" \
     "% Ex.: pin 1 save               -save pin state\n\r" \
     "% Ex.: pin 1 out high           -pin1 set to logic \"1\"\n\r" \
-    "% Ex.: pin 1 out hi del 100 low -set pin1 to logic \"1\", after 100ms to \"0\"\n\r" \
+    "% Ex.: pin 1 high delay 100 low -set pin1 to logic \"1\", after 100ms to \"0\"\n\r" \
     "% Ex.: pin 1 tone 2000 0.3      -set 5kHz, 30% duty square wave output\n\r" \
     "% Ex.: pin 1 tone 0 0           -disable generation\n\r" \
     "% Ex.: pin 1 out high delay 500 low delay 500 loop 10 \n\r" \
@@ -2850,8 +2906,8 @@ static int cmd_count(int argc, char **argv) {
 
   pcnt_config_t cfg;
   int16_t count, wait = 1000;
-  int pos = PCNT_COUNT_DIS;
-  int neg = PCNT_COUNT_DIS;
+  pcnt_count_mode_t pos = PCNT_COUNT_DIS;
+  pcnt_count_mode_t neg = PCNT_COUNT_DIS;
   int pin;
 
   //pin number
@@ -3028,7 +3084,8 @@ static int cmd_pin(int argc, char **argv) {
   if (argc < 2)
     return -1;  //missing argument
 
-  if (!isnum(argv[1]) || !pin_exist((pin = atoi(argv[1]))))  //first argument must be a decimal number
+  //first argument must be a decimal number: a GPIO number
+  if (!isnum(argv[1]) || !pin_exist((pin = atoi(argv[1]))))  
     return 1;
 
   //"pin X" command is executed here
@@ -3041,16 +3098,16 @@ static int cmd_pin(int argc, char **argv) {
     return 0;
   }
 
-  // repeat whole command "count" times
+  // repeat whole "pin ..." command "count" times.
   // this number can be changed by "loop" keyword
   unsigned int count = 1; 
   do {
 
-    //more than 2 tokens: read all the options and set the parameters
+    //Run through "pin NUM arg1, arg2 ... argN" arguments, looking for keywords
+    // to execute.
     while (i < argc) {
 
-      // Run thru keywords and execute them in sequence
-      //1. "seq" keyword:
+      //1. "seq NUM" keyword found:
       if (!q_strcmp(argv[i],"seq")) {
         if ((i + 1) >= argc) {
 #if WITH_HELP
@@ -3081,8 +3138,9 @@ static int cmd_pin(int argc, char **argv) {
         } else
           q_printf("%% Sequence %d is not configured\n\r", seq);
       } 
-      //2. "tone" keyword. takes 2 parameters. unlike global ""tone command
-      // the duty and frequency are not an optional parameter anymore
+      //2. "tone FREQ DUTY" keyword. 
+      // unlike global ""tone command the duty and frequency are not an optional 
+      // parameter anymore. Both can be 0 which used to disable previous "tone"
       else if (!q_strcmp(argv[i],"tone")) {
 
         unsigned int freq; float duty;
@@ -3112,6 +3170,8 @@ static int cmd_pin(int argc, char **argv) {
         }
         duty = atof(argv[i]);
 
+        // enable/disable tone on given pin. if freq is 0 then tone is
+        // disabled
         if (tone_enable(pin,freq,duty) < 0) {
 #if WITH_HELP
           q_print(Failed);
@@ -3120,8 +3180,9 @@ static int cmd_pin(int argc, char **argv) {
         }
       }
       //3. "delay X" keyword
-      //creates delay for X milliseconds
+      //creates delay for X milliseconds. 
       else if (!q_strcmp(argv[i],"delay")) {
+        unsigned int duration;
         if ((i + 1) >= argc) {
 #if WITH_HELP          
           q_print("% Delay value expected after keyword \"delay\"\n\r");
@@ -3131,7 +3192,13 @@ static int cmd_pin(int argc, char **argv) {
         i++;
         if (!isnum(argv[i]))
           return i;
-        delay(atol(argv[i]));
+        // delays of more than 5 seconds are sensetive to
+        //user input: anykey will interrupt the delay
+        duration = atol(argv[i]);
+        if (duration < 5000)
+          delay(duration);
+        else
+          delay_interruptible(duration);
       } 
       //4. "loop" keyword
       else if (!q_strcmp(argv[i],"loop")) {
@@ -3163,8 +3230,8 @@ static int cmd_pin(int argc, char **argv) {
       //Now all the single-line keywords:
       else if (!q_strcmp(argv[i], "save"))    pin_save(pin);
       else if (!q_strcmp(argv[i], "load"))    pin_load(pin);
-      else if (!q_strcmp(argv[i], "hold"))    gpio_hold_en(pin);
-      else if (!q_strcmp(argv[i], "release")) gpio_hold_dis(pin);
+      else if (!q_strcmp(argv[i], "hold"))    gpio_hold_en((gpio_num_t)pin);
+      else if (!q_strcmp(argv[i], "release")) gpio_hold_dis((gpio_num_t)pin);
       else if (!q_strcmp(argv[i], "up"))      { flags |= PULLUP;     pinMode(pin, flags); } // set flags immediately as we read them
       else if (!q_strcmp(argv[i], "down"))    { flags |= PULLDOWN;   pinMode(pin, flags); }
       else if (!q_strcmp(argv[i], "open"))    { flags |= OPEN_DRAIN; pinMode(pin, flags); }
@@ -3563,7 +3630,7 @@ uart_tap(int remote) {
 
       char buf[av];
 
-      console_read_bytes(uart, buf, av, portMAX_DELAY);
+      console_read_bytes(buf, av, portMAX_DELAY);
       // CTRL+C. most likely sent as a single byte (av == 1), so get away with
       // just checking if buf[0] == CTRL+C
       if (buf[0] == BREAK_KEY)
@@ -3592,7 +3659,7 @@ uart_tap(int remote) {
       char *buf[av];
 
       uart_read_bytes(remote, buf, av, portMAX_DELAY);
-      console_write_bytes(uart, buf, av);
+      console_write_bytes(buf, av);
       delay(1);
     }
   }
@@ -3899,11 +3966,7 @@ static unsigned int uptime = 0;
 //
 // the function gets called right before entering main()
 // FreeRTOS is initialized but task scheduler is not started yet.
-#if AUTOSTART
-__attribute__((constructor)) static
-#endif
-  void
-  espshell_start() {
+  static void __attribute__((constructor)) espshell_start() {
 
   // save the counter value (seconds) on program start
   // must be 0 but just in case
@@ -4054,6 +4117,7 @@ espshell_command(char *p) {
   char **argv = NULL;
   int argc;
   int i = 0, found = 0, bad = -1;
+  int cmd_len = 0;
 
   if (!p)
     return bad;
@@ -4080,7 +4144,7 @@ espshell_command(char *p) {
       argv[0] = argv[1];
 
     // run thru keywords[] and print out "help" for every entriy.
-    int cmd_len = strlen(argv[0]);
+    cmd_len = strlen(argv[0]);
     while (keywords[i].cmd) {
       if (keywords[i].help || keywords[i].brief) {  //skip hidden commands
         if (strlen(keywords[i].cmd) >= cmd_len) {   // partial match (TODO: use q_strcmp here)
@@ -4104,7 +4168,8 @@ espshell_command(char *p) {
 
     //process command
     //find a corresponding entry in a keywords[] : match the name and minimum number of arguments
-    int cmd_len = strlen(argv[0]);
+    
+    cmd_len = strlen(argv[0]);
 
     while (keywords[i].cmd) {
       // command name match
@@ -4177,7 +4242,7 @@ espshell_exec(const char *p) {
 }
 
 
-
+static bool started = false;
 
 // shell task. reads and processes user input.
 //
@@ -4189,29 +4254,31 @@ static void espshell_task(const void *arg) {
   //start task and return
   if (arg) {
     TaskHandle_t h;
-    if (pdPASS != xTaskCreate((TaskFunction_t)espshell_task, NULL, STACKSIZE, NULL, tskIDLE_PRIORITY, &h)) {
-#if AUTOSTART
-      // uart is still down when autostart==1
-#else
-      q_print("% espshell failed to start task\n\r");
-#endif
+
+    if (started) {
+      q_print("% ESPShell is already started\r\n");
+      return ;
     }
+    if (pdPASS != xTaskCreate((TaskFunction_t)espshell_task, NULL, STACKSIZE, NULL, tskIDLE_PRIORITY, &h))
+      q_print("% ESPShell failed to start task\n\r");
+    else
+      started = true;
   } else {
 
     // wait until user code calls Serial.begin()
-    // it is assumed that user console is using UART, not a native USB interface
-    while (!uart_isup(uart))
+    while (!console_isup())
       delay(100);
 
 #if WITH_HELP
     q_print("% ESP Shell. Type \"?\" and press enter for help\n\r");
 #endif
+
     while (!Exit) {
       espshell_command(readline(prompt));
-      delay(100);  //delay between commands to prevent flooding from failed readline()
+      delay(1);
     }
 #if WITH_HELP    
-    q_print("% Bye!");
+    q_print("% Bye!\r\n");
 #endif    
     vTaskDelete(NULL);
   }
