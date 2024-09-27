@@ -30,20 +30,20 @@ configuration mode. Use command "exit" (or "ex") to exit this mode
 
 There are number of commands available under I2C configuration mode:
 
-esp32#>iic 0
-esp32-i2c#>?
-% Enter "command ?" to get details about the command.
-% List of available commands:
-%
-% "?"        : Show the list of available commands
-% "up"       : initialize interface (pins and speed)
-% "clock"    : Set clock
-% "read"     : Read data from a device
-% "down"     : Shutdown i2c interface
-% "scan"     : Scan i2c bus
-% "write"    : Send bytes to the device
-% "exit"     : Exit
-esp32-i2c#>
+  esp32#>iic 0
+  esp32-i2c#>?
+  % Enter "command ?" to get details about the command.
+  % List of available commands:
+  %
+  % "?"        : Show the list of available commands
+  % "up"       : initialize interface (pins and speed)
+  % "clock"    : Set clock
+  % "read"     : Read data from a device
+  % "down"     : Shutdown i2c interface
+  % "scan"     : Scan i2c bus
+  % "write"    : Send bytes to the device
+  % "exit"     : Exit
+  esp32-i2c#>
 
 
 All of these commands (except for "up") require I2C interface to be up
@@ -53,8 +53,8 @@ command takes 3 arguments: RX pin, TX pin and clock rate to initialize uart
 Lets say we want to initialize I2C0 with clock rate 100 kHz on pins 21(SDA)
 and 22(SCL):
 
-esp32#>iic 0
-esp32-i2c#>up 21 22 100000
+  esp32#>iic 0
+  esp32-i2c#>up 21 22 100000
 
 Now when bus is initialized we can perform read/write/scan operations. It
 is good idea to suspend main sketch execution to make sure it not interferes
@@ -63,14 +63,14 @@ the bus command "down" is used
 
 Lets scan our I2C bus. The example below shows 2 devices connected to I2C0:
 
-esp32#>iic 0
-esp32-i2c#>up 21 22 100000
-esp32-i2c#>scan
-% Scanning I2C bus 0...
-% Device found at address 57
-% Device found at address 68
-% 2 devices found
-esp32-i2c#>
+  esp32#>iic 0
+  esp32-i2c#>up 21 22 100000
+  esp32-i2c#>scan
+  % Scanning I2C bus 0...
+  % Device found at address 57
+  % Device found at address 68
+  % 2 devices found
+  esp32-i2c#>
 
 These two devices are DS3231 real time clock chip and 64K EEPROM both
 are on the same breakout board connected to pins 21 and 22
@@ -80,17 +80,41 @@ Ok, we found two devices. Lets communicate with clock chip: read current
 time. We will use "read" and "write" commands to send a time request and
 read the reply:
 
-esp32-i2c#>write 68 0
-% Sending 1 bytes over I2C0
-esp32-i2c#>read 68 7
-% I2C0 received 7 bytes:
-24 25 22 03 18 09 24
+  esp32-i2c#>write 68 0
+  % Sending 1 bytes over I2C0
+  esp32-i2c#>read 68 7
+  % I2C0 received 7 bytes:
+  24 25 22 03 18 09 24
 
 
 Byte string received contains current time: 22:25:24 Third day of the week, 18
 of September 2024. Having datasheet of connected I2C device one can send and
 receive data to the device. Might be useful when developing a library for a new
 I2C device
+
+Another example is about reading EEPROM (address 57):
+
+  esp32#>iic 0
+  esp32-i2c#>up 21 22 100000
+  esp32-i2c#>scan
+  % Scanning I2C bus 0...
+  % Device found at address 57
+  % Device found at address 68
+  % 2 devices found
+  esp32-i2c#>write 57 0 0
+  % Sending 2 bytes over I2C0
+  esp32-i2c#>read 57 56
+  % I2C0 received 56 bytes:
+        0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F   |0123456789ABCDEF
+  ----------------------------------------------------------+----------------
+  0000: de ad be ef  04 05 06 07  08 09 0a 0b  0c 0d 0e 0f  |о­Оя............
+  0010: 10 22 33 44  55 66 77 88  99 aa bb cc  1c 1d 1e 1f  |."3DUfw‘°ЊЛЬ....
+  0020: 20 21 22 23  24 25 26 27  28 29 2a 2b  2c 2d 2e 2f  |.!"#$%&'()*+,-./
+  0030: 30 31 32 33  34 35 36 37                            |01234567
+  esp32-i2c#>
+
+  NOTE that if requested data size is more than 16 bytes then output is formatted
+  as above.
 
 Command "clock" is used to change I2C clock: for axample "clock 150000" sets I2C
 clock to 150kHz.  Maximum value supported is 1 MHz.
