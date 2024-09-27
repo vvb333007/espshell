@@ -9,7 +9,8 @@ I2C, общие сведения
 ESP32 Dev Board, ESP32 DevKit, пины i2c0 по умолчанию это 21(SDA) и 22(SCL). 
 
 Шелл позволяет настраивать интерфейсы i2c, посылать и получать байты на/от 
-устройства на i2c шине а так же сканировать шину (осуществлять поиск устройств).
+устройства на i2c шине а так же сканировать сканировать шину (осуществлять
+поиск устройств).
 
 
 Назначение
@@ -35,20 +36,20 @@ ESP32 Dev Board, ESP32 DevKit, пины i2c0 по умолчанию это 21(S
 Чтобы получить список комманд, доступных в этом режиме нужно ввести
 знак вопроса и нажать <Enter>
 
-esp32#>iic 0
-esp32-i2c#>?
-% Enter "command ?" to get details about the command.
-% List of available commands:
-%
-% "?"        : Show the list of available commands
-% "up"       : initialize interface (pins and speed)
-% "clock"    : Set clock
-% "read"     : Read data from a device
-% "down"     : Shutdown i2c interface
-% "scan"     : Scan i2c bus
-% "write"    : Send bytes to the device
-% "exit"     : Exit
-esp32-i2c#>
+  esp32#>iic 0
+  esp32-i2c#>?
+  % Enter "command ?" to get details about the command.
+  % List of available commands:
+  %
+  % "?"        : Show the list of available commands
+  % "up"       : initialize interface (pins and speed)
+  % "clock"    : Set clock
+  % "read"     : Read data from a device
+  % "down"     : Shutdown i2c interface
+  % "scan"     : Scan i2c bus
+  % "write"    : Send bytes to the device
+  % "exit"     : Exit
+  esp32-i2c#>
 
 Все эти команды (за исключением команды "up") ожидают того, что интерфейс 
 инициализирован и работает, иначе команды исполнятся не будут. Инициализация
@@ -58,8 +59,8 @@ TX пин и скорость(частота)
 Как будет выглядеть инициализация i2c0 на пинах 21 и 22 на частоте 100 кГц?
 Это будет выглядеть вот так:
 
-esp32#>iic 0
-esp32-i2c#>up 21 22 100000
+  esp32#>iic 0
+  esp32-i2c#>up 21 22 100000
 
 Теперь, когда шина инициализирована, можно выполнять остальные команды и 
 производить сканирование шины, чтение устройств или запись. Если скетч, с которым
@@ -74,14 +75,14 @@ esp32-i2c#>up 21 22 100000
 ниже приведен пример сканирования i2c шины, к которой подключена отладочная плата 
 с RTC часами и EEPROM:
 
-esp32#>iic 0
-esp32-i2c#>up 21 22 100000
-esp32-i2c#>scan
-% Scanning I2C bus 0...
-% Device found at address 57
-% Device found at address 68
-% 2 devices found
-esp32-i2c#>
+  esp32#>iic 0
+  esp32-i2c#>up 21 22 100000
+  esp32-i2c#>scan
+  % Scanning I2C bus 0...
+  % Device found at address 57
+  % Device found at address 68
+  % 2 devices found
+  esp32-i2c#>
 
 Из примера выше мы видим, что обнаружено 2 устройства на шине i2c0 : устройство
 с адресом 0x68 (это RTC чип DS3231) и 0x57 (это 32к EEPROM). Обратите внимание,
@@ -102,16 +103,40 @@ esp32-i2c#>
 
 Отправляем 0x0 по адресу 0x68, затем считываем с этого адреса 7 байт:
 
-esp32-i2c#>write 68 0
-% Sending 1 bytes over I2C0
-esp32-i2c#>read 68 7
-% I2C0 received 7 bytes:
-24 25 22 03 18 09 24
+  esp32-i2c#>write 68 0
+  % Sending 1 bytes over I2C0
+  esp32-i2c#>read 68 7
+  % I2C0 received 7 bytes:
+  24 25 22 03 18 09 24
 
 Полученная строка содержит информацию о текущем времени и дате: 22:25:24 третий
 день недели (среда), 18-е сентября, 2024 года.
 
+Другой пример - чтение 56 байтов из чипа EEPROM, расположенного на той же шине
+(адрес 57):
 
+  esp32#>iic 0
+  esp32-i2c#>up 21 22 100000
+  esp32-i2c#>scan
+  % Scanning I2C bus 0...
+  % Device found at address 57
+  % Device found at address 68
+  % 2 devices found
+  esp32-i2c#>write 57 0 0
+  % Sending 2 bytes over I2C0
+  esp32-i2c#>read 57 56
+  % I2C0 received 56 bytes:
+        0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F   |0123456789ABCDEF
+  ----------------------------------------------------------+----------------
+  0000: de ad be ef  04 05 06 07  08 09 0a 0b  0c 0d 0e 0f  |о­Оя............
+  0010: 10 22 33 44  55 66 77 88  99 aa bb cc  1c 1d 1e 1f  |."3DUfw‘°ЊЛЬ....
+  0020: 20 21 22 23  24 25 26 27  28 29 2a 2b  2c 2d 2e 2f  |.!"#$%&'()*+,-./
+  0030: 30 31 32 33  34 35 36 37                            |01234567
+  esp32-i2c#>
+
+  Обратите внимание, что при чтении более 16 байтов, вывод на экран будет
+  отформатирован, как в примере выше.
+  
 Параметр "скорость i2c интерфеса" задается изначально командой "up", в третьем 
 параметре. Позже эта скорость может быть изменена командой "clock": например,
 для установки частоты шины 150кГц следует ввести команду "clock 150000". 
