@@ -3791,6 +3791,8 @@ extern uint32_t getApbFrequency();
 // Display CPU ID information, frequencies and 
 // chip temperature
 //
+
+
 static int cmd_cpu(int argc, char **argv) {
 
   esp_chip_info_t chip_info;
@@ -3833,7 +3835,7 @@ static int cmd_cpu(int argc, char **argv) {
   }
 #endif //CONFIG_IDF_TARGET_XXX
 
-  q_printf("%% CPU ID: %s, Rev.: %d.%d\n\r%% CPU %luMhz, Xtal %luMhz, Bus %luMhz, Temperature: %.1fC\n\r",
+  q_printf("\r\n%% CPU ID: %s, Rev.: %d.%d\n\r%% CPU frequency is %luMhz, Xtal %luMhz, APB bus %luMhz\r\n%% Chip temperature: %.1f\xe8 C\n\r",
              chipid,
              (chip_info.revision >> 8) & 0xf,
              chip_info.revision & 0xff,
@@ -3842,6 +3844,7 @@ static int cmd_cpu(int argc, char **argv) {
              getApbFrequency() / 1000000,
              temperatureRead());
 
+  q_printf("%%\r\n%% Sketch is running on " ARDUINO_BOARD "/" ARDUINO_VARIANT ",uses Arduino Core v%s, based on\r\n%% Espressif ESP-IDF version \"%s\"\r\n",ESP_ARDUINO_VERSION_STR,esp_get_idf_version());
 
   return 0;
 }
