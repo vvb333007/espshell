@@ -3170,8 +3170,8 @@ static int cmd_pin(int argc, char **argv) {
       else if (!q_strcmp(argv[i], "open"))    { flags |= OPEN_DRAIN; pinMode(pin, flags); }
       else if (!q_strcmp(argv[i], "in"))      { flags |= INPUT;      pinMode(pin, flags); }
       else if (!q_strcmp(argv[i], "out"))     { flags |= OUTPUT;     pinMode(pin, flags); }
-      else if (!q_strcmp(argv[i], "low"))     digitalWrite(pin, LOW);
-      else if (!q_strcmp(argv[i], "high"))    digitalWrite(pin, HIGH);
+      else if (!q_strcmp(argv[i], "low"))     { flags |= OUTPUT;     pinMode(pin,flags); digitalWrite(pin, LOW); }
+      else if (!q_strcmp(argv[i], "high"))    { flags |= OUTPUT;     pinMode(pin,flags); digitalWrite(pin, HIGH); }
       else if (!q_strcmp(argv[i], "read"))    q_printf("%% GPIO%d : logic %d\n\r", pin, digitalRead(pin) == HIGH ? 1 : 0);
       else if (!q_strcmp(argv[i], "aread"))   q_printf("%% GPIO%d : analog %d\n\r", pin, analogRead(pin));
       //"new pin number" keyword. when we see a number we use it as a pin number
