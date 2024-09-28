@@ -1,7 +1,9 @@
 
 /* 
  * ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
+ *
  * Latest source code is at: https://github.com/vvb333007/espshell/
+ *
  * Uses editline library ( (c) 1992,1993 by Simmule Turner and Rich Salz)
  *
  * WHAT  IS THIS:
@@ -9,47 +11,36 @@
  * This is a debugging/development tool for use with Arduino projects on
  * ESP32 hardware. Provides a command line interface running in parallel
  * to user Arduino sketch (in a separate task). 
- * More information is README.md
+ * More information is in "docs/README.md"
  *
  * NAVIGATING THROUGH THE SOURCE CODE (THIS FILE):
  * ----------------------------------------------
- * Search for "TAG:" lines (TAG:pin TAG:uart etc)  to locate corresponding command 
- * handlers
+ * It is huge.
  *
- * 1. Common routines are at the beginning (pin_exist(), q_strcmp() ...)
+ * First 20-something Kb of this file is some ancient modified version of editline (readline).
+ * Editline code is from the beginning till "EDITLINE CODE END", then ESPShell code starts.
  *
- * 2. Structures and #includes are all over the file: they are in close proximity
+ * 1. Common functions are declared at the beginning of espshell code (q_printf(), isfloat(), 
+ *    isnum()..)
+ *
+ * 2. Commands (syntax, help lines, handler function..) are declared in keywords_main[], 
+ *    keywords_uart[], keywords_*[] arrays. Addition of a new command starts there.
+ *
+ * 3. Command handlers (functions which do the job when user enter commands) are prefixed 
+ *    with "cmd_"  often with command name after it: cmd_pin(), cmd_reload()
+ *
+ * 4. Structures and #includes are all over the file: they are in close proximity
  *    to the code which needs them.
  *
- * 3. Command handlers are prefixed with "cmd_" : cmd_tone(...)
- */
-
-/* -*- Mode: C; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-/*
- * Copyright 1992,1993 Simmule Turner and Rich Salz.  All rights reserved.
+ * 5. You can search for "TAG:" lines to get the idea on what is where and how
+ *    to find it.
  *
- * This software is not subject to any license of the American Telephone
- * and Telegraph Company or of the Regents of the University of California.
+ * 6. To make support for new type of console device (e.g. USB-CDC console)
+ *    one have to implement console_read_bytes(), console_write_bytes(), 
+ *    anykey_pressed() and console_isup() functions
  *
- * Permission is granted to anyone to use this software for any purpose on
- * any computer system, and to alter it and redistribute it freely, subject
- * to the following restrictions:
- * 1. The authors are not responsible for the consequences of use of this
- *    software, no matter how awful, even if they arise from flaws in it.
- * 2. The origin of this software must not be misrepresented, either by
- *    explicit claim or by omission.  Since few users ever read sources,
- *    credits must appear in the documentation.
- * 3. Altered versions must be plainly marked as such, and must not be
- *    misrepresented as being the original software.  Since few users
- *    ever read sources, credits must appear in the documentation.
- * 4. This notice may not be removed or altered.
+ * 7. Copyright information is at the end of this filee
  */
-
-
 
 #undef WITH_HELP
 #undef UNIQUE_HISTORY
@@ -70,16 +61,12 @@
 #define STACKSIZE      5000       // Shell task stack size
 #define BREAK_KEY      3          // Keycode of an "Exit" key: CTRL+C to exit uart "tap" mode
 #define SEQUENCES_NUM  10         // Max number of sequences available for command "sequence"
-#define DO_ECHO        true       // espshell echoes user input back by default. set to false for easier 
+#define DO_ECHO        true       // Espshell echoes user input back by default. set to false for easier 
                                   // automated output processing
-#define USE_UART       UART_NUM_0 // uart where shell will be deployed at startup
+#define USE_UART       UART_NUM_0 // Uart where shell will be deployed at startup
 
-#define COMPILING_ESPSHELL 1      //dont touch this!
+#define COMPILING_ESPSHELL 1      // dont touch this!
                             
-//BIG FAT TODO: 
-// consider using stdin/stdout for USB-OTG enabled boards
-// consider using idf api for reading/writing USB port char by char
-
 // include user-defined commands and their handlers
 // if any.
 #ifdef ESPCAM
@@ -1678,37 +1665,37 @@ static const struct keywords_t keywords_uart[] = {
 
   KEYWORDS_BEGIN
 
-  { "up", cmd_uart, 3,HELP("% \"up RX TX BAUD\"\n\r" \
-    "%\n\r" \
-    "% Initialize uart interface X on pins RX/TX,baudrate BAUD, 8N1 mode\n\r" \
+  { "up", cmd_uart, 3,HELP("% \"up RX TX BAUD\"\r\n" \
+    "%\r\n" \
+    "% Initialize uart interface X on pins RX/TX,baudrate BAUD, 8N1 mode\r\n" \
     "% Ex.: up 18 19 115200 - Setup uart on pins rx=18, tx=19, at speed 115200"), "Initialize uart (pins/speed)" },
 
-  { "baud", cmd_uart_baud, 1,HELP("% \"baud SPEED\"\n\r" \
-    "%\n\r" \
-    "% Set speed for the uart (uart must be initialized)\n\r" \
+  { "baud", cmd_uart_baud, 1,HELP("% \"baud SPEED\"\r\n" \
+    "%\r\n" \
+    "% Set speed for the uart (uart must be initialized)\r\n" \
     "% Ex.: baud 115200 - Set uart baud rate to 115200"), "Set baudrate" },
 
-  { "down", cmd_uart, 0,HELP("% \"down\"\n\r" \
-    "%\n\r" \
+  { "down", cmd_uart, 0,HELP("% \"down\"\r\n" \
+    "%\r\n" \
     "% Shutdown interface, detach pins"), "Shutdown" },
 
   // overlaps with "uart X down", never called, here is for the help text only
-  { "read", cmd_uart, 0,HELP("% \"read\"\n\r" \
-    "%\n\r" \
+  { "read", cmd_uart, 0,HELP("% \"read\"\r\n" \
+    "%\r\n" \
     "% Read bytes (available) from uart interface X"), "Read data from UART" },
 
-  { "tap", cmd_uart, 0,HELP("% \"tap\\n\r" \
-    "%\n\r" \
-    "% Bridge the UART IO directly to/from shell\n\r" \
-    "% User input will be forwarded to uart X;\n\r" \
+  { "tap", cmd_uart, 0,HELP("% \"tap\\r\n" \
+    "%\r\n" \
+    "% Bridge the UART IO directly to/from shell\r\n" \
+    "% User input will be forwarded to uart X;\r\n" \
     "% Anything UART X sends back will be forwarded to the user"), "Talk to UARTs device" },
 
-  { "write", cmd_uart, -1, HELP("% \"write TEXT\"\n\r" \
-    "%\n\r" \
-    "% Send an ascii/hex string(s) to UART X\n\r" \
-    "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \n\r" \
-    "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\n\r" \
-    "%\n\r" \
+  { "write", cmd_uart, -1, HELP("% \"write TEXT\"\r\n" \
+    "%\r\n" \
+    "% Send an ascii/hex string(s) to UART X\r\n" \
+    "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n" \
+    "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n" \
+    "%\r\n" \
     "% Ex.: \"write ATI\\n\\rMixed\\20Text and \\20\\21\\ff\""), "Send bytes over this UART" },
 
   KEYWORDS_END
@@ -1722,33 +1709,33 @@ static const struct keywords_t keywords_i2c[] = {
 
   KEYWORDS_BEGIN
 
-  { "up", cmd_i2c, 3,HELP("% \"up SDA SCL CLOCK\"\n\r" \
-    "%\n\r" \
-    "% Initialize I2C interface X, use pins SDA/SCL, clock rate CLOCK\n\r" \
+  { "up", cmd_i2c, 3,HELP("% \"up SDA SCL CLOCK\"\r\n" \
+    "%\r\n" \
+    "% Initialize I2C interface X, use pins SDA/SCL, clock rate CLOCK\r\n" \
     "% Ex.: up 21 22 100000 - enable i2c at pins sda=21, scl=22, 100kHz clock"), "initialize interface (pins and speed)" },
 
-  { "clock", cmd_i2c_clock, 1,HELP("% \"clock SPEED\"\n\r" \
-    "%\n\r" \
-    "% Set I2C master clock (i2c must be initialized)\n\r" \
+  { "clock", cmd_i2c_clock, 1,HELP("% \"clock SPEED\"\r\n" \
+    "%\r\n" \
+    "% Set I2C master clock (i2c must be initialized)\r\n" \
     "% Ex.: clock 100000 - Set i2c clock to 100kHz"), "Set clock" },
 
 
-  { "read", cmd_i2c, 2,HELP("% \"read ADDR SIZE\"\n\r"
-    "%\n\r"
-    "% I2C bus X : read SIZE bytes from a device at address ADDR (hex)\n\r"
+  { "read", cmd_i2c, 2,HELP("% \"read ADDR SIZE\"\r\n"
+    "%\r\n"
+    "% I2C bus X : read SIZE bytes from a device at address ADDR (hex)\r\n"
     "% Ex.: read 68 7 - read 7 bytes from device address 0x68"), "Read data from a device" },
 
-  { "down", cmd_i2c, 0,HELP("% \"down\"\n\r" \
-    "%\n\r" \
+  { "down", cmd_i2c, 0,HELP("% \"down\"\r\n" \
+    "%\r\n" \
     "% Shutdown I2C interface X"), "Shutdown i2c interface" },
 
-  { "scan", cmd_i2c, 0,HELP("% \"scan\"\n\r" \
-    "%\n\r" \
+  { "scan", cmd_i2c, 0,HELP("% \"scan\"\r\n" \
+    "%\r\n" \
     "% Scan I2C bus X for devices. Interface must be initialized!"),"Scan i2c bus" },
 
-  { "write", cmd_i2c, -1,HELP("% \"write ADDR D1 [D2 ... Dn]\"\n\r" \
-    "%\n\r" \
-    "% Write bytes D1..Dn (hex values) to address ADDR (hex) on I2C bus X\n\r" \
+  { "write", cmd_i2c, -1,HELP("% \"write ADDR D1 [D2 ... Dn]\"\r\n" \
+    "%\r\n" \
+    "% Write bytes D1..Dn (hex values) to address ADDR (hex) on I2C bus X\r\n" \
     "% Ex.: write 78 0 1 FF - write 3 bytes to address 0x78: 0,1 and 255"), "Send bytes to the device" },
 
   KEYWORDS_END
@@ -1760,58 +1747,58 @@ static const struct keywords_t keywords_sequence[] = {
 
   KEYWORDS_BEGIN
 
-  { "eot", cmd_seq_eot, 1,HELP("% \"eot high|low\"\n\r" \
-    "%\n\r" \
-    "% End of transmission: pull the line high or low at the\n\r" \
+  { "eot", cmd_seq_eot, 1,HELP("% \"eot high|low\"\r\n" \
+    "%\r\n" \
+    "% End of transmission: pull the line high or low at the\r\n" \
     "% end of a sequence. Default is \"low\""), "End-of-Transmission pin state" },
 
-  { "tick", cmd_seq_tick, 1, HELP("% \"tick TIME\"\n\r" \
-    "%\n\r" \
-    "% Set the sequence tick time: defines a resolution of a pulse sequence.\n\r" \
-    "% Expressed in microseconds, can be anything between 0.0125 and 3.2\n\r" \
+  { "tick", cmd_seq_tick, 1, HELP("% \"tick TIME\"\r\n" \
+    "%\r\n" \
+    "% Set the sequence tick time: defines a resolution of a pulse sequence.\r\n" \
+    "% Expressed in microseconds, can be anything between 0.0125 and 3.2\r\n" \
     "% Ex.: tick 0.1 - set resolution to 0.1 microsecond"), "Set resolution" },
 
-  { "zero", cmd_seq_zeroone, 2,HELP("% \"zero LEVEL/DURATION [LEVEL2/DURATION2]\"\n\r" \
-    "%\n\r" \
-    "% Define a logic \"0\"\n\r" \
-    "% Ex.: zero 0/50      - 0 is a level: LOW for 50 ticks\n\r" \
+  { "zero", cmd_seq_zeroone, 2,HELP("% \"zero LEVEL/DURATION [LEVEL2/DURATION2]\"\r\n" \
+    "%\r\n" \
+    "% Define a logic \"0\"\r\n" \
+    "% Ex.: zero 0/50      - 0 is a level: LOW for 50 ticks\r\n" \
     "% Ex.: zero 1/50 0/20 - 0 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"), "Define a zero" },
 
   { "zero", cmd_seq_zeroone, 1, HIDDEN_KEYWORD },  //1 arg command
 
-  { "one", cmd_seq_zeroone, 2,HELP("% \"one LEVEL/DURATION [LEVEL2/DURATION2]\"\n\r" \
-    "%\n\r" \
-    "% Define a logic \"1\"\n\r" \
-    "% Ex.: one 1/50       - 1 is a level: HIGH for 50 ticks\n\r" \
+  { "one", cmd_seq_zeroone, 2,HELP("% \"one LEVEL/DURATION [LEVEL2/DURATION2]\"\r\n" \
+    "%\r\n" \
+    "% Define a logic \"1\"\r\n" \
+    "% Ex.: one 1/50       - 1 is a level: HIGH for 50 ticks\r\n" \
     "% Ex.: one 1/50 0/20  - 1 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"), "Define an one" },
 
   { "one", cmd_seq_zeroone, 1, HIDDEN_KEYWORD },  //1 arg command
 
-  { "bits", cmd_seq_bits, 1,HELP("% \"bits STRING\"\n\r" \
-    "%\n\r" \
-    "% A bit pattern to be used as a sequence. STRING must contain only 0s and 1s\n\r" \
-    "% Overrides previously set \"levels\" command\n\r" \
-    "% See commands \"one\" and \"zero\" to define \"1\" and \"0\"\n\r" \
-    "%\n\r" \
+  { "bits", cmd_seq_bits, 1,HELP("% \"bits STRING\"\r\n" \
+    "%\r\n" \
+    "% A bit pattern to be used as a sequence. STRING must contain only 0s and 1s\r\n" \
+    "% Overrides previously set \"levels\" command\r\n" \
+    "% See commands \"one\" and \"zero\" to define \"1\" and \"0\"\r\n" \
+    "%\r\n" \
     "% Ex.: bits 11101000010111100  - 17 bit sequence"), "Set pattern to transmit" },
 
-  { "levels", cmd_seq_levels, -1,HELP("% \"levels L/D L/D ... L/D\"\n\r" \
-    "%\n\r" \
-    "% A bit pattern to be used as a sequnce. L is either 1 or 0 and \n\r" \
-    "% D is the duration measured in ticks [0..32767] \n\r" \
-    "% Overrides previously set \"bits\" command\n\r" \
-    "%\n\r" \
-    "% Ex.: levels 1/50 0/20 1/100 0/500  - HIGH 50 ticks, LOW 20, HIGH 100 and 0 for 500 ticks\n\r" \
+  { "levels", cmd_seq_levels, -1,HELP("% \"levels L/D L/D ... L/D\"\r\n" \
+    "%\r\n" \
+    "% A bit pattern to be used as a sequnce. L is either 1 or 0 and \r\n" \
+    "% D is the duration measured in ticks [0..32767] \r\n" \
+    "% Overrides previously set \"bits\" command\r\n" \
+    "%\r\n" \
+    "% Ex.: levels 1/50 0/20 1/100 0/500  - HIGH 50 ticks, LOW 20, HIGH 100 and 0 for 500 ticks\r\n" \
     "% Ex.: levels 1/32767 1/17233 0/32767 0/7233 - HIGH for 50000 ticks, LOW for 40000 ticks"), "Set levels to transmit" },
 
-  { "modulation", cmd_seq_modulation, 3,HELP("% \"modulation FREQ [DUTY [low|high]]\"\n\r" \
-    "%\n\r" \
-    "% Enables/disables an output signal modulation with frequency FREQ\n\r" \
-    "% Optional parameters are: DUTY (from 0 to 1) and LEVEL (either high or low)\n\r" \
-    "%\n\r" \
-    "% Ex.: modulation 100         - modulate all 1s with 100Hz, 50%% duty cycle\n\r" \
-    "% Ex.: modulation 100 0.3 low - modulate all 0s with 100Hz, 30%% duty cycle\n\r" \
-    "% Ex.: modulation 0           - disable modulation\n\r"), "Enable/disable modulation" },
+  { "modulation", cmd_seq_modulation, 3,HELP("% \"modulation FREQ [DUTY [low|high]]\"\r\n" \
+    "%\r\n" \
+    "% Enables/disables an output signal modulation with frequency FREQ\r\n" \
+    "% Optional parameters are: DUTY (from 0 to 1) and LEVEL (either high or low)\r\n" \
+    "%\r\n" \
+    "% Ex.: modulation 100         - modulate all 1s with 100Hz, 50%% duty cycle\r\n" \
+    "% Ex.: modulation 100 0.3 low - modulate all 0s with 100Hz, 30%% duty cycle\r\n" \
+    "% Ex.: modulation 0           - disable modulation\r\n"), "Enable/disable modulation" },
 
   { "modulation", cmd_seq_modulation, 2, HIDDEN_KEYWORD },
   { "modulation", cmd_seq_modulation, 1, HIDDEN_KEYWORD },
@@ -1840,21 +1827,21 @@ static const struct keywords_t keywords_main[] = {
   KEYWORDS_BEGIN
 
   { "uptime", cmd_uptime, 0, HELP("% \"uptime\" - Shows time passed since last boot"), "System uptime" },
-  { "show", cmd_show, 2, HELP("\"show seq X\" - display sequence X\n\r"), "Display information" },
+  { "show", cmd_show, 2, HELP("\"show seq X\" - display sequence X\r\n"), "Display information" },
   { "pin", cmd_pin, 1,HELP("% \"pin X\" - Show pin X configuration"), "Pins (GPIO) commands" },
-  { "pin", cmd_pin, -1, HELP("% \"pin X (hold|release|up|down|out|in|open|high|low|save|load|read|aread|delay|loop|tone|seq)...\"\n\r" \
-    "%\n\r" \
-    "% Set/Save/Load pin X configuration: pull/direction/digital value\n\r" \
-    "% Multiple arguments must be separated with spaces, see examples below:\n\r" \
-    "% Ex.: pin 1 read aread         -pin1: read digital and then analog values\n\r" \
-    "% Ex.: pin 1 out up             -pin1 is OUTPUT with PULLUP\n\r" \
-    "% Ex.: pin 1 save               -save pin state\n\r" \
-    "% Ex.: pin 1 out high           -pin1 set to logic \"1\"\n\r" \
-    "% Ex.: pin 1 high delay 100 low -set pin1 to logic \"1\", after 100ms to \"0\"\n\r" \
-    "% Ex.: pin 1 tone 2000 0.3      -set 5kHz, 30% duty square wave output\n\r" \
-    "% Ex.: pin 1 tone 0 0           -disable generation\n\r" \
-    "% Ex.: pin 1 out high delay 500 low delay 500 loop 10 \n\r" \
-    "% (see \"docs/Pin_commands.txt\" for more details & examples)\n\r"),NULL },
+  { "pin", cmd_pin, -1, HELP("% \"pin X (hold|release|up|down|out|in|open|high|low|save|load|read|aread|delay|loop|tone|seq)...\"\r\n" \
+    "%\r\n" \
+    "% Set/Save/Load pin X configuration: pull/direction/digital value\r\n" \
+    "% Multiple arguments must be separated with spaces, see examples below:\r\n" \
+    "% Ex.: pin 1 read aread         -pin1: read digital and then analog values\r\n" \
+    "% Ex.: pin 1 out up             -pin1 is OUTPUT with PULLUP\r\n" \
+    "% Ex.: pin 1 save               -save pin state\r\n" \
+    "% Ex.: pin 1 out high           -pin1 set to logic \"1\"\r\n" \
+    "% Ex.: pin 1 high delay 100 low -set pin1 to logic \"1\", after 100ms to \"0\"\r\n" \
+    "% Ex.: pin 1 tone 2000 0.3      -set 5kHz, 30% duty square wave output\r\n" \
+    "% Ex.: pin 1 tone 0 0           -disable generation\r\n" \
+    "% Ex.: pin 1 out high delay 500 low delay 500 loop 10 \r\n" \
+    "% (see \"docs/Pin_commands.txt\" for more details & examples)\r\n"),NULL },
 
   
   { "cpu", cmd_cpu_freq, 1, HELP("% \"cpu FREQ\" : Set CPU frequency to FREQ Mhz"), "Set/show CPU parameters" },
@@ -1863,21 +1850,21 @@ static const struct keywords_t keywords_main[] = {
   { "mem", cmd_mem, 0, HELP("% Show memory usage info"), "Memory usage" },
   
 
-  { "nap", cmd_nap, 1,HELP("% \"nap SEC\"\n\r%\n\r% Put the CPU into light sleep mode for SEC seconds."),"CPU sleep" },
-  { "nap", cmd_nap, 0,HELP("% \"nap\"\n\r%\n\r% Put the CPU into light sleep mode, wakeup by console"),NULL },
+  { "nap", cmd_nap, 1,HELP("% \"nap SEC\"\r\n%\r\n% Put the CPU into light sleep mode for SEC seconds."),"CPU sleep" },
+  { "nap", cmd_nap, 0,HELP("% \"nap\"\r\n%\r\n% Put the CPU into light sleep mode, wakeup by console"),NULL },
 
-  { "iic", cmd_i2c_if, 1,HELP("% \"iic X\" \n\r%\n\r" \
-    "% Enter I2C interface X configuration mode \n\r" \
+  { "iic", cmd_i2c_if, 1,HELP("% \"iic X\" \r\n%\r\n" \
+    "% Enter I2C interface X configuration mode \r\n" \
     "% Ex.: iic 0 - configure/use interface I2C 0"),"I2C commands" },
 
-  { "uart", cmd_uart_if, 1,HELP("% \"uart X\"\n\r" \
-    "%\n\r" \
-    "% Enter UART interface X configuration mode\n\r" \
+  { "uart", cmd_uart_if, 1,HELP("% \"uart X\"\r\n" \
+    "%\r\n" \
+    "% Enter UART interface X configuration mode\r\n" \
     "% Ex.: uart 1 - configure/use interface UART 1"), "UART commands" },
 
-  { "sequence", cmd_seq_if, 1,HELP("% \"sequence X\"\n\r" \
-    "%\n\r" \
-    "% Create/configure a sequence\n\r" \
+  { "sequence", cmd_seq_if, 1,HELP("% \"sequence X\"\r\n" \
+    "%\r\n" \
+    "% Create/configure a sequence\r\n" \
     "% Ex.: sequence 0 - configure Sequence0"), "Pulses/levels sequence configuration" },
 
   { "tty", cmd_tty, 1, HELP("% \"tty X\" Use uart X for command line interface"), "IO redirect" },
@@ -1885,27 +1872,27 @@ static const struct keywords_t keywords_main[] = {
   { "echo", cmd_echo, 1, HELP("% \"echo on|off\" Echo user input on/off (default is on)"), "Enable/Disable user input echo" },
   { "echo", cmd_echo, 0, NULL, NULL}, //hidden command, displays echo status (on / off)
 
-  { "suspend", cmd_suspend, 0, HELP("% \"suspend\" : Suspend main loop()\n\r"), "Suspend sketch execution" },
-  { "resume", cmd_resume, 0, HELP("% \"resume\" : Resume main loop()\n\r"), "Resume sketch execution" },
+  { "suspend", cmd_suspend, 0, HELP("% \"suspend\" : Suspend main loop()\r\n"), "Suspend sketch execution" },
+  { "resume", cmd_resume, 0, HELP("% \"resume\" : Resume main loop()\r\n"), "Resume sketch execution" },
 
-  { "tone", cmd_tone, 3,HELP("% \"tone X FREQ DUTY\"\n\r" \
-    "%\n\r" \
-    "% Start PWM generator on pin X, frequency FREQ Hz and duty cycle of DUTY\n\r" \
-    "% Max frequency is 78277 Hz\n\r" \
+  { "tone", cmd_tone, 3,HELP("% \"tone X FREQ DUTY\"\r\n" \
+    "%\r\n" \
+    "% Start PWM generator on pin X, frequency FREQ Hz and duty cycle of DUTY\r\n" \
+    "% Max frequency is 78277 Hz\r\n" \
     "% Value of DUTY is in range [0..1] with 0.123 being a 12.3% duty cycle"), "PWM output" },
 
-  { "tone", cmd_tone, 2,HELP("% \"tone X FREQ\"\n\r"
-    "% Start squarewave generator on pin X, frequency FREQ Hz\n\r"
+  { "tone", cmd_tone, 2,HELP("% \"tone X FREQ\"\r\n"
+    "% Start squarewave generator on pin X, frequency FREQ Hz\r\n"
     "% duty cycle is  set to 50%"), NULL },
 
   { "tone", cmd_tone, 1,HELP("% \"tone X\" Stop generator on pin X"), NULL },
 
-  { "count", cmd_count, 3,HELP("% \"count X [neg|pos|both [DELAY_MS]]\"\n\r" \
-    "% Count pulses (negative/positive edge or both) on pin X within DELAY time\n\r" \
-    "% Pulse edge type and delay time are optional. Defaults are: \"pos\" and \"1000\" \n\r" \
-    "% NOTE: It is a 16-bit counter so consider using shorter delays on frequencies > 30Khz\n\r" \
-    "%\n\r" \
-    "% Ex.: \"count 4\"           - count positive edges on pin 4 for 1000ms\n\r" \
+  { "count", cmd_count, 3,HELP("% \"count X [neg|pos|both [DELAY_MS]]\"\r\n" \
+    "% Count pulses (negative/positive edge or both) on pin X within DELAY time\r\n" \
+    "% Pulse edge type and delay time are optional. Defaults are: \"pos\" and \"1000\" \r\n" \
+    "% NOTE: It is a 16-bit counter so consider using shorter delays on frequencies > 30Khz\r\n" \
+    "%\r\n" \
+    "% Ex.: \"count 4\"           - count positive edges on pin 4 for 1000ms\r\n" \
     "% Ex.: \"count 4 neg 2000\"  - count pulses (falling edge) on pin 4 for 2 sec."), "Pulse counter" },
 
   { "count", cmd_count, 2, NULL, NULL },  //hidden "count" with 2 args
@@ -1924,7 +1911,7 @@ static const struct keywords_t keywords_main[] = {
 static const struct keywords_t  *keywords = keywords_main;
 
 //common Failed message
-static const char *Failed = "% Failed\n\r";
+static const char *Failed = "% Failed\r\n";
 
 // prompt
 static const char *prompt = PROMPT;
@@ -2015,7 +2002,7 @@ static bool pin_exist(int pin) {
     if (!(((uint64_t )1 << pin) & SOC_GPIO_VALID_GPIO_MASK))
       q_printf("%d,",pin);
 #if 0     //Not yet. Waiting for new ESP-IDF to be adopted by Arduino Core 
-  q_printf("\n\r%% Reserved pins (used internally): ");  
+  q_printf("\r\n%% Reserved pins (used internally): ");  
   
   int count;
   for (pin = count = 0; pin < SOC_GPIO_PIN_COUNT; pin++)
@@ -2054,7 +2041,7 @@ static void seq_init() {
   }
 }
 
-static const char *Notset = "is not set yet\n\r";
+static const char *Notset = "is not set yet\r\n";
 
 // dump sequence content
 static void seq_dump(int seq) {
@@ -2062,16 +2049,16 @@ static void seq_dump(int seq) {
   struct sequence *s;
 
   if (seq < 0 || seq >= SEQUENCES_NUM) {
-    q_printf("%% Sequence %d does not exist\n\r",seq);
+    q_printf("%% Sequence %d does not exist\r\n",seq);
     return;
   }
 
   s = &sequences[seq];
 
-  q_printf("%%\n\r%% Sequence #%d:\n\r%% Resolution ", seq);
+  q_printf("%%\r\n%% Sequence #%d:\r\n%% Resolution ", seq);
 
   if (s->tick)
-    q_printf(": %.4fuS  (Frequency: %lu Hz)\n\r", s->tick, seq_tick2freq(s->tick));
+    q_printf(": %.4fuS  (Frequency: %lu Hz)\r\n", s->tick, seq_tick2freq(s->tick));
   else
     q_print(Notset);
 
@@ -2085,24 +2072,24 @@ static void seq_dump(int seq) {
 
     for (i = 0; i < s->seq_len; i++) {
       if (!(i & 3))
-        q_print("\n\r% ");
+        q_print("\r\n% ");
       q_printf("%d/%d, %d/%d, ", s->seq[i].level0, s->seq[i].duration0, s->seq[i].level1, s->seq[i].duration1);
       total += s->seq[i].duration0 + s->seq[i].duration1;
     }
-    q_printf("\n\r%% Total: %d levels, duration: %lu ticks, (~%lu uS)\n\r", s->seq_len * 2, total, (unsigned long)((float)total * s->tick));
+    q_printf("\r\n%% Total: %d levels, duration: %lu ticks, (~%lu uS)\r\n", s->seq_len * 2, total, (unsigned long)((float)total * s->tick));
   } else
     q_print(Notset);
 
   q_print("% Modulation ");
   if (s->mod_freq)
-    q_printf(" : yes, \"%s\" are modulated at %luHz, duty %.2f%%\n\r", s->mod_high ? "HIGH" : "LOW", (unsigned long)s->mod_freq, s->mod_duty * 100);
+    q_printf(" : yes, \"%s\" are modulated at %luHz, duty %.2f%%\r\n", s->mod_high ? "HIGH" : "LOW", (unsigned long)s->mod_freq, s->mod_duty * 100);
   else
-    q_print("is not used\n\r");
+    q_print("is not used\r\n");
 
   q_print("% Bit sequence ");
 
   if (s->bits)
-    q_printf(": (%d bits) \"%s\"\n\r", strlen(s->bits), s->bits);
+    q_printf(": (%d bits) \"%s\"\r\n", strlen(s->bits), s->bits);
   else
     q_print(Notset);
 
@@ -2110,9 +2097,9 @@ static void seq_dump(int seq) {
 
   if (s->alph[0].duration0) {
     if (s->alph[0].duration1)
-      q_printf("%d/%d %d/%d\n\r", s->alph[0].level0, s->alph[0].duration0, s->alph[0].level1, s->alph[0].duration1);
+      q_printf("%d/%d %d/%d\r\n", s->alph[0].level0, s->alph[0].duration0, s->alph[0].level1, s->alph[0].duration1);
     else
-      q_printf("%d/%d\n\r", s->alph[0].level0, s->alph[0].duration0);
+      q_printf("%d/%d\r\n", s->alph[0].level0, s->alph[0].duration0);
   } else
     q_print(Notset);
 
@@ -2120,12 +2107,12 @@ static void seq_dump(int seq) {
 
   if (s->alph[1].duration0) {
     if (s->alph[1].duration1)
-      q_printf("%d/%d %d/%d\n\r", s->alph[1].level0, s->alph[1].duration0, s->alph[1].level1, s->alph[1].duration1);
+      q_printf("%d/%d %d/%d\r\n", s->alph[1].level0, s->alph[1].duration0, s->alph[1].level1, s->alph[1].duration1);
     else
-      q_printf("%d/%d\n\r", s->alph[1].level0, s->alph[1].duration0);
+      q_printf("%d/%d\r\n", s->alph[1].level0, s->alph[1].duration0);
   } else
     q_print(Notset);
-  q_printf("%% Pull pin %s after transmission is done\n\r", s->eot ? "HIGH" : "LOW");
+  q_printf("%% Pull pin %s after transmission is done\r\n", s->eot ? "HIGH" : "LOW");
 }
 
 // convert a level string to numerical values:
@@ -2230,7 +2217,7 @@ static int seq_compile(int seq) {
     if (s->alph[0].duration1) {
       //long form
       if (!s->alph[1].duration1) {
-        q_print("% \"One\" defined as a level, but \"Zero\" is a pulse\n\r");
+        q_print("% \"One\" defined as a level, but \"Zero\" is a pulse\r\n");
         return -1;
       }
 
@@ -2257,7 +2244,7 @@ static int seq_compile(int seq) {
       // report it to user
 
       if (s->alph[1].duration1) {
-        q_print("% \"One\" defined as a pulse, but \"Zero\" is a level\n\r");
+        q_print("% \"One\" defined as a pulse, but \"Zero\" is a level\r\n");
         return -4;
       }
 
@@ -2269,7 +2256,7 @@ static int seq_compile(int seq) {
         s->bits = r;
         s->bits[i + 0] = '0';
         s->bits[i + 1] = '\0';
-        q_print("% Bitstring was padded with one extra \"0\"\n\r");
+        q_print("% Bitstring was padded with one extra \"0\"\r\n");
         i++;
       }
 
@@ -2393,7 +2380,7 @@ static int cmd_seq_if(int argc, char **argv) {
 
   seq = atoi(argv[1]);
   if (seq < 0 || seq >= SEQUENCES_NUM) {
-    q_printf("%% Sequence numbers are 0..%d\n\r", SEQUENCES_NUM - 1);
+    q_printf("%% Sequence numbers are 0..%d\r\n", SEQUENCES_NUM - 1);
     return 1;
   }
 
@@ -2456,7 +2443,7 @@ static int cmd_seq_modulation(int argc, char **argv) {
     duty = atof(argv[2]);
 
     if (duty <= 0.0f || duty > 1.0f) {
-      q_print("% Duty cycle is a number in range (0 .. 1] : 0.5 means 50% duty\n\r");
+      q_print("% Duty cycle is a number in range (0 .. 1] : 0.5 means 50% duty\r\n");
       return 2;
     }
   }
@@ -2561,7 +2548,7 @@ static int cmd_seq_tick(int argc, char **argv) {
   sequences[Context].tick = atof(argv[1]);
 
   if (sequences[Context].tick < 0.0125 || sequences[Context].tick > 3.2f) {
-    q_print("% Tick must be in range 0.0125..3.2 microseconds\n\r");
+    q_print("% Tick must be in range 0.0125..3.2 microseconds\r\n");
     return 1;
   }
 
@@ -2639,7 +2626,7 @@ static int cmd_seq_levels(int argc, char **argv) {
   i = argc - 1;
 
   if (i & 1) {
-    q_print("% Uneven number if levels. Please add 1 more\n\r");
+    q_print("% Uneven number if levels. Please add 1 more\r\n");
     return 0;
   }
 
@@ -2785,7 +2772,7 @@ static int cmd_count(int argc, char **argv) {
   delay(wait);
   pcnt_counter_pause(PCNT_UNIT_0);
   pcnt_get_counter_value(PCNT_UNIT_0, &count);
-  q_printf("%lu pulses (%.3f sec)\n\r", (unsigned long)count, (float)wait / 1000.0f);
+  q_printf("%lu pulses (%.3f sec)\r\n", (unsigned long)count, (float)wait / 1000.0f);
   return 0;
 }
 
@@ -2843,7 +2830,7 @@ static int cmd_tone(int argc, char **argv) {
     freq = atol(argv[2]);
 #if WITH_HELP
     if (freq > MAGIC_FREQ)
-      q_print("% Frequency will be adjusted to maximum which is " xstr(MAGIC_FREQ) "] Hz\n\r");
+      q_print("% Frequency will be adjusted to maximum which is " xstr(MAGIC_FREQ) "] Hz\r\n");
 #endif      
   }
 
@@ -2923,7 +2910,7 @@ static int cmd_pin(int argc, char **argv) {
   if (argc == 2) {
 
     level = digitalRead(pin);
-    q_printf("%% Digital pin value = %d\n\r", level);
+    q_printf("%% Digital pin value = %d\r\n", level);
 
     gpio_dump_io_configuration(stdout, (uint64_t)1 << pin);  // FIXME: works only on default UART0
     return 0;
@@ -2942,7 +2929,7 @@ static int cmd_pin(int argc, char **argv) {
       if (!q_strcmp(argv[i],"seq")) {
         if ((i + 1) >= argc) {
 #if WITH_HELP
-          q_print("% Sequence number expected after \"seq\"\n\r");
+          q_print("% Sequence number expected after \"seq\"\r\n");
 #endif          
           return i;
         }
@@ -2961,13 +2948,13 @@ static int cmd_pin(int argc, char **argv) {
         if (seq_isready(seq)) {
           // enable RMT sequence 'seq' on pin 'pin'
 #if WITH_HELP          
-          q_printf("%% Sending sequence %d over GPIO %d\n\r", seq, pin);
+          q_printf("%% Sending sequence %d over GPIO %d\r\n", seq, pin);
 #endif
           if ((j = seq_send(pin, seq)) < 0)
-            q_printf("%% Failed. Error code is: %d\n\r",j);
+            q_printf("%% Failed. Error code is: %d\r\n",j);
 
         } else
-          q_printf("%% Sequence %d is not configured\n\r", seq);
+          q_printf("%% Sequence %d is not configured\r\n", seq);
       } 
       //2. "tone FREQ DUTY" keyword. 
       // unlike global ""tone command the duty and frequency are not an optional 
@@ -2978,7 +2965,7 @@ static int cmd_pin(int argc, char **argv) {
         // make sure that there are 2 extra arguments after "tone" keyword
         if ((i+2) >= argc) {
 #if WITH_HELP          
-          q_print("% Frequency (integer) and duty cycle (float 0..1) are expected\n\r");
+          q_print("% Frequency (integer) and duty cycle (float 0..1) are expected\r\n");
 #endif          
           return i;
         }
@@ -2988,14 +2975,14 @@ static int cmd_pin(int argc, char **argv) {
         // frequency must be an integer number and duty must be a float point number
         if (!isnum(argv[i])) {
 #if WITH_HELP
-          q_printf("Integer number expected instead of \"%s\"\n\r",argv[i]);
+          q_printf("Integer number expected instead of \"%s\"\r\n",argv[i]);
 #endif          
           return i; 
         }
         freq = atol(argv[i++]);
         if (!isfloat(argv[i])) {
 #if WITH_HELP
-          q_printf("Float number expected instead of \"%s\"\n\r",argv[i]);
+          q_printf("Float number expected instead of \"%s\"\r\n",argv[i]);
 #endif          
           return i; 
         }
@@ -3016,7 +3003,7 @@ static int cmd_pin(int argc, char **argv) {
         unsigned int duration;
         if ((i + 1) >= argc) {
 #if WITH_HELP          
-          q_print("% Delay value expected after keyword \"delay\"\n\r");
+          q_print("% Delay value expected after keyword \"delay\"\r\n");
 #endif          
           return i;
         }
@@ -3040,7 +3027,7 @@ static int cmd_pin(int argc, char **argv) {
         //must have an extra argument (loop count)
         if ((i + 1) >= argc) {
 #if WITH_HELP
-          q_print("% Loop count expected after keyword \"loop\"\n\r");
+          q_print("% Loop count expected after keyword \"loop\"\r\n");
 #endif          
           return i;
         }
@@ -3052,7 +3039,7 @@ static int cmd_pin(int argc, char **argv) {
         // loop must be the last keyword, so we can strip it later
         if ((i + 1) < argc) {
 #if WITH_HELP          
-          q_print("% \"loop\" must be the last keyword\n\r");
+          q_print("% \"loop\" must be the last keyword\r\n");
 #endif          
           return i + 1;
         }
@@ -3061,7 +3048,7 @@ static int cmd_pin(int argc, char **argv) {
 #if WITH_HELP
         if (!informed) {
           informed = true;
-          q_printf("%% Repeating the command %u times. Press/Enter any key to abort\n\r",count);
+          q_printf("%% Repeating the command %u times. Press/Enter any key to abort\r\n",count);
         }
 #endif
       }
@@ -3077,8 +3064,8 @@ static int cmd_pin(int argc, char **argv) {
       else if (!q_strcmp(argv[i], "out"))     { flags |= OUTPUT;     pinMode(pin, flags); }
       else if (!q_strcmp(argv[i], "low"))     { flags |= OUTPUT;     pinMode(pin,flags); digitalWrite(pin, LOW); }
       else if (!q_strcmp(argv[i], "high"))    { flags |= OUTPUT;     pinMode(pin,flags); digitalWrite(pin, HIGH); }
-      else if (!q_strcmp(argv[i], "read"))    q_printf("%% GPIO%d : logic %d\n\r", pin, digitalRead(pin) == HIGH ? 1 : 0);
-      else if (!q_strcmp(argv[i], "aread"))   q_printf("%% GPIO%d : analog %d\n\r", pin, analogRead(pin));
+      else if (!q_strcmp(argv[i], "read"))    q_printf("%% GPIO%d : logic %d\r\n", pin, digitalRead(pin) == HIGH ? 1 : 0);
+      else if (!q_strcmp(argv[i], "aread"))   q_printf("%% GPIO%d : analog %d\r\n", pin, analogRead(pin));
       //"new pin number" keyword. when we see a number we use it as a pin number
       //for subsequent keywords. must be valid GPIO number.
       else if (isnum(argv[i])) { 
@@ -3096,7 +3083,7 @@ static int cmd_pin(int argc, char **argv) {
     // by anykey press
     if (anykey_pressed()) {
 #if WITH_HELP
-      q_print("% Key pressed, aborting..\n\r");
+      q_print("% Key pressed, aborting..\r\n");
 #endif
       break;
     }
@@ -3112,11 +3099,11 @@ static int cmd_mem(int argc, char **argv) {
   unsigned int total;
 
   q_print("% -- Memory information --\r\n");
-  q_printf("%% malloc():\r\n%% %u bytes total, %u available, %u max per allocation\n\r", heap_caps_get_total_size(MALLOC_CAP_DEFAULT), heap_caps_get_free_size(MALLOC_CAP_DEFAULT),heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
-  q_printf("%% heap_caps_malloc():\r\n%% %u bytes total,  %u available, %u max per allocation\n\r", heap_caps_get_total_size(MALLOC_CAP_INTERNAL), heap_caps_get_free_size(MALLOC_CAP_INTERNAL),heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+  q_printf("%% malloc():\r\n%% %u bytes total, %u available, %u max per allocation\r\n", heap_caps_get_total_size(MALLOC_CAP_DEFAULT), heap_caps_get_free_size(MALLOC_CAP_DEFAULT),heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+  q_printf("%% heap_caps_malloc():\r\n%% %u bytes total,  %u available, %u max per allocation\r\n", heap_caps_get_total_size(MALLOC_CAP_INTERNAL), heap_caps_get_free_size(MALLOC_CAP_INTERNAL),heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
 
   if ((total = heap_caps_get_total_size(MALLOC_CAP_SPIRAM)/1024) > 0)
-    q_printf("%% External SPIRAM(PSRAM) total: %uMbytes, free: %u bytes\n\r",total / 1024,heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    q_printf("%% External SPIRAM(PSRAM) total: %uMbytes, free: %u bytes\r\n",total / 1024,heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
 
   return 0;
 }
@@ -3151,7 +3138,7 @@ static int cmd_nap(int argc, char **argv) {
 #endif  
   esp_light_sleep_start();
 #if WITH_HELP  
-  q_print("Resuming\n\r");
+  q_print("Resuming\r\n");
 #endif  
   return 0;
 }
@@ -3181,7 +3168,7 @@ static int cmd_i2c_if(int argc, char **argv) {
   iic = atol(argv[1]);
   if (iic >= SOC_I2C_NUM) {
 #if WITH_HELP    
-    q_printf("%% Valid I2C interface numbers are 0..%d\n\r", SOC_I2C_NUM - 1);
+    q_printf("%% Valid I2C interface numbers are 0..%d\r\n", SOC_I2C_NUM - 1);
 #endif    
     return 1;
   }
@@ -3207,13 +3194,13 @@ static int cmd_uart_if(int argc, char **argv) {
   u = atol(argv[1]);
   if (u >= SOC_UART_NUM) {
 #if WITH_HELP    
-    q_printf("%% Valid UART interface numbers are 0..%d\n\r", SOC_UART_NUM - 1);
+    q_printf("%% Valid UART interface numbers are 0..%d\r\n", SOC_UART_NUM - 1);
 #endif    
     return 1;
   }
 #if WITH_HELP
   if (uart == u)
-    q_print("% You are configuring Serial interface shell is running on! BE CAREFUL :)\n\r");
+    q_print("% You are configuring Serial interface shell is running on! BE CAREFUL :)\r\n");
 #endif
 
   Context = u;
@@ -3238,7 +3225,7 @@ static int cmd_i2c_clock(int argc, char **argv) {
 
   if (!i2c_isup(iic)) {
 #if WITH_HELP    
-    q_printf("%% I2C %d is not initialized. use command \"up\" to initialize\n\r", iic);
+    q_printf("%% I2C %d is not initialized. use command \"up\" to initialize\r\n", iic);
 #endif    
     return 0;
   }
@@ -3277,7 +3264,7 @@ static int cmd_i2c(int argc, char **argv) {
 
     if (i2c_isup(iic)) {
 #if WITH_HELP      
-      q_printf("%% I2C%d is already initialized\n\r", iic);
+      q_printf("%% I2C%d is already initialized\r\n", iic);
 #endif      
       return 0;
     }
@@ -3324,7 +3311,7 @@ static int cmd_i2c(int argc, char **argv) {
       data[size++] = ascii2hex(argv[i]);
     }
     // send over
-    q_printf("%% Sending %d bytes over I2C%d\n\r", size, iic);
+    q_printf("%% Sending %d bytes over I2C%d\r\n", size, iic);
     if (ESP_OK != i2cWrite(iic, addr, data, size, 2000))
       q_print(Failed);
   } 
@@ -3355,7 +3342,7 @@ static int cmd_i2c(int argc, char **argv) {
     if (size > I2C_RXTX_BUF) {
       size = I2C_RXTX_BUF;
 #if WITH_HELP      
-      q_printf("%% Max read size buffer is %d bytes\n\r", size);
+      q_printf("%% Max read size buffer is %d bytes\r\n", size);
 #endif      
     }
 
@@ -3366,10 +3353,10 @@ static int cmd_i2c(int argc, char **argv) {
       q_print(Failed);
     else {
       if (got != size) {
-        q_printf("%% Requested %d bytes but read %d\n\r",size,got);
+        q_printf("%% Requested %d bytes but read %d\r\n",size,got);
         got = size;
       }
-      q_printf("%% I2C%d received %d bytes:\n\r", iic, got);
+      q_printf("%% I2C%d received %d bytes:\r\n", iic, got);
       q_printhex(data,got);
 
     }
@@ -3379,32 +3366,32 @@ static int cmd_i2c(int argc, char **argv) {
   else if (!q_strcmp(argv[0], "scan")) {
     if (!i2c_isup(iic)) {
 #if WITH_HELP      
-      q_printf("%% I2C %d is not initialized\n\r", iic);
+      q_printf("%% I2C %d is not initialized\r\n", iic);
 #endif      
       return 0;
     }
 
-    q_printf("%% Scanning I2C bus %d...\n\r", iic);
+    q_printf("%% Scanning I2C bus %d...\r\n", iic);
 
     for (addr = 1, i = 0; addr < 128; addr++) {
       unsigned char b;
       if (ESP_OK == i2cWrite(iic, addr, &b, 0, 500)) {
         i++;
-        q_printf("%% Device found at address %02X\n\r", addr);
+        q_printf("%% Device found at address %02X\r\n", addr);
       }
     }
 
     if (!i)
-      q_print("% Nothing found\n\r");
+      q_print("% Nothing found\r\n");
     else
-      q_printf("%% %d devices found\n\r", i);
+      q_printf("%% %d devices found\r\n", i);
   } else return 0;
 
   return 0;
 noinit:
   // love gotos
 #if WITH_HELP  
-  q_printf("%% I2C %d is not initialized\n\r", iic);
+  q_printf("%% I2C %d is not initialized\r\n", iic);
 #endif  
   return 0;
 }
@@ -3437,7 +3424,7 @@ static int cmd_uart_baud(int argc, char **argv) {
 
   if (!uart_isup(u)) {
 #if WITH_HELP    
-    q_printf("%% uart %d is not initialized. use command \"up\" to initialize\n\r", u);
+    q_printf("%% uart %d is not initialized. use command \"up\" to initialize\r\n", u);
 #endif    
     return 0;
   }
@@ -3495,7 +3482,7 @@ uart_tap(int remote) {
       // return here or we get flooded by driver messages
       if (ESP_OK != uart_get_buffered_data_len(remote, &av)) {
 #if WITH_HELP        
-        q_printf("%% UART%d is not initialized\n\r", remote);
+        q_printf("%% UART%d is not initialized\r\n", remote);
 #endif        
         return;
       }
@@ -3532,16 +3519,16 @@ static int cmd_uart(int argc, char **argv) {
   if (!q_strcmp(argv[0], "tap")) {
     //do not tap to the same uart
     if (uart == u) {
-      q_print("% Can not tap on itself\n\r");
+      q_print("% Can not tap on itself\r\n");
       return 0;
     }
 
     if (!uart_isup(u))
       goto noinit;
 
-    q_printf("%% Tapping to UART%d, CTRL+C to exit\n\r", u);
+    q_printf("%% Tapping to UART%d, CTRL+C to exit\r\n", u);
     uart_tap(u);
-    q_print("\n\r% Ctrl+C, exiting\n\r");
+    q_print("\r\n% Ctrl+C, exiting\r\n");
     return 0;
   } else if (!q_strcmp(argv[0], "up")) {  //up RX TX SPEED
     if (argc < 4)
@@ -3591,12 +3578,12 @@ static int cmd_uart(int argc, char **argv) {
             case '\\': p++; c = '\\'; break;
             case 'n' : p++; c = '\n'; break;
             case 'r' : p++; c = '\r'; break;
-            case 't' : p++; c = '\r'; break;
+            case 't' : p++; c = '\t'; break;
             default:
               if (ishex(p))
                 c = ascii2hex(p);
               else {
-                q_printf("%% Unknown escape sequence: \"%s\"\n\r", p);
+                q_printf("%% Unknown escape sequence: \"\\%s\"\r\n", p);
                 return i;
               }
               p++;
@@ -3617,7 +3604,7 @@ static int cmd_uart(int argc, char **argv) {
       }
     } while (i < argc);
 
-    q_printf("%% %u bytes sent\n\r", sent);
+    q_printf("%% %u bytes sent\r\n", sent);
   } else 
   if (!q_strcmp(argv[0], "read")) {  // read
     size_t available = 0, tmp;
@@ -3633,13 +3620,13 @@ static int cmd_uart(int argc, char **argv) {
           q_printf("\\x%02x", c);
       }
     }
-    q_printf("\n\r%% %d bytes read\n\r", tmp);
+    q_printf("\r\n%% %d bytes read\r\n", tmp);
   }
 
   // command executed or was not understood
   return 0;
 noinit:
-  q_printf("%% UART%d is not initialized\n\r", u);
+  q_printf("%% UART%d is not initialized\r\n", u);
   return 0;
 }
 
@@ -3658,10 +3645,10 @@ static int cmd_tty(int argc, char **argv) {
     return 1;
   u = atoi(argv[1]);
   if (!uart_isup(u))
-    q_printf("%% UART%d is not initialized\n\r", u);
+    q_printf("%% UART%d is not initialized\r\n", u);
   else {
 #if WITH_HELP
-    q_printf("%% See you on UART%d. Bye!\n\r", u);
+    q_printf("%% See you on UART%d. Bye!\r\n", u);
 #endif
     uart = u;
   }
@@ -3677,7 +3664,7 @@ static int cmd_tty(int argc, char **argv) {
 static int cmd_echo(int argc, char **argv) {
 
   if (argc < 2)
-    q_printf("%% Echo %s\n\r",Echo ? "on" : "off");
+    q_printf("%% Echo %s\r\n",Echo ? "on" : "off");
   else
     Echo = !strcmp("on",argv[1]);
   return 0;
@@ -3732,7 +3719,7 @@ static int cmd_cpu(int argc, char **argv) {
     case EFUSE_RD_CHIP_VER_PKG_ESP32PICOD4:   chipid = "ESP32-PICO-D4"; break;
     case EFUSE_RD_CHIP_VER_PKG_ESP32PICOV302: chipid = "ESP32-PICO-V3-02"; break;
     case EFUSE_RD_CHIP_VER_PKG_ESP32D0WDR2V3: chipid = "ESP32-D0WDR2-V3"; break;
-    default: q_printf("%% Detected PKG_VER=%04x\n\r", (unsigned int)pkg_ver);
+    default: q_printf("%% Detected PKG_VER=%04x\r\n", (unsigned int)pkg_ver);
   }
 #elif CONFIG_IDF_TARGET_ESP32S2
   pkg_ver = REG_GET_FIELD(EFUSE_RD_MAC_SPI_SYS_3_REG, EFUSE_PKG_VERSION);
@@ -3751,7 +3738,7 @@ static int cmd_cpu(int argc, char **argv) {
   }
 #endif //CONFIG_IDF_TARGET_XXX
 
-  q_printf("\r\n%% CPU ID: %s, Rev.: %d.%d\n\r%% CPU frequency is %luMhz, Xtal %luMhz, APB bus %luMhz\r\n%% Chip temperature: %.1f\xe8 C\n\r",
+  q_printf("\r\n%% CPU ID: %s, Rev.: %d.%d\r\n%% CPU frequency is %luMhz, Xtal %luMhz, APB bus %luMhz\r\n%% Chip temperature: %.1f\xe8 C\r\n",
              chipid,
              (chip_info.revision >> 8) & 0xf,
              chip_info.revision & 0xff,
@@ -3789,9 +3776,9 @@ static int cmd_cpu_freq(int argc, char **argv) {
     q_print("% Supported frequencies are: 240, 160, 120, 80, ");
 
     if (xtal >= 40)
-      q_printf("%u, %u and %u\n\r", xtal, xtal / 2, xtal / 4);
+      q_printf("%u, %u and %u\r\n", xtal, xtal / 2, xtal / 4);
     else
-      q_printf("%u and %u\n\r", xtal, xtal / 2);
+      q_printf("%u and %u\r\n", xtal, xtal / 2);
       return 1;
   }
 
@@ -3859,7 +3846,7 @@ cmd_uptime(int argc, char **argv) {
     q_printf("%u minutes ", min);
   }
 
-  q_printf("%u seconds ago\n\r", sec);
+  q_printf("%u seconds ago\r\n", sec);
 
   return 0;
 }
@@ -3907,7 +3894,7 @@ static int cmd_question(int argc, char **argv) {
   // user typed "? text" by mistake
   if (argc > 1) {
 
-    q_printf("%% To get help try \"%s ?\" instead!\n\r", argv[1]);
+    q_printf("%% To get help try \"%s ?\" instead!\r\n", argv[1]);
     return 0;
   }
 
@@ -3917,9 +3904,9 @@ static int cmd_question(int argc, char **argv) {
   indent[INDENT] = 0;
   char *spaces;
 
-  q_print("% Enter \"command ?\" to get details about the command.\n\r" \
-          "% List of available commands:\n\r" \
-          "%\n\r");
+  q_print("% Enter \"command ?\" to get details about the command.\r\n" \
+          "% List of available commands:\r\n" \
+          "%\r\n");
 
   //run through the keywords[] and print brief info for every entry
   // 1. for repeating entries (same command name) only the first entry's description
@@ -3942,7 +3929,7 @@ static int cmd_question(int argc, char **argv) {
         spaces = &indent[INDENT];  //points to \0
         if ((clen = strlen(keywords[i].cmd)) < INDENT)
           spaces = &indent[clen];
-        q_printf("%% \"%s\"%s : %s\n\r", keywords[i].cmd, spaces, brief);
+        q_printf("%% \"%s\"%s : %s\r\n", keywords[i].cmd, spaces, brief);
       }
     }
 
@@ -4000,9 +3987,9 @@ espshell_command(char *p) {
         if (!q_strcmp(argv[0], keywords[i].cmd)) {
           found = true;
           if (keywords[i].help)
-            q_printf("\n\r%s\n\r", keywords[i].help);  //display long help
+            q_printf("\r\n%s\r\n", keywords[i].help);  //display long help
           else if (keywords[i].brief)
-            q_printf("\n\r%s\n\r", keywords[i].brief);  //display brief (must not happen)
+            q_printf("\r\n%s\r\n", keywords[i].brief);  //display brief (must not happen)
           bad = 0;
         }
       }
@@ -4035,9 +4022,9 @@ espshell_command(char *p) {
             // cb() call with return code 0
             bad = keywords[i].cb(argc, argv);
             if (bad > 0)
-              q_printf("%% Invalid argument \"%s\" (\"%s ?\" for help)\n\r", argv[bad], argv[0]);
+              q_printf("%% Invalid argument \"%s\" (\"%s ?\" for help)\r\n", argv[bad], argv[0]);
             else if (bad < 0)
-              q_printf("%% Missing argument (\"%s ?\" for help)\n\r", argv[0]);
+              q_printf("%% Missing argument (\"%s ?\" for help)\r\n", argv[0]);
             else
               i = 0;  // make sure keywords[i] is valid pointer
             break;
@@ -4050,16 +4037,16 @@ espshell_command(char *p) {
     // reached the end of the list and didn't find any exact match?
     if (!keywords[i].cmd) {
       if (found)  //we had a name match but number of arguments was wrong
-        q_printf("%% \"%s\": wrong number of arguments (\"%s ?\" for help)\n\r", argv[0], argv[0]);
+        q_printf("%% \"%s\": wrong number of arguments (\"%s ?\" for help)\r\n", argv[0], argv[0]);
       else
 #if WITH_HELP      
 notfound:
 #endif
-        q_printf("%% \"%s\": command not found\n\r", argv[0]);
+        q_printf("%% \"%s\": command not found\r\n", argv[0]);
     }
 #if WITH_HELP
     if (!found)
-      q_print("% Type \"?\" to show the list of commands available\n\r");
+      q_print("% Type \"?\" to show the list of commands available\r\n");
 #endif
   }
 
@@ -4110,7 +4097,7 @@ static void espshell_task(const void *arg) {
       return ;
     }
     if (pdPASS != xTaskCreate((TaskFunction_t)espshell_task, NULL, STACKSIZE, NULL, tskIDLE_PRIORITY, &h))
-      q_print("% ESPShell failed to start task\n\r");
+      q_print("% ESPShell failed to start task\r\n");
     else
       started = true;
   } else {
@@ -4120,7 +4107,7 @@ static void espshell_task(const void *arg) {
       delay(100);
 
 #if WITH_HELP
-    q_print("% ESP Shell. Type \"?\" and press enter for help\n\r");
+    q_print("% ESP Shell. Type \"?\" and press enter for help\r\n");
 #endif
 
     while (!Exit) {
@@ -4133,3 +4120,31 @@ static void espshell_task(const void *arg) {
     vTaskDelete(NULL);
   }
 }
+
+/* espshell code copyright 2024, vvb33007 <vvb@nym.hush.com> */
+
+/*
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0.
+ */
+
+/*
+ * Copyright 1992,1993 Simmule Turner and Rich Salz.  All rights reserved.
+ *
+ * This software is not subject to any license of the American Telephone
+ * and Telegraph Company or of the Regents of the University of California.
+ *
+ * Permission is granted to anyone to use this software for any purpose on
+ * any computer system, and to alter it and redistribute it freely, subject
+ * to the following restrictions:
+ * 1. The authors are not responsible for the consequences of use of this
+ *    software, no matter how awful, even if they arise from flaws in it.
+ * 2. The origin of this software must not be misrepresented, either by
+ *    explicit claim or by omission.  Since few users ever read sources,
+ *    credits must appear in the documentation.
+ * 3. Altered versions must be plainly marked as such, and must not be
+ *    misrepresented as being the original software.  Since few users
+ *    ever read sources, credits must appear in the documentation.
+ * 4. This notice may not be removed or altered.
+ */
+
