@@ -31,8 +31,8 @@ finally LOW for 100 microseconds"
 
 We start from entering sequence configuration mode:
 
-esp32#>sequence 0
-esp32-seq#>
+  esp32#>sequence 0
+  esp32-seq#>
 
 Command "sequence 0"  enter sequence0 configuration mode (numbers must
 be in range 0..9 so only 10 sequences can be created). This command changes 
@@ -45,15 +45,18 @@ length, and all the timings in a sequence are expressed in ticks. Tick
 length can be anything from 0.0125 to 3.2 microseconds. Lets choose tick
 to be 1 microsecond long:
 
-esp32#>sequence 0
-esp32-seq#>tick 1
+  esp32#>sequence 0
+  esp32-seq#>tick 1
+
+By default sequences are created with the tick set to 1 microsecond so 
+command "tick 1" can be omitted in example above
 
 Now input our sequence:
 
 
-esp32#>sequence 0
-esp32-seq#>tick 1
-esp32-seq#>levels 1/10 0/20 1/30 0/100
+  esp32#>sequence 0
+  esp32-seq#>tick 1
+  esp32-seq#>levels 1/10 0/20 1/30 0/100
 
 Command "levels" takes arguments in form LEVEL/LENGTH_IN_TICKS where LEVEL
 is either "1" or "0" and LENGTH_IN_TICKS tells how long this level must be
@@ -62,58 +65,60 @@ length in ticks and microseconds
 
 Now we have configured sequence number 0. Lets send it on GPIO2:
 
-esp32#>sequence 0
-esp32-seq#>tick 1
-esp32-seq#>levels 1/10 0/20 1/30 0/100
-esp32-seq#>exit
-esp32#>pin 2 seq 0
+  esp32#>sequence 0
+  esp32-seq#>tick 1
+  esp32-seq#>levels 1/10 0/20 1/30 0/100
+  esp32-seq#>exit
+  esp32#>pin 2 seq 0
 
 Or, send it 4 times in a row:
 
-esp32#>sequence 0
-esp32-seq#>tick 1
-esp32-seq#>levels 1/10 0/20 1/30 0/100
-esp32-seq#>exit
-esp32#>pin 2 seq 0
-esp32#>pin 2 seq 0 seq 0 seq 0 seq 0
+  esp32#>sequence 0
+  esp32-seq#>tick 1
+  esp32-seq#>levels 1/10 0/20 1/30 0/100
+  esp32-seq#>exit
+  esp32#>pin 2 seq 0                          <-- send once
+  esp32#>pin 2 seq 0 seq 0 seq 0 seq 0        <-- send 4 times
+
+NOTE: read "docs/Pin_commands.txt" to find out "pin" command syntax. Another way
+to send 4 sequences as shown above is to use "pin 2 seq 0 loop 4" command
 
 
-
-Another way to define a sequence is to use  "bits", "one" and "zero" 
+ANOTHER WAY to define a sequence is to use  "bits", "one" and "zero" 
 commands instead of encoding all individual values using "levels" command. 
 
-Command "bits" defines a bit stream to be sent while "one" and "zero" define 
-what 1 and 0 actually are in terms of LOW/HIGH. Lets say we want to send 
-sequence of pulses like follows:
+Command "bits" defines a bit stream to be sent while "one" and "zero" commands
+define what 1 and 0 actually are in terms of LOW/HIGH. Lets say we want to send 
+sequence of pulses like follows (same sequence is used in a previous example):
 
-"high for 10us, low 20us, high 30us,low 100us"
+  "high for 10us, low 20us, high 30us,low 100us"
 
-And here are shell commands which do the job:
+And here are shell commands which do the job (note we use default tick of 1us ):
 
-esp32#>sequence 0
-esp32-seq#>tick 1
-esp32-seq#>bits 1001110000000000
-esp32-seq#>one 1/10
-esp32-seq#>zero 0/10
+  esp32#>sequence 0
+  esp32-seq#>bits 1001110000000000
+  esp32-seq#>one 1/10
+  esp32-seq#>zero 0/10
 
 Commands "one" and "zero" define "1" to be 10uS long and 0 to be 10uS long
 as well. Then we use proper number of 1s and 0s to achieve timings we need:
 
-1   - 10uS
-00  - 20uS
-111 - 30uS
+  1   - 10uS
+  00  - 20uS
+  111 - 30uS
+
 
 Command "bits" discards previously set "levels" and vice versa: setting "levels"
 will reset "bits". Once "tick", "bits", "one" and "zero" are set then levels
 are automatically generated and can be seen with "show" command:
 
 
-esp32-seq#>show
-%
-% Sequence #0:
-% Resolution : 1.0000uS  (Frequency: 1000000 Hz)
-% Levels are :
-% 1/10, 0/10, 0/10, 1/10, 1/10, 1/10 ....              <----------
+  esp32-seq#>show
+  %
+  % Sequence #0:
+  % Resolution : 1.0000uS  (Frequency: 1000000 Hz)
+  % Levels are :
+  % 1/10, 0/10, 0/10, 1/10, 1/10, 1/10 ....              <---------- generated
 
 
 
@@ -125,19 +130,19 @@ string "100111" where logic 1 is a pulse (HIGH 150uS then LOW 50uS) and logic 0
 is a pulse as well (HIGH 50uS then LOW for 150uS):
 
 
-esp32#>seq 0
-esp32-seq#>tick 1
-esp32-seq#>one 1/150 0/50
-esp32-seq#>zero 1/50 0/150
-esp32-seq#>bits 100111
-esp32-seq#>show
-%
-% Sequence #0:
-% Resolution : 1.0000uS  (Frequency: 1000000 Hz)
-% Levels are :
-% 1/150, 0/50, 1/50, 0/150, 1/50, 0/150, 1/150, 0/50,
-% 1/150, 0/50, 1/150, 0/50,
-% Total: 12 levels, duration: 1200 ticks, (~1200 uS)
+  esp32#>seq 0
+  esp32-seq#>tick 1
+  esp32-seq#>one 1/150 0/50
+  esp32-seq#>zero 1/50 0/150
+  esp32-seq#>bits 100111
+  esp32-seq#>show
+  %
+  % Sequence #0:
+  % Resolution : 1.0000uS  (Frequency: 1000000 Hz)
+  % Levels are :
+  % 1/150, 0/50, 1/50, 0/150, 1/50, 0/150, 1/150, 0/50,
+  % 1/150, 0/50, 1/150, 0/50,
+  % Total: 12 levels, duration: 1200 ticks, (~1200 uS)  <-------- total sequence time
 
 
 Finaly lets create pattern which blink LED connected to GPIO2. We want that LED
@@ -147,10 +152,10 @@ Given the frequency of 1Hz the tick must be as long as possible and duration of
 each 1 or 0 should be maximal. The maximum tick allowed is 3.2uS so we just 
 choose 3.2 and define "one" and "zero" to maximum length:
 
-esp32-seq#>tick 3.2
-esp32-seq#>one 1/32767
-esp32-seq#>zero 0/32767
-esp32-seq#>bits 11111111000000001111111100000000
+  esp32-seq#>tick 3.2
+  esp32-seq#>one 1/32767
+  esp32-seq#>zero 0/32767
+  esp32-seq#>bits 11111111000000001111111100000000
 
 Exit sequence configuration mode using "exit" command. Note that commands can 
 be entered in their short form (say "seq" instead of "sequence" or "ex" instead 
@@ -159,10 +164,10 @@ be entered in their short form (say "seq" instead of "sequence" or "ex" instead
 Assign sequence to the pin (start the sequence). If you have LED connected to 
 pin 2 you'll see it blinking
 
-esp32-seq#>ex
-esp32#>pin 2 seq 0
-% Sending sequence 0 over GPIO 2
-esp32#>
+  esp32-seq#>ex
+  esp32#>pin 2 seq 0
+  % Sending sequence 0 over GPIO 2
+  esp32#>
 
 
 There are some extra commands in "sequence" category which were not covered
@@ -174,10 +179,15 @@ Summary:
 --------
 
 * There are up to 10 sequences (patterns) could be configured
+
+* Signal duration is measured in "ticks". 
+  By default tick is 1us but can be changed with "tick" command
+
 * Use command "sequence" or "seq" to create sequences
+
 * Use command "pin X seq Y" to send sequence Y over pin X
-* "tick" MUST be set before sequence can be fed to any pin
+* "tick"   : MUST be set before sequence can be fed to any pin (default is 1 us)
 * "levels" : sequences can be set up manually by setting level/durations pairs
 * "bits"   : sequences can be set up as a bit strings with defined 1 and 0 lengths
-
-
+* Commands "bits" and "levels" are mutually exclusive: setting "bits" will rewrite
+  "levels", setting "levels" will drop "bits" (but not 1 & 0 definitions)
