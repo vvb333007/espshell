@@ -64,21 +64,18 @@
 //#define SERIAL_IS_USB        //Not yet
 //#define ESPCAM               //include ESP32CAM commands (read extra/README.md).
 
-#define WITH_HELP      1     // Set to 0 to save some program space by excluding help strings/functions
-#define UNIQUE_HISTORY 1     // Wheither to discard repeating commands from the history or not
-#define HIST_SIZE      20    // History buffer size (number of commands to remember)
-#define STACKSIZE      5000  // Shell task stack size
-#define BREAK_KEY      3     // Keycode of a "Exit" key: CTRL+C to exit "uart NUM tap" mode
-#define SEQUENCES_NUM  10    // Max number of sequences available for command "sequence"
-
+#define WITH_HELP      1          // Set to 0 to save some program space by excluding help strings/functions
+#define UNIQUE_HISTORY 1          // Wheither to discard repeating commands from the history or not
+#define HIST_SIZE      20         // History buffer size (number of commands to remember)
+#define STACKSIZE      5000       // Shell task stack size
+#define BREAK_KEY      3          // Keycode of a "Exit" key: CTRL+C to exit "uart NUM tap" mode
+#define SEQUENCES_NUM  10         // Max number of sequences available for command "sequence"
 #define DO_ECHO        true       // espshell echoes user input back by default. set to false for easier 
                                   // automated output processing
 #define USE_UART       UART_NUM_0 // uart where shell will be deployed at startup
 
-#define COMPILING_ESPSHELL 1//dont touch this. it is used by external commands (if any) to prevent
-                            //external files to be compiled by Arduino IDE. Instead they are included
-                            //in this file
-
+#define COMPILING_ESPSHELL 1      //dont touch this!
+                            
 //BIG FAT TODO: 
 // consider using stdin/stdout for USB-OTG enabled boards
 // consider using idf api for reading/writing USB port char by char
@@ -110,7 +107,7 @@
 #include <Arduino.h>
 
 
-static void espshell_task(const void *arg);
+
 static void __attribute__((constructor)) espshell_start();
 
 
@@ -155,7 +152,7 @@ static uart_port_t uart = USE_UART;
 
 #ifdef SERIAL_IS_USB // Serial is class USBCDC
 static int console_write_bytes(const void *buf, size_t len) {
-#  error "Uconsole_write_bytes() is not implemented"  
+#  error "console_write_bytes() is not implemented"  
   return 0;
 }
 static int console_read_bytes(void *buf, uint32_t len, TickType_t wait) {
@@ -1598,11 +1595,13 @@ anykey_pressed() {
 // returns true if was interrupted by a keypress
 //
 static bool delay_interruptible(unsigned int duration) {
-  while (duration >= 250) {
-    delay(250);
-    if (anykey_pressed())
-      return true;
-    duration -= 250;
+  if (duration > 4999) {
+    while (duration >= 250) {
+      delay(250);
+      if (anykey_pressed())
+        return true;
+      duration -= 250;
+    }
   }
   if (duration)
     delay(duration);
@@ -1660,6 +1659,7 @@ struct keywords_t {
 //Custom uart commands (uart subderictory)
 //Those displayed after executing "uart 2" (or any other uart interface)
 //TAG:keywords_uart
+//
 static const struct keywords_t keywords_uart[] = {
 #if WITH_HELP  
   KEYWORDS_BEGIN,
@@ -3200,18 +3200,14 @@ static int cmd_pin(int argc, char **argv) {
         // delays of more than 5 seconds are sensetive to
         //user input: anykey will interrupt the delay
         duration = atol(argv[i]);
-        if (duration < 5000)
-          delay(duration);
-        else {
-#if WITH_HELP
-          if (!informed) {
+#if WITH_HELP        
+        if (!informed && (duration > 4999)) {
             informed = true;
             q_print("% Hint: Press/Enter any key to interrupt the command\r\n");
           }
 #endif          
           if (delay_interruptible(duration) == true) // was interrupted by keypress? abort whole command
             return 0;
-        }
       } 
       //4. "loop" keyword
       else if (!q_strcmp(argv[i],"loop")) {
@@ -3236,8 +3232,11 @@ static int cmd_pin(int argc, char **argv) {
         }
         count = atol(argv[i]);
         argc -= 2;//strip "loop NUMBER" keyword
-#if WITH_HELP        
-        q_printf("%% Repeating command %u times. Press/Enter any key to abort\n\r",count);
+#if WITH_HELP
+        if (!informed) {
+          informed = true;
+          q_printf("%% Repeating the command %u times. Press/Enter any key to abort\n\r",count);
+        }
 #endif
       }
       //Now all the single-line keywords:
@@ -3266,6 +3265,9 @@ static int cmd_pin(int argc, char **argv) {
       i++;
     }
     i = 1; // start over again
+
+    //give a chance to cancel whole command
+    // by anykey press
     if (anykey_pressed()) {
 #if WITH_HELP
       q_print("% Key pressed, aborting..\n\r");
@@ -3343,15 +3345,15 @@ static inline bool i2c_isup(int iic) {
 // save context, switch command list, change the prompt
 static int cmd_i2c_if(int argc, char **argv) {
 
-  int iic;
+  unsigned int iic;
   if (argc < 2)
     return -1;
 
   if (!isnum(argv[1]))
     return 1;
 
-  iic = atoi(argv[1]);
-  if (iic < 0 || iic >= SOC_I2C_NUM) {
+  iic = atol(argv[1]);
+  if (iic >= SOC_I2C_NUM) {
 #if WITH_HELP    
     q_printf("%% Valid I2C interface numbers are 0..%d\n\r", SOC_I2C_NUM - 1);
 #endif    
@@ -3369,15 +3371,15 @@ static int cmd_i2c_if(int argc, char **argv) {
 // "uart X"
 static int cmd_uart_if(int argc, char **argv) {
 
-  int u;
+  unsigned int u;
   if (argc < 2)
     return -1;
 
   if (!isnum(argv[1]))
     return 1;
 
-  u = atoi(argv[1]);
-  if (u < 0 || u >= SOC_UART_NUM) {
+  u = atol(argv[1]);
+  if (u >= SOC_UART_NUM) {
 #if WITH_HELP    
     q_printf("%% Valid UART interface numbers are 0..%d\n\r", SOC_UART_NUM - 1);
 #endif    
@@ -3396,6 +3398,8 @@ static int cmd_uart_if(int argc, char **argv) {
 
 
 //TAG:clock
+//esp32-i2c#> clock FREQ
+//
 static int cmd_i2c_clock(int argc, char **argv) {
 
   int iic = Context;
@@ -3413,17 +3417,18 @@ static int cmd_i2c_clock(int argc, char **argv) {
     return 0;
   }
 
-  if (ESP_OK != i2cSetClock(iic, atoi(argv[1])))
+  if (ESP_OK != i2cSetClock(iic, atol(argv[1])))
     q_print(Failed);
 
   return 0;
 }
 
-//"iic NUM / up SDA SCL CLOCK"
-//"iic NUM / down"
-//"iic NUM / scan"
-//"iic NUM / write ADDR A1 A2 A3 ... AN"
-//"iic NUM / read ADDR NUM_BYTES"
+// i2c commands handler, processes following commands in esp32-i2c#> category:
+//"SDA SCL CLOCK"
+//"down"
+//"scan"
+//"write ADDR A1 A2 A3 ... AN"
+//"read ADDR NUM_BYTES"
 #define I2C_RXTX_BUF 1024  
 
 static int cmd_i2c(int argc, char **argv) {
@@ -3437,7 +3442,8 @@ static int cmd_i2c(int argc, char **argv) {
 
   iic = Context;
 
-  //IIC UP
+  //"up" kaeyword: initialize i2c driver
+  // on given pins with givent clockrate
   if (!q_strcmp(argv[0], "up")) {
 
     if (argc < 4)
@@ -3449,7 +3455,6 @@ static int cmd_i2c(int argc, char **argv) {
 #endif      
       return 0;
     }
-
 
     if (!isnum(argv[1]))                   return 1; // sda must be a number
     if (!pin_exist((sda = atoi(argv[1])))) return 1; // and be a valid pin
@@ -3464,7 +3469,10 @@ static int cmd_i2c(int argc, char **argv) {
     if (!i2c_isup(iic))
       goto noinit;
     i2cDeinit(iic);
-  } else if (!q_strcmp(argv[0], "write")) {  //write 4B 1 2 3 4
+  } 
+  // "write ADDR byte1 byte2 ... byteN" keyword
+  // send data to device address ADDR
+  else if (!q_strcmp(argv[0], "write")) {  //write 4B 1 2 3 4
 
     // at least 1 but not more than 255 bytes
     if (argc < 3 || argc > I2C_RXTX_BUF)
@@ -3493,7 +3501,11 @@ static int cmd_i2c(int argc, char **argv) {
     q_printf("%% Sending %d bytes over I2C%d\n\r", size, iic);
     if (ESP_OK != i2cWrite(iic, addr, data, size, 2000))
       q_print(Failed);
-  } else if (!q_strcmp(argv[0], "read")) {  //read 68 7
+  } 
+  // "read ADDR LENGTH" keyword:
+  // read data from i2c device on address ADDR, request LENGTH
+  // bytes to read
+  else if (!q_strcmp(argv[0], "read")) {  //read 68 7
 
     size_t got;
 
@@ -3512,9 +3524,9 @@ static int cmd_i2c(int argc, char **argv) {
     if (!isnum(argv[2]))
       return 2;
 
-    size = atoi(argv[2]);
+    size = atol(argv[2]);
 
-    if (size < 0 || size > I2C_RXTX_BUF) {
+    if (size > I2C_RXTX_BUF) {
       size = I2C_RXTX_BUF;
 #if WITH_HELP      
       q_printf("%% Max read size buffer is %d bytes\n\r", size);
@@ -3532,15 +3544,13 @@ static int cmd_i2c(int argc, char **argv) {
         got = size;
       }
       q_printf("%% I2C%d received %d bytes:\n\r", iic, got);
-      
-      
-      //for (i = 0; i < got; i++)
-      //  q_printf("%02X ", data[i]);
-      //q_print(CRLF);
       q_printhex(data,got);
 
     }
-  } else if (!q_strcmp(argv[0], "scan")) {
+  } 
+  // "scan" keyword
+  //
+  else if (!q_strcmp(argv[0], "scan")) {
     if (!i2c_isup(iic)) {
 #if WITH_HELP      
       q_printf("%% I2C %d is not initialized\n\r", iic);
@@ -3979,7 +3989,8 @@ static unsigned int uptime = 0;
 //
 // the function gets called right before entering main()
 // FreeRTOS is initialized but task scheduler is not started yet.
-  static void __attribute__((constructor)) espshell_start() {
+static void espshell_task(const void *arg);
+static void __attribute__((constructor)) espshell_start() {
 
   // save the counter value (seconds) on program start
   // must be 0 but just in case
