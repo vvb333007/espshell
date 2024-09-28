@@ -63,7 +63,7 @@
 #define SEQUENCES_NUM  10         // Max number of sequences available for command "sequence"
 #define DO_ECHO        true       // Espshell echoes user input back by default. set to false for easier 
                                   // automated output processing
-#define USE_UART       UART_NUM_0 // Uart where shell will be deployed at startup
+#define USE_UART       UART_NUM_0 // Uart where shell will be deployed at startup, or 99 for USB-CDC
 
 #define COMPILING_ESPSHELL 1      // dont touch this!
                             
@@ -1499,7 +1499,10 @@ static int q_print(const char *str) {
 }
 
 // make fancy hex data output: mixed hex values
-// and ASCII. Useful to examine EEPROM contents
+// and ASCII. Useful to examine I2C EEPROM contents.
+//
+// data printed 16 bytes per line, a space between hex values, 2 spaces
+// after each 4th byte. then separator and ascii representation are printed
 //
 static void q_printhex(const unsigned char *p, unsigned int len) {
 
@@ -1519,7 +1522,7 @@ static void q_printhex(const unsigned char *p, unsigned int len) {
   char ascii[16+1];
   unsigned int space = 1;
 
-  q_print("      0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F   |0123456789ABCDEF\r\n");
+  q_print("       0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F  |0123456789ABCDEF\r\n");
   q_print("----------------------------------------------------------+----------------\r\n");
 
   for (unsigned int i = 0, j = 0; i < len; i++) {
@@ -1528,16 +1531,23 @@ static void q_printhex(const unsigned char *p, unsigned int len) {
     if (!j)
       q_printf("%04x: ",i);
     
+    //print hex byte value
     q_printf("%02x ", p[i]);
-    if ((space++ & 3) == 0) // add an extra space after each 4 bytes printed
+
+    // add an extra space after each 4 bytes printed
+    if ((space++ & 3) == 0) 
       q_print(" ");
-    ascii[j++] = (p[i] <= ' ') ? '.' : p[i]; // dont print anything with codes 32 or less
+
+    //add printed byte to ascii representation
+    //dont print anything with codes less than 32
+    ascii[j++] = (p[i] <  ' ') ? '.' : p[i]; 
     
     // one complete line could be printed:
-    // we had 16 bytes or it was the last byte
+    // we had 16 bytes or we reached end of the buffer
     if ((j > 15) || (i + 1) >= len) { 
 
-      // short string? pad with spaces
+      // end of buffer but less than 16 bytes:
+      // pad line with spaces 
       if (j < 16) {
         unsigned char spaces = (16 - j)*3 + (j <= 4 ? 3 : (j <=8 ? 2 : (j <= 12 ? 1 : 0))); // fully agreed :-|
         char tmp[spaces + 1];
@@ -1546,6 +1556,7 @@ static void q_printhex(const unsigned char *p, unsigned int len) {
         q_print(tmp);
       }
 
+      // print a separator and the same line but in ascii form
       q_print("|");
       ascii[j] = '\0';
       q_print(ascii);
@@ -1583,24 +1594,28 @@ anykey_pressed() {
 // for delays shorter than 5 seconds fallbacks to normal(delay)
 //
 // `duration` - delay time in milliseconds
-//  returns true if was interrupted by a keypress
+//  returns duration if ok, <duration if was interrupted
 //
-static bool delay_interruptible(unsigned int duration) {
+static unsigned int delay_interruptible(unsigned int duration) {
 
   // if duration is longer than 4999ms split it in 250ms
   // intervals and check for user input in between these
   // intervals.
+  unsigned int delayed = 0;
   if (duration > 4999) {
     while (duration >= 250) {
-      delay(250);
-      if (anykey_pressed())
-        return true;
       duration -= 250;
+      delayed += 250;
+      delay(250); 
+      if (anykey_pressed())
+        return delayed;
     }
   }
-  if (duration)
+  if (duration) {
+    delayed += duration;
     delay(duration);
-  return false;
+  }
+  return delayed;
 }
 
 
@@ -2721,10 +2736,10 @@ static int cmd_seq_show(int argc, char **argv) {
 static int cmd_count(int argc, char **argv) {
 
   pcnt_config_t cfg;
-  int16_t count, wait = 1000;
+  int16_t count;
   pcnt_count_mode_t pos = PCNT_COUNT_DIS;
   pcnt_count_mode_t neg = PCNT_COUNT_DIS;
-  int pin;
+  unsigned int pin, wait = PULSE_WAIT;
 
   //pin number
   if (!isnum(argv[1]))
@@ -2733,7 +2748,7 @@ static int cmd_count(int argc, char **argv) {
 
   memset(&cfg, 0, sizeof(cfg));
 
-  cfg.pulse_gpio_num = pin = atoi(argv[1]);
+  cfg.pulse_gpio_num = pin = atol(argv[1]);
 
   if (!pin_exist(pin))
     return 1;
@@ -2755,7 +2770,7 @@ static int cmd_count(int argc, char **argv) {
       // delay must be a number
       if (!isnum(argv[3]))
         return 3;
-      wait = atoi(argv[3]);
+      wait = atol(argv[3]);
     }
   } else
     pos = PCNT_COUNT_INC;  // default is to count positive edges
@@ -2763,16 +2778,16 @@ static int cmd_count(int argc, char **argv) {
   cfg.pos_mode = pos;
   cfg.neg_mode = neg;
 
-  q_printf("%% Counting pulses on GPIO%d.. ", pin);
+  q_printf("%% Counting pulses on GPIO%d (any key to abort)..\r\n", pin);
 
   pcnt_unit_config(&cfg);
   pcnt_counter_pause(PCNT_UNIT_0);
   pcnt_counter_clear(PCNT_UNIT_0);
   pcnt_counter_resume(PCNT_UNIT_0);
-  delay(wait);
+  wait = delay_interruptible(wait);
   pcnt_counter_pause(PCNT_UNIT_0);
   pcnt_get_counter_value(PCNT_UNIT_0, &count);
-  q_printf("%lu pulses (%.3f sec)\r\n", (unsigned long)count, (float)wait / 1000.0f);
+  q_printf("%lu pulses in %.3f sec\r\n", (unsigned long)count, (float)wait / 1000.0f);
   return 0;
 }
 
@@ -3019,7 +3034,7 @@ static int cmd_pin(int argc, char **argv) {
             q_print("% Hint: Press/Enter any key to interrupt the command\r\n");
           }
 #endif          
-          if (delay_interruptible(duration) == true) // was interrupted by keypress? abort whole command
+          if (delay_interruptible(duration) != duration) // was interrupted by keypress? abort whole command
             return 0;
       } 
       //4. "loop" keyword
