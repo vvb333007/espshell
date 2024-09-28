@@ -122,7 +122,9 @@ loop X  - repeat whole command X times. The "loop X" keyword must be the last
           loop
 
 Multiple keywords can be used in single "pin" command (separated by spaces):
-"pin 2 out open up" is a valid command, executing 3 keywords in sequence
+"pin 2 out open up" is a valid command, executing 3 keywords in sequence.
+Just like that you can think of "pin" command like it is a "sequence of commands
+for the pin". 
 
 
 Lets go through some simple examples which show the use of "pin" command: 
@@ -146,6 +148,13 @@ Example 3. Save pin state, configure it to OUTPUT, HIGH, then restore pin state:
 --------------------------------------------------------------------------------
 
    esp32#>pin 33 save out high
+   esp32#>pin 33 load
+
+   NOTE: setting pin "low" or "high" implies pin is OUTPUT, so internally
+   "high" actually expanded to "out high", and above command can be written
+   as
+ 
+   esp32#>pin 33 save high
    esp32#>pin 33 load
 
 
@@ -175,22 +184,31 @@ Example 5, Save pin state, configure it for OUTPUT, set pin HIGH for 250
   NOTE: although you can create simple signal patters with "delay" it is normally 
         used for something simple, like relay control. Complex signal sequences 
         could be configured with use of Pulse Generator see documentation files
-        docs/Pulse_Generator.txt and docsTone_Generator_And_Counter.txt
+        "docs/Pulse_Generator.txt" and "docs/Tone_Generator_And_Counter.txt"
+
+  NOTE: Command "pin" can be interrupted during long (>5seconds) delays
+        by pressing any key in your terminal or sending any character in your
+        Arduino IDE Serial Monitor. Delays shorter than that are not interruptible
+        so one have to wait until delay is finished
 
 
 Example 7: Set pin 2 high, pin 3 low, wait for 1 second and invert pin values
 -----------------------------------------------------------------------------
 
-  esp32#>pin 2  high 3 low delay 1000 2 low 3 high
+  esp32#>pin 2 high 3 low delay 1000 2 low 3 high
 
 
 Example 8: Blink LED on GPIO2 with 500ms delay, for 20 times
 ------------------------------------------------------------
 
-  esp32#>pin 2 out high delay 500 low delay 500 loop 20
+  esp32#>pin 2 high delay 500 low delay 500 loop 20
+
+  NOTE: whenever "loop" keyword is used the "pin" commands become interruptible:
+        by pressing any key in your terminal or sending any character in your
+        Arduino IDE Serial Monitor you can abort the current command.
 
 
-Example 9: blink a led on GPIO2 with of its 30% brightness
+Example 9: blink a led on GPIO2 with of its 30% brightness 
 ----------------------------------------------------------
 
 
@@ -198,6 +216,8 @@ Example 9: blink a led on GPIO2 with of its 30% brightness
   to 5kHz and duty cycle to 30%):
 
   esp32#>pin 2 tone 5000 0.3 delay 500 tone 0 0 delay 500 loop 999
+
+  NOTE
 
 
 
