@@ -1885,7 +1885,7 @@ static const struct keywords_t keywords_main[] = {
   { "tty", cmd_tty, 1, HELP("% \"tty X\" Use uart X for command line interface"), "IO redirect" },
 
   { "echo", cmd_echo, 1, HELP("% \"echo on|off\" Echo user input on/off (default is on)"), "Enable/Disable user input echo" },
-  { "echo", cmd_echo, 0, NULL, NULL}, //hidden command, displays echo status (on / off)
+  { "echo", cmd_echo, 0, HIDDEN_KEYWORD}, //hidden command, displays echo status (on / off)
 
   { "suspend", cmd_suspend, 0, HELP("% \"suspend\" : Suspend main loop()\r\n"), "Suspend sketch execution" },
   { "resume", cmd_resume, 0, HELP("% \"resume\" : Resume main loop()\r\n"), "Resume sketch execution" },
@@ -1902,16 +1902,19 @@ static const struct keywords_t keywords_main[] = {
 
   { "tone", cmd_tone, 1,HELP("% \"tone X\" Stop generator on pin X"), NULL },
 
-  { "count", cmd_count, 3,HELP("% \"count X [neg|pos|both [DELAY_MS]]\"\r\n" \
-    "% Count pulses (negative/positive edge or both) on pin X within DELAY time\r\n" \
-    "% Pulse edge type and delay time are optional. Defaults are: \"pos\" and \"1000\" \r\n" \
+  { "count", cmd_count, 3,HELP("% \"count PIN [DURATION [neg|pos|both]]\"\r\n%\r\n" \
+    "% Count pulses (negative/positive edge or both) on pin PIN within DURATION time\r\n" \
+    "% Time is measured in milliseconds, optional. Default is 1000\r\n" \
+    "% Pulse edge type is optional. Default is \"pos\"\r\n" \
+    "%\r\n" \
     "% NOTE: It is a 16-bit counter so consider using shorter delays on frequencies > 30Khz\r\n" \
     "%\r\n" \
     "% Ex.: \"count 4\"           - count positive edges on pin 4 for 1000ms\r\n" \
-    "% Ex.: \"count 4 neg 2000\"  - count pulses (falling edge) on pin 4 for 2 sec."), "Pulse counter" },
+    "% Ex.: \"count 4 2000\"      - count pulses (falling edge) on pin 4 for 2 sec.\r\n" \
+    "% Ex.: \"count 4 2000 both\" - count pulses (falling and rising edge) on pin 4 for 2 sec."), "Pulse counter" },
 
-  { "count", cmd_count, 2, NULL, NULL },  //hidden "count" with 2 args
-  { "count", cmd_count, 1, NULL, NULL },  //hidden with 1 arg
+  { "count", cmd_count, 2, HIDDEN_KEYWORD },  //hidden "count" with 2 args
+  { "count", cmd_count, 1, HIDDEN_KEYWORD },  //hidden with 1 arg
 
 #ifdef EXTERNAL_KEYWORDS
 #include EXTERNAL_KEYWORDS
@@ -2737,8 +2740,6 @@ static int cmd_count(int argc, char **argv) {
 
   pcnt_config_t cfg;
   int16_t count;
-  pcnt_count_mode_t pos = PCNT_COUNT_DIS;
-  pcnt_count_mode_t neg = PCNT_COUNT_DIS;
   unsigned int pin, wait = PULSE_WAIT;
 
   //pin number
@@ -2756,27 +2757,24 @@ static int cmd_count(int argc, char **argv) {
   cfg.ctrl_gpio_num = -1;  // don't use "control pin" feature
   cfg.channel = PCNT_CHANNEL_0;
   cfg.unit = PCNT_UNIT_0;
+  cfg.pos_mode = PCNT_COUNT_INC;  
+  cfg.neg_mode = PCNT_COUNT_DIS;
 
   // user has provided second argument?
   if (argc > 2) {
-    if (!q_strcmp(argv[2], "pos")) pos = PCNT_COUNT_INC;
-    else if (!q_strcmp(argv[2], "neg")) neg = PCNT_COUNT_INC;
-    else if (!q_strcmp(argv[2], "both")) {
-      neg = pos = PCNT_COUNT_INC;
-    } else
-      return 2;
+      // delay must be a number
+      if (!isnum(argv[2]))
+        return 2;
+      wait = atol(argv[2]);
+    
     //user has provided 3rd argument?
     if (argc > 3) {
-      // delay must be a number
-      if (!isnum(argv[3]))
-        return 3;
-      wait = atol(argv[3]);
+      if (!q_strcmp(argv[3], "pos"))       { /* default*/ }
+      else if (!q_strcmp(argv[3], "neg"))  { cfg.pos_mode = PCNT_COUNT_DIS;  cfg.neg_mode = PCNT_COUNT_INC; }
+      else if (!q_strcmp(argv[3], "both")) { cfg.pos_mode = PCNT_COUNT_INC;  cfg.neg_mode = PCNT_COUNT_INC; }
+      else return 3;
     }
-  } else
-    pos = PCNT_COUNT_INC;  // default is to count positive edges
-
-  cfg.pos_mode = pos;
-  cfg.neg_mode = neg;
+  } 
 
   q_printf("%% Counting pulses on GPIO%d (any key to abort)..\r\n", pin);
 
