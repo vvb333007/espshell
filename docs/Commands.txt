@@ -1,0 +1,150 @@
+ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
+
+ESPSHELL COMMANDS AND THEIR DESCRIPTION
+---------------------------------------
+
+List of commands can be obtained at any time by typing "?" and pressing <Enter>
+Commands can be entered in shortened form: "seq" or even "se" instead of 
+"sequence" or "rel" instead of "reload". ESPShell's parser does a partial match
+of the command name to user input allowing for shortening command names
+
+
+Same applies to command arguments:
+  For example, instead of entering "pin 2 out open high" one can type something
+  like "pi 2 ou h" to get the same result. If there is ambiguity happens then
+  parser just chooses first match:
+
+  "pi 2 o h" will expand to "pin 2 open high" not "pin 2 out high" because "open"
+  is the first in the list for partial match, not "out". Make sure that you use
+  "short" but not very short commands and arguments
+
+List of all supported command can be obtained by typing "?" and pressing <Enter>
+Help on a specific command can be obtained by typing command name , a space and
+a question mark and pressing <Enter>: "command ?"
+
+
+Here is the list of currently supported commands:
+
+% "?"        : Show the list of available commands
+% "uptime"   : System uptime
+% "show"     : Display information
+% "pin"      : GPIO commands
+% "cpu"      : Set/show CPU parameters
+% "mem"      : Memory usage
+% "reload"   : Reset CPU
+% "nap"      : CPU sleep
+% "iic"      : I2C commands
+% "uart"     : UART commands
+% "sequence" : Pulses/levels sequence configuration
+% "tty"      : IO redirect
+% "echo"     : Disable/enable user input echo
+% "suspend"  : Suspend sketch execution
+% "resume"   : Resume sketch execution
+% "tone"     : PWM output
+% "count"    : Pulse counter
+% "exit"     : Exit
+
+
+
+"exit"     - Executed in a command subderictory exits from that 
+           - subdirectory; executed in main command tree does nothing unless
+           - it has 1 parameter, an optional keyword "exit": if this the case 
+           - then espshell exits and removes its task. Resources associated 
+           - with espshell are not freed.
+
+"uptime"   - Shows how much time has passed since last boot
+
+"show seq" - Shows information about signal patterns see documentation file
+           - "docs/Pulse_Generator.txt" for more  information on sequences and
+           - their use
+
+"pin"      - Various pin commands.Command takes multiple arguments of which
+           - 1st argument is always pin number. More information and examples
+           - on this command can be found in documentation file
+           - "docs/Pin_Commands.txt"
+
+"cpu"      - 1. Shows CPUID, CPU frequency, xtal frequency and bus frequency. 
+           -    Displays CPU core temperature, Arduino Core version along with
+                ESP-IDF version used as well as ARDUINO_BOARD and ARDUINO_VARIANT:
+
+                   esp32#>cpu
+
+                   % CPU ID: ESP32-D0WD-V3, Rev.: 1.45
+                   % CPU frequency is 240Mhz, Xtal 40Mhz, APB bus 80Mhz
+                   % Chip temperature: 37.8ш C
+                   %
+                   % Sketch is running on ESP32_DEV/esp32,uses Arduino Core v3.0.5, based on
+                   % Espressif ESP-IDF version "v5.1.4-828-g33fbade6b8-dirty"
+                   esp32#>
+
+
+           - 2. Set CPU frequency to X MHz. List of supported frequencies is 
+                displayed on attempt to set unsupported frequency:
+            
+                   esp32#>cpu 99
+                   % Supported frequencies are: 240, 160, 120, 80, 40, 20 and 10
+
+"mem"      - Display memory usage info: total/free memory both on heap and
+           - in PSRAM (SPIRAM) if available:
+
+               esp32#>mem
+               % -- Memory information --
+               % malloc():
+               % 308496 bytes total, 266924 available, 110580 max per allocation
+               % heap_caps_malloc():
+               % 369772 bytes total,  327348 available, 110580 max per allocation
+               esp32#>
+
+               NOTE: memory available to classic mallo is different from 
+               heap_caps_malloc(MALLOC_CAPS_INTERNAL). Real size depend on what 
+               memory allocation function you use. malloc() internally calls
+               heap_caps_malloc(MALLOC_CAPS_DEFAULT). PSRAM allocation is only
+               available to heap_caps_malloc() allocater but not for malloc()
+               
+
+"reload"   - Reboots ESP32
+
+"nap"      - Put CPU into light sleep. CPU wakes up by UART activity (press any
+           - key to wake up). Wake up condition is 3 positive edges on UART0 
+           - which is almost any key (spacebar requires 2 presses).
+           -                      OR
+           - Puts CPU into light sleep for X seconds, CPU wakes up by timer.
+           - Type "nap ?" do get more information on this command
+
+"iic"      - I2C bus/interface access. Configure and use (read/write/scan) a
+           - specified I2C bus (there are number of them available).
+           - Detailed descriptin of I2C commands is in "docs/I2C_Commands.txt"
+
+"uart"     - UART X interface access. Configure and use (read/write/bridge) UART
+           - interface. Read "docs/UART_Commands.txt" for details on how to
+           - setup and use UART interfaces
+
+"sequence" - Signal generator commands. Allow for custom signal patterns with 
+           - precise timings to be generated on any pin. See documentation file
+           - "docs/Pulse_Generator.txt" for more info. Simple patterns can also
+           - be generated by means of "pin" command (see "docs/Pin_Commands.txt")
+
+"tty"      - Use specified UART for espshell input / output. Used to run the 
+           - shell on uarts other than default leaving UART0 purely for sketch.
+
+
+"echo off" - Disables ESPShell from printing out its prompt and disables user
+           - input echo. This mode is used for automated processing when UART
+           - output is going to be parsed by some software. Equivalent of common
+           - "ATE0" command for modems. When echo is disabled. user still can
+           - use line editing/history scrolling but it is just not displayed.
+
+"echo on"  - Default is to echo user input & display espshell prompt
+
+"suspend"  - Pause Arduino's loop(). Tasks that were started by the loop()
+           - task are not suspended by this command
+
+"resume"   - Resume execution of Arduino's loop() previously paused with
+           - "suspend" command
+
+"pwm"      - Squarewave generator: generates signal of specified frequency and 
+           - duty on pin X. See Tone_Generator_And_Counter.txt for details.
+
+"count"    - Pulse counter: counts pulses arrived on pin. Details on the
+           - counter and squarewave generator can be found in documentation
+           - file "docs/Tone_Generator_And_Counter.txt"
