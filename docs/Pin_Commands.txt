@@ -94,7 +94,7 @@ high     - Write logic "1" to the pin (digitalWrite(pin,HIGH)). Also sets OUTPUT
 low      - Write logic "0" to the pin. Also sets OUTPUT flag for the pin.
 seq X    - Send sequence number X over the pin. See documentation file
           "docs/Pulse_Generator" on sequences and how to use them
-tone X Y - Enable frequency generator on fiven pin. X is the frequency in Hertz
+pwm X Y  - Enable frequency generator on fiven pin. X is the frequency in Hertz
           and Y is the duty. Both parameters are mandatory. Setting frequency to 0
           disables frequency generator. Y (duty) is a floating point number in
           range (0..1)
@@ -215,7 +215,7 @@ Example 9: blink a led on GPIO2 with of its 30% brightness
   Here we need to adjust brightness so we need to use PWM (set the frequency 
   to 5kHz and duty cycle to 30%):
 
-  esp32#>pin 2 tone 5000 0.3 delay 500 tone 0 0 delay 500 loop 999
+  esp32#>pin 2 pwm 5000 0.3 delay 500 pwm 0 0 delay 500 loop 999
 
   NOTE
 
