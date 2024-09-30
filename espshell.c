@@ -1372,7 +1372,7 @@ last_argument() {
 #define xstr(s) ystr(s)
 #define ystr(s) #s
 
-#define MAGIC_FREQ 78227  // max allowed frequency for the "tone" command
+#define MAGIC_FREQ 78227  // max allowed frequency for the "pwm" command
 
 static bool Exit = false; // True == close the shell and kill its FreeRTOS task
 
@@ -1409,7 +1409,7 @@ static int cmd_echo(int,char **);
 static int cmd_suspend(int, char **);
 static int cmd_resume(int, char **);
 
-static int cmd_tone(int, char **);
+static int cmd_pwm(int, char **);
 static int cmd_count(int, char **);
 
 static int cmd_seq_if(int, char **);
@@ -1844,7 +1844,7 @@ static const struct keywords_t keywords_main[] = {
   { "uptime", cmd_uptime, 0, HELP("% \"uptime\" - Shows time passed since last boot"), "System uptime" },
   { "show", cmd_show, 2, HELP("\"show seq X\" - display sequence X\r\n"), "Display information" },
   { "pin", cmd_pin, 1,HELP("% \"pin X\" - Show pin X configuration"), "Pins (GPIO) commands" },
-  { "pin", cmd_pin, -1, HELP("% \"pin X (hold|release|up|down|out|in|open|high|low|save|load|read|aread|delay|loop|tone|seq)...\"\r\n" \
+  { "pin", cmd_pin, -1, HELP("% \"pin X (hold|release|up|down|out|in|open|high|low|save|load|read|aread|delay|loop|pwm|seq)...\"\r\n" \
     "%\r\n" \
     "% Set/Save/Load pin X configuration: pull/direction/digital value\r\n" \
     "% Multiple arguments must be separated with spaces, see examples below:\r\n" \
@@ -1853,8 +1853,8 @@ static const struct keywords_t keywords_main[] = {
     "% Ex.: pin 1 save               -save pin state\r\n" \
     "% Ex.: pin 1 out high           -pin1 set to logic \"1\"\r\n" \
     "% Ex.: pin 1 high delay 100 low -set pin1 to logic \"1\", after 100ms to \"0\"\r\n" \
-    "% Ex.: pin 1 tone 2000 0.3      -set 5kHz, 30% duty square wave output\r\n" \
-    "% Ex.: pin 1 tone 0 0           -disable generation\r\n" \
+    "% Ex.: pin 1 pwm 2000 0.3      -set 5kHz, 30% duty square wave output\r\n" \
+    "% Ex.: pin 1 pwm 0 0           -disable generation\r\n" \
     "% Ex.: pin 1 out high delay 500 low delay 500 loop 10 \r\n" \
     "% (see \"docs/Pin_commands.txt\" for more details & examples)\r\n"),NULL },
 
@@ -1880,7 +1880,7 @@ static const struct keywords_t keywords_main[] = {
   { "sequence", cmd_seq_if, 1,HELP("% \"sequence X\"\r\n" \
     "%\r\n" \
     "% Create/configure a sequence\r\n" \
-    "% Ex.: sequence 0 - configure Sequence0"), "Pulses/levels sequence configuration" },
+    "% Ex.: sequence 0 - configure Sequence0"), "Sequence configuration" },
 
   { "tty", cmd_tty, 1, HELP("% \"tty X\" Use uart X for command line interface"), "IO redirect" },
 
@@ -1890,17 +1890,17 @@ static const struct keywords_t keywords_main[] = {
   { "suspend", cmd_suspend, 0, HELP("% \"suspend\" : Suspend main loop()\r\n"), "Suspend sketch execution" },
   { "resume", cmd_resume, 0, HELP("% \"resume\" : Resume main loop()\r\n"), "Resume sketch execution" },
 
-  { "tone", cmd_tone, 3,HELP("% \"tone X FREQ DUTY\"\r\n" \
+  { "pwm", cmd_pwm, 3,HELP("% \"pwm X FREQ DUTY\"\r\n" \
     "%\r\n" \
     "% Start PWM generator on pin X, frequency FREQ Hz and duty cycle of DUTY\r\n" \
     "% Max frequency is 78277 Hz\r\n" \
     "% Value of DUTY is in range [0..1] with 0.123 being a 12.3% duty cycle"), "PWM output" },
 
-  { "tone", cmd_tone, 2,HELP("% \"tone X FREQ\"\r\n"
+  { "pwm", cmd_pwm, 2,HELP("% \"pwm X FREQ\"\r\n"
     "% Start squarewave generator on pin X, frequency FREQ Hz\r\n"
     "% duty cycle is  set to 50%"), NULL },
 
-  { "tone", cmd_tone, 1,HELP("% \"tone X\" Stop generator on pin X"), NULL },
+  { "pwm", cmd_pwm, 1,HELP("% \"pwm X\" Stop generator on pin X"), NULL },
 
   { "count", cmd_count, 3,HELP("% \"count PIN [DURATION [neg|pos|both]]\"\r\n%\r\n" \
     "% Count pulses (negative/positive edge or both) on pin PIN within DURATION time\r\n" \
@@ -2821,11 +2821,11 @@ static int tone_enable(unsigned int pin, unsigned int freq, float duty) {
   return 0;
 }
 
-//tone PIN FREQ [DUTY]   - pwm on
-//tone PIN               - pwm off
+//pwm PIN FREQ [DUTY]   - pwm on
+//pwm PIN               - pwm off
 //FIXME: max frequency is 78277 and I don't know why
 
-static int cmd_tone(int argc, char **argv) {
+static int cmd_pwm(int argc, char **argv) {
 
   unsigned int  freq = 0;
   float         duty = 0.5f;
@@ -2901,6 +2901,7 @@ static void pin_load(int pin) {
 
 }
 
+#include <esp32-hal-periman.h>
 // "pin NUM arg1 arg2 .. argn"
 // "pin NUM"
 // Big fat "pin" command. Processes multiple arguments
@@ -2922,8 +2923,17 @@ static int cmd_pin(int argc, char **argv) {
   //"pin X" command is executed here
   if (argc == 2) {
 
+    
     level = digitalRead(pin);
-    q_printf("%% Digital pin value = %d\r\n", level);
+    q_printf("%% Digital pin value = %d\r\n",level);
+    q_printf("%% Pin %d is ",pin);
+
+    int type = perimanGetPinBusType(pin);
+    if (type == ESP32_BUS_TYPE_INIT)
+      q_printf("not configured\r\n");
+    else
+      q_printf("condigured as \"%s\"\r\n",perimanGetTypeName(type));
+
 
     gpio_dump_io_configuration(stdout, (uint64_t)1 << pin);  // FIXME: works only on default UART0
     return 0;
@@ -2969,13 +2979,13 @@ static int cmd_pin(int argc, char **argv) {
         } else
           q_printf("%% Sequence %d is not configured\r\n", seq);
       } 
-      //2. "tone FREQ DUTY" keyword. 
-      // unlike global ""tone command the duty and frequency are not an optional 
-      // parameter anymore. Both can be 0 which used to disable previous "tone"
-      else if (!q_strcmp(argv[i],"tone")) {
+      //2. "pwm FREQ DUTY" keyword. 
+      // unlike global "pwm" command the duty and frequency are not an optional 
+      // parameter anymore. Both can be 0 which used to disable previous "pwm"
+      else if (!q_strcmp(argv[i],"pwm")) {
 
         unsigned int freq; float duty;
-        // make sure that there are 2 extra arguments after "tone" keyword
+        // make sure that there are 2 extra arguments after "pwm" keyword
         if ((i+2) >= argc) {
 #if WITH_HELP          
           q_print("% Frequency (integer) and duty cycle (float 0..1) are expected\r\n");
@@ -3112,8 +3122,8 @@ static int cmd_mem(int argc, char **argv) {
   unsigned int total;
 
   q_print("% -- Memory information --\r\n");
-  q_printf("%% malloc():\r\n%% %u bytes total, %u available, %u max per allocation\r\n", heap_caps_get_total_size(MALLOC_CAP_DEFAULT), heap_caps_get_free_size(MALLOC_CAP_DEFAULT),heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
-  q_printf("%% heap_caps_malloc():\r\n%% %u bytes total,  %u available, %u max per allocation\r\n", heap_caps_get_total_size(MALLOC_CAP_INTERNAL), heap_caps_get_free_size(MALLOC_CAP_INTERNAL),heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+  q_printf("%% For \"malloc()\" and \"heap_caps_malloc(MALLOC_CAP_DEFAULT)\":\r\n%% %u bytes total, %u available, %u max per allocation\r\n", heap_caps_get_total_size(MALLOC_CAP_DEFAULT), heap_caps_get_free_size(MALLOC_CAP_DEFAULT),heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+  q_printf("%% For \"heap_caps_malloc(MALLOC_CAP_INTERNAL)\", internal SRAM:\r\n%% %u bytes total,  %u available, %u max per allocation\r\n", heap_caps_get_total_size(MALLOC_CAP_INTERNAL), heap_caps_get_free_size(MALLOC_CAP_INTERNAL),heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
 
   if ((total = heap_caps_get_total_size(MALLOC_CAP_SPIRAM)/1024) > 0)
     q_printf("%% External SPIRAM(PSRAM) total: %uMbytes, free: %u bytes\r\n",total / 1024,heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
@@ -3760,7 +3770,7 @@ static int cmd_cpu(int argc, char **argv) {
              getApbFrequency() / 1000000,
              temperatureRead());
 
-  q_printf("%%\r\n%% Sketch is running on " ARDUINO_BOARD "/" ARDUINO_VARIANT ",uses Arduino Core v%s, based on\r\n%% Espressif ESP-IDF version \"%s\"\r\n",ESP_ARDUINO_VERSION_STR,esp_get_idf_version());
+  q_printf("%%\r\n%% Sketch is running on " ARDUINO_BOARD "/(" ARDUINO_VARIANT "), uses Arduino Core v%s, based on\r\n%% Espressif ESP-IDF version \"%s\"\r\n",ESP_ARDUINO_VERSION_STR,esp_get_idf_version());
 
   return 0;
 }
