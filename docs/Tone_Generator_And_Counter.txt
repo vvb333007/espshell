@@ -13,25 +13,25 @@ used for this squarewave generator.
 SQUAREWAVE GENERATOR
 --------------------
 
-Command "tone" starts squarewave output on given pin:
+Command "pwm" starts squarewave output on given pin:
 
-esp32#>tone 2 1
+esp32#>pwm 2 1
 
 The command above starts a 1Hz squarewave on pin 2 (duty cycle is 50%)
 
 
-The duty cycle parameter can be set as third parameter to the "tone" 
+The duty cycle parameter can be set as third parameter to the "pwm" 
 command: set frequency on pin 2 to 5Hz, duty cycle around 10%:
 
-esp32#>tone 2 5 100
+esp32#>pwm 2 5 100
 
-To stop squarewave generator on given pin use "tone" command with just one 
+To stop squarewave generator on given pin use "pwm" command with just one 
 parameter. Example below shows how to stop squarewave generation on pin 2
 
 
-esp32#>tone 2
+esp32#>pwm 2
 
-NOTE: some boards refuse to execute "tone" commands soon after startup. The
+NOTE: some boards refuse to execute "pwm" commands soon after startup. The
 workaround is to execute the same command again :). working on it.
 
 
@@ -56,7 +56,7 @@ software or sending a character in Arduino IDE Serial Monitor.
 Lets connect pin2 and pin4 with a jumper. Start a squarewave generator on pin2 
 and count pulses on pin4:
 
-esp32#>tone 2 10
+esp32#>pwm 2 10
 esp32#>count 4
 % Counting pulses on GPIO4.. 10 pulses (1.000 sec)
 esp32#>
@@ -68,7 +68,7 @@ is made is controlled by 2rd parameter of "count" command.
 
 Lets set PWM to 30Khz and count pulses for 1 second or 100 milliseconds:
 
-esp32#>tone 2 70000
+esp32#>pwm 2 70000
 esp32#>count 4
 % Counting pulses on GPIO4.. 4413 pulses (1.000 sec)
 esp32#>
