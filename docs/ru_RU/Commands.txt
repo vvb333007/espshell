@@ -27,7 +27,7 @@ esp32#>?
 % "echo"       : Enable/Disable user input echo
 % "suspend"    : Suspend sketch execution
 % "resume"     : Resume sketch execution
-% "tone"       : PWM output
+% "pwm"        : PWM output
 % "count"      : Pulse counter
 % "exit"       : Exit
 
