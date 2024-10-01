@@ -36,7 +36,7 @@ HOW TO USE IT IN ARDUINO PROJECT:
 SHELL BRIEF DESCRIPTION
 -------------------------------------------
 
- Shell commands include i2c, uart, pin manipulation, tone generator
+ Shell commands include i2c, uart, pin manipulation, PWM generator
  and a pulse counter. There are some basic 'information' commands:
  memory usage, cpuid, pin; commands for execution flow control: suspend/resume
  main Arduino loop(), restart and light sleep
