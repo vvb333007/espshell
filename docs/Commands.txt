@@ -24,6 +24,13 @@ Ctrl+U         : Turn text from cursor position till the end UPPERCASE
 
 Ctrl+L         : Turn text from cursor position till the end lowercase
 
+Ctrl+[         : Move 1 word to the left. Cursor will be positioned at the
+                 beginning of the word
+
+Ctrl+[         : Move 1 word to the right. Cursor will be positioned at the
+                 beginning of the word
+
+
 
 
 ESPSHELL COMMANDS AND THEIR DESCRIPTION
