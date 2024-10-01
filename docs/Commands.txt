@@ -66,7 +66,7 @@ Here is the list of currently supported commands:
 % "echo"     : Disable/enable user input echo
 % "suspend"  : Suspend sketch execution
 % "resume"   : Resume sketch execution
-% "tone"     : PWM output
+% "pwm"      : PWM output
 % "count"    : Pulse counter
 % "exit"     : Exit
 
