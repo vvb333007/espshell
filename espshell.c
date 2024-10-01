@@ -321,8 +321,10 @@ static const KEYMAP Map[32] = {
   { CTL('X'), exchange },
   { CTL('Y'), yank },
   { CTL('Z'), ring_bell },
-  { CTL('['), bk_word },
-  { CTL(']'), fd_word },
+  { CTL('['), meta },
+  { CTL(']'), move_to_char },
+  { CTL(','), bk_word },
+  { CTL('.'), fd_word },
   { CTL('^'), ring_bell },
   { CTL('_'), ring_bell },
   { 0, NULL }
