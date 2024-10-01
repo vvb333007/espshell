@@ -295,7 +295,7 @@ static STATUS last_argument();
 static STATUS toggle_meta_mode();
 static STATUS copy_region();
 
-static const KEYMAP Map[32] = {
+static const KEYMAP Map[] = {
   { CTL('@'), ring_bell },
   { CTL('A'), beg_line },
   { CTL('B'), bk_char },
@@ -309,8 +309,8 @@ static const KEYMAP Map[32] = {
   { CTL('L'), case_down_word },
   { CTL('M'), accept_line },
   { CTL('N'), h_next },
-  { CTL('O'), ring_bell },
-  { CTL('P'), h_prev },
+  { CTL('O'), bk_word },
+  { CTL('P'), fd_word },
   { CTL('Q'), ring_bell },
   { CTL('R'), h_search },
   { CTL('S'), ring_bell },
@@ -323,8 +323,6 @@ static const KEYMAP Map[32] = {
   { CTL('Z'), ring_bell },
   { CTL('['), meta },
   { CTL(']'), move_to_char },
-  { CTL(','), bk_word },
-  { CTL('.'), fd_word },
   { CTL('^'), ring_bell },
   { CTL('_'), ring_bell },
   { 0, NULL }
@@ -937,6 +935,7 @@ meta() {
   if (isupper(c))
     return ring_bell();
 
+  //FIXME:
   for (OldPoint = Point, kp = MetaMap; kp->Function; kp++)
     if (kp->Key == c)
       return (*kp->Function)();
