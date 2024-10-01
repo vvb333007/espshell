@@ -20,14 +20,10 @@ Ctrl+R         : History search. Press Ctrl+R and start typing. Press <ENTER>
 
 Ctrl+W         : Wipe : clear input line
 
-Ctrl+U         : Turn text from cursor position till the end UPPERCASE
-
-Ctrl+L         : Turn text from cursor position till the end lowercase
-
-Ctrl+<         : Move 1 word to the left. Cursor will be positioned at the
+Ctrl+O         : Move 1 word to the left. Cursor will be positioned at the
                  beginning of the word
 
-Ctrl+>         : Move 1 word to the right. Cursor will be positioned at the
+Ctrl+P         : Move 1 word to the right. Cursor will be positioned at the
                  beginning of the word
 
 
