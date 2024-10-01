@@ -137,6 +137,7 @@ static bool console_isup(int u) {
 static int inline __attribute__((always_inline)) console_write_bytes(const void *buf, size_t len) {
   return uart_write_bytes(uart,buf,len);
 }
+
 static int inline __attribute__((always_inline)) console_read_bytes(void *buf, uint32_t len, TickType_t wait) {
   return uart_read_bytes(uart,buf,len,wait);
 }
@@ -1388,7 +1389,7 @@ int espshell_exec(const char *p); //execute 1 command line
 
 
 static int q_strcmp(const char *, const char *); // loose strcmp
-static int q_printf(const char *, ...);          // printf to specific uart
+static int __attribute__((format (printf, 1, 2))) q_printf(const char *, ...);          // printf to specific uart
 static int q_print(const char *);
 #if WITH_HELP
 static int cmd_question(int, char **);
@@ -1437,10 +1438,86 @@ static int cmd_exit(int, char **);
 #include EXTERNAL_PROTOTYPES
 #endif
 
-//TAG:utils
+
+//TAG:util
+
+//check if given ascii string is a decimal number. Ex.: "12345", "-12"
+// "minus" sign is only accepted if first in the string
+//
+static bool isnum(const char *p) {
+  if (*p == '-')
+    p++;
+  while (*p >= '0' && *p <= '9')
+    p++;
+  return !(*p);  //if *p is 0 then all the chars were digits (end of line reached).
+}
+
+// check if ascii string is a float number
+// NOTE: only positive values are accepted
+// NOTE: "0.5" and ".5" are both valid inputs
+static bool isfloat(const char *p) {
+  bool dot = false;
+  
+  while ((*p >= '0' && *p <= '9') || (*p == '.' && !dot)) {
+    if (*p == '.')
+      dot = true;
+    p++;
+  }
+  return !(*p);  //if *p is 0 then all the chars were digits (end of line reached).
+}
+
+
+
+// check if given ascii string is a hex BYTE.
+// first 1 or 2 characters are checked
+static bool ishex(const char *p) {
+  if ((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F')) {
+    p++;
+    if ((*p == 0) || (*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F'))
+      return true;
+  }
+  return false;
+}
+
+//convert hex ascii byte.
+//input strings are 1 or 2 chars long:  Ex.:  "0A", "A","6E"
+//TODO: rewrite. as of now it accepts whole latin1 set not just ABCDEF
+static unsigned char ascii2hex(const char *p) {
+
+  unsigned char f, l;  //first and last
+
+  f = *p++;
+
+  //single character HEX?
+  if (!(*p)) {
+    l = f;
+    f = '0';
+  } else l = *p;
+
+  // make it lowercase
+  if (f >= 'A' && f <= 'Z') f = f + 'a' - 'A';
+  if (l >= 'A' && l <= 'Z') l = l + 'a' - 'A';
+
+  //convert first hex character to decimal
+  if (f >= '0' && f <= '9') f = f - '0';
+  else if (f >= 'a' && f <= 'f') f = f - 'a' + 10;
+  else return 0;
+
+  //convert second hex character to decimal
+  if (l >= '0' && l <= '9') l = l - '0';
+  else if (l >= 'a' && l <= 'f') l = l - 'a' + 10;
+  else return 0;
+
+  return (f << 4) | l;
+}
 
 // strcmp() which deoes partial match. It us used
 // to match commands and parameters which are incomplete
+//
+// partial - string which expected to be incomplete
+// full    - full string
+// q_strcmp("seq","sequence") == 0
+// q_strcmp("sequence","seq") == 1
 //
  static int q_strcmp(const char *partial, const char *full) {
 
@@ -1487,7 +1564,8 @@ static int __printfv(const char *format, va_list arg) {
 
 // same as printf() but uses global var 'uart' to direct
 // its output to different uarts
-// NOTE: add -Wall or at least -Wformat to Arduino's c_flags
+// NOTE: add -Wall or at least -Wformat to Arduino's c_flags for __attribute__ to have
+//       effect.
 static int __attribute__((format (printf, 1, 2))) q_printf(const char *format, ...) {
   int len;
   va_list arg;
@@ -1497,12 +1575,17 @@ static int __attribute__((format (printf, 1, 2))) q_printf(const char *format, .
   return len;
 }
 
-//
+//Faster than q_printf() but only does non-formatted output
 static int q_print(const char *str) {
   size_t len = strlen(str);
   if (len)
     len = console_write_bytes(str, len);
   return len;
+}
+
+static inline void __attribute__((always_inline)) q_println(const char *str) {
+  q_print(str);
+  q_print(CRLF);
 }
 
 // make fancy hex data output: mixed hex values
@@ -1571,20 +1654,19 @@ static void q_printhex(const unsigned char *p, unsigned int len) {
       j = 0;
     }
   }
-  
-  
-
 }
 
+#if SERIAL_IS_USB
+static bool anykey_pressed() {
+#error "anykey_pressed() is not implemented"  
+  return false;
+}
+#else
 //detects if ANY key is pressed in serial terminal
 // or any character was sent in Arduino IDE Serial Monitor
 //
-static bool
-anykey_pressed() {
+static bool anykey_pressed() {
 
-#ifdef SERIAL_IS_USB
-#  error "USB-CDC is not supported yet, sorry brother"
-#else
   size_t av = 0;
 
   if (ESP_OK == uart_get_buffered_data_len(uart, &av))
@@ -1592,8 +1674,8 @@ anykey_pressed() {
       return true;
 
   return false;
-#endif
 }
+#endif //SERIAL_IS_USB
 
 // version of delay() which can be interrupted by user input (terminal 
 // keypress) for delays longer than 5 seconds. 
@@ -1678,7 +1760,6 @@ struct keywords_t {
 #define HIDDEN_KEYWORD NULL,NULL
 
 
-
 //Custom uart commands (uart subderictory)
 //Those displayed after executing "uart 2" (or any other uart interface)
 //TAG:keywords_uart
@@ -1724,6 +1805,7 @@ static const struct keywords_t keywords_uart[] = {
 };
 
 //TAG:keywords_iic
+//TAG_keywords_i2c
 //i2c subderictory keywords list
 //cmd_exit() and cmd_i2c_if are responsible for selecting keywords list
 //to use
@@ -1931,7 +2013,7 @@ static const struct keywords_t keywords_main[] = {
 };
 
 
-//TAG:globals
+//TAG:keywords
 //current keywords list to use
 static const struct keywords_t  *keywords = keywords_main;
 
@@ -1948,98 +2030,43 @@ static struct sequence sequences[SEQUENCES_NUM];
 // also sequence number when entering "sequence" subdir
 static int Context = 0;
 
-//TAG:utility
-//check if given ascii string is a decimal number. Ex.: "12345", "-12"
-static bool isnum(const char *p) {
-  if (*p == '-')
-    p++;
-  while (*p >= '0' && *p <= '9')
-    p++;
-  return !(*p);  //if *p is 0 then all the chars were digits (end of line reached).
-}
-
-static bool isfloat(const char *p) {
-  bool dot = false;
-  
-  while ((*p >= '0' && *p <= '9') || (*p == '.' && !dot)) {
-    if (*p == '.')
-      dot = true;
-    p++;
-  }
-  return !(*p);  //if *p is 0 then all the chars were digits (end of line reached).
-}
-
-
-
-// check if given ascii string is a hex BYTE.
-// first 1 or 2 characters are checked
-static bool ishex(const char *p) {
-  if ((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F')) {
-    p++;
-    if ((*p == 0) || (*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F'))
-      return true;
-  }
-  return false;
-}
-
-//convert hex ascii byte.
-//input strings are 1 or 2 chars long:  Ex.:  "0A", "A","6E"
-//TODO: rewrite. as of now it accepts whole latin1 set not just ABCDEF
-static unsigned char ascii2hex(const char *p) {
-
-  unsigned char f, l;  //first and last
-
-  f = *p++;
-
-  //single character HEX?
-  if (!(*p)) {
-    l = f;
-    f = '0';
-  } else l = *p;
-
-  // make it lowercase
-  if (f >= 'A' && f <= 'Z') f = f + 'a' - 'A';
-  if (l >= 'A' && l <= 'Z') l = l + 'a' - 'A';
-
-  //convert first hex character to decimal
-  if (f >= '0' && f <= '9') f = f - '0';
-  else if (f >= 'a' && f <= 'f') f = f - 'a' + 10;
-  else return 0;
-
-  //convert second hex character to decimal
-  if (l >= '0' && l <= '9') l = l - '0';
-  else if (l >= 'a' && l <= 'f') l = l - 'a' + 10;
-  else return 0;
-
-  return (f << 4) | l;
-}
-
 
 // checks if pin (GPIO) number is in valid range.
 // display a message if pin is out of range
 static bool pin_exist(int pin) {
 
+  // pin number is in range and is a valid GPIO number?
   if ((pin >= 0) && (pin < SOC_GPIO_PIN_COUNT) && (((uint64_t )1 << pin) & SOC_GPIO_VALID_GPIO_MASK))
     return true;
+  else {
+    int informed = 0;
+    // pin number is incorrect, display help
+    q_printf("%% Available pin numbers are 0..%d",SOC_GPIO_PIN_COUNT-1);
 
-  q_printf("%% Available pin numbers are 0..%d, except ",SOC_GPIO_PIN_COUNT-1);
-  for (pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++)
-    if (!(((uint64_t )1 << pin) & SOC_GPIO_VALID_GPIO_MASK))
-      q_printf("%d,",pin);
-#if 0     //Not yet. Waiting for new ESP-IDF to be adopted by Arduino Core 
-  q_printf("\r\n%% Reserved pins (used internally): ");  
-  
-  int count;
-  for (pin = count = 0; pin < SOC_GPIO_PIN_COUNT; pin++)
-    if (esp_gpio_is_reserved(BIT64(pin))) {
-      count++;
-      q_printf("%d, ",pin);
+    for (pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++) {
+      if (!(((uint64_t )1 << pin) & SOC_GPIO_VALID_GPIO_MASK)) {
+        if (!informed) {
+          informed = 1;
+          q_print(", except pins: ");
+        }
+        q_printf("%d,",pin);
+      }
     }
-  if (!count)
-    q_printf("none");
-#endif    
-  q_print(CRLF);
-  return false;
+
+    q_printf("\r\n%% Reserved pins (used internally): ");  
+
+    for (pin = informed = 0; pin < SOC_GPIO_PIN_COUNT; pin++)
+      if (esp_gpio_is_pin_reserved(pin)) {
+        informed++;
+        q_printf("%d, ",pin);
+      }
+
+    if (!informed)
+      q_print("none");
+
+    q_print(CRLF);
+    return false;
+  }
 }
 
 // calculate frequency from tick length
@@ -2911,68 +2938,78 @@ static void pin_load(int pin) {
 #include <esp32-hal-periman.h>
 static int pin_show(int argc, char **argv) {
 
-  unsigned int pin, cnt = 0;
+  unsigned int pin, informed = 0;
 
   if (argc < 2) return -1;
   if (!isnum(argv[1])) return 1;
   if (!pin_exist((pin = atol(argv[1])))) return 1;
 
-  bool pu, pd, ie, oe, od, sleep_sel, reserved;
+  bool pu, pd, ie, oe, od, sleep_sel;
   uint32_t drv, fun_sel, sig_out;
-    
-  q_printf("%% Pin %d is ",pin);
+
+  q_printf("%% Pin %d is %s",pin, esp_gpio_is_pin_reserved(pin) ? "**RESERVED**, " : "");
 
   int type = perimanGetPinBusType(pin);
   if (type == ESP32_BUS_TYPE_INIT)
-    q_printf("not configured\r\n");
-  else
-    q_printf("condigured as \"%s\"\r\n",perimanGetTypeName(type));
+    q_printf("available, not configured\r\n");
+  else {
+    if (type == ESP32_BUS_TYPE_GPIO)
+      q_print("available, configured as GPIO\r\n");
+    else
+      q_printf("used as \"%s\"\r\n",perimanGetTypeName(type));
+  }
 
   gpio_ll_get_io_config(&GPIO, pin, &pu, &pd, &ie, &oe, &od, &drv, &fun_sel, &sig_out, &sleep_sel);
 
-  if (esp_gpio_is_pin_reserved(pin))
-    q_printf("%% Pin %u is *RESERVED*, use with care\r\n",pin);
-
-  if (ie || oe || od || pu || pd) {
-    q_print("% Pin mode: ");
+  if (ie || oe || od || pu || pd || sleep_sel) {
+    q_print("% Mode: ");
     if (ie) q_print("INPUT, ");
     if (oe) q_print("OUTPUT, ");
     if (pu) q_print("PULL_UP, ");
     if (pd) q_print("PULL_DOWN, ");
     if (od) q_print("OPEN_DRAIN, ");
-    if (!pu && !pd && ie) q_print("FLOATING INPUT");
+    if (sleep_sel) q_print("sleep mode selected,");
+    if (!pu && !pd && ie) q_print(" input is floating!");
+
     q_print(CRLF);
+
     if (oe && fun_sel == PIN_FUNC_GPIO) {
-      q_print("% Output is routed through GPIO Matrix, ");
+      q_print("% Output via GPIO matrix, ");
       if (sig_out == SIG_GPIO_OUT_IDX)
         q_print("simple GPIO output\r\n");
       else
-        q_printf("signal ID: %u\r\n",sig_out);
+        q_printf("provides path for signal ID: %u\r\n",sig_out);
     } else if (oe && fun_sel != PIN_FUNC_GPIO) {
-      q_print("% Output through IO MUX, ");
+      q_print("% Output is done via IO MUX, ");
       //TODO: get IOMUX function
       q_print(CRLF);
     }
 
     if (ie && fun_sel == PIN_FUNC_GPIO) {
-      q_print("% Input is routed through GPIO Matrix, signal ID : ");
-
-      for (int i = 0; i < SIG_GPIO_OUT_IDX; i++) {
+      q_print("% Input via GPIO matrix, ");
+      for (int i = 0; i < SIG_GPIO_OUT_IDX; i++) {  // FIXME: SIG_GPIO_IN_IDX ?
         if (gpio_ll_get_in_signal_connected_io(&GPIO, i) == pin) {
-          cnt++;
+          if (!informed)
+            q_print("provides path for signal IDs: ");
+          informed++;
           q_printf("%d, ",i);
         }
       }
-      if (!cnt)
+
+      if (!informed)
         q_print("simple GPIO input");
       q_print(CRLF);
+
     } else if (ie) {
       q_print("% Input is routed through IO MUX\r\n");
       //TODO: get IOMUX function
     }
   } else
-    q_print("% Pin flags are not set\r\n");
+    q_print(CRLF);
 
+  
+  q_printf("%% Maximum current is %u milliamps\r\n", !drv ? 5 : (drv == 1 ? 10 : (drv == 2 ? 20 : 40)));
+  
   if (sleep_sel)
     q_print("% Sleep select: YES\r\n");
 
