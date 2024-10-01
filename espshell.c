@@ -10,36 +10,38 @@
  * -------------
  * This is a debugging/development tool for use with Arduino projects on
  * ESP32 hardware. Provides a command line interface running in parallel
- * to user Arduino sketch (in a separate task). 
- * More information is in "docs/README.md"
+ * to user Arduino sketch (in a separate task). Allows pin manipulation,
+ * PWM,UART,I2C and RMT operations. More information is in "docs/README.md"
+ * and "docs/Commands.txt"
  *
- * NAVIGATING THROUGH THE SOURCE CODE (THIS FILE):
- * ----------------------------------------------
+ * DEVELOPERS: HOW TO NAVIGE THROUGH THE SOURCE CODE (THIS FILE):
+ * --------------------------------------------------------------
  * It is huge.
  *
  * First 20-something Kb of this file is some ancient modified version of editline (readline).
  * Editline code is from the beginning till "EDITLINE CODE END", then ESPShell code starts.
  *
  * 1. Common functions are declared at the beginning of espshell code (q_printf(), isfloat(), 
- *    isnum()..)
+ *    isnum(), etc)
  *
  * 2. Commands (syntax, help lines, handler function..) are declared in keywords_main[], 
- *    keywords_uart[], keywords_*[] arrays. Addition of a new command starts there.
+ *    keywords_uart[] and other keywords_*[] arrays. Addition of a new command starts there.
  *
  * 3. Command handlers (functions which do the job when user enter commands) are prefixed 
- *    with "cmd_"  often with command name after it: cmd_pin(), cmd_reload()
+ *    with "cmd_"  and are often named after commands: "pin" --> cmd_pin(), "reload" -->  cmd_reload()
+ *    and so on.
  *
  * 4. Structures and #includes are all over the file: they are in close proximity
- *    to the code which needs them.
+ *    to the code which needs/uses them.
  *
  * 5. You can search for "TAG:" lines to get the idea on what is where and how
  *    to find it.
  *
- * 6. To make support for new type of console device (e.g. USB-CDC console)
- *    one have to implement console_read_bytes(), console_write_bytes(), 
- *    anykey_pressed() and console_isup() functions
+ * 6. To create support for new type of console device (e.g. USB-CDC console, 
+ *    not supported at the moment) one have to implement console_read_bytes(), 
+ *    console_write_bytes(),anykey_pressed() and console_isup() functions
  *
- * 7. Copyright information is at the end of this filee
+ * 7. Copyright information is at the end of this file
  */
 
 #undef WITH_HELP
@@ -95,29 +97,10 @@
 
 
 
+//autostart espshell
 static void __attribute__((constructor)) espshell_start();
 
 
-//========>=========>======= EDITLINE CODE BELOW (modified ancient version) =======>=======>
-
-
-
-#define CRLF "\r\n"
-
-#define MEM_INC 64      // "Line" buffer realloc increments
-#define SCREEN_INC 256  // "Screen" buffer realloc increments
-
-
-/* Memory buffer macros */
-#define DISPOSE(p) free((char *)(p))
-#define NEW(T, c) ((T *)malloc((unsigned int)(sizeof(T) * (c))))
-#define RENEW(p, T, c) (p = (T *)realloc((char *)(p), (unsigned int)(sizeof(T) * (c))))
-#define COPYFROMTO(_new, p, len) (void)memcpy((char *)(_new), (char *)(p), (int)(len))
-
-//#include <signal.h>
-#include <ctype.h>
-#include <unistd.h>
-#include <sys/termios.h>
 
 #include <driver/uart.h>
 static uart_port_t uart = USE_UART;
@@ -166,6 +149,26 @@ static bool inline __attribute__((always_inline)) console_isup() {
 
 #endif //SERIAL_IS_USB
 
+//========>=========>======= EDITLINE CODE BELOW (modified ancient version) =======>=======>
+
+
+
+#define CRLF "\r\n"
+
+#define MEM_INC 64      // "Line" buffer realloc increments
+#define SCREEN_INC 256  // "Screen" buffer realloc increments
+
+
+/* Memory buffer macros */
+#define DISPOSE(p) free((char *)(p))
+#define NEW(T, c) ((T *)malloc((unsigned int)(sizeof(T) * (c))))
+#define RENEW(p, T, c) (p = (T *)realloc((char *)(p), (unsigned int)(sizeof(T) * (c))))
+#define COPYFROMTO(_new, p, len) (void)memcpy((char *)(_new), (char *)(p), (int)(len))
+
+//#include <signal.h>
+#include <ctype.h>
+#include <unistd.h>
+#include <sys/termios.h>
 
 #define NO_ARG (-1)
 #define DEL 127
@@ -219,9 +222,7 @@ typedef struct _HISTORY {
  */
 
 
-/* 5 variables below supposed to hold TERMIOS values for EOF, ERASE, INTERRUPT, KILL and QUIT
- * keycodes. However on ESP-IDF these are all set to 0
- */
+
 static unsigned rl_eof = 0;
 
 static unsigned char NIL[] = "";
@@ -253,21 +254,33 @@ static int rl_meta_chars = 0;
 
 static unsigned char *editinput();
 static STATUS ring_bell();
+
 static STATUS beg_line();
 static STATUS end_line();
 static STATUS kill_line();
 static STATUS accept_line();
+
 static STATUS bk_char();
 static STATUS del_char();
 static STATUS fd_char();
 static STATUS bk_del_char();
 static STATUS move_to_char();
-static STATUS redisplay();
+
+static STATUS bk_kill_word();
+static STATUS bk_word();
+static STATUS fd_kill_word();
+static STATUS fd_word();
+static STATUS case_down_word();
+static STATUS case_up_word();
+
 static STATUS h_next();
 static STATUS h_prev();
 static STATUS h_search();
 static STATUS h_first();
 static STATUS h_last();
+
+static STATUS redisplay();
+
 static STATUS transpose();
 static STATUS quote();
 static STATUS wipe();
@@ -276,12 +289,6 @@ static STATUS yank();
 static STATUS meta();
 static STATUS mk_set();
 static STATUS last_argument();
-static STATUS bk_kill_word();
-static STATUS bk_word();
-static STATUS fd_kill_word();
-static STATUS fd_word();
-static STATUS case_down_word();
-static STATUS case_up_word();
 static STATUS toggle_meta_mode();
 static STATUS copy_region();
 
@@ -2902,6 +2909,80 @@ static void pin_load(int pin) {
 }
 
 #include <esp32-hal-periman.h>
+static int pin_show(int argc, char **argv) {
+
+  unsigned int pin, cnt = 0;
+
+  if (argc < 2) return -1;
+  if (!isnum(argv[1])) return 1;
+  if (!pin_exist((pin = atol(argv[1])))) return 1;
+
+  bool pu, pd, ie, oe, od, sleep_sel, reserved;
+  uint32_t drv, fun_sel, sig_out;
+    
+  q_printf("%% Pin %d is ",pin);
+
+  int type = perimanGetPinBusType(pin);
+  if (type == ESP32_BUS_TYPE_INIT)
+    q_printf("not configured\r\n");
+  else
+    q_printf("condigured as \"%s\"\r\n",perimanGetTypeName(type));
+
+  gpio_ll_get_io_config(&GPIO, pin, &pu, &pd, &ie, &oe, &od, &drv, &fun_sel, &sig_out, &sleep_sel);
+
+  if (esp_gpio_is_pin_reserved(pin))
+    q_printf("%% Pin %u is *RESERVED*, use with care\r\n",pin);
+
+  if (ie || oe || od || pu || pd) {
+    q_print("% Pin mode: ");
+    if (ie) q_print("INPUT, ");
+    if (oe) q_print("OUTPUT, ");
+    if (pu) q_print("PULL_UP, ");
+    if (pd) q_print("PULL_DOWN, ");
+    if (od) q_print("OPEN_DRAIN, ");
+    if (!pu && !pd && ie) q_print("FLOATING INPUT");
+    q_print(CRLF);
+    if (oe && fun_sel == PIN_FUNC_GPIO) {
+      q_print("% Output is routed through GPIO Matrix, ");
+      if (sig_out == SIG_GPIO_OUT_IDX)
+        q_print("simple GPIO output\r\n");
+      else
+        q_printf("signal ID: %u\r\n",sig_out);
+    } else if (oe && fun_sel != PIN_FUNC_GPIO) {
+      q_print("% Output through IO MUX, ");
+      //TODO: get IOMUX function
+      q_print(CRLF);
+    }
+
+    if (ie && fun_sel == PIN_FUNC_GPIO) {
+      q_print("% Input is routed through GPIO Matrix, signal ID : ");
+
+      for (int i = 0; i < SIG_GPIO_OUT_IDX; i++) {
+        if (gpio_ll_get_in_signal_connected_io(&GPIO, i) == pin) {
+          cnt++;
+          q_printf("%d, ",i);
+        }
+      }
+      if (!cnt)
+        q_print("simple GPIO input");
+      q_print(CRLF);
+    } else if (ie) {
+      q_print("% Input is routed through IO MUX\r\n");
+      //TODO: get IOMUX function
+    }
+  } else
+    q_print("% Pin flags are not set\r\n");
+
+  if (sleep_sel)
+    q_print("% Sleep select: YES\r\n");
+
+  if (type == ESP32_BUS_TYPE_GPIO)
+    q_printf("%% Digital pin value is %s\r\n",digitalRead(pin) == HIGH ? "HIGH (1)" : "LOW (0)");
+
+  return 0;
+}
+
+
 // "pin NUM arg1 arg2 .. argn"
 // "pin NUM"
 // Big fat "pin" command. Processes multiple arguments
@@ -2910,38 +2991,22 @@ static int cmd_pin(int argc, char **argv) {
 
   unsigned int flags = 0;
   int i = 2, level = -1, pin;
-#if WITH_HELP  
-  bool informed = false;
-#endif
-  if (argc < 2)
-    return -1;  //missing argument
-
-  //first argument must be a decimal number: a GPIO number
-  if (!isnum(argv[1]) || !pin_exist((pin = atoi(argv[1]))))  
-    return 1;
-
-  //"pin X" command is executed here
-  if (argc == 2) {
-
-    
-    level = digitalRead(pin);
-    q_printf("%% Digital pin value = %d\r\n",level);
-    q_printf("%% Pin %d is ",pin);
-
-    int type = perimanGetPinBusType(pin);
-    if (type == ESP32_BUS_TYPE_INIT)
-      q_printf("not configured\r\n");
-    else
-      q_printf("condigured as \"%s\"\r\n",perimanGetTypeName(type));
-
-
-    gpio_dump_io_configuration(stdout, (uint64_t)1 << pin);  // FIXME: works only on default UART0
-    return 0;
-  }
 
   // repeat whole "pin ..." command "count" times.
   // this number can be changed by "loop" keyword
   unsigned int count = 1; 
+
+#if WITH_HELP  
+  bool informed = false;
+#endif
+  if (argc < 2) return -1;  //missing argument
+
+  //first argument must be a decimal number: a GPIO number
+  if (!isnum(argv[1]) || !pin_exist((pin = atoi(argv[1])))) return 1;
+
+  //"pin X" command is executed here
+  if (argc == 2) return pin_show(argc, argv);
+
   do {
 
     //Run through "pin NUM arg1, arg2 ... argN" arguments, looking for keywords
