@@ -3223,12 +3223,13 @@ static int cmd_mem(int argc, char **argv) {
 
   unsigned int total;
 
-  q_print("% -- Memory information --\r\n");
-  q_printf("%% For \"malloc()\" and \"heap_caps_malloc(MALLOC_CAP_DEFAULT)\":\r\n%% %u bytes total, %u available, %u max per allocation\r\n", heap_caps_get_total_size(MALLOC_CAP_DEFAULT), heap_caps_get_free_size(MALLOC_CAP_DEFAULT),heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
-  q_printf("%% For \"heap_caps_malloc(MALLOC_CAP_INTERNAL)\", internal SRAM:\r\n%% %u bytes total,  %u available, %u max per allocation\r\n", heap_caps_get_total_size(MALLOC_CAP_INTERNAL), heap_caps_get_free_size(MALLOC_CAP_INTERNAL),heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+  q_print("% -- Memory information --\r\n%\r\n");
+
+  q_printf("%% For \"malloc()\" and \"heap_caps_malloc(MALLOC_CAP_DEFAULT)\":\r\n%% %u bytes total, %u available, %u max per allocation\r\n%%\r\n", heap_caps_get_total_size(MALLOC_CAP_DEFAULT), heap_caps_get_free_size(MALLOC_CAP_DEFAULT),heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+  q_printf("%% For \"heap_caps_malloc(MALLOC_CAP_INTERNAL)\", internal SRAM:\r\n%% %u bytes total,  %u available, %u max per allocation\r\n%%\r\n", heap_caps_get_total_size(MALLOC_CAP_INTERNAL), heap_caps_get_free_size(MALLOC_CAP_INTERNAL),heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
 
   if ((total = heap_caps_get_total_size(MALLOC_CAP_SPIRAM)/1024) > 0)
-    q_printf("%% External SPIRAM(PSRAM) total: %uMbytes, free: %u bytes\r\n",total / 1024,heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    q_printf("%% External SPIRAM total: %uMbytes, free: %u bytes\r\n",total / 1024,heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
 
   return 0;
 }
@@ -3954,6 +3955,26 @@ cmd_uptime(int argc, char **argv) {
   unsigned int sec, min = 0, hr = 0, day = 0;
   sec = (unsigned int)(esp_timer_get_time() / 1000000) - uptime;
 
+  const char *rr;
+
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON:    rr = "power-on event"; break;
+    case ESP_RST_SW:         rr = "reload command"; break;
+    case ESP_RST_PANIC:      rr = "panic()!"; break;
+    case ESP_RST_INT_WDT:    rr = "an interrupt watchdog"; break;
+    case ESP_RST_TASK_WDT:   rr = "a task watchdog"; break;
+    case ESP_RST_WDT:        rr = "an unspecified watchdog"; break;
+    case ESP_RST_DEEPSLEEP:  rr = "coming up from deep sleep"; break;
+    case ESP_RST_BROWNOUT:   rr = "brownout"; break;
+    case ESP_RST_SDIO:       rr = "SDIO"; break;
+    case ESP_RST_USB:        rr = "USB event"; break;
+    case ESP_RST_JTAG:       rr = "JTAG"; break;
+    case ESP_RST_EFUSE:      rr = "eFuse errors"; break;
+    case ESP_RST_PWR_GLITCH: rr = "power glitch"; break;
+    case ESP_RST_CPU_LOCKUP: rr = "lockup (double exception)"; break;
+    default:                 rr = "no idea";
+  };
+
   q_print("% Last boot was ");
   if (sec > 60 * 60 * 24) {
     day = sec / (60 * 60 * 24);
@@ -3971,7 +3992,8 @@ cmd_uptime(int argc, char **argv) {
     q_printf("%u minutes ", min);
   }
 
-  q_printf("%u seconds ago\r\n", sec);
+  q_printf("%u seconds ago\r\n%% Restart reason was \"%s\"\r\n", sec,rr);
+  
 
   return 0;
 }
