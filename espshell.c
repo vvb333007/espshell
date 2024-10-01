@@ -99,6 +99,8 @@
 
 //autostart espshell
 static void __attribute__((constructor)) espshell_start();
+static int __attribute__((format (printf, 1, 2))) q_printf(const char *, ...);
+static int q_print(const char *);
 
 
 
@@ -304,7 +306,7 @@ static const KEYMAP Map[32] = {
   { CTL('H'), bk_del_char },
   { CTL('J'), accept_line },
   { CTL('K'), kill_line },
-  { CTL('L'), redisplay },
+  { CTL('L'), case_down_word },
   { CTL('M'), accept_line },
   { CTL('N'), h_next },
   { CTL('O'), ring_bell },
@@ -313,14 +315,14 @@ static const KEYMAP Map[32] = {
   { CTL('R'), h_search },
   { CTL('S'), ring_bell },
   { CTL('T'), transpose },
-  { CTL('U'), ring_bell },
+  { CTL('U'), case_up_word },
   { CTL('V'), quote },
   { CTL('W'), wipe },
   { CTL('X'), exchange },
   { CTL('Y'), yank },
   { CTL('Z'), ring_bell },
-  { CTL('['), meta },
-  { CTL(']'), move_to_char },
+  { CTL('['), bk_word },
+  { CTL(']'), fd_word },
   { CTL('^'), ring_bell },
   { CTL('_'), ring_bell },
   { 0, NULL }
@@ -965,8 +967,8 @@ TTYspecial(unsigned int c) {
   if (ISMETA(c))
     return CSdispatch;
 
-  if (/*c == rl_erase ||*/ (int)c == DEL)
-    return bk_del_char();
+  if (c == DEL)
+    return del_char();
 /*
   if (c == rl_kill) {
     if (Point != 0) {
@@ -996,6 +998,7 @@ editinput() {
   Signal = -1;
   while ((int)(c = TTYget()) != EOF) {
 
+    //printf("%02x ",c);
     switch (TTYspecial(c)) {
       case CSdone:
         return Line;
@@ -1389,8 +1392,6 @@ int espshell_exec(const char *p); //execute 1 command line
 
 
 static int q_strcmp(const char *, const char *); // loose strcmp
-static int __attribute__((format (printf, 1, 2))) q_printf(const char *, ...);          // printf to specific uart
-static int q_print(const char *);
 #if WITH_HELP
 static int cmd_question(int, char **);
 #endif
