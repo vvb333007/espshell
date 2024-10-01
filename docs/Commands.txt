@@ -1,5 +1,31 @@
 ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
 
+KEYS USED IN ESPSHELL FOR COMMAND LINE EDITING:
+-----------------------------------------------
+
+
+<ENTER>        : Execute command
+
+<- -> /\  \/   : Arrows: move cursor left or right. Up and down arrows scroll 
+                 through command history.
+
+<DEL>          : As in Notepad
+
+<BACKSPACE>    : As in Notepad
+
+<HOME>, <END>  : Do not work! Use Ctrl+A instead of <HOME> and Ctrl+E as <END>
+
+Ctrl+R         : History search. Press Ctrl+R and start typing. Press <ENTER> 
+                 to search for command executed before
+
+Ctrl+W         : Wipe : clear input line
+
+Ctrl+U         : Turn text from cursor position till the end UPPERCASE
+
+Ctrl+L         : Turn text from cursor position till the end lowercase
+
+
+
 ESPSHELL COMMANDS AND THEIR DESCRIPTION
 ---------------------------------------
 
@@ -71,7 +97,7 @@ Here is the list of currently supported commands:
 
                    % CPU ID: ESP32-D0WD-V3, Rev.: 1.45
                    % CPU frequency is 240Mhz, Xtal 40Mhz, APB bus 80Mhz
-                   % Chip temperature: 37.8ш C
+                   % Chip temperature: 37.8 C
                    %
                    % Sketch is running on ESP32_DEV/esp32,uses Arduino Core v3.0.5, based on
                    % Espressif ESP-IDF version "v5.1.4-828-g33fbade6b8-dirty"
