@@ -1394,7 +1394,7 @@ last_argument() {
 #define xstr(s) ystr(s)
 #define ystr(s) #s
 
-#define MAGIC_FREQ 78227  // max allowed frequency for the "pwm" command
+#define MAGIC_FREQ 312000  // max allowed frequency for the "pwm" command
 
 static bool Exit = false; // True == close the shell and kill its FreeRTOS task
 
@@ -1999,7 +1999,7 @@ static const struct keywords_t keywords_main[] = {
   { "pwm", cmd_pwm, 3,HELP("% \"pwm X FREQ DUTY\"\r\n" \
     "%\r\n" \
     "% Start PWM generator on pin X, frequency FREQ Hz and duty cycle of DUTY\r\n" \
-    "% Max frequency is 78277 Hz\r\n" \
+    "% Max frequency is 312000 Hz\r\n" \
     "% Value of DUTY is in range [0..1] with 0.123 being a 12.3% duty cycle"), "PWM output" },
 
   { "pwm", cmd_pwm, 2,HELP("% \"pwm X FREQ\"\r\n"
@@ -2872,7 +2872,7 @@ static int cmd_count(int argc, char **argv) {
 //
 static int tone_enable(unsigned int pin, unsigned int freq, float duty) {
 
-  int resolution = 10;
+  int resolution = 8;
 
   if (!pin_exist(pin))
     return -1;
@@ -2895,8 +2895,6 @@ static int tone_enable(unsigned int pin, unsigned int freq, float duty) {
 
 //pwm PIN FREQ [DUTY]   - pwm on
 //pwm PIN               - pwm off
-//FIXME: max frequency is 78277 and I don't know why
-
 static int cmd_pwm(int argc, char **argv) {
 
   unsigned int  freq = 0;
