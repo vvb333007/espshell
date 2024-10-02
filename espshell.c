@@ -1750,7 +1750,7 @@ struct keywords_t {
 
 #if WITH_HELP
 #  define HELP(X) X
-#  define KEYWORDS_BEGIN { "?", cmd_question, -1, "Show the list of available commands", NULL },
+#  define KEYWORDS_BEGIN { "?", cmd_question, -1, "% \"?\" - Show the list of available commands\r\n% \"? comm\" - Get help on command \"comm\"\r\n% \"? keys\" - Get information on terminal keys used by ESPShell", "Commands list & help" },
 #else
 #  define HELP(X) ""
 #  define KEYWORDS_BEGIN
@@ -4040,21 +4040,59 @@ static int cmd_question(int argc, char **argv) {
   const char *prev = "";
   char indent[INDENT + 1];
 
-  // user typed "? text" by mistake
+
   if (argc > 1) {
+    if (!q_strcmp(argv[1],"keys")) {
+      q_print(" -- ESPShell Keys -- \r\n" \
+              "% <ENTER>       : Execute command.\r\n" \
+              "% <- -> /\\ \\/  : Arrows: move cursor left or right. Up and down to scroll\r\n" \
+              "%                 through command history. Ctr>+F,B are mapped to <- & -> too\r\n" \
+              "% <DEL>         : As in Notepad\r\n" \
+              "% <BACKSPACE>   : As in Notepad\r\n" \
+              "% <HOME>, <END> : Do not work! Use Ctrl+A instead of <HOME> and Ctrl+E as <END>\r\n" \
+              "% <Ctrl>+R      : History search. Press Ctrl+R and start typing. Press <ENTER> \r\n" \
+              "%                 to search for command executed before\r\n" \
+              "% <Ctrl>+W      : Wipe : clear input line\r\n" \
+              "% <Ctrl>+O      : Move 1 word to the left. Cursor will be positioned at the\r\n" \
+              "%                 beginning of the word\r\n" \
+              "% <Ctrl>+P      : Move 1 word to the right. Cursor will be positioned at the\r\n" \
+              "%                 end of the word\r\n%\r\n" \
+              "% Terminal compatibility workarounds : \r\n%\r\n" \
+              "% <Enter> is also <Ctrl>+J or <Ctrl>+M\r\n" \
+              "% <- -> (arrows) are also <Ctrl>+B and <Ctrl>+F\r\n" \
+              "% <DEL> can be entered as <Ctrl>+D; <BACKSPACE> is <Ctrl>+H\r\n" \
+              "% <HOME> and <END> are <Ctrl>+A, and <Ctrl>+E respectively\r\n");
+      return 0;
+    } else { // "? command"
+      i = 0;
+      bool found = false;
+      while (keywords[i].cmd) {
+        if (keywords[i].help || keywords[i].brief) {  //skip hidden commands
+          if (!q_strcmp(argv[1], keywords[i].cmd)) {
+            if (keywords[i].help)
+              q_printf("\r\n%s\r\n", keywords[i].help);  //display long help
+            else if (keywords[i].brief)
+              q_printf("\r\n%s\r\n", keywords[i].brief);  //display brief (must not happen)
+            found = true;
+          }
+        }
+        i++;
+      }
+      return found ? 0 : 1; 
+    }
+    //NOTREACHED
+    abort();
+  } // if (argc > 1)
 
-    q_printf("%% To get help try \"%s ?\" instead!\r\n", argv[1]);
-    return 0;
-  }
-
+  // process "?" command (no arguments given)
   // commands which are shorter than INDENT will be padded with extra
   // spaces to be INDENT bytes long
   memset(indent, ' ', INDENT);
   indent[INDENT] = 0;
   char *spaces;
 
-  q_print("% Enter \"command ?\" to get details about the command.\r\n" \
-          "% List of available commands:\r\n" \
+  q_print("% Enter \"? command\" to get details about specific command.\r\n" \
+          "% Enter \"? keys\" to learn keys used in ESPShell.\r\n" \
           "%\r\n");
 
   //run through the keywords[] and print brief info for every entry
@@ -4122,34 +4160,7 @@ espshell_command(char *p) {
   if (argc < 1)
     return bad;
 
-  // process "?": "command ?" and "? command"
-  if (argc > 1 && (*(argv[1]) == '?' || *(argv[0]) == '?')) {
-#if WITH_HELP    
-
-    // change "? command" to "command ?"
-    if (*(argv[0]) == '?')
-      argv[0] = argv[1];
-
-    // run thru keywords[] and print out "help" for every entriy.
-    while (keywords[i].cmd) {
-      if (keywords[i].help || keywords[i].brief) {  //skip hidden commands
-        if (!q_strcmp(argv[0], keywords[i].cmd)) {
-          found = true;
-          if (keywords[i].help)
-            q_printf("\r\n%s\r\n", keywords[i].help);  //display long help
-          else if (keywords[i].brief)
-            q_printf("\r\n%s\r\n", keywords[i].brief);  //display brief (must not happen)
-          bad = 0;
-        }
-      }
-      i++;
-    }
-    if (!found)
-      goto notfound;
-#endif
-  } else {
-
-
+  {
     //process command
     //find a corresponding entry in a keywords[] : match the name and minimum number of arguments
     while (keywords[i].cmd) {
@@ -4171,9 +4182,9 @@ espshell_command(char *p) {
             // cb() call with return code 0
             bad = keywords[i].cb(argc, argv);
             if (bad > 0)
-              q_printf("%% Invalid argument \"%s\" (\"%s ?\" for help)\r\n", argv[bad], argv[0]);
+              q_printf("%% Invalid argument \"%s\" (\"? %s\" for help)\r\n", argv[bad], argv[0]);
             else if (bad < 0)
-              q_printf("%% Missing argument (\"%s ?\" for help)\r\n", argv[0]);
+              q_printf("%% Missing argument (\"? %s\" for help)\r\n", argv[0]);
             else
               i = 0;  // make sure keywords[i] is valid pointer
             break;
@@ -4186,7 +4197,7 @@ espshell_command(char *p) {
     // reached the end of the list and didn't find any exact match?
     if (!keywords[i].cmd) {
       if (found)  //we had a name match but number of arguments was wrong
-        q_printf("%% \"%s\": wrong number of arguments (\"%s ?\" for help)\r\n", argv[0], argv[0]);
+        q_printf("%% \"%s\": wrong number of arguments (\"? %s\" for help)\r\n", argv[0], argv[0]);
       else
 #if WITH_HELP      
 notfound:
@@ -4257,6 +4268,7 @@ static void espshell_task(const void *arg) {
 
 #if WITH_HELP
     q_print("% ESP Shell. Type \"?\" and press enter for help\r\n");
+    q_print("% Type \"? keys\" to learn this shell keys\r\n");
 #endif
 
     while (!Exit) {
