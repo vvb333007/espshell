@@ -171,7 +171,7 @@ pin 2 you'll see it blinking
 
 
 There are some extra commands in "sequence" category which were not covered
-in this text. Explore them by typing "?" after command name and pressing
+in this text. Explore them by typing "?" before command name and pressing
 <Enter>
 
 
