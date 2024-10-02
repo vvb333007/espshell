@@ -36,7 +36,7 @@ ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
 
 
 esp32#>?
-% Enter "command ?" to get details about the command.
+% Enter "? command" to get details about the command.
 % List of available commands:
 %
 % "?"          : Show the list of available commands
@@ -80,9 +80,9 @@ esp32#>
 
 
 Получить более подробное описание команды, ее аргументов и примеры использования
-можно, введя имя команды (например, "cpu"), пробел, знак вопроса и нажать <Enter>
+можно, введя знак вопроса, пробел и имя команды (например, "cpu"), нажать <Enter>
 
-  esp32#> cpu ?
+  esp32#> ? cpu
 
 
 
