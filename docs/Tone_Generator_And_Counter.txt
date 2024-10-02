@@ -6,7 +6,7 @@ Squarewave generation and pulse counting
 
 ESPShell includes ability to generate a squarewave signal on any pin with
 user configurable frequency and duty cycle. Frequency can be set from 1Hz
-up to 78.277kHz with duty cycle ranging from 0 (=0%) to 1 (=100%). Default
+up to 312 kHz with duty cycle ranging from 0 (=0%) to 1 (=100%). Default
 value for the duty cycle is 0.5 which means 50% duty cycle. LEDC driver is
 used for this squarewave generator.
 
