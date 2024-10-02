@@ -42,15 +42,23 @@ DISPLAYING PIN INFORMATION
 To display informaton on arbitrary pin type "pin" followed by pin number.
 Example below displays GPIO2 basic information:
 
-  esp32#>pin 2
-  % Digital pin value = 1
-  IO[2] -
-    Pullup: 0, Pulldown: 1, DriveCap: 2
-    InputEn: 1, OutputEn: 1, OpenDrain: 0
-    FuncSel: 2 (GPIO)
-    GPIO Matrix SigOut ID: 256 (simple GPIO output)
-    GPIO Matrix SigIn ID: (simple GPIO input)
-    SleepSelEn: 0
+  esp32#>pin 8
+  % Pin 8 is used as "I2C_MASTER_SDA"
+  % Mode: INPUT, OUTPUT, PULL_UP, OPEN_DRAIN,
+  % Output via GPIO matrix, provides path for signal ID: 90
+  % Input via GPIO matrix, provides path for signal IDs: 90,
+  % Maximum current is 20 milliamps
+
+  esp32#>pin 43
+  % Pin 43 is used as "UART_TX"
+  % Mode: INPUT, PULL_UP,
+  % Input is routed through IO MUX
+  % Maximum current is 20 milliamps
+
+  esp32#>pin 4
+  % Pin 4 is available, not configured
+  % Maximum current is 20 milliamps
+
 
 The output above says that pin2 is currently HIGH, has a pulldown, has
 both input and output enabled, pin drive capability is 2==medium==20mA
@@ -138,10 +146,10 @@ Example 1. Dsiplay GPIO4 information:
    esp32#>pin 4
 
 
-Example 2. Set pin 33 to OUTPUT and INPUT, PULL_UP, OPEN_DRAIN and HIGH:
+Example 2. Set pin 33 to OUTPUT and INPUT, PULL_UP, and HIGH:
 ------------------------------------------------------------------------
 
-   esp32#>pin 33 out in up open high
+   esp32#>pin 33 out in up high
 
 
 Example 3. Save pin state, configure it to OUTPUT, HIGH, then restore pin state:
