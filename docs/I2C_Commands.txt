@@ -32,7 +32,7 @@ There are number of commands available under I2C configuration mode:
 
   esp32#>iic 0
   esp32-i2c#>?
-  % Enter "command ?" to get details about the command.
+  % Enter "? command" to get details about the command.
   % List of available commands:
   %
   % "?"        : Show the list of available commands
