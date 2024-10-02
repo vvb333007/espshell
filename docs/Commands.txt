@@ -24,7 +24,7 @@ Ctrl+O         : Move 1 word to the left. Cursor will be positioned at the
                  beginning of the word
 
 Ctrl+P         : Move 1 word to the right. Cursor will be positioned at the
-                 beginning of the word
+                 end of the word
 
 
 
@@ -48,9 +48,8 @@ Same applies to command arguments:
   "short" but not very short commands and arguments
 
 List of all supported command can be obtained by typing "?" and pressing <Enter>
-Help on a specific command can be obtained by typing command name , a space and
-a question mark and pressing <Enter>: "command ?"
-
+Help on a specific command can be obtained by typing "?" a space, command name 
+and pressing <Enter>: "? command_name"
 
 Here is the list of currently supported commands:
 
@@ -138,7 +137,7 @@ Here is the list of currently supported commands:
            - which is almost any key (spacebar requires 2 presses).
            -                      OR
            - Puts CPU into light sleep for X seconds, CPU wakes up by timer.
-           - Type "nap ?" do get more information on this command
+           - Type "? nap" do get more information on this command
 
 "iic"      - I2C bus/interface access. Configure and use (read/write/scan) a
            - specified I2C bus (there are number of them available).
