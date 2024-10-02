@@ -38,7 +38,7 @@ ESP32 Dev Board, ESP32 DevKit, пины i2c0 по умолчанию это 21(S
 
   esp32#>iic 0
   esp32-i2c#>?
-  % Enter "command ?" to get details about the command.
+  % Enter "? сщььфтв" to get details about the command.
   % List of available commands:
   %
   % "?"        : Show the list of available commands
