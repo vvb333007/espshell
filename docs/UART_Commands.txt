@@ -44,7 +44,7 @@ indicating that you are in UART configuration mode. Entering "?" and pressing
 
  esp32#>ua 1
  esp32-uart#>?
- % Enter "command ?" to get details about the command.
+ % Enter "? command" to get details about the command.
  % List of available commands:
  %
  % "?"        : Show the list of available commands
