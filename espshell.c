@@ -63,9 +63,10 @@
 #define STACKSIZE      5000       // Shell task stack size
 #define BREAK_KEY      3          // Keycode of an "Exit" key: CTRL+C to exit uart "tap" mode
 #define SEQUENCES_NUM  10         // Max number of sequences available for command "sequence"
-#define DO_ECHO        true       // Espshell echoes user input back by default. set to false for easier 
-                                  // automated output processing
-#define USE_UART       UART_NUM_0 // Uart where shell will be deployed at startup, or 99 for USB-CDC
+#define DO_ECHO        1          // -1 - espshell is completely silent, commands are executed but all screen output is disabled
+                                  //  0 - espshell does not do echo for user input (as modem ATE0 command). commands are executed and their output is displayed
+                                  //  1 - espshell default behaviour (do echo, enable all output)
+#define USE_UART       UART_NUM_0 // Uart where shell will be deployed at startup, or UART_NUM_MAX for USB-CDC
 
 #define COMPILING_ESPSHELL 1      // dont touch this!
                             
@@ -99,25 +100,34 @@
 
 //autostart espshell
 static void __attribute__((constructor)) espshell_start();
+
 static int __attribute__((format (printf, 1, 2))) q_printf(const char *, ...);
 static int q_print(const char *);
-
 
 
 #include <driver/uart.h>
 static uart_port_t uart = USE_UART;
 
 
-// Get/Set UART to use: UART_NUM_0, UART_NUM_1,... etc.
-// By default all the IO happens on UART0 but it can be changed to any other
-// UART.
- int rl_set_uart(uart_port_t i) {
-
-  if (i >= UART_NUM_MAX)
-    return -1;
+// Make ESPShell to use specified UART (or USB) for
+// its IO. By default we are running on UART0. Setting interface
+// port to UART_NUM_MAX means to "use native USB console"
+// 
+ int console_attach2port(uart_port_t i) {
 
   if (i < 0)
     return uart;
+
+  if (i > UART_NUM_MAX)
+    return -1;
+
+  if (i == UART_NUM_MAX) {
+#if SERIAL_IS_USB
+# error "console_attach2port() : Not implemented"    
+#endif    
+    return -1;
+  }
+
   return (uart = i);
 }
 
@@ -250,7 +260,7 @@ static unsigned int Length;
 static unsigned int ScreenCount;
 static unsigned int ScreenSize;
 static char *backspace = NULL;
-static bool Echo = DO_ECHO;
+static int Echo = DO_ECHO;
 
 /* Display print 8-bit chars as `M-x' or as the actual 8-bit char? */
 static int rl_meta_chars = 0;
@@ -354,7 +364,7 @@ TTYflush() {
 
   if (ScreenCount) {
 
-    if (Echo)
+    if (Echo > 0)
       console_write_bytes(Screen, ScreenCount);
     ScreenCount = 0;
   }
@@ -1543,13 +1553,16 @@ static int __printfv(const char *format, va_list arg) {
   int ret;
   va_list copy;
 
+  if (Echo < 0) // "echo silent" mode
+    return 0;
+
   va_copy(copy, arg);
   len = vsnprintf(NULL, 0, format, copy);
   va_end(copy);
 
   if (len >= sizeof(buf))
     if ((temp = (char *)malloc(len + 1)) == NULL)
-	return 0;
+	    return 0;
 
   vsnprintf(temp, len + 1, format, arg);
 
@@ -1579,8 +1592,10 @@ static int __attribute__((format (printf, 1, 2))) q_printf(const char *format, .
 
 //Faster than q_printf() but only does non-formatted output
 static int q_print(const char *str) {
-  size_t len = strlen(str);
-  if (len)
+  size_t len;
+  if (Echo < 0) //"echo silent"
+    return 0;
+  if ((len = strlen(str)) > 0)
     len = console_write_bytes(str, len);
   return len;
 }
@@ -1741,11 +1756,11 @@ struct sequence {
 //
 // Shell commands list structure
 struct keywords_t {
-  const char *cmd;                   // Command keyword ex.: "pin"
-  int (*cb)(int argc, char **argv);  // Callback to call (one of cmd_xxx functions)
-  int         min_argc;              // Number of arguments required. Negative values mean "any"
-  const char *help;                  // Help text displayed on "command ?"
-  const char *brief;                 // Brief text displayed on "?". NULL means "use help text, not brief"
+  const char *cmd;                 // Command keyword ex.: "pin"
+  int (*cb)(int argc, char **argv);// Callback to call (one of cmd_xxx functions)
+  int         argc;                // Number of arguments required. Negative values mean "any"  
+  const char *help;                // Help text displayed on "command ?"
+  const char *brief;               // Brief text displayed on "?". NULL means "use help text, not brief"
 };
 
 #if WITH_HELP
@@ -1975,7 +1990,7 @@ static const struct keywords_t keywords_main[] = {
 
   { "tty", cmd_tty, 1, HELP("% \"tty X\" Use uart X for command line interface"), "IO redirect" },
 
-  { "echo", cmd_echo, 1, HELP("% \"echo on|off\" Echo user input on/off (default is on)"), "Enable/Disable user input echo" },
+  { "echo", cmd_echo, 1, HELP("% \"echo on|off|silent\" Echo user input on/off (default is on)"), "Enable/Disable user input echo" },
   { "echo", cmd_echo, 0, HIDDEN_KEYWORD}, //hidden command, displays echo status (on / off)
 
   { "suspend", cmd_suspend, 0, HELP("% \"suspend\" : Suspend main loop()\r\n"), "Suspend sketch execution" },
@@ -2901,13 +2916,17 @@ static int cmd_pwm(int argc, char **argv) {
 #include <soc/gpio_struct.h>
 #include <hal/gpio_ll.h>
 #include <driver/gpio.h>
+#include <rom/gpio.h>
+#include <esp32-hal-periman.h>
 
 extern gpio_dev_t GPIO;
 
 static struct {
-  uint8_t flags;
+  uint8_t  flags;
+  bool     value;
   uint16_t sig_out;
   uint16_t fun_sel;
+  int      bus_type;  //periman bus type. 
 } Pins[SOC_GPIO_PIN_COUNT];
 
 static void pin_save(int pin) {
@@ -2917,8 +2936,17 @@ static void pin_save(int pin) {
 
 	gpio_ll_get_io_config(&GPIO,pin,&pu, &pd, &ie, &oe, &od,&drv, &fun_sel, &sig_out, &slp_sel);
 
+  //Pin peri connections:
+  // fun_sel is either PIN_FUNC_GPIO and then sig_out is the signal ID
+  // to route to the pin via GPIO Matrix.
+  
   Pins[pin].sig_out = sig_out;
   Pins[pin].fun_sel = fun_sel;
+  Pins[pin].bus_type = perimanGetPinBusType(pin);
+
+  //save digital value for OUTPUT GPIO
+  if (Pins[pin].bus_type == ESP32_BUS_TYPE_GPIO && oe)
+    Pins[pin].value = (digitalRead(pin) == HIGH);
 
   Pins[pin].flags = 0;
   if (pu) Pins[pin].flags |= PULLUP;
@@ -2926,18 +2954,44 @@ static void pin_save(int pin) {
   if (ie) Pins[pin].flags |= INPUT;
   if (oe) Pins[pin].flags |= OUTPUT;
   if (od) Pins[pin].flags |= OPEN_DRAIN;
-  
-  //TODO: save peripherial connections 
 }
+
 
 static void pin_load(int pin) {
 
+  // 1. restore pin mode 
   pinMode(pin,Pins[pin].flags);
-  // TODO: restore perephireal connections (FUNC_SEL,)
 
+  //2. attempt to restore peripherial connections:
+  //   If pin was not configured or was simple GPIO function then restore it to simple GPIO
+  //   If pin had a connection through GPIO Matrix, restore IN & OUT signals connection (use same
+  //   signal number for both IN and OUT. Probably it should be fixed)
+  //
+  // FIXME: periman does not know anything about these changes!
+  // FIXME: check if I2C pin can be reused in live I2C connection bby load/high/resore 
+  if (Pins[pin].fun_sel != PIN_FUNC_GPIO)
+    q_printf("%% Pin %d IO MUX connection can not be restored\r\n");
+  else {
+    if (Pins[pin].bus_type == ESP32_BUS_TYPE_INIT || Pins[pin].bus_type == ESP32_BUS_TYPE_GPIO) {
+      gpio_pad_select_gpio(pin);
+      //if bus type was INIT OUTPUT then output digital value
+      //will be undefined
+      if (Pins[pin].flags & OUTPUT)
+        digitalWrite(pin, Pins[pin].value ? HIGH : LOW);
+    }
+    else {
+      // restore GPIO matrix connections. Periman, however is not
+      // notified of this change
+      // TODO: save & restore INVERT, INPUT_ENABLE_INVERT flags
+      if (Pins[pin].flags & OUTPUT) 
+        gpio_matrix_out(pin,Pins[pin].sig_out,false,false);
+      if (Pins[pin].flags & INPUT) 
+        gpio_matrix_in(pin,Pins[pin].sig_out,false);
+    }
+  }
 }
 
-#include <esp32-hal-periman.h>
+
 static int pin_show(int argc, char **argv) {
 
   unsigned int pin, informed = 0;
@@ -3046,6 +3100,7 @@ static int cmd_pin(int argc, char **argv) {
   //"pin X" command is executed here
   if (argc == 2) return pin_show(argc, argv);
 
+  //"pin arg1 arg2 .. argN"
   do {
 
     //Run through "pin NUM arg1, arg2 ... argN" arguments, looking for keywords
@@ -3066,14 +3121,10 @@ static int cmd_pin(int argc, char **argv) {
         if (!isnum(argv[i])) 
           return i;
 
-        int seq = atoi(argv[i]),j;
+        int seq,j;
 
-        if (seq < 0 || seq >= SEQUENCES_NUM)
-          return i;
-
-
-        if (seq_isready(seq)) {
-          // enable RMT sequence 'seq' on pin 'pin'
+        // enable RMT sequence 'seq' on pin 'pin'
+        if (seq_isready((seq = atol(argv[i])))) {
 #if WITH_HELP          
           q_printf("%% Sending sequence %d over GPIO %d\r\n", seq, pin);
 #endif
@@ -3623,7 +3674,7 @@ uart_tap(int remote) {
       char *buf[av];
 
       uart_read_bytes(remote, buf, av, portMAX_DELAY);
-      console_write_bytes(buf, av);
+      console_write_bytes(buf, av); //TODO: should it be affected by "echo silent"?
       delay(1);
     }
   }
@@ -3784,17 +3835,24 @@ static int cmd_tty(int argc, char **argv) {
 }
 
 //TAG:echo
-//"echo on|off"
+//"echo on|off|silent"
 //
-// Enable/disable local echo. Normally enabled it lets software
+// Enable/disable local echo. Normally enabled, it lets software
 // like TeraTerm and PuTTY to be used. Turning echo off supresses
 // all shell output (except for command handlers output)
+//
+// Setting "echo silent" has effect of "echo off" + all command output
+// is supressed as well. commands executed do not output anything
+//
 static int cmd_echo(int argc, char **argv) {
 
   if (argc < 2)
-    q_printf("%% Echo %s\r\n",Echo ? "on" : "off");
-  else
-    Echo = !strcmp("on",argv[1]);
+    q_printf("%% Echo %s\r\n",Echo ? "on" : "off"); //if echo is silent we can't see it anyway so no bother printing
+  else {
+    if (!q_strcmp(argv[1],"on")) Echo = 1; else
+    if (!q_strcmp(argv[1],"off")) Echo = 0; else
+    if (!q_strcmp(argv[1],"silent")) Echo = -1; else return 1;
+  }
   return 0;
 }
 
@@ -4040,32 +4098,36 @@ static int cmd_question(int argc, char **argv) {
   const char *prev = "";
   char indent[INDENT + 1];
 
-
+  //"? arg"
   if (argc > 1) {
     if (!q_strcmp(argv[1],"keys")) {
-      q_print(" -- ESPShell Keys -- \r\n" \
+      // 25 lines maximum to fit in default terminal window without scrolling
+      q_print("%             -- ESPShell Keys -- \r\n" \
               "% <ENTER>       : Execute command.\r\n" \
-              "% <- -> /\\ \\/  : Arrows: move cursor left or right. Up and down to scroll\r\n" \
-              "%                 through command history. Ctr>+F,B are mapped to <- & -> too\r\n" \
+              "% <- -> /\\ \\/   : Arrows: move cursor left or right. Up and down to scroll\r\n" \
+              "%                 through command history\r\n" \
               "% <DEL>         : As in Notepad\r\n" \
               "% <BACKSPACE>   : As in Notepad\r\n" \
-              "% <HOME>, <END> : Do not work! Use Ctrl+A instead of <HOME> and Ctrl+E as <END>\r\n" \
-              "% <Ctrl>+R      : History search. Press Ctrl+R and start typing. Press <ENTER> \r\n" \
+              "% <HOME>, <END> : Use Ctrl+A instead of <HOME> and Ctrl+E as <END>\r\n" \
+              "% Ctrl+R        : History search. Press Ctrl+R and start typing. Press <ENTER> \r\n" \
               "%                 to search for command executed before\r\n" \
-              "% <Ctrl>+W      : Wipe : clear input line\r\n" \
-              "% <Ctrl>+O      : Move 1 word to the left. Cursor will be positioned at the\r\n" \
+              "% Ctrl+W        : Wipe : clear input line\r\n" \
+              "% Ctrl+O        : Move 1 word to the left. Cursor will be positioned at the\r\n" \
               "%                 beginning of the word\r\n" \
-              "% <Ctrl>+P      : Move 1 word to the right. Cursor will be positioned at the\r\n" \
+              "% Ctrl+P        : Move 1 word to the right. Cursor will be positioned at the\r\n" \
               "%                 end of the word\r\n%\r\n" \
-              "% Terminal compatibility workarounds : \r\n%\r\n" \
-              "% <Enter> is also <Ctrl>+J or <Ctrl>+M\r\n" \
-              "% <- -> (arrows) are also <Ctrl>+B and <Ctrl>+F\r\n" \
-              "% <DEL> can be entered as <Ctrl>+D; <BACKSPACE> is <Ctrl>+H\r\n" \
-              "% <HOME> and <END> are <Ctrl>+A, and <Ctrl>+E respectively\r\n");
+              "% -- Terminal compatibility workarounds (alternative key sequences) --\r\n%\r\n" \
+              "% Ctrl+J and Ctrl+M work as <ENTER>\r\n" \
+              "% Ctrl+B and Ctrl+F work as <- and -> (left & right arrows)>\r\n" \
+              "% Ctrl+D works as <Delete> key\r\n" \
+              "% Ctrl+H works as <BACKSPACE> key\r\n"
+              "% Ctrl+A is <HOME> and <Ctrl>+E is <END>\r\n");
       return 0;
     } else { // "? command"
       i = 0;
       bool found = false;
+      // go through all matched commands (only name is matched) and print their
+      // help lines. hidden commands are ignored
       while (keywords[i].cmd) {
         if (keywords[i].help || keywords[i].brief) {  //skip hidden commands
           if (!q_strcmp(argv[1], keywords[i].cmd)) {
@@ -4078,6 +4140,7 @@ static int cmd_question(int argc, char **argv) {
         }
         i++;
       }
+      // return 1 if arguemnt #1 was not understood
       return found ? 0 : 1; 
     }
     //NOTREACHED
@@ -4085,8 +4148,7 @@ static int cmd_question(int argc, char **argv) {
   } // if (argc > 1)
 
   // process "?" command (no arguments given)
-  // commands which are shorter than INDENT will be padded with extra
-  // spaces to be INDENT bytes long
+  // commands which are shorter than INDENT will be padded with extra spaces to be INDENT bytes long
   memset(indent, ' ', INDENT);
   indent[INDENT] = 0;
   char *spaces;
@@ -4168,14 +4230,13 @@ espshell_command(char *p) {
       if (!q_strcmp(argv[0],keywords[i].cmd)) {
         found = true;
         // command & user input match when both name & number of arguments match.
-        // one special case is command with min_argc < 0 : these are matched always
+        // one special case is command with argc < 0 : these are matched always
         // (-1 == "take any number of arguments")
-        if (((argc - 1) == keywords[i].min_argc) || (keywords[i].min_argc < 0)) {
+        if (((argc - 1) == keywords[i].argc) || (keywords[i].argc < 0)) {
 
           // execute the command. 
           // if nonzero value is returned then it is an index of the "failed" argument (value of 3 means argv[3] was bad (for values > 0))
-          // value of zero means successful execution
-          // return code <0 means argument number was wrong (missing argument)
+          // value of zero means successful execution, return code <0 means argument number was wrong (missing argument)
             
           if (keywords[i].cb) {
             //!!! handler MAY change keywords pointer! keywords[i] may be invalid pointer after
@@ -4199,9 +4260,6 @@ espshell_command(char *p) {
       if (found)  //we had a name match but number of arguments was wrong
         q_printf("%% \"%s\": wrong number of arguments (\"? %s\" for help)\r\n", argv[0], argv[0]);
       else
-#if WITH_HELP      
-notfound:
-#endif
         q_printf("%% \"%s\": command not found\r\n", argv[0]);
     }
 #if WITH_HELP
