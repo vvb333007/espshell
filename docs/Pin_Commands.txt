@@ -60,7 +60,7 @@ display information on non-existing pin (pin 999 as an example):
 
   esp32#>pin 999
   % Available pin numbers are are 0..39, except 24,28,29,30,31,
-  % Invalid argument "999" ("pin ?" for help)
+  % Invalid argument "999" ("? pin" for help)
   esp32#>
 
 Output above tells the pin range and shows pins which simply do not 
