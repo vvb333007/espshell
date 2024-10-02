@@ -2013,8 +2013,6 @@ static const struct keywords_t keywords_main[] = {
     "% Time is measured in milliseconds, optional. Default is 1000\r\n" \
     "% Pulse edge type is optional. Default is \"pos\"\r\n" \
     "%\r\n" \
-    "% NOTE: It is a 16-bit counter so consider using shorter delays on frequencies > 30Khz\r\n" \
-    "%\r\n" \
     "% Ex.: \"count 4\"           - count positive edges on pin 4 for 1000ms\r\n" \
     "% Ex.: \"count 4 2000\"      - count pulses (falling edge) on pin 4 for 2 sec.\r\n" \
     "% Ex.: \"count 4 2000 both\" - count pulses (falling and rising edge) on pin 4 for 2 sec."), "Pulse counter" },
@@ -2778,25 +2776,35 @@ static int cmd_seq_show(int argc, char **argv) {
 
 #include "driver/gpio.h"
 #include "driver/pcnt.h"
+#include "soc/pcnt_struct.h"
+#include "esp_timer.h"
 
-#define PULSE_WAIT 1000
+#define PULSE_WAIT    1000
+#define PCNT_OVERFLOW 20000
+
+
+// PCNT interrupt handler. Called every 20 000 pulses 2 times :).
+// i do not know why. should read docs better
+static unsigned int count_overflow = 0;
+
+static void IRAM_ATTR pcnt_interrupt(void *arg) {
+  count_overflow++;
+  PCNT.int_clr.val = BIT(PCNT_UNIT_0);
+}
+
 
 //TAG:count
-//"count PIN [neg|pos|both [DELAY_MS]]"
+//"count PIN [DELAY_MS [pos|neg|both]]"
 //
-// To deal with counter overflows interrupts must be used.
-// At the same time I want to keep it simple: just tell
-// the user to use shorter delays on higher frequencies
 static int cmd_count(int argc, char **argv) {
 
   pcnt_config_t cfg;
-  int16_t count;
   unsigned int pin, wait = PULSE_WAIT;
+  int16_t count;
 
   //pin number
   if (!isnum(argv[1]))
     return 1;
-
 
   memset(&cfg, 0, sizeof(cfg));
 
@@ -2810,6 +2818,8 @@ static int cmd_count(int argc, char **argv) {
   cfg.unit = PCNT_UNIT_0;
   cfg.pos_mode = PCNT_COUNT_INC;  
   cfg.neg_mode = PCNT_COUNT_DIS;
+  cfg.counter_h_lim = PCNT_OVERFLOW;
+ 
 
   // user has provided second argument?
   if (argc > 2) {
@@ -2832,11 +2842,22 @@ static int cmd_count(int argc, char **argv) {
   pcnt_unit_config(&cfg);
   pcnt_counter_pause(PCNT_UNIT_0);
   pcnt_counter_clear(PCNT_UNIT_0);
+  pcnt_event_enable(PCNT_UNIT_0, PCNT_EVT_H_LIM);
+  pcnt_isr_register(pcnt_interrupt, NULL, 0, NULL);
+  pcnt_intr_enable(PCNT_UNIT_0);
+  
+  count_overflow = 0;
   pcnt_counter_resume(PCNT_UNIT_0);
   wait = delay_interruptible(wait);
   pcnt_counter_pause(PCNT_UNIT_0);
+
   pcnt_get_counter_value(PCNT_UNIT_0, &count);
-  q_printf("%lu pulses in %.3f sec\r\n", (unsigned long)count, (float)wait / 1000.0f);
+
+  pcnt_event_disable(PCNT_UNIT_0, PCNT_EVT_H_LIM);
+  pcnt_intr_disable(PCNT_UNIT_0);
+
+  count_overflow = count_overflow/2 * PCNT_OVERFLOW + count;
+  q_printf("%u pulses in %.3f sec\r\n", count_overflow, (float)wait / 1000.0f);
   return 0;
 }
 
@@ -2970,7 +2991,7 @@ static void pin_load(int pin) {
   // FIXME: periman does not know anything about these changes!
   // FIXME: check if I2C pin can be reused in live I2C connection bby load/high/resore 
   if (Pins[pin].fun_sel != PIN_FUNC_GPIO)
-    q_printf("%% Pin %d IO MUX connection can not be restored\r\n");
+    q_printf("%% Pin %d IO MUX connection can not be restored\r\n",pin);
   else {
     if (Pins[pin].bus_type == ESP32_BUS_TYPE_INIT || Pins[pin].bus_type == ESP32_BUS_TYPE_GPIO) {
       gpio_pad_select_gpio(pin);
@@ -3934,7 +3955,7 @@ static int cmd_cpu(int argc, char **argv) {
              temperatureRead());
 
   q_printf("%%\r\n%% Sketch is running on " ARDUINO_BOARD "/(" ARDUINO_VARIANT "), uses Arduino Core v%s, based on\r\n%% Espressif ESP-IDF version \"%s\"\r\n",ESP_ARDUINO_VERSION_STR,esp_get_idf_version());
-
+  cmd_uptime(argc,argv);
   return 0;
 }
 
@@ -4366,4 +4387,3 @@ static void espshell_task(const void *arg) {
  *    ever read sources, credits must appear in the documentation.
  * 4. This notice may not be removed or altered.
  */
-
