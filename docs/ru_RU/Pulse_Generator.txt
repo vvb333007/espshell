@@ -41,7 +41,7 @@ SEQUENCES_NUM в espshell.c).
 
   esp32#>seq 0
   esp32-seq#>?
-  % Enter "command ?" to get details about the command.
+  % Enter "? command" to get details about the command.
   % List of available commands:
   %
   % "?"          : Show the list of available commands
@@ -230,7 +230,7 @@ NEC для ИК пультов управления. Команда приним
 
   esp32-seq#>modulation 0
 
-Выполнив команду "modulation ?" можно посмотреть на примеры ее использования.
+Выполнив команду "? modulation" можно посмотреть на примеры ее использования.
 
 Команда "eot" задает состояние пина (HIGH или LOW) по окончании передачи. 
 Значение по умолчанию - LOW
