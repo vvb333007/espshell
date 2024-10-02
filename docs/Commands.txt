@@ -164,6 +164,10 @@ Here is the list of currently supported commands:
 
 "echo on"  - Default is to echo user input & display espshell prompt
 
+"echo silent" - Completely disable ALL espshell output to the terminal. No error
+                messages will be displayed. Commands being executed will not
+                display anything.
+
 "suspend"  - Pause Arduino's loop(). Tasks that were started by the loop()
            - task are not suspended by this command
 
