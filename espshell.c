@@ -3160,7 +3160,6 @@ static bool pin_is_strapping_pin(int pin) {
     case 0: case 3: case 45: case 46:
 #endif
 #ifdef CONFIG_IDF_TARGET_ESP32C3
-ESP32-C3	GPIO2, GPIO8, GPIO9
     case 2: case 8: case 9:
 #endif
 #ifdef CONFIG_IDF_TARGET_ESP32C6
@@ -3188,20 +3187,24 @@ static int pin_show(int argc, char **argv) {
   if (!isnum(argv[1])) return 1;
   if (!pin_exist((pin = atol(argv[1])))) return 1;
 
-  bool pu, pd, ie, oe, od, sleep_sel;
+  bool pu, pd, ie, oe, od, sleep_sel, res;
   uint32_t drv, fun_sel, sig_out;
+  int type;
 
-  q_printf("%% Pin %d is %s",pin, esp_gpio_is_pin_reserved(pin) ? "**RESERVED**, " : "");
+  res = esp_gpio_is_pin_reserved(pin);
+  q_printf("%% Pin %d is %s",pin, res ? "**RESERVED**, " : "");
   if (pin_is_strapping_pin(pin))
     q_print("strapping pin, ");
 
-
-  int type = perimanGetPinBusType(pin);
-  if (type == ESP32_BUS_TYPE_INIT)
-    q_printf("available, not configured\r\n");
+  if (!res)
+    q_print("available, ");
+  
+  q_print("and is ");
+  if ((type = perimanGetPinBusType(pin)) == ESP32_BUS_TYPE_INIT)
+    q_print("not used by Arduino Core\r\n");
   else {
     if (type == ESP32_BUS_TYPE_GPIO)
-      q_print("available, configured as GPIO\r\n");
+      q_print("configured as GPIO\r\n");
     else
       q_printf("used as \"%s\"\r\n",perimanGetTypeName(type));
   }
