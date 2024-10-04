@@ -26,7 +26,9 @@ COMMANDS
 To configure/access I2C interface command "iic X" is used where X is the
 number of I2C interface we want to configure. Once command is executed
 the espshell prompt changes to esp32-i2c#> indicating that we are in I2C
-configuration mode. Use command "exit" (or "ex") to exit this mode
+configuration mode. Use command "exit" (or "ex") to exit this mode; or
+you can press Ctrl+Z which is the same as entering "exit" command (works
+in terminal, does not work in Arduino Serial Monitor)
 
 There are number of commands available under I2C configuration mode:
 
@@ -121,4 +123,4 @@ clock to 150kHz.  Maximum value supported is 1 MHz.
 
 Command "down" shudowns I2C interface.
 
-Use command "exit" to exit I2C configuration mode
+Use command "exit" or Ctrl+Z to exit I2C configuration mode
