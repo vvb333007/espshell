@@ -3017,10 +3017,6 @@ static int pwm_enable(unsigned int pin, unsigned int freq, float duty) {
   if (freq) {
     if (ledcAttach(pin, freq, resolution) == 0)
       return -1;
-    //TODO: find out why removing one of ledcWrite below
-    //      leads to unstable generator start
-    ledcWrite(pin, (unsigned int)(duty * ((1 << resolution) - 1)));
-    ledcWriteTone(pin, freq);
     ledcWrite(pin, (unsigned int)(duty * ((1 << resolution) - 1)));
   }
 
