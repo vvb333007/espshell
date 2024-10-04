@@ -37,7 +37,7 @@ We start from entering sequence configuration mode:
 Command "sequence 0"  enter sequence0 configuration mode (numbers must
 be in range 0..9 so only 10 sequences can be created). This command changes 
 the espshell prompt to "esp32-seq#>" indicating that user is in sequence
-configuration mode. To exit this mode type "exit".
+configuration mode. To exit this mode type "exit" or press Ctrl+Z.
 
 
 First we need to set a resolution for the sequence, a tick length. Pulse
@@ -157,9 +157,9 @@ choose 3.2 and define "one" and "zero" to maximum length:
   esp32-seq#>zero 0/32767
   esp32-seq#>bits 11111111000000001111111100000000
 
-Exit sequence configuration mode using "exit" command. Note that commands can 
-be entered in their short form (say "seq" instead of "sequence" or "ex" instead 
-"exit" of)
+Exit sequence configuration mode using "exit" command or by pressing Ctrl+Z. Note 
+that commands can be entered in their short form (say "seq" instead of "sequence" 
+or "ex" instead of "exit")
 
 Assign sequence to the pin (start the sequence). If you have LED connected to 
 pin 2 you'll see it blinking
