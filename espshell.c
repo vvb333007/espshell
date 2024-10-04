@@ -45,6 +45,7 @@
  */
 
 #undef WITH_HELP
+#undef WITH_VAR
 #undef UNIQUE_HISTORY
 #undef HIST_SIZE
 #undef STACKSIZE
@@ -58,6 +59,7 @@
 //#define ESPCAM               //include ESP32CAM commands (read extra/README.md).
 
 #define WITH_HELP      1          // Set to 0 to save some program space by excluding help strings/functions
+#define WITH_VAR       0          // Enable or disable "var" command. Default is "disabled"
 #define UNIQUE_HISTORY 1          // Wheither to discard repeating commands from the history or not
 #define HIST_SIZE      20         // History buffer size (number of commands to remember)
 #define STACKSIZE      5000       // Shell task stack size
@@ -96,8 +98,6 @@
 
 #include <Arduino.h>
 
-
-
 //autostart espshell
 static void __attribute__((constructor)) espshell_start();
 
@@ -111,9 +111,9 @@ static uart_port_t uart = USE_UART;
 
 // Make ESPShell to use specified UART (or USB) for
 // its IO. By default we are running on UART0. Setting interface
-// port to UART_NUM_MAX means to "use native USB console"
+// port to 99 means to "use native USB console"
 // 
- int console_attach2port(uart_port_t i) {
+ int console_attach2port(int i) {
 
   if (i < 0)
     return uart;
@@ -121,7 +121,7 @@ static uart_port_t uart = USE_UART;
   if (i > UART_NUM_MAX)
     return -1;
 
-  if (i == UART_NUM_MAX) {
+  if (i == 99) {
 #if SERIAL_IS_USB
 # error "console_attach2port() : Not implemented"    
 #endif    
@@ -1440,7 +1440,9 @@ static int cmd_seq_tick(int argc, char **argv);
 static int cmd_seq_bits(int argc, char **argv);
 static int cmd_seq_levels(int argc, char **argv);
 static int cmd_seq_show(int argc, char **argv);
-
+#if WITH_VAR
+static int cmd_var(int, char **);
+#endif
 static int cmd_show(int, char **);
 
 static int cmd_exit(int, char **);
@@ -1465,17 +1467,17 @@ static bool isnum(const char *p) {
 }
 
 // check if ascii string is a float number
-// NOTE: only positive values are accepted
 // NOTE: "0.5" and ".5" are both valid inputs
 static bool isfloat(const char *p) {
   bool dot = false;
-  
+  if (*p == '-')
+    p++;
   while ((*p >= '0' && *p <= '9') || (*p == '.' && !dot)) {
     if (*p == '.')
       dot = true;
     p++;
   }
-  return !(*p);  //if *p is 0 then all the chars were digits (end of line reached).
+  return !(*p);  //if *p is 0 then all the chars were ok. (end of line reached).
 }
 
 
@@ -1531,15 +1533,19 @@ static unsigned char ascii2hex(const char *p) {
 // q_strcmp("seq","sequence") == 0
 // q_strcmp("sequence","seq") == 1
 //
- static int q_strcmp(const char *partial, const char *full) {
+static int q_strcmp(const char *partial, const char *full) {
 
     int plen = strlen(partial);
 
     if (plen > strlen(full))
       return 1;
   return strncmp(partial,full, plen);
+}
 
- }
+static inline char *q_findchar(char *str, char sym) {
+  while(*str && sym != *str++) ;
+  return *str ? str : NULL;
+}
 
 
 // adopted from esp32-hal-uart.c Arduino Core
@@ -1672,6 +1678,72 @@ static void q_printhex(const unsigned char *p, unsigned int len) {
     }
   }
 }
+
+#if WITH_VAR
+// Console Variables.
+//
+// User sketch can register global or static variables to be accessible
+// from ESPShell. Once registered, variables can be manipulated by
+// "var" command. See "extra/espshell.h" for convar_add() definition
+
+struct convar {
+	struct convar *next;
+	const char    *name;
+	void          *ptr;
+	int            size;
+};
+
+static struct convar *var_head = NULL;
+
+// register new sketch variable.
+//
+void espshell_varadd(const char *name, void *ptr, int size) {
+
+	struct convar *var;
+
+	if (size != 1 && size != 2 && size != 4)
+		return;
+
+	if ((var = (struct convar *)malloc(sizeof(struct convar))) != NULL) {
+		var->next = var_head;
+		var->name = name;
+		var->ptr  = ptr;
+		var->size = size;
+		var_head = var;
+	}
+	
+}
+
+// get registered variable value
+//
+static int convar_get(const char *name, void *value) {
+
+	struct convar *var = var_head;
+	while (var) {
+		if (!strcmp(var->name,name)) {
+      memcpy(value,var->ptr,var->size);
+      return 0;
+		}
+		var = var->next;
+	}
+  return -1;
+}
+
+// set registered variable value
+//
+static int convar_set(const char *name, void *value) {
+	struct convar *var = var_head;
+	while (var) {
+		if (!strcmp(var->name,name)) {
+			memcpy(var->ptr, value, var->size);
+      return 0;
+    }
+		var = var->next;
+	}
+  return -1;
+}
+#endif //WITH_VAR
+
 
 #if SERIAL_IS_USB
 static bool anykey_pressed() {
@@ -2000,7 +2072,8 @@ static const struct keywords_t keywords_main[] = {
     "%\r\n" \
     "% Start PWM generator on pin X, frequency FREQ Hz and duty cycle of DUTY\r\n" \
     "% Max frequency is 312000 Hz\r\n" \
-    "% Value of DUTY is in range [0..1] with 0.123 being a 12.3% duty cycle"), "PWM output" },
+    "% Value of DUTY is in range [0..1] with 0.123 being a 12.3% duty cycle" \
+    "% Duty resolution is 0.005 (0.5%)"), "PWM output" },
 
   { "pwm", cmd_pwm, 2,HELP("% \"pwm X FREQ\"\r\n"
     "% Start squarewave generator on pin X, frequency FREQ Hz\r\n"
@@ -2016,9 +2089,17 @@ static const struct keywords_t keywords_main[] = {
     "% Ex.: \"count 4\"           - count positive edges on pin 4 for 1000ms\r\n" \
     "% Ex.: \"count 4 2000\"      - count pulses (falling edge) on pin 4 for 2 sec.\r\n" \
     "% Ex.: \"count 4 2000 both\" - count pulses (falling and rising edge) on pin 4 for 2 sec."), "Pulse counter" },
-
   { "count", cmd_count, 2, HIDDEN_KEYWORD },  //hidden "count" with 2 args
   { "count", cmd_count, 1, HIDDEN_KEYWORD },  //hidden with 1 arg
+#if WITH_VAR
+  { "var", cmd_var, -1,HELP("% \"var [VARIABLE_NAME[ NUMBER]]\r\n%\r\n" \
+    "% Set sketch variable to new value.\r\n" \
+    "% NUMBER can be integer or float point values, positive or negative\r\n" \
+    "%\r\n" \
+    "% Ex.: \"var button1\" - Display current value of \"button1\" sketch variable\r\n" \
+    "% Ex.: \"var a -12.3\" - Set sketch variable \"a\"to new value \"-12.3\"\r\n" \
+    "% Ex.: \"var\"         - List all variables"), "Sketch variables" },
+#endif //WITH_VAR
 
 #ifdef EXTERNAL_KEYWORDS
 #include EXTERNAL_KEYWORDS
@@ -2182,15 +2263,7 @@ static void seq_dump(int seq) {
   q_printf("%% Pull pin %s after transmission is done\r\n", s->eot ? "HIGH" : "LOW");
 }
 
-// convert a level string to numerical values:
-// "1/500" gets converted to level=1 and duration=500
-// level is either 0 or 1, duration 0..32767
-//
-// called with first two arguments set to NULL performs
-// syntax check on arguments only
-//
-// returns 0 on success, <0 - error code
-//
+#if 0
 static int seq_atol(int *level, int *duration, char *p) {
 
   char *lp = p;
@@ -2201,8 +2274,8 @@ static int seq_atol(int *level, int *duration, char *p) {
     if (*p == '/' || *p == '\\') {
       if (dp)
         return -1;  // separator was found already
-      if (level)
-        *p = '\0';  // spli the string for atoi
+      //if (level)
+      *p = '\0';  // split the string for atol
       dp = p + 1;
     } else if (*p < '0' || *p > '9')
       return -1;
@@ -2213,25 +2286,30 @@ static int seq_atol(int *level, int *duration, char *p) {
   if (!*lp)  { // separator was the first symbol
     *lp = '/'; // make parser happy: "invalid argument" message will contain failed element, not ""
     return -3;
-  }
-
-  if ((l = atol(lp)) > 1)
-    return -4;
-
-  if (level)
-    *level = l;
-  
-  *(dp - 1) = '/';  // restore separator
-
-  if ((d = atol(dp)) > 32767)
-    return -5;
-
-  if (duration)
-    *duration = d;
-
-  return 0;
 }
+#else
 
+// convert a level string to numerical values:
+// "1/500" gets converted to level=1 and duration=500
+// level is either 0 or 1, duration 0..32767
+//
+// called with first two arguments set to NULL performs
+// syntax check on arguments only
+//
+// returns 0 on success, <0 - syntax error
+//
+
+static int seq_atol(int *level, int *duration, char *p) {
+  unsigned int d;
+  if (p && (p[0] == '0' || p[0] == '1') && (p[1] == '/' || p[1] == '\\')) 
+    if (isnum(p + 2) && ((d = atol(p + 2)) <= 32767)) {
+      if (level)    *level    = *p - '0';
+      if (duration) *duration =  d;
+      return 0;
+    }
+  return -1;
+}
+#endif
 
 // free memory buffers associated with the sequence:
 // ->"bits" and ->"seq"
@@ -2509,8 +2587,10 @@ static int cmd_seq_modulation(int argc, char **argv) {
 
     duty = atof(argv[2]);
 
-    if (duty <= 0.0f || duty > 1.0f) {
-      q_print("% Duty cycle is a number in range (0 .. 1] : 0.5 means 50% duty\r\n");
+    if (duty < 0.0f || duty > 1.0f) {
+#if WITH_HELP      
+      q_print("% Duty cycle is a number in range [0..1] (0.01 means 1% duty)\r\n");
+#endif      
       return 2;
     }
   }
@@ -2615,13 +2695,11 @@ static int cmd_seq_tick(int argc, char **argv) {
   sequences[Context].tick = atof(argv[1]);
 
   if (sequences[Context].tick < 0.0125 || sequences[Context].tick > 3.2f) {
+#if WITH_HELP    
     q_print("% Tick must be in range 0.0125..3.2 microseconds\r\n");
+#endif    
     return 1;
   }
-
-  // either "0" or not number was entered
-  if (!sequences[Context].tick)
-    return 1;
 
   seq_compile(Context);
 
@@ -2861,16 +2939,67 @@ static int cmd_count(int argc, char **argv) {
   return 0;
 }
 
+#if WITH_VAR
+// "var"
+// "var X"
+// "var X NUMBER"
+static int cmd_var(int argc, char **argv) {
+
+  union {
+    int ival;
+    unsigned int uval;
+    float fval;
+  } u;
+
+  // "var": display variables list if no arguments were given
+  if (argc < 2) {
+    struct convar *var = var_head;
+    q_print("% Registered variables:\r\n");
+    while (var) {
+      q_printf("\"%s\", %d bytes long\r\n",var->name,var->size);
+      var = var->next;
+    }
+    return 0;
+  }
+
+  //"var X": display variable value
+  
+  if (argc < 3) {
+    if (convar_get(argv[1],&u) < 0)
+      return 1;
+    q_printf("\"%s\" == Unsigned: %u, Signed: %d, Float: %f (0x%x)\r\n",argv[1],u.uval,u.ival,u.fval,u.uval);
+    return 0;
+  }
+
+  if (argc < 4) {
+    if (isnum(argv[2])) {
+        if (argv[2][0] == '-')
+          u.ival = atoi(argv[2]);
+        else
+          u.uval = atol(argv[2]);
+      } else if (isfloat(argv[2]))
+        u.fval = atof(argv[2]);
+      else
+        return 2;
+
+    if (convar_set(argv[1],&u) < 0)
+      return 1;
+    return 0;  
+  }
+
+  return -1;  
+}
+#endif //WITH_VAR
 
 
-//TAG:tone
+//TAG:pwm
 #include "soc/soc_caps.h"
 #include "esp32-hal-ledc.h"
 
 // enable or disable (freq==0) tone generation on
-// pin. freq is in (0..78kHz), duty is [0..1]
+// pin. freq is in (0..312kHz), duty is [0..1]
 //
-static int tone_enable(unsigned int pin, unsigned int freq, float duty) {
+static int pwm_enable(unsigned int pin, unsigned int freq, float duty) {
 
   int resolution = 8;
 
@@ -2879,6 +3008,8 @@ static int tone_enable(unsigned int pin, unsigned int freq, float duty) {
 
   if (freq > MAGIC_FREQ) freq = MAGIC_FREQ;
   if (duty > 1.0f)       duty = 1.0f;
+  if (freq < 78722)
+    resolution = 10;
 
   pinMode(pin,OUTPUT);
   ledcWriteTone(pin, 0); //disable ledc at pin.
@@ -2886,6 +3017,9 @@ static int tone_enable(unsigned int pin, unsigned int freq, float duty) {
   if (freq) {
     if (ledcAttach(pin, freq, resolution) == 0)
       return -1;
+    //TODO: find out why removing one of ledcWrite below
+    //      leads to unstable generator start
+    ledcWrite(pin, (unsigned int)(duty * ((1 << resolution) - 1)));
     ledcWriteTone(pin, freq);
     ledcWrite(pin, (unsigned int)(duty * ((1 << resolution) - 1)));
   }
@@ -2922,9 +3056,15 @@ static int cmd_pwm(int argc, char **argv) {
     if (!isfloat(argv[3])) 
       return 3;
     duty = atof(argv[3]);
+    if (duty < 0 || duty > 1) {
+#if WITH_HELP      
+      q_print("% Duty cycle is a number in range [0..1] (0.01 means 1% duty)\r\n");
+#endif
+      return 3;
+    }
   }
 
-  if (tone_enable(pin,freq,duty) < 0) {
+  if (pwm_enable(pin,freq,duty) < 0) {
 #if WITH_HELP
     q_print(Failed);
 #endif    
@@ -2986,22 +3126,18 @@ static void pin_load(int pin) {
   //   If pin had a connection through GPIO Matrix, restore IN & OUT signals connection (use same
   //   signal number for both IN and OUT. Probably it should be fixed)
   //
-  // FIXME: periman does not know anything about these changes!
-  // FIXME: check if I2C pin can be reused in live I2C connection bby load/high/resore 
   if (Pins[pin].fun_sel != PIN_FUNC_GPIO)
     q_printf("%% Pin %d IO MUX connection can not be restored\r\n",pin);
   else {
     if (Pins[pin].bus_type == ESP32_BUS_TYPE_INIT || Pins[pin].bus_type == ESP32_BUS_TYPE_GPIO) {
       gpio_pad_select_gpio(pin);
-      //if bus type was INIT OUTPUT then output digital value
-      //will be undefined
-      if (Pins[pin].flags & OUTPUT)
+      
+      // restore digital value
+      if ((Pins[pin].flags & OUTPUT) && (Pins[pin].bus_type == ESP32_BUS_TYPE_GPIO))
         digitalWrite(pin, Pins[pin].value ? HIGH : LOW);
     }
     else {
-      // restore GPIO matrix connections. Periman, however is not
-      // notified of this change
-      // TODO: save & restore INVERT, INPUT_ENABLE_INVERT flags
+      // unfortunately this will not work with Arduino :(
       if (Pins[pin].flags & OUTPUT) 
         gpio_matrix_out(pin,Pins[pin].sig_out,false,false);
       if (Pins[pin].flags & INPUT) 
@@ -3010,7 +3146,40 @@ static void pin_load(int pin) {
   }
 }
 
+// strapping pins as per Technical Reference
+//
+static bool pin_is_strapping_pin(int pin) {
+  switch (pin) {
+#ifdef CONFIG_IDF_TARGET_ESP32
+    case 0: case 2: case 5: case 12: case 15: 
+#endif
+#ifdef CONFIG_IDF_TARGET_ESP32S2
+    case 0: case 45: case 46:
+#endif
+#ifdef CONFIG_IDF_TARGET_ESP32S3
+    case 0: case 3: case 45: case 46:
+#endif
+#ifdef CONFIG_IDF_TARGET_ESP32C3
+ESP32-C3	GPIO2, GPIO8, GPIO9
+    case 2: case 8: case 9:
+#endif
+#ifdef CONFIG_IDF_TARGET_ESP32C6
+    case 8: case 9: case 12: case 14: case 15:
+#endif
+#ifdef CONFIG_IDF_TARGET_ESP32H2
+    case 8: case 9: case 25:
+#endif
+      return true;
+default:
+      return false;
+  }
+}
 
+
+// called by "pin X"
+// moved to a separate function to offload giant cmd_pin() a bit
+// 
+// Display pin information: function, direction, mode, pullup/pulldown etc
 static int pin_show(int argc, char **argv) {
 
   unsigned int pin, informed = 0;
@@ -3023,6 +3192,9 @@ static int pin_show(int argc, char **argv) {
   uint32_t drv, fun_sel, sig_out;
 
   q_printf("%% Pin %d is %s",pin, esp_gpio_is_pin_reserved(pin) ? "**RESERVED**, " : "");
+  if (pin_is_strapping_pin(pin))
+    q_print("strapping pin, ");
+
 
   int type = perimanGetPinBusType(pin);
   if (type == ESP32_BUS_TYPE_INIT)
@@ -3033,6 +3205,7 @@ static int pin_show(int argc, char **argv) {
     else
       q_printf("used as \"%s\"\r\n",perimanGetTypeName(type));
   }
+
 
   gpio_ll_get_io_config(&GPIO, pin, &pu, &pd, &ie, &oe, &od, &drv, &fun_sel, &sig_out, &sleep_sel);
 
@@ -3053,7 +3226,7 @@ static int pin_show(int argc, char **argv) {
       if (sig_out == SIG_GPIO_OUT_IDX)
         q_print("simple GPIO output\r\n");
       else
-        q_printf("provides path for signal ID: %u\r\n",sig_out);
+        q_printf("provides path for signal ID: %lu\r\n",sig_out);
     } else if (oe && fun_sel != PIN_FUNC_GPIO) {
       q_print("% Output is done via IO MUX, ");
       //TODO: get IOMUX function
@@ -3083,17 +3256,21 @@ static int pin_show(int argc, char **argv) {
     q_print(CRLF);
 
   
+  //TODO: ESP32S3 has its pin 18 and 19 drive capability of 3 but the meaning is 2 and vice-versa
+  //      Other versions probably have the same behaviour on some other pins
   q_printf("%% Maximum current is %u milliamps\r\n", !drv ? 5 : (drv == 1 ? 10 : (drv == 2 ? 20 : 40)));
   
   if (sleep_sel)
     q_print("% Sleep select: YES\r\n");
-
+#if 1
   if (type == ESP32_BUS_TYPE_GPIO)
     q_printf("%% Digital pin value is %s\r\n",digitalRead(pin) == HIGH ? "HIGH (1)" : "LOW (0)");
+#else
+  q_printf("%% Digital pin value is %s\r\n",gpio_ll_get_level(&GPIO,pin) ? "HIGH (1)" : "LOW (0)");
+#endif    
 
   return 0;
 }
-
 
 // "pin NUM arg1 arg2 .. argn"
 // "pin NUM"
@@ -3102,7 +3279,7 @@ static int pin_show(int argc, char **argv) {
 static int cmd_pin(int argc, char **argv) {
 
   unsigned int flags = 0;
-  int i = 2, level = -1, pin;
+  int i = 2, pin;
 
   // repeat whole "pin ..." command "count" times.
   // this number can be changed by "loop" keyword
@@ -3162,7 +3339,7 @@ static int cmd_pin(int argc, char **argv) {
         // make sure that there are 2 extra arguments after "pwm" keyword
         if ((i+2) >= argc) {
 #if WITH_HELP          
-          q_print("% Frequency (integer) and duty cycle (float 0..1) are expected\r\n");
+          q_print("% Frequency and duty cycle are both expected\r\n");
 #endif          
           return i;
         }
@@ -3170,24 +3347,31 @@ static int cmd_pin(int argc, char **argv) {
         i++;
 
         // frequency must be an integer number and duty must be a float point number
-        if (!isnum(argv[i])) {
-#if WITH_HELP
-          q_printf("Integer number expected instead of \"%s\"\r\n",argv[i]);
-#endif          
+        if (!isnum(argv[i]))
           return i; 
-        }
-        freq = atol(argv[i++]);
-        if (!isfloat(argv[i])) {
+        
+        
+        if ((freq = atol(argv[i++])) > MAGIC_FREQ) {
 #if WITH_HELP
-          q_printf("Float number expected instead of \"%s\"\r\n",argv[i]);
-#endif          
-          return i; 
+          q_print("% Frequency must be in range [1.." xstr(MAGIC_FREQ) "] Hz\r\n");
+#endif
+          return i - 1;
         }
+
+        if (!isfloat(argv[i]))
+          return i; 
+        
         duty = atof(argv[i]);
+        if (duty < 0 || duty > 1) {
+#if WITH_HELP      
+          q_print("% Duty cycle is a number in range [0..1] (0.01 means 1% duty)\r\n");
+#endif
+          return i;
+        }
 
         // enable/disable tone on given pin. if freq is 0 then tone is
         // disabled
-        if (tone_enable(pin,freq,duty) < 0) {
+        if (pwm_enable(pin,freq,duty) < 0) {
 #if WITH_HELP
           q_print(Failed);
 #endif          
@@ -4121,7 +4305,7 @@ static int cmd_question(int argc, char **argv) {
   if (argc > 1) {
     if (!q_strcmp(argv[1],"keys")) {
       // 25 lines maximum to fit in default terminal window without scrolling
-      q_print("%             -- ESPShell Keys -- \r\n" \
+      q_print("%             -- ESPShell Keys -- \r\n\r\n" \
               "% <ENTER>       : Execute command.\r\n" \
               "% <- -> /\\ \\/   : Arrows: move cursor left or right. Up and down to scroll\r\n" \
               "%                 through command history\r\n" \
@@ -4140,7 +4324,7 @@ static int cmd_question(int argc, char **argv) {
               "% Ctrl+B and Ctrl+F work as <- and -> (left & right arrows)>\r\n" \
               "% Ctrl+D works as <Delete> key\r\n" \
               "% Ctrl+H works as <BACKSPACE> key\r\n"
-              "% Ctrl+A is <HOME> and <Ctrl>+E is <END>\r\n");
+              "% Ctrl+A is <HOME> and Ctrl+E is <END>\r\n");
       return 0;
     } else { // "? command"
       i = 0;
@@ -4316,7 +4500,7 @@ espshell_exec(const char *p) {
 }
 
 
-static bool started = false;
+static TaskHandle_t shell_task = 0;
 
 // shell task. reads and processes user input.
 //
@@ -4327,16 +4511,12 @@ static void espshell_task(const void *arg) {
 
   //start task and return
   if (arg) {
-    TaskHandle_t h;
-
-    if (started) {
+    if (shell_task != NULL) {
       q_print("% ESPShell is already started\r\n");
       return ;
     }
-    if (pdPASS != xTaskCreate((TaskFunction_t)espshell_task, NULL, STACKSIZE, NULL, tskIDLE_PRIORITY, &h))
+    if (pdPASS != xTaskCreate((TaskFunction_t)espshell_task, NULL, STACKSIZE, NULL, tskIDLE_PRIORITY, &shell_task))
       q_print("% ESPShell failed to start task\r\n");
-    else
-      started = true;
   } else {
 
     // wait until user code calls Serial.begin()
@@ -4356,6 +4536,7 @@ static void espshell_task(const void *arg) {
     q_print("% Bye!\r\n");
 #endif    
     vTaskDelete(NULL);
+    shell_task = NULL;
   }
 }
 
