@@ -20,13 +20,22 @@ Ctrl+R         : History search. Press Ctrl+R and start typing. Press <ENTER>
 
 Ctrl+W         : Wipe : clear input line
 
-Ctrl+O         : Move 1 word to the left. Cursor will be positioned at the
-                 beginning of the word
+Ctrl+O         : Move cursor 1 word/argument  to the left.
 
-Ctrl+P         : Move 1 word to the right. Cursor will be positioned at the
-                 end of the word
+Ctrl+P         : Move cursor 1 word/argument to the right.
+
+Ctrl+L         : Clear the screen
+
+Ctrl+Z         : Same as entering "exit" and pressing <ENTER>
 
 
+Please note that above list can be obtained by shell command "? keys". Also
+note that Ctrl+... sequences work on terminal software (TeraTerm, PuTTY, cu)
+but do not work in ArduinoIDE Serial Monitor as it lacks the ability to send
+Ctrl+... key sequences.
+
+By entering "? keys" command one also can find the key combinations which
+can be used on "dumb" terminals
 
 
 ESPSHELL COMMANDS AND THEIR DESCRIPTION
@@ -75,10 +84,13 @@ Here is the list of currently supported commands:
 
 
 "exit"     - Executed in a command subderictory exits from that 
-           - subdirectory; executed in main command tree does nothing unless
-           - it has 1 parameter, an optional keyword "exit": if this the case 
-           - then espshell exits and removes its task. Resources associated 
-           - with espshell are not freed.
+             subdirectory; executed in main command tree does nothing unless
+             it has 1 parameter, an optional keyword "exit": if this the case 
+             then espshell exits and removes its task. Resources associated 
+             with espshell are not freed.
+
+           - Hint: Ctrl+Z is a key which enters command "exit" and presses <Enter>
+
 
 "uptime"   - Shows how much time has passed since last boot
 
