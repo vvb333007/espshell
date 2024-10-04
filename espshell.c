@@ -101,38 +101,15 @@
 //autostart espshell
 static void __attribute__((constructor)) espshell_start();
 
+// misc forwards
 static int __attribute__((format (printf, 1, 2))) q_printf(const char *, ...);
 static int q_print(const char *);
 
 
-#include <driver/uart.h>
-static uart_port_t uart = USE_UART;
-
-
-// Make ESPShell to use specified UART (or USB) for
-// its IO. By default we are running on UART0. Setting interface
-// port to 99 means to "use native USB console"
-// 
- int console_attach2port(int i) {
-
-  if (i < 0)
-    return uart;
-
-  if (i > UART_NUM_MAX)
-    return -1;
-
-  if (i == 99) {
-#if SERIAL_IS_USB
-# error "console_attach2port() : Not implemented"    
-#endif    
-    return -1;
-  }
-
-  return (uart = i);
-}
-
-
 #ifdef SERIAL_IS_USB // Serial is class USBCDC
+static int console_here(int i) {
+#  error "console_here() is not implemented"  
+}
 static int console_write_bytes(const void *buf, size_t len) {
 #  error "console_write_bytes() is not implemented"  
   return 0;
@@ -146,21 +123,35 @@ static bool console_isup(int u) {
   return false;
 }
 #else // Serial is class HardwareSerial
-static int inline __attribute__((always_inline)) console_write_bytes(const void *buf, size_t len) {
-  return uart_write_bytes(uart,buf,len);
-}
-
-static int inline __attribute__((always_inline)) console_read_bytes(void *buf, uint32_t len, TickType_t wait) {
-  return uart_read_bytes(uart,buf,len,wait);
-}
+#include <driver/uart.h>
+static uart_port_t uart = USE_UART;
 
 static inline bool uart_isup(int u);
-static bool inline __attribute__((always_inline)) console_isup() {
-  
+
+static inline __attribute__((always_inline)) 
+int console_write_bytes(const void *buf, size_t len) {
+  return uart_write_bytes(uart,buf,len);
+}
+static inline __attribute__((always_inline)) 
+int console_read_bytes(void *buf, uint32_t len, TickType_t wait) {
+  return uart_read_bytes(uart,buf,len,wait);
+}
+static inline __attribute__((always_inline)) 
+bool console_isup() {
   return uart_isup(uart);
 }
-
+// Make ESPShell to use specified UART for its IO. Default is uart0.
+// console_here(-1) returns uart port number occupied by espshell
+static inline __attribute__((always_inline)) 
+int console_here(int i) {
+  return i < 0 ? uart : (i > UART_NUM_MAX ? -1 : (uart = i));
+}
 #endif //SERIAL_IS_USB
+
+// external command queue. 
+// commands placed on this queue gets executed first
+
+
 
 //========>=========>======= EDITLINE CODE BELOW (modified ancient version) =======>=======>
 
@@ -255,6 +246,10 @@ static int PushBack;
 static int Pushed;
 static int Signal = 0;
 
+static const char *TTYq = NULL;    //"command queue". if non-null then symbols are 
+                                   // fed to TTYget as if it was user input. No locking so far
+static unsigned int TTYq_len = 0;
+static unsigned int TTYq_txi = 0;
 
 static unsigned int Length;
 static unsigned int ScreenCount;
@@ -267,6 +262,7 @@ static int rl_meta_chars = 0;
 
 static unsigned char *editinput();
 static STATUS ring_bell();
+static STATUS inject_exit();
 
 static STATUS beg_line();
 static STATUS end_line();
@@ -293,6 +289,7 @@ static STATUS h_first();
 static STATUS h_last();
 
 static STATUS redisplay();
+static STATUS clear_screen();
 
 static STATUS transpose();
 static STATUS quote();
@@ -316,7 +313,7 @@ static const KEYMAP Map[] = {
   { CTL('H'), bk_del_char },
   { CTL('J'), accept_line },
   { CTL('K'), kill_line },
-  { CTL('L'), case_down_word },
+  { CTL('L'), /*case_down_word*/ clear_screen },
   { CTL('M'), accept_line },
   { CTL('N'), h_next },
   { CTL('O'), bk_word },
@@ -330,7 +327,7 @@ static const KEYMAP Map[] = {
   { CTL('W'), wipe },
   { CTL('X'), exchange },
   { CTL('Y'), yank },
-  { CTL('Z'), ring_bell },
+  { CTL('Z'), inject_exit },
   { CTL('['), meta },
   { CTL(']'), move_to_char },
   { CTL('^'), ring_bell },
@@ -357,6 +354,14 @@ static const KEYMAP MetaMap[16] = {
 };
 
 
+static int
+TTYqueue(const char *input) {
+  if (TTYq || TTYq_txi)
+    return 0;
+  if ((TTYq_len = strlen(input)) > 0)
+    TTYq = input;
+  return TTYq_len;
+}
 
 // Print buffered (by TTYputc/TTYputs) data
 static void
@@ -432,6 +437,15 @@ TTYget() {
   if (*Input)
     return *Input++;
 
+  // read byte from a priority queue if any.
+  if (TTYq) {
+    c = TTYq[TTYq_txi++];
+    if (TTYq_txi >= TTYq_len) {
+      TTYq = NULL;
+      TTYq_txi = TTYq_len = 0;
+    }
+    return c;
+  }
   // read 1 byte from user
   if (console_read_bytes(&c, 1, portMAX_DELAY) < 1)
     return EOF;
@@ -485,6 +499,12 @@ static STATUS
 ring_bell() {
   TTYput('\07');
   TTYflush();
+  return CSstay;
+}
+
+static STATUS
+inject_exit() {
+  TTYqueue("exit\n");
   return CSstay;
 }
 
@@ -866,6 +886,12 @@ bk_del_char() {
 }
 
 static STATUS
+clear_screen() {
+  q_print("\033[H\033[2J");
+  return redisplay();
+}
+
+static STATUS
 kill_line() {
   int i;
 
@@ -980,6 +1006,7 @@ TTYspecial(unsigned int c) {
 
   if (c == DEL)
     return del_char();
+
 /*
   if (c == rl_kill) {
     if (Point != 0) {
@@ -4311,13 +4338,12 @@ static int cmd_question(int argc, char **argv) {
               "% <DEL>         : As in Notepad\r\n" \
               "% <BACKSPACE>   : As in Notepad\r\n" \
               "% <HOME>, <END> : Use Ctrl+A instead of <HOME> and Ctrl+E as <END>\r\n" \
-              "% Ctrl+R        : History search. Press Ctrl+R and start typing. Press <ENTER> \r\n" \
-              "%                 to search for command executed before\r\n" \
+              "% Ctrl+R        : Command History search. Enter text to search and press <ENTER>\r\n" \
+              "%                 to search for a command executed before\r\n" \
               "% Ctrl+W        : Wipe : clear input line\r\n" \
-              "% Ctrl+O        : Move 1 word to the left. Cursor will be positioned at the\r\n" \
-              "%                 beginning of the word\r\n" \
-              "% Ctrl+P        : Move 1 word to the right. Cursor will be positioned at the\r\n" \
-              "%                 end of the word\r\n%\r\n" \
+              "% Ctrl+O        : Move cursor to previous argument\r\n" \
+              "% Ctrl+P        : Move cursor to the next argument\r\n" \
+              "% Ctrl+L        : Clear screen\r\n%\r\n" \
               "% -- Terminal compatibility workarounds (alternative key sequences) --\r\n%\r\n" \
               "% Ctrl+J and Ctrl+M work as <ENTER>\r\n" \
               "% Ctrl+B and Ctrl+F work as <- and -> (left & right arrows)>\r\n" \
