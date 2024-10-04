@@ -40,18 +40,25 @@ ESPShell provides commands for
 DISPLAYING PIN INFORMATION
 --------------------------
 To display informaton on arbitrary pin type "pin" followed by pin number.
-Example below displays GPIO2 basic information:
+Example below displays GPIO 0,8,1 and 4 basic information:
 
-  esp32#>pin 8
-  % Pin 8 is used as "I2C_MASTER_SDA"
-  % Mode: INPUT, OUTPUT, PULL_UP, OPEN_DRAIN,
-  % Output via GPIO matrix, provides path for signal ID: 90
-  % Input via GPIO matrix, provides path for signal IDs: 90,
+  esp32#>pin 0
+  % Pin 0 is strapping pin, available, not configured
+  % Mode: INPUT, PULL_UP,
+  % Input is routed through IO MUX
   % Maximum current is 20 milliamps
 
-  esp32#>pin 43
-  % Pin 43 is used as "UART_TX"
-  % Mode: INPUT, PULL_UP,
+
+  esp32#>pin 8
+  % Pin 8 is **RESERVED**, available, not configured
+  % Mode: INPUT, OUTPUT, PULL_UP,
+  % Output via GPIO matrix, provides path for signal ID: 2
+  % Input via GPIO matrix, provides path for signal IDs: 2,
+  % Maximum current is 20 milliamps
+
+  esp32#>pin 1
+  % Pin 1 is used as "UART_TX"
+  % Mode: INPUT,  input is floating!
   % Input is routed through IO MUX
   % Maximum current is 20 milliamps
 
@@ -60,8 +67,10 @@ Example below displays GPIO2 basic information:
   % Maximum current is 20 milliamps
 
 
-The output above says that pin2 is currently HIGH, has a pulldown, has
-both input and output enabled, pin drive capability is 2==medium==20mA
+Note that there are **RESERVED** pins: these are used by SoC for its function.
+It could be FLASH memory access pins, or pins controlling external PSRAM.
+Manipulating these pins will likely crash your sketch and reboot ESP32a
+
 
 To get information on pin numbers and their availability one can try to
 display information on non-existing pin (pin 999 as an example):
