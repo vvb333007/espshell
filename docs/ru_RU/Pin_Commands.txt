@@ -33,18 +33,36 @@ Espshell предоставляет возможность поиграться 
 Информация о пине
 -----------------
 Чтобы получить общую информацию о пине, скажем, 2, нужно выполнить команду
-"pin 2". Пример:
+"pin 2". Примеры:
 
-  esp32#>pin 2
-  % Digital pin value = 1
-  IO[2] -
-    Pullup: 0, Pulldown: 1, DriveCap: 2
-    InputEn: 1, OutputEn: 1, OpenDrain: 0
-    FuncSel: 2 (GPIO)
-    GPIO Matrix SigOut ID: 256 (simple GPIO output)
-    GPIO Matrix SigIn ID: (simple GPIO input)
-    SleepSelEn: 0
+  esp32#>pin 0
+  % Pin 0 is strapping pin, available, not configured
+  % Mode: INPUT, PULL_UP,
+  % Input is routed through IO MUX
+  % Maximum current is 20 milliamps
 
+
+  esp32#>pin 8
+  % Pin 8 is **RESERVED**, available, not configured
+  % Mode: INPUT, OUTPUT, PULL_UP,
+  % Output via GPIO matrix, provides path for signal ID: 2
+  % Input via GPIO matrix, provides path for signal IDs: 2,
+  % Maximum current is 20 milliamps
+
+  Примечание:  пометка **RESERVED** означает, что пользоваться данным пином нельзя: он используется
+  для внутренних нужд процессора. Это может быть интерфейс с внешней памятью или FLASH памятью из
+  которой исполняется ваша программа. Работа с этими пинами скорее всего приведет к перезагрузке
+
+  esp32#>pin 43
+  % Pin 43 is used as "UART_TX"
+  % Mode: INPUT, PULL_UP,
+  % Input is routed through IO MUX
+  % Maximum current is 20 milliamps
+
+  esp32#>pin 4
+  % Pin 4 is available, not configured
+  % Maximum current is 20 milliamps
+esp32#>
 
 
 
