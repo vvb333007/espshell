@@ -1,8 +1,9 @@
 ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
 
+
+
 KEYS USED IN ESPSHELL FOR COMMAND LINE EDITING:
 -----------------------------------------------
-
 
 <ENTER>        : Execute command
 
@@ -36,6 +37,18 @@ Ctrl+... key sequences.
 
 By entering "? keys" command one also can find the key combinations which
 can be used on "dumb" terminals
+
+
+AUTOCOMPLETION
+--------------
+
+ESPShell won't autocomplete commands for you on pressing <TAB>: instead ESPShell
+simply accepts non-complete input. In linux shell one types "upt" and presses
+<TAB> to let the shell autocomplete the command to "uptime". In contrast in ESPShell
+one can simply type "upt" (or even "up") and press <Enter>. ESPShell does not require
+anyone to type command "sequence": "seq" is more than enough.
+
+Same about command arguments - any command or command argument can be shortened
 
 
 ESPSHELL COMMANDS AND THEIR DESCRIPTION
