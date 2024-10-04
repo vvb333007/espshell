@@ -3,19 +3,26 @@ ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
 WHAT IS THIS:
 -------------
  This is a debugging/development tool for use with Arduino projects on
- ESP32 hardware. Provides a command line interface (CLI) on serial port
- running in parallel to user Arduino sketch. This tool assumes that Arduino's
- Serial is uart0 at startup
+ ESP32 hardware. 
+
+ Provides a command line interface (CLI) on serial port running in parallel 
+ to your Arduino sketch. It is not standalone program - this tool attaches
+ to the user sketch (at compile time) and enchances any sketch (even empty one)
+ with a shell.
+
 
  User can enter and execute commands (there are many built-in commands) in a way 
- similar to Linux shell: either using Arduino IDE's Serial Monitor or better using
- proper serial communication software (TeraTerm, PuTTY or similar on Windows or 
- 'cu' on Linux)
+ similar to Linux shell while their sketch is running. ESPShell can be used either
+ from Arduino IDE Serial Monitor or any other communication software like PuTTY
+ or TeraTerm.
+
+
+ It can be useful for developers who are interfacing new I2C or UART devices
+ as espshell has commands to create/delete hardware interfaces, send/receive
+ data. Interfacing GPS (uart-based) chips or GSM modems, making libraries for
+ I2C devices
  
- Screenshots Settings1.jpg and Settings2.jpg shows preferred settings of ArduinoIDE 
- Serial Monitor and TeraTerm. Please note that some features will be unavailable if 
- using Arduino Serial Monitor: you will not be able to send Ctrl+C and Ctrl+Z sequences
- which are useful in debugging GSM modems
+ 
  
 HOW TO USE IT IN ARDUINO PROJECT:
 ---------------------------------
@@ -36,7 +43,7 @@ HOW TO USE IT IN ARDUINO PROJECT:
 SHELL BRIEF DESCRIPTION
 -------------------------------------------
 
- Shell commands include i2c, uart, pin manipulation, PWM generator
+ Shell commands include i2c, uart, pin manipulation, tone generator
  and a pulse counter. There are some basic 'information' commands:
  memory usage, cpuid, pin; commands for execution flow control: suspend/resume
  main Arduino loop(), restart and light sleep
