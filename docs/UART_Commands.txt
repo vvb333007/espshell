@@ -60,7 +60,8 @@ indicating that you are in UART configuration mode. Entering "?" and pressing
 
 The shell output above shows that there are 6 commands specific to this uart
 available along with 2 common commands ("?" and "exit"): question mark will
-print the above list, and "exit" is used to exit the UART configuration mode
+print the above list, and "exit" (or Ctrl+Z) is used to exit the UART 
+configuration mode
 
 
 "up" - initializes UART. If UART is already UP then this command does nothing.
