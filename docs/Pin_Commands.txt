@@ -19,7 +19,7 @@ most ESP32 Dev boards are used to access internal flash: you can play
 with these pins only if your program is fully in processor cache 
 (be within 64kb which is impossible when using espshell)
 
-Some pins are configured to be OUTPUT only and this can not be changed
+Some pins are configured to be INPUT only and this can not be changed
 
 
 PURPOSE
@@ -28,6 +28,12 @@ In ESPShell one can play with GPIOs using "pin" command which is used
 both for displaying pin information and configuring. Turning pin high
 or low, sending various pulse patterns through pins, setting pin direction 
 etc can be done without need to recompile user sketch
+
+ESPShell is able to read digital value on any GPIO: unlike digitalRead() which
+does not work with pins which are used as hardware interface pins (for example 
+one can not digitalRead() I2C lines). ESPShell uses low level access to pin
+values so it is completely ok to read values of actively working PWM pin for
+example. Command "pin NUM read" do this.
 
 ESPShell provides commands for
 
