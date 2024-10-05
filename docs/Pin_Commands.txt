@@ -116,7 +116,11 @@ pwm X Y  - Enable frequency generator on fiven pin. X is the frequency in Hertz
           disables frequency generator. Y (duty) is a floating point number in
           range (0..1)
 
-read    - Digital read
+read    - Digital read.OUTPUT-only pin will be switched to INPUT-and-OUTPUT
+          automatically. Unlike noram digitalRead() this command is able to
+          read any GPIO regardless of its configuration and usage. Like this one
+          can read values from UART or I2C lines while they are actively used
+
 aread   - Analog read*
 
 delay X - Make a delay of X milliseconds before executing next
