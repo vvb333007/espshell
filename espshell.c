@@ -52,13 +52,14 @@
 #undef BREAK_KEY
 #undef USE_UART
 #undef DO_ECHO
+#undef WITH_COLOR
 
 // COMPILE TIME SETTINGS
 // ---------------------
 //#define SERIAL_IS_USB        //Not yet
 //#define ESPCAM               //include ESP32CAM commands (read extra/README.md).
 
-#define WITH_COLOR     0          // Enable terminal colors
+#define WITH_COLOR     1          // Enable terminal colors
 #define WITH_HELP      1          // Set to 0 to save some program space by excluding help strings/functions
 #define WITH_VAR       0          // Enable or disable "var" command. Default is "disabled"
 #define UNIQUE_HISTORY 1          // Wheither to discard repeating commands from the history or not
@@ -91,6 +92,8 @@
 #define PROMPT_UART "esp32-uart#>"
 #define PROMPT_SEQ  "esp32-seq#>"
 
+#define LINE_COLOR
+
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -104,6 +107,7 @@ static void __attribute__((constructor)) espshell_start();
 
 // misc forwards
 static int __attribute__((format (printf, 1, 2))) q_printf(const char *, ...);
+static int __attribute__((format (printf, 1, 2))) q_error(const char *, ...);
 static int q_print(const char *);
 
 
@@ -360,10 +364,18 @@ static const KEYMAP MetaMap[16] = {
 // coloring macros.
 // coloring is auto-enabled upon reception of ESC code
 //
-#define font_color(COLOR_NUM) if (Color) q_printf("\033[3%dm",(COLOR_NUM));
-#define font_bold() if (Color) q_print("\033[1m")
-#define font_normal() if (Color) q_print("\033[0m")
+// following 3 are used by editline: it uses buffered output so requires separate
+// color handling macros.
+// DO NOT USE outside of editline() code.
+#define START_COLORING        do { if (Color) TTYputs((const unsigned char *)"\033[1;37m"); } while(0)  // prompt & user input colors (bright/bold white)
+#define START_COLORING_SEARCH do { if (Color) TTYputs((const unsigned char *)"\033[1;36m"); } while(0)  // "Search:" colors (bright/bold cyan)
+#define STOP_COLORING         do { if (Color) TTYputs((const unsigned char *)"\033[0m"); } while(0)     // diable coloring
 
+// following one is used by espshell parser & command handlers
+#define color_important()  do { if (Color) q_print("\033[1;33m"); } while(0)// Bright/bold yellow
+#define color_warning()  do { if (Color) q_print("\033[1;31m"); } while(0)  // Warning/caution message colors (bright/bold red)
+#define color_error()  do { if (Color) q_print("\033[1;35m"); } while(0)  // Error message colors. (bright/bold magenta)
+#define color_normal()  do { if (Color) q_print("\033[0m"); } while(0)    // Disable coloring
 
 static int
 TTYqueue(const char *input) {
@@ -462,7 +474,10 @@ TTYget() {
     return EOF;
 
 #if WITH_COLOR   
-  if (c == '\033' && Color == false) //Not an ArduinoIDE Serial Monitor
+  // if we receive an ESC or Ctrl+<Key> from user that means his terminal 
+  // is a aproper terminal and not an Arduino IDE Serial Monitor, so we can
+  // enable syntax coloring.
+  if (c < ' ' && c != '\n' && c != '\r' && c != '\t') 
     Color = true;
 #endif    
 
@@ -485,9 +500,9 @@ reposition() {
   unsigned char *p;
 
   TTYput('\r');
-  if (Color) TTYputs("\033[1;37m");
+  START_COLORING ;
   TTYputs((const unsigned char *)Prompt);
-  //if (Color) TTYputs("\033[0m");
+  
   for (i = Point, p = Line; --i >= 0; p++)
     TTYshow(*p);
 }
@@ -653,9 +668,9 @@ insert_string(unsigned char *p) {
 static STATUS
 redisplay() {
   TTYputs((const unsigned char *)NEWLINE);
-  if (Color) TTYputs("\033[1;37m");
+  START_COLORING;
   TTYputs((const unsigned char *)Prompt);
-  //if (Color) TTYputs("\033[0m");
+  
   TTYstring(Line);
   return CSmove;
 }
@@ -788,9 +803,11 @@ h_search() {
   clear_line();
   old_prompt = Prompt;
   Prompt = "Search: ";
-  if (Color) TTYputs("\033[1;37m");
+
+  START_COLORING_SEARCH;
+
   TTYputs((const unsigned char *)Prompt);
-  //if (Color) TTYputs("\033[0m");
+  
   move = Repeat == NO_ARG ? prev_hist : next_hist;
   p = editinput();
   Prompt = old_prompt;
@@ -1135,9 +1152,9 @@ readline(const char *prompt) {
   ScreenSize = SCREEN_INC;
   Screen = NEW(char, ScreenSize);
   Prompt = prompt ? prompt : (char *)NIL;
-  if (Color) TTYputs("\033[1;37m");
+  START_COLORING;
   TTYputs((const unsigned char *)Prompt);
-  //if (Color) TTYputs("\033[0m");
+  
   TTYflush();
 
   if ((line = editinput()) != NULL) {
@@ -1200,7 +1217,9 @@ end_line() {
 static STATUS
 accept_line() {
   Line[End] = '\0';
-  if (Color) q_print("\033[0m");
+  //
+  // user has pressed <Enter>: set colors to default
+  STOP_COLORING;
   return CSdone;
 }
 
@@ -1649,6 +1668,18 @@ static int __attribute__((format (printf, 1, 2))) q_printf(const char *format, .
   return len;
 }
 
+static int __attribute__((format (printf, 1, 2))) q_error(const char *format, ...) {
+  int len;
+  color_error();
+  va_list arg;
+  va_start(arg, format);
+  len =__printfv(format, arg);
+  va_end(arg);
+  color_normal();
+  return len; //FIXME: does not count for coloring escape sequences
+}
+
+
 //Faster than q_printf() but only does non-formatted output
 static int q_print(const char *str) {
   size_t len;
@@ -2042,8 +2073,8 @@ static const struct keywords_t keywords_sequence[] = {
     "% Enables/disables an output signal modulation with frequency FREQ\r\n" \
     "% Optional parameters are: DUTY (from 0 to 1) and LEVEL (either high or low)\r\n" \
     "%\r\n" \
-    "% Ex.: modulation 100         - modulate all 1s with 100Hz, 50%% duty cycle\r\n" \
-    "% Ex.: modulation 100 0.3 low - modulate all 0s with 100Hz, 30%% duty cycle\r\n" \
+    "% Ex.: modulation 100         - modulate all 1s with 100Hz, 50% duty cycle\r\n" \
+    "% Ex.: modulation 100 0.3 low - modulate all 0s with 100Hz, 30% duty cycle\r\n" \
     "% Ex.: modulation 0           - disable modulation\r\n"), "Enable/disable modulation" },
 
   { "modulation", cmd_seq_modulation, 2, HIDDEN_KEYWORD },
@@ -2167,7 +2198,7 @@ static const struct keywords_t keywords_main[] = {
 static const struct keywords_t  *keywords = keywords_main;
 
 //common Failed message
-static const char *Failed = "% Failed\r\n";
+static const char *Failed = "%% Failed\r\n";
 
 // prompt
 static const char *prompt = PROMPT;
@@ -2250,7 +2281,7 @@ static void seq_dump(int seq) {
   struct sequence *s;
 
   if (seq < 0 || seq >= SEQUENCES_NUM) {
-    q_printf("%% Sequence %d does not exist\r\n",seq);
+    q_error("%% Sequence %d does not exist\r\n",seq);
     return;
   }
 
@@ -2316,32 +2347,6 @@ static void seq_dump(int seq) {
   q_printf("%% Pull pin %s after transmission is done\r\n", s->eot ? "HIGH" : "LOW");
 }
 
-#if 0
-static int seq_atol(int *level, int *duration, char *p) {
-
-  char *lp = p;
-  char *dp = NULL;
-  unsigned int l,d;
-
-  while (*p) {
-    if (*p == '/' || *p == '\\') {
-      if (dp)
-        return -1;  // separator was found already
-      //if (level)
-      *p = '\0';  // split the string for atol
-      dp = p + 1;
-    } else if (*p < '0' || *p > '9')
-      return -1;
-    p++;
-  }
-  if (!dp)  // no separator found
-    return -2;
-  if (!*lp)  { // separator was the first symbol
-    *lp = '/'; // make parser happy: "invalid argument" message will contain failed element, not ""
-    return -3;
-}
-#else
-
 // convert a level string to numerical values:
 // "1/500" gets converted to level=1 and duration=500
 // level is either 0 or 1, duration 0..32767
@@ -2362,7 +2367,6 @@ static int seq_atol(int *level, int *duration, char *p) {
     }
   return -1;
 }
-#endif
 
 // free memory buffers associated with the sequence:
 // ->"bits" and ->"seq"
@@ -2415,7 +2419,7 @@ static int seq_compile(int seq) {
     if (s->alph[0].duration1) {
       //long form
       if (!s->alph[1].duration1) {
-        q_print("% \"One\" defined as a level, but \"Zero\" is a pulse\r\n");
+        q_error("%% \"One\" defined as a level, but \"Zero\" is a pulse\r\n");
         return -1;
       }
 
@@ -2442,7 +2446,7 @@ static int seq_compile(int seq) {
       // report it to user
 
       if (s->alph[1].duration1) {
-        q_print("% \"One\" defined as a pulse, but \"Zero\" is a level\r\n");
+        q_error("%% \"One\" defined as a pulse, but \"Zero\" is a level\r\n");
         return -4;
       }
 
@@ -2578,7 +2582,7 @@ static int cmd_seq_if(int argc, char **argv) {
 
   seq = atoi(argv[1]);
   if (seq < 0 || seq >= SEQUENCES_NUM) {
-    q_printf("%% Sequence numbers are 0..%d\r\n", SEQUENCES_NUM - 1);
+    q_error("%% Sequence numbers are 0..%d\r\n", SEQUENCES_NUM - 1);
     return 1;
   }
 
@@ -2642,7 +2646,7 @@ static int cmd_seq_modulation(int argc, char **argv) {
 
     if (duty < 0.0f || duty > 1.0f) {
 #if WITH_HELP      
-      q_print("% Duty cycle is a number in range [0..1] (0.01 means 1% duty)\r\n");
+      q_error("%% Duty cycle is a number in range [0..1] (0.01 means 1%% duty)\r\n");
 #endif      
       return 2;
     }
@@ -2749,7 +2753,7 @@ static int cmd_seq_tick(int argc, char **argv) {
 
   if (sequences[Context].tick < 0.0125 || sequences[Context].tick > 3.2f) {
 #if WITH_HELP    
-    q_print("% Tick must be in range 0.0125..3.2 microseconds\r\n");
+    q_error("%% Tick must be in range 0.0125..3.2 microseconds\r\n");
 #endif    
     return 1;
   }
@@ -2824,7 +2828,7 @@ static int cmd_seq_levels(int argc, char **argv) {
   i = argc - 1;
 
   if (i & 1) {
-    q_print("% Uneven number if levels. Please add 1 more\r\n");
+    q_error("%% Uneven number if levels. Please add 1 more\r\n");
     return 0;
   }
 
@@ -3107,7 +3111,7 @@ static int cmd_pwm(int argc, char **argv) {
     duty = atof(argv[3]);
     if (duty < 0 || duty > 1) {
 #if WITH_HELP      
-      q_print("% Duty cycle is a number in range [0..1] (0.01 means 1% duty)\r\n");
+      q_error("%% Duty cycle is a number in range [0..1] (0.01 means 1%% duty)\r\n");
 #endif
       return 3;
     }
@@ -3115,7 +3119,7 @@ static int cmd_pwm(int argc, char **argv) {
 
   if (pwm_enable(pin,freq,duty) < 0) {
 #if WITH_HELP
-    q_print(Failed);
+    q_error(Failed);
 #endif    
   }
   return 0;
@@ -3195,6 +3199,21 @@ static void pin_load(int pin) {
   }
 }
 
+// Input-Only pins as per Tech Ref. Seems like only original
+// ESP32 has these while newer models have all GPIO capable
+// of Input & Output
+//
+static bool pin_is_input_only_pin(int pin) {
+  switch (pin) {
+#ifdef CONFIG_IDF_TARGET_ESP32
+    case 34: case 35: case 36: case 39:
+    return true;
+#endif
+  }
+  return false;
+}
+
+
 // strapping pins as per Technical Reference
 //
 static bool pin_is_strapping_pin(int pin) {
@@ -3223,10 +3242,12 @@ default:
   }
 }
 
-static int digitalForceRead(int pin) {
+// same as digitalRead() but reads all pins no matter what
+// exported (not static) to enable its use in user sketch
+//
+int digitalForceRead(int pin) {
   gpio_ll_input_enable(&GPIO,pin);
-  return gpio_ll_get_level(&GPIO,pin);
-
+  return gpio_ll_get_level(&GPIO,pin) ? HIGH : LOW;
 }
 
 // called by "pin X"
@@ -3246,9 +3267,22 @@ static int pin_show(int argc, char **argv) {
   int type;
 
   res = esp_gpio_is_pin_reserved(pin);
-  q_printf("%% Pin %d is %s",pin, res ? "**RESERVED**, " : "");
+  q_printf("%% Pin %d is ",pin);
+
+  if (res) {
+    color_warning();
+    q_print("**RESERVED**, ");
+    color_normal();
+  }
+
   if (pin_is_strapping_pin(pin))
     q_print("strapping pin, ");
+
+  if (pin_is_input_only_pin(pin)) {
+    color_important();
+    q_print("**INPUT-ONLY**, ");
+    color_normal();
+  }
 
   if (!res)
     q_print("available, ");
@@ -3257,10 +3291,12 @@ static int pin_show(int argc, char **argv) {
   if ((type = perimanGetPinBusType(pin)) == ESP32_BUS_TYPE_INIT)
     q_print("not used by Arduino Core\r\n");
   else {
+    color_important();
     if (type == ESP32_BUS_TYPE_GPIO)
       q_print("configured as GPIO\r\n");
     else
       q_printf("used as \"%s\"\r\n",perimanGetTypeName(type));
+    color_normal();
   }
 
 
@@ -3268,6 +3304,7 @@ static int pin_show(int argc, char **argv) {
 
   if (ie || oe || od || pu || pd || sleep_sel) {
     q_print("% Mode: ");
+    color_important();
     if (ie) q_print("INPUT, ");
     if (oe) q_print("OUTPUT, ");
     if (pu) q_print("PULL_UP, ");
@@ -3275,7 +3312,7 @@ static int pin_show(int argc, char **argv) {
     if (od) q_print("OPEN_DRAIN, ");
     if (sleep_sel) q_print("sleep mode selected,");
     if (!pu && !pd && ie) q_print(" input is floating!");
-
+    color_normal();
     q_print(CRLF);
 
     if (oe && fun_sel == PIN_FUNC_GPIO) {
@@ -3285,9 +3322,7 @@ static int pin_show(int argc, char **argv) {
       else
         q_printf("provides path for signal ID: %lu\r\n",sig_out);
     } else if (oe && fun_sel != PIN_FUNC_GPIO) {
-      q_print("% Output is done via IO MUX, ");
-      //TODO: get IOMUX function
-      q_print(CRLF);
+      q_printf("%% Output is done via IO MUX, (function %u)\r\n",fun_sel);
     }
 
     if (ie && fun_sel == PIN_FUNC_GPIO) {
@@ -3306,11 +3341,10 @@ static int pin_show(int argc, char **argv) {
       q_print(CRLF);
 
     } else if (ie) {
-      q_print("% Input is routed through IO MUX\r\n");
+      q_printf("%% Input is routed through IO MUX, function %u\r\n",fun_sel);
       //TODO: get IOMUX function
     }
-  } else
-    q_print(CRLF);
+  }
 
   
   //TODO: ESP32S3 has its pin 18 and 19 drive capability of 3 but the meaning is 2 and vice-versa
@@ -3367,7 +3401,7 @@ static int cmd_pin(int argc, char **argv) {
       if (!q_strcmp(argv[i],"seq")) {
         if ((i + 1) >= argc) {
 #if WITH_HELP
-          q_print("% Sequence number expected after \"seq\"\r\n");
+          q_error("%% Sequence number expected after \"seq\"\r\n");
 #endif          
           return i;
         }
@@ -3385,10 +3419,10 @@ static int cmd_pin(int argc, char **argv) {
           q_printf("%% Sending sequence %d over GPIO %d\r\n", seq, pin);
 #endif
           if ((j = seq_send(pin, seq)) < 0)
-            q_printf("%% Failed. Error code is: %d\r\n",j);
+            q_error("%% Failed. Error code is: %d\r\n",j);
 
         } else
-          q_printf("%% Sequence %d is not configured\r\n", seq);
+          q_error("%% Sequence %d is not configured\r\n", seq);
       } 
       //2. "pwm FREQ DUTY" keyword. 
       // unlike global "pwm" command the duty and frequency are not an optional 
@@ -3399,7 +3433,7 @@ static int cmd_pin(int argc, char **argv) {
         // make sure that there are 2 extra arguments after "pwm" keyword
         if ((i+2) >= argc) {
 #if WITH_HELP          
-          q_print("% Frequency and duty cycle are both expected\r\n");
+          q_error("%% Frequency and duty cycle are both expected\r\n");
 #endif          
           return i;
         }
@@ -3413,7 +3447,7 @@ static int cmd_pin(int argc, char **argv) {
         
         if ((freq = atol(argv[i++])) > MAGIC_FREQ) {
 #if WITH_HELP
-          q_print("% Frequency must be in range [1.." xstr(MAGIC_FREQ) "] Hz\r\n");
+          q_error("%% Frequency must be in range [1.." xstr(MAGIC_FREQ) "] Hz\r\n");
 #endif
           return i - 1;
         }
@@ -3424,7 +3458,7 @@ static int cmd_pin(int argc, char **argv) {
         duty = atof(argv[i]);
         if (duty < 0 || duty > 1) {
 #if WITH_HELP      
-          q_print("% Duty cycle is a number in range [0..1] (0.01 means 1% duty)\r\n");
+          q_error("%% Duty cycle is a number in range [0..1] (0.01 means 1%% duty)\r\n");
 #endif
           return i;
         }
@@ -3433,7 +3467,7 @@ static int cmd_pin(int argc, char **argv) {
         // disabled
         if (pwm_enable(pin,freq,duty) < 0) {
 #if WITH_HELP
-          q_print(Failed);
+          q_error(Failed);
 #endif          
           return 0;
         }
@@ -3444,7 +3478,7 @@ static int cmd_pin(int argc, char **argv) {
         unsigned int duration;
         if ((i + 1) >= argc) {
 #if WITH_HELP          
-          q_print("% Delay value expected after keyword \"delay\"\r\n");
+          q_error("%% Delay value expected after keyword \"delay\"\r\n");
 #endif          
           return i;
         }
@@ -3468,7 +3502,7 @@ static int cmd_pin(int argc, char **argv) {
         //must have an extra argument (loop count)
         if ((i + 1) >= argc) {
 #if WITH_HELP
-          q_print("% Loop count expected after keyword \"loop\"\r\n");
+          q_error("%% Loop count expected after keyword \"loop\"\r\n");
 #endif          
           return i;
         }
@@ -3480,7 +3514,7 @@ static int cmd_pin(int argc, char **argv) {
         // loop must be the last keyword, so we can strip it later
         if ((i + 1) < argc) {
 #if WITH_HELP          
-          q_print("% \"loop\" must be the last keyword\r\n");
+          q_error("%% \"loop\" must be the last keyword\r\n");
 #endif          
           return i + 1;
         }
@@ -3610,7 +3644,7 @@ static int cmd_i2c_if(int argc, char **argv) {
   iic = atol(argv[1]);
   if (iic >= SOC_I2C_NUM) {
 #if WITH_HELP    
-    q_printf("%% Valid I2C interface numbers are 0..%d\r\n", SOC_I2C_NUM - 1);
+    q_error("%% Valid I2C interface numbers are 0..%d\r\n", SOC_I2C_NUM - 1);
 #endif    
     return 1;
   }
@@ -3636,13 +3670,16 @@ static int cmd_uart_if(int argc, char **argv) {
   u = atol(argv[1]);
   if (u >= SOC_UART_NUM) {
 #if WITH_HELP    
-    q_printf("%% Valid UART interface numbers are 0..%d\r\n", SOC_UART_NUM - 1);
+    q_error("%% Valid UART interface numbers are 0..%d\r\n", SOC_UART_NUM - 1);
 #endif    
     return 1;
   }
 #if WITH_HELP
-  if (uart == u)
+  if (uart == u) {
+    color_warning();
     q_print("% You are configuring Serial interface shell is running on! BE CAREFUL :)\r\n");
+    color_normal();
+  }
 #endif
 
   Context = u;
@@ -3667,13 +3704,13 @@ static int cmd_i2c_clock(int argc, char **argv) {
 
   if (!i2c_isup(iic)) {
 #if WITH_HELP    
-    q_printf("%% I2C %d is not initialized. use command \"up\" to initialize\r\n", iic);
+    q_error("%% I2C %d is not initialized. use command \"up\" to initialize\r\n", iic);
 #endif    
     return 0;
   }
 
   if (ESP_OK != i2cSetClock(iic, atol(argv[1])))
-    q_print(Failed);
+    q_error(Failed);
 
   return 0;
 }
@@ -3706,7 +3743,7 @@ static int cmd_i2c(int argc, char **argv) {
 
     if (i2c_isup(iic)) {
 #if WITH_HELP      
-      q_printf("%% I2C%d is already initialized\r\n", iic);
+      q_error("%% I2C%d is already initialized\r\n", iic);
 #endif      
       return 0;
     }
@@ -3719,7 +3756,7 @@ static int cmd_i2c(int argc, char **argv) {
     clock = atol(argv[3]);
 
     if (ESP_OK != i2cInit(iic, sda, scl, clock))
-      q_print(Failed);
+      q_error(Failed);
   } else if (!q_strcmp(argv[0], "down")) {
     if (!i2c_isup(iic))
       goto noinit;
@@ -3755,7 +3792,7 @@ static int cmd_i2c(int argc, char **argv) {
     // send over
     q_printf("%% Sending %d bytes over I2C%d\r\n", size, iic);
     if (ESP_OK != i2cWrite(iic, addr, data, size, 2000))
-      q_print(Failed);
+      q_error(Failed);
   } 
   // "read ADDR LENGTH" keyword:
   // read data from i2c device on address ADDR, request LENGTH
@@ -3792,10 +3829,10 @@ static int cmd_i2c(int argc, char **argv) {
     unsigned char data[size];
 
     if (i2cRead(iic, addr, data, size, 2000, &got) != ESP_OK)
-      q_print(Failed);
+      q_error(Failed);
     else {
       if (got != size) {
-        q_printf("%% Requested %d bytes but read %d\r\n",size,got);
+        q_error("%% Requested %d bytes but read %d\r\n",size,got);
         got = size;
       }
       q_printf("%% I2C%d received %d bytes:\r\n", iic, got);
@@ -3808,7 +3845,7 @@ static int cmd_i2c(int argc, char **argv) {
   else if (!q_strcmp(argv[0], "scan")) {
     if (!i2c_isup(iic)) {
 #if WITH_HELP      
-      q_printf("%% I2C %d is not initialized\r\n", iic);
+      q_error("%% I2C %d is not initialized\r\n", iic);
 #endif      
       return 0;
     }
@@ -3833,7 +3870,7 @@ static int cmd_i2c(int argc, char **argv) {
 noinit:
   // love gotos
 #if WITH_HELP  
-  q_printf("%% I2C %d is not initialized\r\n", iic);
+  q_error("%% I2C %d is not initialized\r\n", iic);
 #endif  
   return 0;
 }
@@ -3866,13 +3903,13 @@ static int cmd_uart_baud(int argc, char **argv) {
 
   if (!uart_isup(u)) {
 #if WITH_HELP    
-    q_printf("%% uart %d is not initialized. use command \"up\" to initialize\r\n", u);
+    q_error("%% uart %d is not initialized. use command \"up\" to initialize\r\n", u);
 #endif    
     return 0;
   }
 
   if (ESP_OK != uart_set_baudrate(u, atol(argv[1])))
-    q_print(Failed);
+    q_error(Failed);
 
   return 0;
 }
@@ -3924,7 +3961,7 @@ uart_tap(int remote) {
       // return here or we get flooded by driver messages
       if (ESP_OK != uart_get_buffered_data_len(remote, &av)) {
 #if WITH_HELP        
-        q_printf("%% UART%d is not initialized\r\n", remote);
+        q_error("%% UART%d is not initialized\r\n", remote);
 #endif        
         return;
       }
@@ -3961,7 +3998,7 @@ static int cmd_uart(int argc, char **argv) {
   if (!q_strcmp(argv[0], "tap")) {
     //do not tap to the same uart
     if (uart == u) {
-      q_print("% Can not tap on itself\r\n");
+      q_error("%% Can not bridge to itself\r\n");
       return 0;
     }
 
@@ -3986,7 +4023,7 @@ static int cmd_uart(int argc, char **argv) {
     else speed = atol(argv[3]);  //TODO: check speed
 
     if (NULL == uartBegin(u, speed, SERIAL_8N1, rx, tx, 256, 0, false, 112))
-      q_print(Failed);
+      q_error(Failed);
   } else if (!q_strcmp(argv[0], "down")) {  // down
     if (!uart_isup(u))
       goto noinit;
@@ -4025,7 +4062,7 @@ static int cmd_uart(int argc, char **argv) {
               if (ishex(p))
                 c = ascii2hex(p);
               else {
-                q_printf("%% Unknown escape sequence: \"\\%s\"\r\n", p);
+                q_error("%% Unknown escape sequence: \"\\%s\"\r\n", p);
                 return i;
               }
               p++;
@@ -4068,7 +4105,7 @@ static int cmd_uart(int argc, char **argv) {
   // command executed or was not understood
   return 0;
 noinit:
-  q_printf("%% UART%d is not initialized\r\n", u);
+  q_error("%% UART%d is not initialized\r\n", u);
   return 0;
 }
 
@@ -4087,7 +4124,7 @@ static int cmd_tty(int argc, char **argv) {
     return 1;
   u = atoi(argv[1]);
   if (!uart_isup(u))
-    q_printf("%% UART%d is not initialized\r\n", u);
+    q_error("%% UART%d is not initialized\r\n", u);
   else {
 #if WITH_HELP
     q_printf("%% See you on UART%d. Bye!\r\n", u);
@@ -4232,7 +4269,7 @@ static int cmd_cpu_freq(int argc, char **argv) {
   }
 
   if (!setCpuFrequencyMhz(freq))
-    q_print(Failed);
+    q_error(Failed);
 
   return 0;
 }
@@ -4505,15 +4542,15 @@ espshell_command(char *p) {
             //!!! handler MAY change keywords pointer! keywords[i] may be invalid pointer after
             // cb() call with return code 0
             bad = keywords[i].cb(argc, argv);
-            font_color(5);
-            font_bold();
+            
+            color_error();
             if (bad > 0)
               q_printf("%% Invalid argument \"%s\" (\"? %s\" for help)\r\n", argv[bad], argv[0]);
             else if (bad < 0)
               q_printf("%% Missing argument (\"? %s\" for help)\r\n", argv[0]);
             else
               i = 0;  // make sure keywords[i] is valid pointer
-            font_normal();
+            color_normal();
             break;
           }  // if callback is provided
         }    // if argc matched
@@ -4523,17 +4560,19 @@ espshell_command(char *p) {
 
     // reached the end of the list and didn't find any exact match?
     if (!keywords[i].cmd) {
-      font_color(5);
-      font_bold();
+      color_error();
       if (found)  //we had a name match but number of arguments was wrong
         q_printf("%% \"%s\": wrong number of arguments (\"? %s\" for help)\r\n", argv[0], argv[0]);
       else
         q_printf("%% \"%s\": command not found\r\n", argv[0]);
-    font_normal();
+      color_normal();
     }
 #if WITH_HELP
-    if (!found)
+    if (!found) {
+      color_error();
       q_print("% Type \"?\" to show the list of commands available\r\n");
+      color_normal();
+    }
 #endif
   }
 
