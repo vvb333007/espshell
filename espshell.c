@@ -58,6 +58,7 @@
 //#define SERIAL_IS_USB        //Not yet
 //#define ESPCAM               //include ESP32CAM commands (read extra/README.md).
 
+#define WITH_COLOR     0          // Enable terminal colors
 #define WITH_HELP      1          // Set to 0 to save some program space by excluding help strings/functions
 #define WITH_VAR       0          // Enable or disable "var" command. Default is "disabled"
 #define UNIQUE_HISTORY 1          // Wheither to discard repeating commands from the history or not
@@ -246,6 +247,9 @@ static int PushBack;
 static int Pushed;
 static int Signal = 0;
 
+static bool Color = false; //enable coloring
+
+
 static const char *TTYq = NULL;    //"command queue". if non-null then symbols are 
                                    // fed to TTYget as if it was user input. No locking so far
 static unsigned int TTYq_len = 0;
@@ -353,6 +357,13 @@ static const KEYMAP MetaMap[16] = {
   { 0, NULL }
 };
 
+// coloring macros.
+// coloring is auto-enabled upon reception of ESC code
+//
+#define font_color(COLOR_NUM) if (Color) q_printf("\033[3%dm",(COLOR_NUM));
+#define font_bold() if (Color) q_print("\033[1m")
+#define font_normal() if (Color) q_print("\033[0m")
+
 
 static int
 TTYqueue(const char *input) {
@@ -449,6 +460,12 @@ TTYget() {
   // read 1 byte from user
   if (console_read_bytes(&c, 1, portMAX_DELAY) < 1)
     return EOF;
+
+#if WITH_COLOR   
+  if (c == '\033' && Color == false) //Not an ArduinoIDE Serial Monitor
+    Color = true;
+#endif    
+
   return c;
 }
 
@@ -468,7 +485,9 @@ reposition() {
   unsigned char *p;
 
   TTYput('\r');
+  if (Color) TTYputs("\033[1;37m");
   TTYputs((const unsigned char *)Prompt);
+  //if (Color) TTYputs("\033[0m");
   for (i = Point, p = Line; --i >= 0; p++)
     TTYshow(*p);
 }
@@ -634,7 +653,9 @@ insert_string(unsigned char *p) {
 static STATUS
 redisplay() {
   TTYputs((const unsigned char *)NEWLINE);
+  if (Color) TTYputs("\033[1;37m");
   TTYputs((const unsigned char *)Prompt);
+  //if (Color) TTYputs("\033[0m");
   TTYstring(Line);
   return CSmove;
 }
@@ -767,7 +788,9 @@ h_search() {
   clear_line();
   old_prompt = Prompt;
   Prompt = "Search: ";
+  if (Color) TTYputs("\033[1;37m");
   TTYputs((const unsigned char *)Prompt);
+  //if (Color) TTYputs("\033[0m");
   move = Repeat == NO_ARG ? prev_hist : next_hist;
   p = editinput();
   Prompt = old_prompt;
@@ -1112,7 +1135,9 @@ readline(const char *prompt) {
   ScreenSize = SCREEN_INC;
   Screen = NEW(char, ScreenSize);
   Prompt = prompt ? prompt : (char *)NIL;
+  if (Color) TTYputs("\033[1;37m");
   TTYputs((const unsigned char *)Prompt);
+  //if (Color) TTYputs("\033[0m");
   TTYflush();
 
   if ((line = editinput()) != NULL) {
@@ -1175,6 +1200,7 @@ end_line() {
 static STATUS
 accept_line() {
   Line[End] = '\0';
+  if (Color) q_print("\033[0m");
   return CSdone;
 }
 
@@ -3197,6 +3223,11 @@ default:
   }
 }
 
+static int digitalForceRead(int pin) {
+  gpio_ll_input_enable(&GPIO,pin);
+  return gpio_ll_get_level(&GPIO,pin);
+
+}
 
 // called by "pin X"
 // moved to a separate function to offload giant cmd_pin() a bit
@@ -3288,11 +3319,14 @@ static int pin_show(int argc, char **argv) {
   
   if (sleep_sel)
     q_print("% Sleep select: YES\r\n");
-#if 1
+#if 0
   if (type == ESP32_BUS_TYPE_GPIO)
     q_printf("%% Digital pin value is %s\r\n",digitalRead(pin) == HIGH ? "HIGH (1)" : "LOW (0)");
 #else
+  gpio_ll_input_enable(&GPIO,pin);
   q_printf("%% Digital pin value is %s\r\n",gpio_ll_get_level(&GPIO,pin) ? "HIGH (1)" : "LOW (0)");
+  if (!ie)
+    gpio_ll_input_disable(&GPIO,pin);
 #endif    
 
   return 0;
@@ -3471,7 +3505,7 @@ static int cmd_pin(int argc, char **argv) {
       else if (!q_strcmp(argv[i], "out"))     { flags |= OUTPUT;     pinMode(pin, flags); }
       else if (!q_strcmp(argv[i], "low"))     { flags |= OUTPUT;     pinMode(pin,flags); digitalWrite(pin, LOW); }
       else if (!q_strcmp(argv[i], "high"))    { flags |= OUTPUT;     pinMode(pin,flags); digitalWrite(pin, HIGH); }
-      else if (!q_strcmp(argv[i], "read"))    q_printf("%% GPIO%d : logic %d\r\n", pin, digitalRead(pin) == HIGH ? 1 : 0);
+      else if (!q_strcmp(argv[i], "read"))    q_printf("%% GPIO%d : logic %d\r\n", pin, digitalForceRead(pin));
       else if (!q_strcmp(argv[i], "aread"))   q_printf("%% GPIO%d : analog %d\r\n", pin, analogRead(pin));
       //"new pin number" keyword. when we see a number we use it as a pin number
       //for subsequent keywords. must be valid GPIO number.
@@ -4343,7 +4377,8 @@ static int cmd_question(int argc, char **argv) {
               "% Ctrl+W        : Wipe : clear input line\r\n" \
               "% Ctrl+O        : Move cursor to previous argument\r\n" \
               "% Ctrl+P        : Move cursor to the next argument\r\n" \
-              "% Ctrl+L        : Clear screen\r\n%\r\n" \
+              "% Ctrl+L        : Clear screen\r\n" \
+              "% Ctrl+Z        : Same as entering \"exit\" command\r\n%\r\n" \
               "% -- Terminal compatibility workarounds (alternative key sequences) --\r\n%\r\n" \
               "% Ctrl+J and Ctrl+M work as <ENTER>\r\n" \
               "% Ctrl+B and Ctrl+F work as <- and -> (left & right arrows)>\r\n" \
@@ -4470,12 +4505,15 @@ espshell_command(char *p) {
             //!!! handler MAY change keywords pointer! keywords[i] may be invalid pointer after
             // cb() call with return code 0
             bad = keywords[i].cb(argc, argv);
+            font_color(5);
+            font_bold();
             if (bad > 0)
               q_printf("%% Invalid argument \"%s\" (\"? %s\" for help)\r\n", argv[bad], argv[0]);
             else if (bad < 0)
               q_printf("%% Missing argument (\"? %s\" for help)\r\n", argv[0]);
             else
               i = 0;  // make sure keywords[i] is valid pointer
+            font_normal();
             break;
           }  // if callback is provided
         }    // if argc matched
@@ -4485,10 +4523,13 @@ espshell_command(char *p) {
 
     // reached the end of the list and didn't find any exact match?
     if (!keywords[i].cmd) {
+      font_color(5);
+      font_bold();
       if (found)  //we had a name match but number of arguments was wrong
         q_printf("%% \"%s\": wrong number of arguments (\"? %s\" for help)\r\n", argv[0], argv[0]);
       else
         q_printf("%% \"%s\": command not found\r\n", argv[0]);
+    font_normal();
     }
 #if WITH_HELP
     if (!found)
@@ -4549,6 +4590,7 @@ static void espshell_task(const void *arg) {
       delay(100);
 
 #if WITH_HELP
+    
     q_print("% ESP Shell. Type \"?\" and press enter for help\r\n");
     q_print("% Type \"? keys\" to learn this shell keys\r\n");
 #endif
