@@ -3331,7 +3331,7 @@ static int pin_show(int argc, char **argv) {
       else
         q_printf("provides path for signal ID: %lu\r\n",sig_out);
     } else if (oe && fun_sel != PIN_FUNC_GPIO) {
-      q_printf("%% Output is done via IO MUX, (function %u)\r\n",fun_sel);
+      q_printf("%% Output is done via IO MUX, (function %u)\r\n",(unsigned int)fun_sel);
     }
 
     if (ie && fun_sel == PIN_FUNC_GPIO) {
@@ -3350,7 +3350,7 @@ static int pin_show(int argc, char **argv) {
       q_print(CRLF);
 
     } else if (ie) {
-      q_printf("%% Input is routed through IO MUX, function %u\r\n",fun_sel);
+      q_printf("%% Input is routed through IO MUX, function %u\r\n",(unsigned int)fun_sel);
       //TODO: get IOMUX function
     }
   }
@@ -4423,7 +4423,7 @@ static int cmd_question(int argc, char **argv) {
               "% Ctrl+O        : Move cursor to previous argument\r\n" \
               "% Ctrl+P        : Move cursor to the next argument\r\n" \
               "% Ctrl+L        : Clear screen\r\n" \
-              "% Ctrl+Z        : Same as entering \"exit\" command\r\n%\r\n" \
+              "% Ctrl+Z        : Same as entering \"exit\" command\r\n" \
               "% Ctrl+C        : Suspend sketch execution\r\n%\r\n" \
               "% -- Terminal compatibility workarounds (alternative key sequences) --\r\n%\r\n" \
               "% Ctrl+J and Ctrl+M work as <ENTER>\r\n" \
