@@ -235,7 +235,7 @@ typedef struct _HISTORY {
 static unsigned rl_eof = 0;
 
 static unsigned char NIL[] = "";
-static const unsigned char *Input = NIL;
+//static const unsigned char *Input = NIL;
 static unsigned char *Line = NULL;
 static const char *Prompt = NULL;
 static unsigned char *Yanked;
@@ -250,15 +250,12 @@ static int Point;
 static int PushBack;
 static int Pushed;
 static int Signal = 0;
-
+#if WITH_COLOR
 static bool Color = false; //enable coloring
+#endif
 
-
-static const char *TTYq = NULL;    //"command queue". if non-null then symbols are 
+static const char *TTYq = "";    //"artificial input queue". if non empty then symbols are 
                                    // fed to TTYget as if it was user input. No locking so far
-static unsigned int TTYq_len = 0;
-static unsigned int TTYq_txi = 0;
-
 static unsigned int Length;
 static unsigned int ScreenCount;
 static unsigned int ScreenSize;
@@ -271,6 +268,7 @@ static int rl_meta_chars = 0;
 static unsigned char *editinput();
 static STATUS ring_bell();
 static STATUS inject_exit();
+static STATUS inject_suspend();
 
 static STATUS beg_line();
 static STATUS end_line();
@@ -311,7 +309,7 @@ static STATUS toggle_meta_mode();
 static STATUS copy_region();
 
 static const KEYMAP Map[] = {
-  { CTL('@'), ring_bell },
+  { CTL('C'), inject_suspend },
   { CTL('A'), beg_line },
   { CTL('B'), bk_char },
   { CTL('D'), del_char },
@@ -364,34 +362,45 @@ static const KEYMAP MetaMap[16] = {
 // coloring macros.
 // coloring is auto-enabled upon reception of ESC code
 //
-// following 3 are used by editline: it uses buffered output so requires separate
-// color handling macros.
-// DO NOT USE outside of editline() code.
-#define START_COLORING        do { if (Color) TTYputs((const unsigned char *)"\033[1;37m"); } while(0)  // prompt & user input colors (bright/bold white)
-#define START_COLORING_SEARCH do { if (Color) TTYputs((const unsigned char *)"\033[1;36m"); } while(0)  // "Search:" colors (bright/bold cyan)
-#define STOP_COLORING         do { if (Color) TTYputs((const unsigned char *)"\033[0m"); } while(0)     // diable coloring
+#if WITH_COLOR
+   // these are exclusively for editline library
+#  define START_COLORING        do { if (Color) TTYputs((const unsigned char *)"\033[1;37m"); } while(0)  // prompt & user input colors (bright/bold white)
+#  define START_COLORING_SEARCH do { if (Color) TTYputs((const unsigned char *)"\033[1;36m"); } while(0)  // "Search:" colors (bright/bold cyan)
+#  define STOP_COLORING         do { if (Color) TTYputs((const unsigned char *)"\033[0m"); } while(0)     // diable coloring
 
-// following one is used by espshell parser & command handlers
-#define color_important()  do { if (Color) q_print("\033[1;33m"); } while(0)// Bright/bold yellow
-#define color_warning()  do { if (Color) q_print("\033[1;31m"); } while(0)  // Warning/caution message colors (bright/bold red)
-#define color_error()  do { if (Color) q_print("\033[1;35m"); } while(0)  // Error message colors. (bright/bold magenta)
-#define color_normal()  do { if (Color) q_print("\033[0m"); } while(0)    // Disable coloring
+   // following one is used by espshell parser & command handlers
+#  define color_important()  do { if (Color) q_print("\033[1;33m"); } while(0)// Bright/bold yellow
+#  define color_warning()  do { if (Color) q_print("\033[1;31m"); } while(0)  // Warning/caution message colors (bright/bold red)
+#  define color_error()  do { if (Color) q_print("\033[1;35m"); } while(0)  // Error message colors. (bright/bold magenta)
+#  define color_normal()  do { if (Color) q_print("\033[0m"); } while(0)    // Disable coloring
+#else
+#  // No coloring
+#  define START_COLORING
+#  define START_COLORING_SEARCH
+#  define STOP_COLORING
+#  define color_important()
+#  define color_warning()
+#  define color_error()
+#  define color_normal()
+#endif //WITH_COLOR
 
-static int
+// queue an arbitrary asciiz string t simulate user input.
+// string queued has higher priority than user input so console_read() would
+// "read" from this string first.
+//
+// TODO: NO LOCKING
+static inline void
 TTYqueue(const char *input) {
-  if (TTYq || TTYq_txi)
-    return 0;
-  if ((TTYq_len = strlen(input)) > 0)
-    TTYq = input;
-  return TTYq_len;
+  TTYq = input;
 }
 
-// Print buffered (by TTYputc/TTYputs) data
+// Print buffered (by TTYputc/TTYputs) data. editline uses buffered IO
+// so no actual data is printed until TTYflush() is called
+// No printing is done if "echo off" or "echo silent" flag is set
+//
 static void
 TTYflush() {
-
   if (ScreenCount) {
-
     if (Echo > 0)
       console_write_bytes(Screen, ScreenCount);
     ScreenCount = 0;
@@ -443,12 +452,11 @@ TTYstring(unsigned char *p) {
     TTYshow(*p++);
 }
 
-//read a character from user
+//read a character from user.
+//
 static unsigned int
 TTYget() {
-
   unsigned char c;
-  
 
   TTYflush();
 
@@ -457,26 +465,19 @@ TTYget() {
     return PushBack;
   }
 
-  if (*Input)
-    return *Input++;
-
   // read byte from a priority queue if any.
-  if (TTYq) {
-    c = TTYq[TTYq_txi++];
-    if (TTYq_txi >= TTYq_len) {
-      TTYq = NULL;
-      TTYq_txi = TTYq_len = 0;
-    }
-    return c;
-  }
+  if (*TTYq)
+    return *TTYq++;
+
   // read 1 byte from user
   if (console_read_bytes(&c, 1, portMAX_DELAY) < 1)
     return EOF;
 
 #if WITH_COLOR   
-  // if we receive an ESC or Ctrl+<Key> from user that means his terminal 
-  // is a aproper terminal and not an Arduino IDE Serial Monitor, so we can
-  // enable syntax coloring.
+  // Trying to be smart:
+  // if we receive lower keycodes from user that means his terminal 
+  // is not an Arduino IDE Serial Monitor or alike, so we can enable 
+  // syntax coloring.
   if (c < ' ' && c != '\n' && c != '\r' && c != '\t') 
     Color = true;
 #endif    
@@ -536,9 +537,17 @@ ring_bell() {
   return CSstay;
 }
 
+// Ctrl+Z hanlder: send "exit" commnd
 static STATUS
 inject_exit() {
   TTYqueue("exit\n");
+  return CSstay;
+}
+
+// Ctrl+C handler: sends "exit" followed by "suspend"
+static STATUS
+inject_suspend() {
+  TTYqueue("exit\nsuspend\n");
   return CSstay;
 }
 
@@ -4409,13 +4418,13 @@ static int cmd_question(int argc, char **argv) {
               "% <DEL>         : As in Notepad\r\n" \
               "% <BACKSPACE>   : As in Notepad\r\n" \
               "% <HOME>, <END> : Use Ctrl+A instead of <HOME> and Ctrl+E as <END>\r\n" \
-              "% Ctrl+R        : Command History search. Enter text to search and press <ENTER>\r\n" \
-              "%                 to search for a command executed before\r\n" \
+              "% Ctrl+R        : Command history search\r\n" \
               "% Ctrl+W        : Wipe : clear input line\r\n" \
               "% Ctrl+O        : Move cursor to previous argument\r\n" \
               "% Ctrl+P        : Move cursor to the next argument\r\n" \
               "% Ctrl+L        : Clear screen\r\n" \
               "% Ctrl+Z        : Same as entering \"exit\" command\r\n%\r\n" \
+              "% Ctrl+C        : Suspend sketch execution\r\n%\r\n" \
               "% -- Terminal compatibility workarounds (alternative key sequences) --\r\n%\r\n" \
               "% Ctrl+J and Ctrl+M work as <ENTER>\r\n" \
               "% Ctrl+B and Ctrl+F work as <- and -> (left & right arrows)>\r\n" \
