@@ -128,6 +128,8 @@ Here is the list of currently supported commands:
                    %
                    % Sketch is running on ESP32_DEV/esp32,uses Arduino Core v3.0.5, based on
                    % Espressif ESP-IDF version "v5.1.4-828-g33fbade6b8-dirty"
+                   % Last boot was 1 minutes 35 seconds ago
+                   % Restart reason was "reload command"
                    esp32#>
 
 
@@ -156,6 +158,8 @@ Here is the list of currently supported commands:
                
 
 "reload"   - Reboots ESP32
+	     Hint: command "cpu" and "uptime" shows the last reboot cause: was
+                   it caused by watchdog timer interrupt, or system crash etc
 
 "nap"      - Put CPU into light sleep. CPU wakes up by UART activity (press any
            - key to wake up). Wake up condition is 3 positive edges on UART0 
