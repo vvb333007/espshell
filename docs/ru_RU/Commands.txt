@@ -124,7 +124,13 @@ esp32#>
              Serial Monitor, но будет, например, в TeraTerm
 
 "uptime"   - Показывает, сколько примерно времени прошло с момента последней загрузки.
-             использует внутренний микросекундный таймер ESP32
+             использует внутренний микросекундный таймер ESP32. Так же сообщается причина
+             последней перезагрузки:
+
+               esp32#>up
+               % Last boot was 2 minutes 40 seconds ago
+               % Restart reason was "reload command"
+               esp32#>
 
 "show seq" - Показывает sequence (последовательность сигналов low/high), которую
              создали с помощью команды "sequence". Эта команда относится к генерации
@@ -148,6 +154,8 @@ esp32#>
                    %
                    % Sketch is running on ESP32_DEV/esp32,uses Arduino Core v3.0.5, based on
                    % Espressif ESP-IDF version "v5.1.4-828-g33fbade6b8-dirty"
+                   % Last boot was 2 minutes 40 seconds ago
+                   % Restart reason was "reload command"
                    esp32#>
 
 
