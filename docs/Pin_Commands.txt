@@ -33,7 +33,7 @@ ESPShell is able to read digital value on any GPIO: unlike digitalRead() which
 does not work with pins which are used as hardware interface pins (for example 
 one can not digitalRead() I2C lines). ESPShell uses low level access to pin
 values so it is completely ok to read values of actively working PWM pin for
-example. Command "pin NUM read" do this.
+example. Command "pin NUM read" does this.
 
 ESPShell provides commands for
 
