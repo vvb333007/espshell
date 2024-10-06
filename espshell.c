@@ -61,7 +61,7 @@
 
 #define WITH_COLOR     1          // Enable terminal colors
 #define WITH_HELP      1          // Set to 0 to save some program space by excluding help strings/functions
-#define WITH_VAR       0          // Enable or disable "var" command. Default is "disabled"
+#define WITH_VAR       1          // Enable or disable "var" command.
 #define UNIQUE_HISTORY 1          // Wheither to discard repeating commands from the history or not
 #define HIST_SIZE      20         // History buffer size (number of commands to remember)
 #define STACKSIZE      5000       // Shell task stack size
@@ -3010,6 +3010,21 @@ static int cmd_var(int argc, char **argv) {
     unsigned int uval;
     float fval;
   } u;
+
+  // no variables were registered but user invoked "var" command:
+  // give them a hint
+#if WITH_HELP  
+  if (var_head == NULL) {
+    color_important();
+    q_print("% Oops.\r\n" \
+            "% Looks like no variables were registered in your sketch\r\n" \
+            "% #include \"extra/espshell.h\" and use \"convar_add()\" to register them:\r\n" \
+            "% once registered, variables can be manipulated by the \"var\" command\r\n" \
+            "% while your sketch is running\r\n");
+    color_normal();
+    return 0;
+  }
+#endif //WITH_HELP  
 
   // "var": display variables list if no arguments were given
   if (argc < 2) {
