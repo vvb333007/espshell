@@ -40,6 +40,18 @@ HOW TO USE IT IN ARDUINO PROJECT:
     IDE's Serial Monitor or ( better ) thru terminal software: Linux cu, 
     Windows TeraTerm or PuTTY.
 
+WHAT IS IN "EXTRA" and "DOCS" FOLDERS? DO I NEED THEM?
+------------------------------------------------------
+
+To use ESPShell you don't need them. Folder "docs" contains espshell
+documentation and examples, and "extra" contains optional files for
+accessing additional ESPShell functionality: espshell API header file
+and AiThinker ESPCam extension commands. Any files you decide to use
+must be copied along with espshell.c to your sketch directory. Read the
+"docs/README.md" for more details on that
+
+
+
 SHELL BRIEF DESCRIPTION
 -------------------------------------------
 
