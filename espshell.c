@@ -92,15 +92,14 @@
 #define PROMPT_UART "esp32-uart#>"
 #define PROMPT_SEQ  "esp32-seq#>"
 
-#define LINE_COLOR
-
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
-
+#include <ctype.h>
 #include <Arduino.h>
+
 
 //autostart espshell
 static void __attribute__((constructor)) espshell_start();
@@ -174,11 +173,6 @@ int console_here(int i) {
 #define RENEW(p, T, c) (p = (T *)realloc((char *)(p), (unsigned int)(sizeof(T) * (c))))
 #define COPYFROMTO(_new, p, len) (void)memcpy((char *)(_new), (char *)(p), (int)(len))
 
-//#include <signal.h>
-#include <ctype.h>
-#include <unistd.h>
-#include <sys/termios.h>
-
 #define NO_ARG (-1)
 #define DEL 127
 #define CTL(x) ((x)&0x1F)
@@ -235,7 +229,6 @@ typedef struct _HISTORY {
 static unsigned rl_eof = 0;
 
 static unsigned char NIL[] = "";
-//static const unsigned char *Input = NIL;
 static unsigned char *Line = NULL;
 static const char *Prompt = NULL;
 static unsigned char *Yanked;
@@ -3259,6 +3252,54 @@ int digitalForceRead(int pin) {
   return gpio_ll_get_level(&GPIO,pin) ? HIGH : LOW;
 }
 
+#ifdef CONFIG_IDF_TARGET_ESP32
+// IO_MUX function code --> human readable text mapping
+static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][6] = {
+  { "GPIO0", "CLK_OUT1", "GPIO0", "3", "4", "EMAC_TX_CLK" },
+  { "U0TXD", "CLK_OUT3", "GPIO1", "3", "4", "EMAC_RXD2" },
+  { "GPIO2", "HSPIWP", "GPIO2", "HS2_DATA0", "SD_DATA0" },
+  { "U0RXD", "CLK_OUT2", "GPIO3", "3", "4", "5" },
+  { "GPIO4", "HSPIHD", "GPIO4", "HS2_DATA1", "SD_DATA1", "EMAC_TX_ER" },
+  { "GPIO5", "VSPICS0", "GPIO5", "HS1_DATA6", "4", "EMAC_RX_CLK" },
+  { "SD_CLK", "SPICLK", "GPIO6", "HS1_CLK", "U1CTS", "5" },
+  { "SD_DATA0", "SPIQ", "GPIO7", "HS1_DATA0", "U2RTS", "5" },
+  { "SD_DATA1", "SPID", "GPIO8", "HS1_DATA1", "U2CTS", "5" },
+  { "SD_DATA2", "SPIHD", "GPIO9", "HS1_DATA2", "U1RXD", "5" },
+  { "SD_DATA3", "SPIWP", "GPIO10", "HS1_DATA3", "U1TXD", "5" },
+  { "SD_CMD", "SPICS0", "GPIO11", "HS1_CMD", "U1RTS", "5" },
+  { "MTDI", "HSPIQ", "GPIO12", "HS2_DATA2", "SD_DATA2", "EMAC_TXD3" },
+  { "MTCK", "HSPID", "GPIO13", "HS2_DATA3", "SD_DATA3", "EMAC_RX_ER" },
+  { "MTMS", "HSPICLK", "GPIO14", "HS2_CLK", "SD_CLK", "EMAC_TXD2" },
+  { "MTDO", "HSPICS0", "GPIO15", "HS2_CMD", "SD_CMD", "EMAC_RXD3" },
+  { "GPIO16", "1", "GPIO16", "HS1_DATA4", "U2RXD", "EMAC_CLK_OUT" },
+  { "GPIO17", "1", "GPIO17", "HS1_DATA5", "U2TXD", "EMAC_CLK_180" },
+  { "GPIO18", "VSPICLK", "GPIO18", "HS1_DATA7", "4", "5" },
+  { "GPIO19", "VSPIQ", "GPIO19", "U0CTS", "4", "EMAC_TXD0" },
+  { "GPIO21", "VSPIHD", "GPIO21", "3", "4", "EMAC_TX_EN" },
+  { "GPIO22", "VSPIWP", "GPIO22", "U0RTS", "4", "EMAC_TXD1" },
+  { "GPIO23", "VSPID", "GPIO23", "HS1_STROBE", "4", "5" },
+  { "GPIO25", "1", "GPIO25", "3", "4", "EMAC_RXD0" },
+  { "GPIO26", "1", "GPIO26", "3", "4", "EMAC_RXD1" },
+  { "GPIO27", "1", "GPIO27", "3", "4", "EMAC_RX_DV" },
+  { "GPIO32", "1", "GPIO32", "3", "4", "5" },
+  { "GPIO33", "1", "GPIO33", "3", "4", "5" },
+  { "GPIO34", "1", "GPIO34", "3", "4", "5" },
+  { "GPIO35", "1", "GPIO35", "3", "4", "5" },
+  { "GPIO36", "1", "GPIO36", "3", "4", "5" },
+  { "GPIO37", "1", "GPIO37", "3", "4", "5" },
+  { "GPIO38", "1", "GPIO38", "3", "4", "5" },
+  { "GPIO39", "1", "GPIO39", "3", "4", "5" },
+};
+#else
+// unknown/unsupported target
+static const char io_mux_func_name[SOC_GPIO_PIN_COUNT][6] = {
+  {"0","1","2","3","4","5"},{"0","1","2","3","4","5"},{"0","1","2","3","4","5"},{"0","1","2","3","4","5"},
+  {"0","1","2","3","4","5"},{"0","1","2","3","4","5"},{"0","1","2","3","4","5"},{"0","1","2","3","4","5"},
+  {"0","1","2","3","4","5"},{"0","1","2","3","4","5"},{"0","1","2","3","4","5"},{"0","1","2","3","4","5"},
+  {"0","1","2","3","4","5"},{"0","1","2","3","4","5"},{"0","1","2","3","4","5"},{"0","1","2","3","4","5"},
+  {"0","1","2","3","4","5"},{"0","1","2","3","4","5"},{"0","1","2","3","4","5"},{"0","1","2","3","4","5"},
+#endif
+
 // called by "pin X"
 // moved to a separate function to offload giant cmd_pin() a bit
 // 
@@ -3331,12 +3372,16 @@ static int pin_show(int argc, char **argv) {
       else
         q_printf("provides path for signal ID: %lu\r\n",sig_out);
     } else if (oe && fun_sel != PIN_FUNC_GPIO) {
-      q_printf("%% Output is done via IO MUX, (function %u)\r\n",(unsigned int)fun_sel);
+      q_print("% Output is done via IO MUX, (function: ");
+      color_important();
+      q_print(io_mux_func_name[pin][fun_sel]);
+      color_normal();
+      q_print(")\n\r");
     }
 
     if (ie && fun_sel == PIN_FUNC_GPIO) {
       q_print("% Input via GPIO matrix, ");
-      for (int i = 0; i < SIG_GPIO_OUT_IDX; i++) {  // FIXME: SIG_GPIO_IN_IDX ?
+      for (int i = 0; i < SIG_GPIO_OUT_IDX; i++) {
         if (gpio_ll_get_in_signal_connected_io(&GPIO, i) == pin) {
           if (!informed)
             q_print("provides path for signal IDs: ");
@@ -3350,8 +3395,11 @@ static int pin_show(int argc, char **argv) {
       q_print(CRLF);
 
     } else if (ie) {
-      q_printf("%% Input is routed through IO MUX, function %u\r\n",(unsigned int)fun_sel);
-      //TODO: get IOMUX function
+      q_print("% Input is done via IO MUX, (function: ");
+      color_important();
+      q_print(io_mux_func_name[pin][fun_sel]);
+      color_normal();
+      q_print(")\n\r");
     }
   }
 
