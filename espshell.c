@@ -269,83 +269,99 @@ static STATUS bk_char();
 static STATUS del_char();
 static STATUS fd_char();
 static STATUS bk_del_char();
-static STATUS move_to_char();
+//static STATUS move_to_char();
 
 static STATUS bk_kill_word();
 static STATUS bk_word();
-static STATUS fd_kill_word();
+//static STATUS fd_kill_word();
 static STATUS fd_word();
-static STATUS case_down_word();
-static STATUS case_up_word();
+//static STATUS case_down_word();
+//static STATUS case_up_word();
 
 static STATUS h_next();
 static STATUS h_prev();
 static STATUS h_search();
-static STATUS h_first();
-static STATUS h_last();
+//static STATUS h_first();
+//static STATUS h_last();
 
 static STATUS redisplay();
 static STATUS clear_screen();
 
-static STATUS transpose();
-static STATUS quote();
+//static STATUS transpose();
+//static STATUS quote();
 static STATUS wipe();
-static STATUS exchange();
-static STATUS yank();
+//static STATUS exchange();
+//static STATUS yank();
 static STATUS meta();
-static STATUS mk_set();
-static STATUS last_argument();
-static STATUS toggle_meta_mode();
-static STATUS copy_region();
+//static STATUS mk_set();
+//static STATUS last_argument();
+//static STATUS toggle_meta_mode();
+//static STATUS copy_region();
 
 static const KEYMAP Map[] = {
-  { CTL('C'), inject_suspend },
-  { CTL('A'), beg_line },
-  { CTL('B'), bk_char },
-  { CTL('D'), del_char },
-  { CTL('E'), end_line },
-  { CTL('F'), fd_char },
+  //Key       callback           action  
+  { CTL('C'), inject_suspend },  // "exit" + "suspend" commands
+  { CTL('Z'), inject_exit },     // "exit" command
+
+  { CTL('A'), beg_line },        // <HOME> 
+  { CTL('E'), end_line },        // <HOME>
+
+  { CTL('B'), bk_char },         // Arrow left
+  { CTL('F'), fd_char },         // Arrow right
+
+  { CTL('D'), del_char },        // <DEL>
+  { CTL('H'), bk_del_char },     // <BACKSPACE>
+
+  { CTL('J'), accept_line },     // <ENTER>
+  { CTL('M'), accept_line },     // <ENTER>
+
+  { CTL('K'), kill_line },       // Erase from cursor till the end (undocumented)
+  { CTL('W'), wipe },            // Erase all user input (Clear the input line)  
+  { CTL('L'), clear_screen },    // Clear (erase) the screen, keep use input
+  
+  { CTL('O'), bk_word },         // Move cursor between words: move to the left
+  { CTL('P'), fd_word },         //                            move to the right
+
+  { CTL('R'), h_search },        // Reverse history search. Type few symbols and press <Enter>
+  
+  
+  { CTL('['), meta },            // Arrows processed there as well as other ESC sequences
+                                 // ESC [ NUMBER CHAR  will print a string of character CHAR
+                                 // NUMBER chracters long. It is useful to input long lines of 1 or 0
+                                 // in a few button presses (undocumented)
+
+  //currently unused
   { CTL('G'), ring_bell },
-  { CTL('H'), bk_del_char },
-  { CTL('J'), accept_line },
-  { CTL('K'), kill_line },
-  { CTL('L'), /*case_down_word*/ clear_screen },
-  { CTL('M'), accept_line },
-  { CTL('N'), h_next },
-  { CTL('O'), bk_word },
-  { CTL('P'), fd_word },
+  { CTL('N'), ring_bell },
   { CTL('Q'), ring_bell },
-  { CTL('R'), h_search },
   { CTL('S'), ring_bell },
-  { CTL('T'), transpose },
-  { CTL('U'), case_up_word },
-  { CTL('V'), quote },
-  { CTL('W'), wipe },
-  { CTL('X'), exchange },
-  { CTL('Y'), yank },
-  { CTL('Z'), inject_exit },
-  { CTL('['), meta },
-  { CTL(']'), move_to_char },
+  { CTL('T'), ring_bell },
+  { CTL('U'), ring_bell },
+  { CTL('V'), ring_bell },
+  { CTL('X'), ring_bell },
+  { CTL('Y'), ring_bell },
+  { CTL(']'), ring_bell },
   { CTL('^'), ring_bell },
   { CTL('_'), ring_bell },
+
   { 0, NULL }
 };
 
 static const KEYMAP MetaMap[16] = {
-  { CTL('H'), bk_kill_word },
-  { DEL, bk_kill_word },
-  { ' ', mk_set },
-  { '.', last_argument },
-  { '<', h_first },
-  { '>', h_last },
-  { 'b', bk_word },
-  { 'd', fd_kill_word },
-  { 'f', fd_word },
-  { 'l', case_down_word },
-  { 'm', toggle_meta_mode },
-  { 'u', case_up_word },
-  { 'y', yank },
-  { 'w', copy_region },
+  { CTL('H'), bk_kill_word },  // <ESC>, <BACKSPACE> - deletes a word (undocumented)
+  { DEL, ring_bell },
+  { ' ', ring_bell },
+  { '.', ring_bell },
+  { '<', ring_bell },
+  { '>', ring_bell },
+  { 'b', ring_bell },
+  { 'd', ring_bell },
+  { 'f', ring_bell },
+  { 'l', ring_bell },
+  { 'm', ring_bell },
+  { 'u', ring_bell },
+  { 'y', ring_bell },
+  { 'w', ring_bell },
   { 0, NULL }
 };
 
@@ -586,43 +602,6 @@ do_forward(STATUS move) {
 
   return CSstay;
 }
-
-static STATUS
-do_case(CASE type) {
-  int i;
-  int end;
-  int count;
-  unsigned char *p;
-
-  (void)do_forward(CSstay);
-  if (OldPoint != Point) {
-    if ((count = Point - OldPoint) < 0)
-      count = -count;
-    Point = OldPoint;
-    if ((end = Point + count) > End)
-      end = End;
-    for (i = Point, p = &Line[i]; i < end; i++, p++) {
-      if (type == TOupper) {
-        if (islower(*p))
-          *p = toupper(*p);
-      } else if (isupper(*p))
-        *p = tolower(*p);
-      right(CSmove);
-    }
-  }
-  return CSstay;
-}
-
-static STATUS
-case_down_word() {
-  return do_case(TOlower);
-}
-
-static STATUS
-case_up_word() {
-  return do_case(TOupper);
-}
-
 static void
 ceol() {
   int extras;
@@ -695,13 +674,6 @@ redisplay() {
   return CSmove;
 }
 
-static STATUS
-toggle_meta_mode() {
-  rl_meta_chars = !rl_meta_chars;
-  return redisplay();
-}
-
-
 static unsigned char *
 next_hist() {
   return H.Pos >= H.Size - 1 ? NULL : H.Lines[++H.Pos];
@@ -744,16 +716,6 @@ h_next() {
 static STATUS
 h_prev() {
   return do_hist(prev_hist);
-}
-
-static STATUS
-h_first() {
-  return do_insert_hist(H.Lines[H.Pos = 0]);
-}
-
-static STATUS
-h_last() {
-  return do_insert_hist(H.Lines[H.Pos = H.Size - 1]);
 }
 
 /*
@@ -1244,30 +1206,6 @@ accept_line() {
 }
 
 static STATUS
-transpose() {
-  unsigned char c;
-
-  if (Point) {
-    if (Point == End)
-      left(CSmove);
-    c = Line[Point - 1];
-    left(CSstay);
-    Line[Point - 1] = Line[Point];
-    TTYshow(Line[Point - 1]);
-    Line[Point++] = c;
-    TTYshow(c);
-  }
-  return CSstay;
-}
-
-static STATUS
-quote() {
-  unsigned int c;
-
-  return (int)(c = TTYget()) == EOF ? CSeof : insert_char((int)c);
-}
-
-static STATUS
 wipe() {
   int i;
 
@@ -1283,82 +1221,10 @@ wipe() {
 
   return delete_string(Mark - Point);
 }
-
-static STATUS
-mk_set() {
-  Mark = Point;
-  return CSstay;
-}
-
-static STATUS
-exchange() {
-  unsigned int c;
-
-  if ((c = TTYget()) != CTL('X'))
-    return (int)c == EOF ? CSeof : ring_bell();
-
-  if ((int)(c = Mark) <= End) {
-    Mark = Point;
-    Point = c;
-    return CSmove;
-  }
-  return CSstay;
-}
-
-static STATUS
-yank() {
-  if (Yanked && *Yanked)
-    return insert_string(Yanked);
-  return CSstay;
-}
-
-static STATUS
-copy_region() {
-  if (Mark > End)
-    return ring_bell();
-
-  if (Point > Mark)
-    save_yank(Mark, Point - Mark);
-  else
-    save_yank(Point, Mark - Point);
-
-  return CSstay;
-}
-
-static STATUS
-move_to_char() {
-  unsigned int c;
-  int i;
-  unsigned char *p;
-
-  if ((int)(c = TTYget()) == EOF)
-    return CSeof;
-  for (i = Point + 1, p = &Line[i]; i < End; i++, p++)
-    if (*p == c) {
-      Point = i;
-      return CSmove;
-    }
-  return CSstay;
-}
-
 static STATUS
 fd_word() {
   return do_forward(CSmove);
 }
-
-static STATUS
-fd_kill_word() {
-  int i;
-
-  (void)do_forward(CSstay);
-  if (OldPoint != Point) {
-    i = Point - OldPoint;
-    Point = OldPoint;
-    return delete_string(i);
-  }
-  return CSstay;
-}
-
 static STATUS
 bk_word() {
   int i;
@@ -1451,34 +1317,26 @@ argify(unsigned char *line, unsigned char ***avp) {
 }
 
 
-static STATUS
-last_argument() {
-  unsigned char **av;
-  unsigned char *p;
-  STATUS s;
-  int ac;
-
-  if (H.Size == 1 || (p = H.Lines[H.Size - 2]) == NULL)
-    return ring_bell();
-
-  if ((p = (unsigned char *)strdup((char *)p)) == NULL)
-    return CSstay;
-  ac = argify(p, &av);
-
-  if (Repeat != NO_ARG)
-    s = Repeat < ac ? insert_string(av[Repeat]) : ring_bell();
-  else
-    s = ac ? insert_string(av[ac - 1]) : CSstay;
-
-  if (ac)
-    DISPOSE(av);
-  DISPOSE(p);
-  return s;
-}
-
-
 
 ////////////////////////////// EDITLINE CODE END
+
+#include <soc/gpio_struct.h>
+#include <hal/gpio_ll.h>
+#include <driver/gpio.h>
+#include <rom/gpio.h>
+#include <esp32-hal-periman.h>
+
+extern gpio_dev_t GPIO;
+
+#if defined(esp_gpio_pin_reserved)
+#  define esp_gpio_is_pin_reserved esp_gpio_pin_reserved
+#else
+#  ifdef __cplusplus
+     extern "C" bool esp_gpio_is_pin_reserved(unsigned int gpio);
+#  else
+     extern bool esp_gpio_is_pin_reserved(unsigned int gpio);
+#  endif
+#endif
 
 
 //TAG:forwards
@@ -1489,10 +1347,6 @@ last_argument() {
 #define MAGIC_FREQ 312000  // max allowed frequency for the "pwm" command
 
 static bool Exit = false;  // True == close the shell and kill its FreeRTOS task
-
-
-int espshell_exec(const char *p);  //execute 1 command line
-
 
 static int q_strcmp(const char *, const char *);  // loose strcmp
 #if WITH_HELP
@@ -2264,6 +2118,19 @@ static struct sequence sequences[SEQUENCES_NUM];
 static int Context = 0;
 
 
+// called by cmd_uart_if, cmd_i2c_if and cmd_seq_if to
+// set new command list and displays text
+static void change_command_directory(int context, const struct keywords_t *dir,const char *prom, const char *text) {
+
+  Context = context;
+  keywords = dir;
+  prompt = prom;
+#if WITH_HELP
+  q_print("% Entering %s configuration mode. Type \"exit\" or press Ctrl+Z to exit\r\n");
+  q_print("% Type \"?\" and press <Enter> to get the list of available commands\r\n");
+#endif
+}
+
 // checks if pin (GPIO) number is in valid range.
 // display a message if pin is out of range
 static bool pin_exist(int pin) {
@@ -2288,6 +2155,8 @@ static bool pin_exist(int pin) {
 
     q_printf("\r\n%% Reserved pins (used internally): ");
 
+      // the function is not in .h files. 
+      // moreover its name has changed in recent ESP IDF
     for (pin = informed = 0; pin < SOC_GPIO_PIN_COUNT; pin++)
       if (esp_gpio_is_pin_reserved(pin)) {
         informed++;
@@ -2639,10 +2508,7 @@ static int cmd_seq_if(int argc, char **argv) {
     return 1;
   }
 
-  Context = seq;
-  keywords = keywords_sequence;
-  prompt = PROMPT_SEQ;
-
+  change_command_directory(seq,keywords_sequence,PROMPT_SEQ,"sequence");
   return 0;
 }
 
@@ -3197,13 +3063,6 @@ static int cmd_pwm(int argc, char **argv) {
   return 0;
 }
 
-#include <soc/gpio_struct.h>
-#include <hal/gpio_ll.h>
-#include <driver/gpio.h>
-#include <rom/gpio.h>
-#include <esp32-hal-periman.h>
-
-extern gpio_dev_t GPIO;
 
 static struct {
   uint8_t flags;
@@ -3893,10 +3752,7 @@ static int cmd_i2c_if(int argc, char **argv) {
     return 1;
   }
 
-  Context = iic;
-  keywords = keywords_i2c;
-  prompt = PROMPT_I2C;
-
+  change_command_directory(iic,keywords_i2c,PROMPT_I2C,"i2c");
   return 0;
 }
 
@@ -3926,9 +3782,7 @@ static int cmd_uart_if(int argc, char **argv) {
   }
 #endif
 
-  Context = u;
-  keywords = keywords_uart;
-  prompt = PROMPT_UART;
+  change_command_directory(u,keywords_uart,PROMPT_UART,"uart");
   return 0;
 }
 
