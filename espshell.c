@@ -108,6 +108,7 @@ static void __attribute__((constructor)) espshell_start();
 static int __attribute__((format (printf, 1, 2))) q_printf(const char *, ...);
 static int __attribute__((format (printf, 1, 2))) q_error(const char *, ...);
 static int q_print(const char *);
+void pinMode2(unsigned int pin, unsigned int flags);
 
 
 #ifdef SERIAL_IS_USB // Serial is class USBCDC
@@ -3071,7 +3072,7 @@ static int pwm_enable(unsigned int pin, unsigned int freq, float duty) {
     resolution = 10;
 
   pinMode(pin,OUTPUT);
-  ledcWriteTone(pin, 0); //disable ledc at pin.
+  ledcWriteTone(pin, 0); //disable ledc at pin. FIXME: use ledcDetach!
 
   if (freq) {
     if (ledcAttach(pin, freq, resolution) == 0)
@@ -3174,7 +3175,7 @@ static void pin_save(int pin) {
 static void pin_load(int pin) {
 
   // 1. restore pin mode 
-  pinMode(pin,Pins[pin].flags);
+  pinMode2(pin,Pins[pin].flags);
 
   //2. attempt to restore peripherial connections:
   //   If pin was not configured or was simple GPIO function then restore it to simple GPIO
@@ -3252,6 +3253,21 @@ int digitalForceRead(int pin) {
   return gpio_ll_get_level(&GPIO,pin) ? HIGH : LOW;
 }
 
+// same as pinMode() but calls IDF directly bypassing
+// PeriMan's pin deinit/init. As a result it allows flags manipulation on
+// reserved pins without crashing & rebooting
+//
+// exported (non-static) to allow use in a sketch (by including "extra/espshell.h" in
+// user sketch .ino file)
+//
+void pinMode2(unsigned int pin, unsigned int flags) {
+  if (flags & PULLUP) gpio_ll_pullup_en(&GPIO,pin); else gpio_ll_pullup_dis(&GPIO,pin);
+  if (flags & PULLDOWN) gpio_ll_pulldown_en(&GPIO,pin); else gpio_ll_pulldown_dis(&GPIO,pin);
+  if (flags & OPEN_DRAIN) gpio_ll_od_enable(&GPIO,pin); else gpio_ll_od_disable(&GPIO,pin);
+  if (flags & INPUT) gpio_ll_input_enable(&GPIO,pin); else gpio_ll_input_disable(&GPIO,pin);
+  if (flags & OUTPUT) gpio_ll_output_enable(&GPIO,pin); else gpio_ll_output_disable(&GPIO,pin);
+}
+
 #ifdef CONFIG_IDF_TARGET_ESP32
 // IO_MUX function code --> human readable text mapping
 static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][6] = {
@@ -3291,6 +3307,7 @@ static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][6] = {
   { "GPIO39", "1", "GPIO39", "3", "4", "5" },
 };
 #else
+//TODO: add more targets (ESP32S3 at least)
 // unknown/unsupported target
 static const char io_mux_func_name[SOC_GPIO_PIN_COUNT][6] = {
   {"0","1","2","3","4","5"},{"0","1","2","3","4","5"},{"0","1","2","3","4","5"},{"0","1","2","3","4","5"},
@@ -3589,13 +3606,13 @@ static int cmd_pin(int argc, char **argv) {
       else if (!q_strcmp(argv[i], "load"))    pin_load(pin);
       else if (!q_strcmp(argv[i], "hold"))    gpio_hold_en((gpio_num_t)pin);
       else if (!q_strcmp(argv[i], "release")) gpio_hold_dis((gpio_num_t)pin);
-      else if (!q_strcmp(argv[i], "up"))      { flags |= PULLUP;     pinMode(pin, flags); } // set flags immediately as we read them
-      else if (!q_strcmp(argv[i], "down"))    { flags |= PULLDOWN;   pinMode(pin, flags); }
-      else if (!q_strcmp(argv[i], "open"))    { flags |= OPEN_DRAIN; pinMode(pin, flags); }
-      else if (!q_strcmp(argv[i], "in"))      { flags |= INPUT;      pinMode(pin, flags); }
-      else if (!q_strcmp(argv[i], "out"))     { flags |= OUTPUT;     pinMode(pin, flags); }
-      else if (!q_strcmp(argv[i], "low"))     { flags |= OUTPUT;     pinMode(pin,flags); digitalWrite(pin, LOW); }
-      else if (!q_strcmp(argv[i], "high"))    { flags |= OUTPUT;     pinMode(pin,flags); digitalWrite(pin, HIGH); }
+      else if (!q_strcmp(argv[i], "up"))      { flags |= PULLUP;     pinMode2(pin, flags); } // set flags immediately as we read them
+      else if (!q_strcmp(argv[i], "down"))    { flags |= PULLDOWN;   pinMode2(pin, flags); }
+      else if (!q_strcmp(argv[i], "open"))    { flags |= OPEN_DRAIN; pinMode2(pin, flags); }
+      else if (!q_strcmp(argv[i], "in"))      { flags |= INPUT;      pinMode2(pin, flags); }
+      else if (!q_strcmp(argv[i], "out"))     { flags |= OUTPUT;     pinMode2(pin, flags); }
+      else if (!q_strcmp(argv[i], "low"))     { flags |= OUTPUT;     pinMode2(pin,flags); digitalWrite(pin, LOW); }
+      else if (!q_strcmp(argv[i], "high"))    { flags |= OUTPUT;     pinMode2(pin,flags); digitalWrite(pin, HIGH); }
       else if (!q_strcmp(argv[i], "read"))    q_printf("%% GPIO%d : logic %d\r\n", pin, digitalForceRead(pin));
       else if (!q_strcmp(argv[i], "aread"))   q_printf("%% GPIO%d : analog %d\r\n", pin, analogRead(pin));
       //"new pin number" keyword. when we see a number we use it as a pin number
@@ -4553,17 +4570,17 @@ static int cmd_question(int argc, char **argv) {
 //
 // returns 0 on success
 //
+// TODO: for subdirectories: if command is not found, also scan keywords_main
+//       this is useful to exec "pin" or "var" commands while in a subdirectory
 static int
 espshell_command(char *p) {
 
   char **argv = NULL;
-  int argc;
-  int i = 0, bad = -1;
-
-  bool found = false; //have found something. maybe not exact match but name is matched
+  int argc, i, bad;
+  bool found;
 
   if (!p)
-    return bad;
+    return -1;
 
   //make a history entry
   rl_add_history(p);
@@ -4577,28 +4594,34 @@ espshell_command(char *p) {
   //others are arguments. argc of zero means there was a memory allocation error, or input string was
   //empty/consisting completely of whitespace
   if (argc < 1)
-    return bad;
+    return -1;
 
   {
     //process command
-    //find a corresponding entry in a keywords[] : match the name and minimum number of arguments
-    while (keywords[i].cmd) {
+    //find a corresponding entry in a keywords[] : match the name and the number of arguments
+    const struct keywords_t *key = keywords;
+  one_more_try:
+    i = 0;
+    bad = -1;
+    found = false;
+
+    while (key[i].cmd) {
     // command name matches user input?
-      if (!q_strcmp(argv[0],keywords[i].cmd)) {
+      if (!q_strcmp(argv[0],key[i].cmd)) {
         found = true;
         // command & user input match when both name & number of arguments match.
         // one special case is command with argc < 0 : these are matched always
         // (-1 == "take any number of arguments")
-        if (((argc - 1) == keywords[i].argc) || (keywords[i].argc < 0)) {
+        if (((argc - 1) == key[i].argc) || (key[i].argc < 0)) {
 
           // execute the command. 
           // if nonzero value is returned then it is an index of the "failed" argument (value of 3 means argv[3] was bad (for values > 0))
           // value of zero means successful execution, return code <0 means argument number was wrong (missing argument)
             
-          if (keywords[i].cb) {
+          if (key[i].cb) {
             //!!! handler MAY change keywords pointer! keywords[i] may be invalid pointer after
             // cb() call with return code 0
-            bad = keywords[i].cb(argc, argv);
+            bad = key[i].cb(argc, argv);
             
             color_error();
             if (bad > 0)
@@ -4616,7 +4639,15 @@ espshell_command(char *p) {
     }          // until all keywords[] are processed
 
     // reached the end of the list and didn't find any exact match?
-    if (!keywords[i].cmd) {
+    if (!key[i].cmd) {
+
+      // try keywords_main if we are currently in a subdirectory
+      // so we can execute "pin" command while are in uart config mode
+      if (key != keywords_main) {
+        key = keywords_main;
+        goto one_more_try;
+      }
+
       color_error();
       if (found)  //we had a name match but number of arguments was wrong
         q_printf("%% \"%s\": wrong number of arguments (\"? %s\" for help)\r\n", argv[0], argv[0]);
