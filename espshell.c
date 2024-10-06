@@ -2115,14 +2115,14 @@ static const struct keywords_t keywords_main[] = {
     "% 2. Enable/disable PWM and pattern generation on pin\r\n" \
     "% 3. Set/read digital pin values\r\n" \
     "%\r\n"
-    "% Multiple arguments must be separated with spaces, see examples below:\r\n\r\n" \
+    "% Multiple arguments must be separated with spaces, see examples below:\r\n%\r\n" \
     "% Ex.: pin 1 read aread         -pin1: read digital and then analog values\r\n" \
     "% Ex.: pin 1 out up             -pin1 is OUTPUT with PULLUP\r\n" \
     "% Ex.: pin 1 save               -save pin state\r\n" \
     "% Ex.: pin 1 high               -pin1 set to logic \"1\"\r\n" \
     "% Ex.: pin 1 high delay 100 low -set pin1 to logic \"1\", after 100ms to \"0\"\r\n" \
-    "% Ex.: pin 1 pwm 2000 0.3      -set 5kHz, 30% duty square wave output\r\n" \
-    "% Ex.: pin 1 pwm 0 0           -disable generation\r\n" \
+    "% Ex.: pin 1 pwm 2000 0.3       -set 5kHz, 30% duty square wave output\r\n" \
+    "% Ex.: pin 1 pwm 0 0            -disable generation\r\n" \
     "% Ex.: pin 1 high delay 500 low delay 500 loop 10 - Blink a led 10 times\r\n" \
     "% (see \"docs/Pin_commands.txt\" for more details & examples)\r\n"),NULL },
 
@@ -3309,12 +3309,18 @@ static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][6] = {
   { "GPIO17", "1", "GPIO17", "HS1_DATA5", "U2TXD", "EMAC_CLK_180" },
   { "GPIO18", "VSPICLK", "GPIO18", "HS1_DATA7", "4", "5" },
   { "GPIO19", "VSPIQ", "GPIO19", "U0CTS", "4", "EMAC_TXD0" },
+  { "GPIO20", "GPIO20(1)", "GPIO20(2)", "GPIO20(3)", "GPIO20(4)", "GPIO20(5)" },
   { "GPIO21", "VSPIHD", "GPIO21", "3", "4", "EMAC_TX_EN" },
   { "GPIO22", "VSPIWP", "GPIO22", "U0RTS", "4", "EMAC_TXD1" },
   { "GPIO23", "VSPID", "GPIO23", "HS1_STROBE", "4", "5" },
+  { "GPIO24", "GPIO24(1)", "GPIO24(2)", "GPIO24(3)", "GPIO24(4)", "GPIO24(5)" },
   { "GPIO25", "1", "GPIO25", "3", "4", "EMAC_RXD0" },
   { "GPIO26", "1", "GPIO26", "3", "4", "EMAC_RXD1" },
   { "GPIO27", "1", "GPIO27", "3", "4", "EMAC_RX_DV" },
+  { "GPIO28", "GPIO28(1)", "GPIO28(2)", "GPIO28(3)", "GPIO28(4)", "GPIO28(5)" },
+  { "GPIO29", "GPIO29(1)", "GPIO29(2)", "GPIO29(3)", "GPIO29(4)", "GPIO29(5)" },
+  { "GPIO30", "GPIO30(1)", "GPIO30(2)", "GPIO30(3)", "GPIO30(4)", "GPIO30(5)" },
+  { "GPIO31", "GPIO31(1)", "GPIO31(2)", "GPIO31(3)", "GPIO31(4)", "GPIO31(5)" },
   { "GPIO32", "1", "GPIO32", "3", "4", "5" },
   { "GPIO33", "1", "GPIO33", "3", "4", "5" },
   { "GPIO34", "1", "GPIO34", "3", "4", "5" },
