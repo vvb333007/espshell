@@ -2108,19 +2108,22 @@ static const struct keywords_t keywords_main[] = {
 
   { "uptime", cmd_uptime, 0, HELP("% \"uptime\" - Shows time passed since last boot"), "System uptime" },
   { "show", cmd_show, 2, HELP("\"show seq X\" - display sequence X\r\n"), "Display information" },
-  { "pin", cmd_pin, 1,HELP("% \"pin X\" - Show pin X configuration"), "Pins (GPIO) commands" },
+  { "pin", cmd_pin, 1,HELP("% \"pin X\" - Show pin X configuration.\r\n% Ex.: \"pin 2\" - show GPIO2 information"), "Pins (GPIO) commands" },
   { "pin", cmd_pin, -1, HELP("% \"pin X (hold|release|up|down|out|in|open|high|low|save|load|read|aread|delay|loop|pwm|seq)...\"\r\n" \
     "%\r\n" \
-    "% Set/Save/Load pin X configuration: pull/direction/digital value\r\n" \
-    "% Multiple arguments must be separated with spaces, see examples below:\r\n" \
+    "% 1. Set/Save/Load pin configuration and settings\r\n" \
+    "% 2. Enable/disable PWM and pattern generation on pin\r\n" \
+    "% 3. Set/read digital pin values\r\n" \
+    "%\r\n"
+    "% Multiple arguments must be separated with spaces, see examples below:\r\n\r\n" \
     "% Ex.: pin 1 read aread         -pin1: read digital and then analog values\r\n" \
     "% Ex.: pin 1 out up             -pin1 is OUTPUT with PULLUP\r\n" \
     "% Ex.: pin 1 save               -save pin state\r\n" \
-    "% Ex.: pin 1 out high           -pin1 set to logic \"1\"\r\n" \
+    "% Ex.: pin 1 high               -pin1 set to logic \"1\"\r\n" \
     "% Ex.: pin 1 high delay 100 low -set pin1 to logic \"1\", after 100ms to \"0\"\r\n" \
     "% Ex.: pin 1 pwm 2000 0.3      -set 5kHz, 30% duty square wave output\r\n" \
     "% Ex.: pin 1 pwm 0 0           -disable generation\r\n" \
-    "% Ex.: pin 1 out high delay 500 low delay 500 loop 10 \r\n" \
+    "% Ex.: pin 1 high delay 500 low delay 500 loop 10 - Blink a led 10 times\r\n" \
     "% (see \"docs/Pin_commands.txt\" for more details & examples)\r\n"),NULL },
 
   
