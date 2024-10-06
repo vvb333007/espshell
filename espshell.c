@@ -67,8 +67,8 @@
 #define STACKSIZE 5000       // Shell task stack size
 #define BREAK_KEY 3          // Keycode of an "Exit" key: CTRL+C to exit uart "tap" mode
 #define SEQUENCES_NUM 10     // Max number of sequences available for command "sequence"
-#define DO_ECHO 1            // -1 - espshell is completely silent, commands are executed but all screen output is disabled \
-                             //  0 - espshell does not do echo for user input (as modem ATE0 command). commands are executed and their output is displayed \
+#define DO_ECHO 1            // -1 - espshell is completely silent, commands are executed but all screen output is disabled
+                             //  0 - espshell does not do echo for user input (as modem ATE0 command). commands are executed and their output is displayed
                              //  1 - espshell default behaviour (do echo, enable all output)
 #define USE_UART UART_NUM_0  // Uart where shell will be deployed at startup, or UART_NUM_MAX for USB-CDC
 
@@ -2228,12 +2228,12 @@ static const struct keywords_t keywords_main[] = {
   { "count", cmd_count, 2, HIDDEN_KEYWORD },  //hidden "count" with 2 args
   { "count", cmd_count, 1, HIDDEN_KEYWORD },  //hidden with 1 arg
 #if WITH_VAR
-  { "var", cmd_var, -1, HELP("% \"var [VARIABLE_NAME[ NUMBER]]\r\n%\r\n"
+  { "var", cmd_var, -1, HELP("% \"var [VARIABLE_NAME[ NUMBER]]\"\r\n%\r\n"
                              "% Set sketch variable to new value.\r\n"
                              "% NUMBER can be integer or float point values, positive or negative\r\n"
                              "%\r\n"
                              "% Ex.: \"var button1\" - Display current value of \"button1\" sketch variable\r\n"
-                             "% Ex.: \"var a -12.3\" - Set sketch variable \"a\"to new value \"-12.3\"\r\n"
+                             "% Ex.: \"var a -12.3\" - Set sketch variable \"a\" to new value \"-12.3\"\r\n"
                              "% Ex.: \"var\"         - List all variables"),
     "Sketch variables" },
 #endif  //WITH_VAR
@@ -4195,7 +4195,8 @@ uart_tap(int remote) {
         return;
       uart_write_bytes(remote, buf, av);
       // make WDT happy if we get flooded.
-      delay(1);
+      //delay(1);
+      yield();
     }
 
     // 2. read all the data from remote uart and echo it to the user
