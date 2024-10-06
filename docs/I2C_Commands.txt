@@ -31,7 +31,7 @@ you can press Ctrl+Z which is the same as entering "exit" command (works
 in terminal, does not work in Arduino Serial Monitor)
 
 There are number of commands available under I2C configuration mode:
-(not you can also use all command from the main tree, for example "pin"
+(note you can also use all commands from the main tree, for example "pin"
 command can be used from within "esp32-i2c#>" command tree)
 
   esp32#>iic 0
