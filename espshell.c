@@ -264,7 +264,6 @@ static unsigned rl_eof = 0;
 static unsigned char NIL[] = "";
 static unsigned char *Line = NULL;
 static const char *Prompt = NULL;
-static unsigned char *Yanked;
 static char *Screen = NULL;
 static const char NEWLINE[] = CRLF;
 static HISTORY H;
@@ -307,7 +306,7 @@ static STATUS fd_char();
 static STATUS bk_del_char();
 static STATUS bk_kill_word();
 static STATUS bk_word();
-static STATUS fd_word();
+
 static STATUS h_next();
 static STATUS h_prev();
 static STATUS h_search();
@@ -2103,7 +2102,7 @@ static void change_command_directory(int context, const struct keywords_t *dir,c
   keywords = dir;
   prompt = prom;
 #if WITH_HELP
-  q_print("% Entering %s configuration mode. Type \"exit\" or press Ctrl+Z to exit\r\n");
+  q_printf("% Entering %s configuration mode. Type \"exit\" or press Ctrl+Z to exit\r\n",text);
   q_print("% Type \"?\" and press <Enter> to get the list of available commands\r\n");
 #endif
 }
@@ -2218,31 +2217,30 @@ static void seq_dump(int seq) {
     q_print("is not used\r\n");
 
   q_print("% Bit sequence ");
+  if (s->bits) {
 
-  if (s->bits)
     q_printf(": (%d bits) \"%s\"\r\n", strlen(s->bits), s->bits);
+    q_print("% Zero ");
+    if (s->alph[0].duration0) {
+      if (s->alph[0].duration1)
+        q_printf("%d/%d %d/%d\r\n", s->alph[0].level0, s->alph[0].duration0, s->alph[0].level1, s->alph[0].duration1);
+      else
+        q_printf("%d/%d\r\n", s->alph[0].level0, s->alph[0].duration0);
+    } else
+      q_print(Notset);
+
+    q_print("% One ");
+    if (s->alph[1].duration0) {
+      if (s->alph[1].duration1)
+        q_printf("%d/%d %d/%d\r\n", s->alph[1].level0, s->alph[1].duration0, s->alph[1].level1, s->alph[1].duration1);
+      else
+        q_printf("%d/%d\r\n", s->alph[1].level0, s->alph[1].duration0);
+    } else
+      q_print(Notset);
+  }
   else
     q_print(Notset);
 
-  q_print("% Zero ");
-
-  if (s->alph[0].duration0) {
-    if (s->alph[0].duration1)
-      q_printf("%d/%d %d/%d\r\n", s->alph[0].level0, s->alph[0].duration0, s->alph[0].level1, s->alph[0].duration1);
-    else
-      q_printf("%d/%d\r\n", s->alph[0].level0, s->alph[0].duration0);
-  } else
-    q_print(Notset);
-
-  q_print("% One ");
-
-  if (s->alph[1].duration0) {
-    if (s->alph[1].duration1)
-      q_printf("%d/%d %d/%d\r\n", s->alph[1].level0, s->alph[1].duration0, s->alph[1].level1, s->alph[1].duration1);
-    else
-      q_printf("%d/%d\r\n", s->alph[1].level0, s->alph[1].duration0);
-  } else
-    q_print(Notset);
   q_printf("%% Pull pin %s after transmission is done\r\n", s->eot ? "HIGH" : "LOW");
 }
 
@@ -4541,8 +4539,8 @@ static int help_keys(int argc, char **argv) {
           "% <DEL>         : As in Notepad\r\n" \
           "% <BACKSPACE>   : As in Notepad\r\n" \
           "% <HOME>, <END> : Use Ctrl+A instead of <HOME> and Ctrl+E as <END>\r\n" \
-          "% <TAB>         : Move cursor to the next word/argument\r\n" \
-          "%                 Press <TAB> multiple times to cycle through words in the line\r\n" \
+          "% <TAB>         : Move cursor to the next word/argument: press <TAB> multiple\r\n" \
+          "%                 times to cycle through words in the line\r\n" \
           "% Ctrl+R        : Command history search, enter first few characters & <Enter>\r\n" \
           "% Ctrl+K        : [K]ill line: clear input line from cursor to the end\r\n" \
           "% Ctrl+L        : Clear screen\r\n" \
@@ -4562,8 +4560,11 @@ static int help_keys(int argc, char **argv) {
 static int help_pinout(int argc, char **argv) {
   argc = argc;
   argv = argv;
-  //TODO: basic pin numvers are in pins_arduino.h. i2c1 and spi1/2 as well as
-  //      uart1/2 default pin numbers must be in technical reference
+  //TODO: basic pin numvers are in pins_arduino.h. 
+  //      problems with pins_arduino.h: it is a bunch of static const unsigned chars, not #defines;
+  //      there are only basic pins, no pins for 2nd UART or I2C or SPI.
+  //      Looks like I have to go through all TechRefs :(. Next time.
+  q_print("% Sorry brother, not yet implemented\r\n");
   return 0;
 }
 
@@ -4660,11 +4661,15 @@ static int cmd_question(int argc, char **argv) {
 
    //"? arg"
   if (argc > 1) {
+    // use strcmp, not q_strcmp to distibuish from "? pin" command
     //"? keys"
-    if (!q_strcmp(argv[1], "keys")) return help_keys(argc,argv);
+    if (!strcmp(argv[1], "keys"))
+      return help_keys(argc,argv);
+
     //"? pinout"
-    // use strcmp to distibuish from "? pin" command
-    if (!strcmp("pinout",argv[1])) return help_pinout(argc,argv);
+    if (!strcmp("pinout",argv[1]))
+      return help_pinout(argc,argv);
+
     //"? command"
     return help_command(argc,argv);
   }
