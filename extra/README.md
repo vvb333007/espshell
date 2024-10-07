@@ -70,5 +70,5 @@ Can it be used with other ESP32-based camera boards?
 ----------------------------------------------------
 
 Yes it can be used however you need to modify pin numbers in esp32cam_handler.c : locate cam_init() function
-and look into it: there are pin assignments. Change them to fit your camera/board models and recompiles
+and look into it: there are pin assignments. Change them to fit your camera/board models and recompile
 
