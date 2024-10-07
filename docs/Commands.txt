@@ -16,14 +16,14 @@ KEYS USED IN ESPSHELL FOR COMMAND LINE EDITING:
 
 <HOME>, <END>  : Do not work! Use Ctrl+A instead of <HOME> and Ctrl+E as <END>
 
+<TAB>          : Quick jump from one word in the line to another. Fast switching
+                 between command arguments. Continously press to cycle through
+                 all arguments/words in line
+
 Ctrl+R         : History search. Press Ctrl+R and start typing. Press <ENTER> 
                  to search for command executed before
 
-Ctrl+W         : Wipe : clear input line
-
-Ctrl+O         : Move cursor 1 word/argument  to the left.
-
-Ctrl+P         : Move cursor 1 word/argument to the right.
+Ctrl+K         : Clear the line from cursor to the end
 
 Ctrl+L         : Clear the screen, keep user input
 
@@ -38,7 +38,8 @@ but do not work in ArduinoIDE Serial Monitor as it lacks the ability to send
 Ctrl+... key sequences.
 
 By entering "? keys" command one also can find the key combinations which
-can be used on "dumb" terminals
+can be used on "dumb" terminals: if for example arrow keys in your terminal
+are not working correctly you can use Ctrl+F or B as an alternative keys.
 
 
 AUTOCOMPLETION
