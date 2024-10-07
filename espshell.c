@@ -292,47 +292,28 @@ static int Echo = DO_ECHO;
 static int rl_meta_chars = 0;
 
 static unsigned char *editinput();
+
 static STATUS ring_bell();
 static STATUS inject_exit();
 static STATUS inject_suspend();
-
+static STATUS tab_pressed();
 static STATUS beg_line();
 static STATUS end_line();
 static STATUS kill_line();
 static STATUS accept_line();
-
 static STATUS bk_char();
 static STATUS del_char();
 static STATUS fd_char();
 static STATUS bk_del_char();
-//static STATUS move_to_char();
-
 static STATUS bk_kill_word();
 static STATUS bk_word();
-//static STATUS fd_kill_word();
 static STATUS fd_word();
-//static STATUS case_down_word();
-//static STATUS case_up_word();
-
 static STATUS h_next();
 static STATUS h_prev();
 static STATUS h_search();
-//static STATUS h_first();
-//static STATUS h_last();
-
 static STATUS redisplay();
 static STATUS clear_screen();
-
-//static STATUS transpose();
-//static STATUS quote();
-static STATUS wipe();
-//static STATUS exchange();
-//static STATUS yank();
 static STATUS meta();
-//static STATUS mk_set();
-//static STATUS last_argument();
-//static STATUS toggle_meta_mode();
-//static STATUS copy_region();
 
 static const KEYMAP Map[] = {
   //Key       callback           action  
@@ -340,10 +321,10 @@ static const KEYMAP Map[] = {
   { CTL('Z'), inject_exit },     // "exit" command
 
   { CTL('A'), beg_line },        // <HOME> 
-  { CTL('E'), end_line },        // <HOME>
+  { CTL('E'), end_line },        // <END>
 
-  { CTL('B'), bk_char },         // Arrow left
-  { CTL('F'), fd_char },         // Arrow right
+  { CTL('B'), bk_char },         // Arrow left. Terminal compatibility
+  { CTL('F'), fd_char },         // Arrow right. Terminal compatibility
 
   { CTL('D'), del_char },        // <DEL>
   { CTL('H'), bk_del_char },     // <BACKSPACE>
@@ -351,12 +332,12 @@ static const KEYMAP Map[] = {
   { CTL('J'), accept_line },     // <ENTER>
   { CTL('M'), accept_line },     // <ENTER>
 
-  { CTL('K'), kill_line },       // Erase from cursor till the end (undocumented)
-  { CTL('W'), wipe },            // Erase all user input (Clear the input line)  
+  { CTL('K'), kill_line },       // Erase from cursor till the end
+  
   { CTL('L'), clear_screen },    // Clear (erase) the screen, keep use input
   
-  { CTL('O'), bk_word },         // Move cursor between words: move to the left
-  { CTL('P'), fd_word },         //                            move to the right
+  { CTL('O'), h_prev },         // Previous history entry. Terminal compatibility
+  { CTL('P'), h_next },         // Next history entry. Terminal compatibility
 
   { CTL('R'), h_search },        // Reverse history search. Type few symbols and press <Enter>
   
@@ -365,8 +346,11 @@ static const KEYMAP Map[] = {
                                  // ESC [ NUMBER CHAR  will print a string of character CHAR
                                  // NUMBER chracters long. It is useful to input long lines of 1 or 0
                                  // in a few button presses (undocumented)
+  { CTL('I'), tab_pressed },   // <TAB>
 
   //currently unused
+  { CTL('\\'),ring_bell },
+  { CTL('@'), ring_bell },   // ?
   { CTL('G'), ring_bell },
   { CTL('N'), ring_bell },
   { CTL('Q'), ring_bell },
@@ -377,8 +361,8 @@ static const KEYMAP Map[] = {
   { CTL('X'), ring_bell },
   { CTL('Y'), ring_bell },
   { CTL(']'), ring_bell },
-  { CTL('^'), ring_bell },
-  { CTL('_'), ring_bell },
+  { CTL('^'), ring_bell }, // ?
+  { CTL('_'), ring_bell }, // ?
 
   { 0, NULL }
 };
@@ -450,9 +434,7 @@ static const KEYMAP MetaMap[16] = {
 // queue an arbitrary asciiz string t simulate user input.
 // string queued has higher priority than user input so console_read() would
 // "read" from this string first.
-//
-// TODO: NO LOCKING
-static inline void
+static inline void __attribute__((always_inline))
 TTYqueue(const char *input) {
   TTYq = input;
 }
@@ -615,7 +597,6 @@ inject_suspend() {
 }
 
 
-
 static STATUS
 do_forward(STATUS move) {
   int i;
@@ -638,6 +619,22 @@ do_forward(STATUS move) {
 
   return CSstay;
 }
+
+// <TAB> (Ctrl+I) handler. Jump to next argument
+// until end of line is reached. start to jump back
+static STATUS tab_pressed() {
+  
+  if (Point < End)
+    return do_forward(CSmove);
+  else {
+    if (Point) {
+      Point = 0;
+      return CSmove;
+    }
+    return CSstay;
+  }
+}
+
 static void
 ceol() {
   int extras;
@@ -859,21 +856,6 @@ fd_char() {
   return CSstay;
 }
 
-static void
-save_yank(int begin, int i) {
-  if (Yanked) {
-    DISPOSE(Yanked);
-    Yanked = NULL;
-  }
-
-  if (i < 1)
-    return;
-
-  if ((Yanked = NEW(unsigned char, (unsigned int)i + 1)) != NULL) {
-    COPYFROMTO(Yanked, &Line[begin], i);
-    Yanked[i] = '\0';
-  }
-}
 
 static STATUS
 delete_string(int count) {
@@ -903,9 +885,6 @@ delete_string(int count) {
   }
   if (Point + count > End && (count = End - Point) <= 0)
     return CSstay;
-
-  if (count > 1)
-    save_yank(Point, count);
 
   for (p = &Line[Point], i = End - (Point + count) + 1; --i >= 0; p++)
     p[0] = p[count];
@@ -966,7 +945,7 @@ kill_line() {
     return CSmove;
   }
 
-  save_yank(Point, End - Point);
+  //save_yank(Point, End - Point);
   Line[Point] = '\0';
   ceol();
   End = Point;
@@ -1241,26 +1220,6 @@ accept_line() {
   return CSdone;
 }
 
-static STATUS
-wipe() {
-  int i;
-
-  if (Mark > End)
-    return ring_bell();
-
-  if (Point > Mark) {
-    i = Point;
-    Point = Mark;
-    Mark = i;
-    reposition();
-  }
-
-  return delete_string(Mark - Point);
-}
-static STATUS
-fd_word() {
-  return do_forward(CSmove);
-}
 static STATUS
 bk_word() {
   int i;
@@ -4575,26 +4534,26 @@ static int help_keys(int argc, char **argv) {
   argv = argv; //unused
 
   // 25 lines maximum to fit in default terminal window without scrolling
-  q_print("%             -- ESPShell Keys -- \r\n\r\n"
-          "% <ENTER>       : Execute command.\r\n"
-          "% <- -> /\\ \\/   : Arrows: move cursor left or right. Up and down to scroll\r\n"
-          "%                 through command history\r\n"
-          "% <DEL>         : As in Notepad\r\n"
-          "% <BACKSPACE>   : As in Notepad\r\n"
-          "% <HOME>, <END> : Use Ctrl+A instead of <HOME> and Ctrl+E as <END>\r\n"
-          "% Ctrl+R        : Command history search\r\n"
-          "% Ctrl+W        : Wipe : clear input line\r\n"
-          "% Ctrl+O        : Move cursor to previous argument\r\n"
-          "% Ctrl+P        : Move cursor to the next argument\r\n"
-          "% Ctrl+L        : Clear screen\r\n"
-          "% Ctrl+Z        : Same as entering \"exit\" command\r\n"
-          "% Ctrl+C        : Suspend sketch execution\r\n%\r\n"
-          "% -- Terminal compatibility workarounds (alternative key sequences) --\r\n%\r\n"
-          "% Ctrl+J and Ctrl+M work as <ENTER>\r\n"
-          "% Ctrl+B and Ctrl+F work as <- and -> (left & right arrows)>\r\n"
-          "% Ctrl+D works as <Delete> key\r\n"
-          "% Ctrl+H works as <BACKSPACE> key\r\n"
-          "% Ctrl+A is <HOME> and Ctrl+E is <END>\r\n");
+  q_print("%             -- ESPShell Keys -- \r\n\r\n"\
+          "% <ENTER>       : Execute command.\r\n" \
+          "% <- -> /\\ \\/   : Arrows: move cursor left or right. Up and down to scroll\r\n" \
+          "%                 through command history\r\n" \
+          "% <DEL>         : As in Notepad\r\n" \
+          "% <BACKSPACE>   : As in Notepad\r\n" \
+          "% <HOME>, <END> : Use Ctrl+A instead of <HOME> and Ctrl+E as <END>\r\n" \
+          "% <TAB>         : Move cursor to the next word/argument\r\n" \
+          "%                 Press <TAB> multiple times to cycle through words in the line\r\n" \
+          "% Ctrl+R        : Command history search, enter first few characters & <Enter>\r\n" \
+          "% Ctrl+K        : [K]ill line: clear input line from cursor to the end\r\n" \
+          "% Ctrl+L        : Clear screen\r\n" \
+          "% Ctrl+Z        : Same as entering \"exit\" command\r\n" \
+          "% Ctrl+C        : Suspend sketch execution\r\n%\r\n" \
+          "% -- Terminal compatibility workarounds (alternative key sequences) --\r\n%\r\n" \
+          "% Ctrl+B and Ctrl+F work as \"<-\" and \"->| ([B]ack & [F]orward arrows)>\r\n" \
+          "% Ctrl+O or P   : Go through the command history: O=backward, P=forward\r\n" \
+          "% Ctrl+D works as <[D]elete> key\r\n" \
+          "% Ctrl+H works as <BACKSPACE> key\r\n");
+          
   return 0;
 }
 
@@ -4622,6 +4581,8 @@ static int help_command(int argc, char **argv) {
   while (keywords[i].cmd) {
     if (keywords[i].help || keywords[i].brief) {  //skip hidden commands
       if (!q_strcmp(argv[1], keywords[i].cmd)) {
+
+        // print common header
         if (!found && keywords[i].brief)
           q_printf("\r\n -- %s --\r\n", keywords[i].brief);  //display brief (must not happen)
 
@@ -4702,7 +4663,7 @@ static int cmd_question(int argc, char **argv) {
     //"? keys"
     if (!q_strcmp(argv[1], "keys")) return help_keys(argc,argv);
     //"? pinout"
-    // use strcmp to not mess with "? pin" command
+    // use strcmp to distibuish from "? pin" command
     if (!strcmp("pinout",argv[1])) return help_pinout(argc,argv);
     //"? command"
     return help_command(argc,argv);
