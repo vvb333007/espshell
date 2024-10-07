@@ -4133,14 +4133,11 @@ static int cmd_uart(int argc, char **argv) {
     // uart number, rx/tx pins and speed must be numbers
 
     unsigned int rx, tx, speed;
-    if (!isnum(argv[1])) return 1;
-    else rx = atol(argv[1]);
+    if (!isnum(argv[1])) return 1; else rx = atol(argv[1]);
     if (!pin_exist(rx)) return 1;
-    if (!isnum(argv[2])) return 2;
-    else tx = atol(argv[2]);
+     if (!isnum(argv[2])) return 2; else tx = atol(argv[2]);
     if (!pin_exist(tx)) return 2;
-    if (!isnum(argv[3])) return 3;
-    else speed = atol(argv[3]);  //TODO: check speed
+    if (!isnum(argv[3])) return 3; else speed = atol(argv[3]);  //TODO: check speed 
 
     if (NULL == uartBegin(u, speed, SERIAL_8N1, rx, tx, 256, 0, false, 112))
       q_error(Failed);
@@ -4437,16 +4434,14 @@ static void __attribute__((constructor)) espshell_start() {
   seq_init();
 
   //start shell task.
-  //task have to wait until Serial.begin() in order to start
-  //reading and process user input
   espshell_task((const void *)1);
 }
 
 
 // "uptime"
 //
-// Displays system uptime as returned by esp_timer_get_time() counter.
-//
+// Displays system uptime as returned by esp_timer_get_time() counter
+// Displays last reboot cause
 static int
 cmd_uptime(int argc, char **argv) {
 
@@ -4583,28 +4578,30 @@ static int help_command(int argc, char **argv) {
     if (keywords[i].help || keywords[i].brief) {  //skip hidden commands
       if (!q_strcmp(argv[1], keywords[i].cmd)) {
 
-        // print common header
+        // print common header for the first entry
         if (!found && keywords[i].brief)
-          q_printf("\r\n -- %s --\r\n", keywords[i].brief);  //display brief (must not happen)
+          q_printf("\r\n -- %s --\r\n", keywords[i].brief);
 
         if (keywords[i].help)
           q_printf("\r\n%s\r\n", keywords[i].help);  //display long help
         else if (keywords[i].brief)
           q_printf("\r\n%s\r\n", keywords[i].brief);  //display brief (must not happen)
+        else
+          q_print("% FIXME: no help lines?\r\n");
         found = true;
       }
     }
     i++;
   }
+  // if we didnt find anything, return 1 (index of failed argument)
   return found ? 0 : 1;
 }
 
 //"?" 
 // display command list
 //
+#define INDENT 10
 static int help_command_list(int argc, char **argv) {
-
-#define INDENT 10  //TODO: use a variable calculated at shell task startup
   int i = 0;
   const char *prev = "";
   char indent[INDENT + 1];
@@ -4621,24 +4618,25 @@ static int help_command_list(int argc, char **argv) {
   //run through the keywords[] and print brief info for every entry
   // 1. for repeating entries (same command name) only the first entry's description
   //    used. Such entries in keywords[] must be grouped to avoid undefined bahaviour
+  //    Ex.: see "count" command entries
   // 2. entries with both help lines (help and brief) set to NULL are hidden commands
-  //    and are not displayed.
+  //    and are not displayed (but are executed if requested).
   while (keywords[i].cmd) {
 
-    if (keywords[i].help || keywords[i].brief) {  // process only non-hidden entries
+    if (keywords[i].help || keywords[i].brief) {
       if (strcmp(prev, keywords[i].cmd)) {        // skip entry if its command name is the same as previous
         const char *brief;
         if (!(brief = keywords[i].brief))  //use "brief" or fallback to "help"
           if (!(brief = keywords[i].help))
-            brief = "";
+            brief = "% FIXME: No description";
 
-        // indent list: short commands are padded with spaces so
-        // total length is always INDENT bytes. Commands which size
-        // is bigger than INDENT will not be padded
+        // indent: commands with short names are padded with spaces so
+        // total length is always INDENT bytes. Longer commands are not padded
         int clen;
         spaces = &indent[INDENT];  //points to \0
         if ((clen = strlen(keywords[i].cmd)) < INDENT)
           spaces = &indent[clen];
+        // "COMMAND" PADDING_SPACES : DESCRIPTION
         q_printf("%% \"%s\"%s : %s\r\n", keywords[i].cmd, spaces, brief);
       }
     }
@@ -4699,19 +4697,25 @@ espshell_command(char *p) {
   rl_add_history(p);
 
   // tokenize a string.
-  // note that resulting argv array consists of pointers within "p"
-  // while "p" itself is modified by inserting '\0' between tokens.
+  // source string "p" is modifed by insertions of '\0' into appropriate 
+  // positions to split it into bunch of asciiz strings. pointers to these
+  // strings are returned as argv array of argc elements
   argc = argify((unsigned char *)p, (unsigned char ***)&argv);
 
-  //argc must be at least 1 if tokenization was successful. the very first token is a command while
-  //others are arguments. argc of zero means there was a memory allocation error, or input string was
-  //empty/consisting completely of whitespace
-  if (argc < 1)
+  
+  if (argc < 1) {
+    delay(1); //make WDT happy
     return -1;
+  }
 
   {
-    //process command
-    //find a corresponding entry in a keywords[] : match the name and the number of arguments
+    // Process a command
+    //
+    // Find a corresponding entry in a keywords[] : match the name and the number of arguments.
+    // For commands executed in a command subdirectory both main command directory and current
+    // directory are searched.
+    // This allows all command from the main tree to be accessible while in sequence, uart or i2c
+    // subdirectory
     const struct keywords_t *key = keywords;
 one_more_try:
     i = 0;
@@ -4730,19 +4734,19 @@ one_more_try:
           // execute the command.
           // if nonzero value is returned then it is an index of the "failed" argument (value of 3 means argv[3] was bad (for values > 0))
           // value of zero means successful execution, return code <0 means argument number was wrong (missing argument)
-
           if (key[i].cb) {
-            //!!! handler MAY change keywords pointer! keywords[i] may be invalid pointer after
-            // cb() call with return code 0
-            bad = key[i].cb(argc, argv);
 
+
+            bad = key[i].cb(argc, argv);
+            // keywords[i] is not a valid pointer anymore as cb() can change the keywords pointer
+            // keywords[0] is always valid 
             color_error();
             if (bad > 0)
               q_printf("%% Invalid argument \"%s\" (\"? %s\" for help)\r\n", argv[bad], argv[0]);
             else if (bad < 0)
               q_printf("%% Missing argument (\"? %s\" for help)\r\n", argv[0]);
             else
-              i = 0;  // make sure keywords[i] is valid pointer
+              i = 0;  // make sure keywords[i] is a valid pointer
             color_normal();
             break;
           }  // if callback is provided
@@ -4786,22 +4790,12 @@ one_more_try:
 }
 
 
-// Execute an arbitrary shell command (1 string per call).
-// Basically it is just a wrapper for espshell_command() dealing with
-// const char * input. Return 0 on success, -1 on failure, >0 - failed
-// argument index
-//
-// TODO: rewrite. make it queue strings to the espshell_task or it all doomed without
-//       any mutexes
+// Execute an arbitrary shell command (\n are allowed for multiline).
+// TODO: no locking
+// TODO: does nothing until blocking TTYget() returns
 int espshell_exec(const char *p) {
 
-  int err = -1;
-  char *pp = strdup(p);
-  if (pp) {
-    err = espshell_command(pp);
-    free(pp);
-  }
-  return err;
+  TTYq = p;
 }
 
 
