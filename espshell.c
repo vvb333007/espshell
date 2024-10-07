@@ -50,7 +50,7 @@
 #undef HIST_SIZE
 #undef STACKSIZE
 #undef BREAK_KEY
-#undef USE_UART
+#undef STARTUP_PORT
 #undef DO_ECHO
 #undef WITH_COLOR
 
@@ -70,7 +70,7 @@
 #define DO_ECHO 1            // -1 - espshell is completely silent, commands are executed but all screen output is disabled
                              //  0 - espshell does not do echo for user input (as modem ATE0 command). commands are executed and their output is displayed
                              //  1 - espshell default behaviour (do echo, enable all output)
-#define USE_UART UART_NUM_0  // Uart where shell will be deployed at startup, or UART_NUM_MAX for USB-CDC
+#define STARTUP_PORT UART_NUM_0  // Uart number (or 99 for USBCDC) where shell will be deployed at startup
 
 #define COMPILING_ESPSHELL 1  // dont touch this!
 
@@ -110,8 +110,18 @@ static int __attribute__((format(printf, 1, 2))) q_error(const char *, ...);
 static int q_print(const char *);
 void pinMode2(unsigned int pin, unsigned int flags);
 
+#include <driver/uart.h>
+static uart_port_t uart = STARTUP_PORT;  // Port to use for ESPShell. Set to 99 for USBCDC
+static inline bool uart_isup(int u);
 
-#ifdef SERIAL_IS_USB  // Serial is class USBCDC
+
+// --   SHELL TO CONSOLE HARDWARE GLUE --
+// espshell uses console_read../console_write.. and some other functions to
+// print data or read user input. In order to implement support for another type
+// of hardware (say USBCDC) one have to implement functions below
+
+// Serial is class USBCDC, not yet implemented
+#ifdef SERIAL_IS_USB  
 static int console_here(int i) {
 #error "console_here() is not implemented"
 }
@@ -127,26 +137,52 @@ static bool console_isup(int u) {
 #error "console_isup() is not implemented"
   return false;
 }
-#else  // Serial is class HardwareSerial
-#include <driver/uart.h>
-static uart_port_t uart = USE_UART;
+static bool anykey_pressed() {
+#error "anykey_pressed() is not implemented"
+  return false;
+}
+#else  
+// Serial is class HardwareSerial ie UART
 
-static inline bool uart_isup(int u);
-
-static inline __attribute__((always_inline)) int console_write_bytes(const void *buf, size_t len) {
+// Send characters to user terminal
+static inline __attribute__((always_inline)) 
+int console_write_bytes(const void *buf, size_t len) {
   return uart_write_bytes(uart, buf, len);
 }
-static inline __attribute__((always_inline)) int console_read_bytes(void *buf, uint32_t len, TickType_t wait) {
+
+// read user input, blocking!
+static inline __attribute__((always_inline)) 
+int console_read_bytes(void *buf, uint32_t len, TickType_t wait) {
   return uart_read_bytes(uart, buf, len, wait);
 }
-static inline __attribute__((always_inline)) bool console_isup() {
+
+// is UART driver installed and can be used?
+static inline __attribute__((always_inline)) 
+bool console_isup() {
   return uart_isup(uart);
 }
+
 // Make ESPShell to use specified UART for its IO. Default is uart0.
 // console_here(-1) returns uart port number occupied by espshell
-static inline __attribute__((always_inline)) int console_here(int i) {
+static inline __attribute__((always_inline)) 
+int console_here(int i) {
   return i < 0 ? uart : (i > UART_NUM_MAX ? -1 : (uart = i));
 }
+
+//detects if ANY key is pressed in serial terminal
+//or any character was sent in Arduino IDE Serial Monitor.
+//
+static bool anykey_pressed() {
+
+  size_t av = 0;
+
+  if (ESP_OK == uart_get_buffered_data_len(uart, &av))
+    if (av > 0)
+      return true;
+
+  return false;
+}
+
 #endif  //SERIAL_IS_USB
 
 // external command queue.
@@ -1315,9 +1351,6 @@ argify(unsigned char *line, unsigned char ***avp) {
 
   return ac;
 }
-
-
-
 ////////////////////////////// EDITLINE CODE END
 
 #include <soc/gpio_struct.h>
@@ -1328,15 +1361,20 @@ argify(unsigned char *line, unsigned char ***avp) {
 
 extern gpio_dev_t GPIO;
 
-#if defined(esp_gpio_pin_reserved)
-#  define esp_gpio_is_pin_reserved esp_gpio_pin_reserved
-#else
-#  ifdef __cplusplus
-     extern "C" bool esp_gpio_is_pin_reserved(unsigned int gpio);
-#  else
-     extern bool esp_gpio_is_pin_reserved(unsigned int gpio);
-#  endif
+// Upcoming IDF has this function renamed.
+// TODO: use arduino core version or IDF version number to find out which 
+//       is to use
+#if 0 
+#define esp_gpio_is_pin_reserved esp_gpio_pin_reserved
 #endif
+
+// this is not in .h files of IDF so declare it here
+#ifdef __cplusplus
+     extern "C" bool esp_gpio_is_pin_reserved(unsigned int gpio);
+#else
+     extern bool esp_gpio_is_pin_reserved(unsigned int gpio);
+#endif
+
 
 
 //TAG:forwards
@@ -1703,26 +1741,6 @@ static int convar_set(const char *name, void *value) {
 #endif  //WITH_VAR
 
 
-#if SERIAL_IS_USB
-static bool anykey_pressed() {
-#error "anykey_pressed() is not implemented"
-  return false;
-}
-#else
-//detects if ANY key is pressed in serial terminal
-// or any character was sent in Arduino IDE Serial Monitor
-//
-static bool anykey_pressed() {
-
-  size_t av = 0;
-
-  if (ESP_OK == uart_get_buffered_data_len(uart, &av))
-    if (av > 0)
-      return true;
-
-  return false;
-}
-#endif  //SERIAL_IS_USB
 
 // version of delay() which can be interrupted by user input (terminal
 // keypress) for delays longer than 5 seconds.
@@ -3193,13 +3211,17 @@ void pinMode2(unsigned int pin, unsigned int flags) {
   if (flags & OUTPUT)     gpio_ll_output_enable(&GPIO, pin); else gpio_ll_output_disable(&GPIO, pin);
 }
 
-#ifdef CONFIG_IDF_TARGET_ESP32
+
 // IO_MUX function code --> human readable text mapping
 // Each ESP32 variant has its own mapping but I made tables
-// only for ESP32 and ESP32S3 simply because I have these boards
+// only for ESP32 and ESP32S3/2 simply because I have these boards
 //
-// ESP32 pins can be assigned one of 6 functions via IO_MUX
+//TODO: add support for other Espressif ESP32 variants
+//
+
+#ifdef CONFIG_IDF_TARGET_ESP32
 static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][6] = {
+// ESP32 pins can be assigned one of 6 functions via IO_MUX
   { "GPIO0", "CLK_OUT1", "GPIO0", "3", "4", "EMAC_TX_CLK" },
   { "U0TXD", "CLK_OUT3", "GPIO1", "3", "4", "EMAC_RXD2" },
   { "GPIO2", "HSPIWP", "GPIO2", "HS2_DATA0", "SD_DATA0" },
@@ -3240,10 +3262,9 @@ static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][6] = {
   { "GPIO37", "1", "GPIO37", "3", "4", "5" },
   { "GPIO38", "1", "GPIO38", "3", "4", "5" },
   { "GPIO39", "1", "GPIO39", "3", "4", "5" },
-};
-#elif defined CONFIG_IDF_TARGET_ESP32S3
-//ESP32S3 pins can be set to one of 5 functions via IO_MUX
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
 static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][5] = {
+// ESP32S3 MUX functions for pins
   { "GPIO0", "GPIO0", "2", "3", "4" },
   { "GPIO1", "GPIO1", "2", "3", "4" },
   { "GPIO2", "GPIO2", "2", "3", "4" },
@@ -3293,11 +3314,60 @@ static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][5] = {
   { "GPIO46", "GPIO46", "2", "3", "4" },
   { "SPICLK_P_DIFF", "GPIO47", "SUBSPICLK_P_DIFF", "3", "4" },
   { "SPICLK_N_DIFF", "GPIO48", "SUBSPICLK_N_DIFF", "3", "4" },
+#elif defined (CONFIG_IDF_TARGET_ESP32S2)
+static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][5] = {
+// ESP32S2 MUX functions for pins
+  {"GPIO0", "GPIO0", "2", "3", "4"},
+  {"GPIO1", "GPIO1", "2", "3", "4"},
+  {"GPIO2", "GPIO2", "2", "3", "4"},
+  {"GPIO3", "GPIO3", "2", "3", "4"},
+  {"GPIO4", "GPIO4", "2", "3", "4"},
+  {"GPIO5", "GPIO5", "2", "3", "4"},
+  {"GPIO6", "GPIO6", "2", "3", "4"},
+  {"GPIO7", "GPIO7", "2", "3", "4"},
+  {"GPIO8", "GPIO8", "2", "SUBSPICS1", "4"},
+  {"GPIO9", "GPIO9", "2", "SUBSPIHD", "FSPIHD"},
+  {"GPIO10", "GPIO10", "FSPIIO4", "SUBSPICS0", "FSPICS0"},
+  {"GPIO11", "GPIO11", "FSPIIO5", "SUBSPID", "FSPID"},
+  {"GPIO12", "GPIO12", "FSPIIO6", "SUBSPICLK", "FSPICLK"},
+  {"GPIO13", "GPIO13", "FSPIIO7", "SUBSPIQ", "FSPIQ", ""},
+  {"GPIO14", "GPIO14", "FSPIDQS", "SUBSPIWP", "FSPIWP"},
+  {"XTAL_32K_P", "GPIO15", "U0RTS", "3", "4"},
+  {"XTAL_32K_N", "GPIO16", "U0CTS", "3", "4"},
+  {"DAC_1", "GPIO17", "U1TXD", "3", "4"},
+  {"DAC_2", "GPIO18", "U1RXD", "CLK_OUT3", "4"},
+  {"GPIO19", "GPIO19", "U1RTS", "CLK_OUT2", "4"},
+  {"GPIO20", "GPIO20", "U1CTS", "CLK_OUT1", "4"},
+  {"GPIO21", "GPIO21", "2", "3", "4"},
+  {"0", "1", "2", "3", "4"},
+  {"0", "1", "2", "3", "4"},
+  {"0", "1", "2", "3", "4"},
+  {"0", "1", "2", "3", "4"},
+  {"SPICS1", "GPIO26", "2", "3", "4"},
+  {"SPIHD", "GPIO27", "2", "3", "4"},
+  {"SPIWP", "GPIO28", "2", "3", "4"},
+  {"SPICS0", "GPIO29", "2", "3", "4"},
+  {"SPICLK", "GPIO30", "2", "3", "4"},
+  {"SPIQ", "GPIO31", "2", "3", "4"},
+  {"SPID", "GPIO32", "2", "3", "4"},
+  {"GPIO33", "GPIO33", "FSPIHD", "SUBSPIHD", "SPIIO4"},
+  {"GPIO34", "GPIO34", "FSPICS0", "SUBSPICS0", "SPIIO5"},
+  {"GPIO35", "GPIO35", "FSPID", "SUBSPID", "SPIIO6"},
+  {"GPIO36", "GPIO36", "FSPICLK", "SUBSPICLK", "SPIIO7"},
+  {"GPIO37", "GPIO37", "FSPIQ", "SUBSPIQ", "SPIDQS"},
+  {"GPIO38", "GPIO38", "FSPIWP", "SUBSPIWP", "4"},
+  {"MTCK", "GPIO39", "CLK_OUT3", "SUBSPICS1", "4"},
+  {"MTDO", "GPIO40", "CLK_OUT2", "3", "4"},
+  {"MTDI", "GPIO41", "CLK_OUT1", "3", "4"},
+  {"MTMS", "GPIO42", "2", "3", "4"},
+  {"U0TXD", "GPIO43", "CLK_OUT1", "3", "4"},
+  {"U0RXD", "GPIO44", "CLK_OUT2", "3", "4"},
+  {"GPIO45", "GPIO45", "2", "3", "4"},
+  {"GPIO46", "GPIO46", "2", "3", "4"},
 #else
-//TODO: add more targets
+static const char *io_mux_func_name[13][6] = {
 // unknown/unsupported target. make array big enough (6 functions)
 #  warning "Using dummy IO_MUX function name table"
-static const char io_mux_func_name[SOC_GPIO_PIN_COUNT][6] = {
   { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" },
   { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" },
   { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" },
@@ -3311,15 +3381,8 @@ static const char io_mux_func_name[SOC_GPIO_PIN_COUNT][6] = {
   { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" },
   { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" },
   { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" },
-  { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" },
-  { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" },
-  { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" },
-  { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" },
-  { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" },
-  { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" }, { "0", "1", "2", "3", "4", "5" },
-}
-
 #endif // CONFIG_IDF_TARGET...
+}; //static const char *io_mux_func_name[][] = {
 
 // called by "pin X"
 // moved to a separate function to offload giant cmd_pin() a bit
@@ -4504,75 +4567,93 @@ static int cmd_resume(int argc, char **argv) {
 }
 
 #if WITH_HELP
-// "?"
+// "? keys"
+// display keyboard usage help page
+static int help_keys(int argc, char **argv) {
+
+  argc = argc; //unused
+  argv = argv; //unused
+
+  // 25 lines maximum to fit in default terminal window without scrolling
+  q_print("%             -- ESPShell Keys -- \r\n\r\n"
+          "% <ENTER>       : Execute command.\r\n"
+          "% <- -> /\\ \\/   : Arrows: move cursor left or right. Up and down to scroll\r\n"
+          "%                 through command history\r\n"
+          "% <DEL>         : As in Notepad\r\n"
+          "% <BACKSPACE>   : As in Notepad\r\n"
+          "% <HOME>, <END> : Use Ctrl+A instead of <HOME> and Ctrl+E as <END>\r\n"
+          "% Ctrl+R        : Command history search\r\n"
+          "% Ctrl+W        : Wipe : clear input line\r\n"
+          "% Ctrl+O        : Move cursor to previous argument\r\n"
+          "% Ctrl+P        : Move cursor to the next argument\r\n"
+          "% Ctrl+L        : Clear screen\r\n"
+          "% Ctrl+Z        : Same as entering \"exit\" command\r\n"
+          "% Ctrl+C        : Suspend sketch execution\r\n%\r\n"
+          "% -- Terminal compatibility workarounds (alternative key sequences) --\r\n%\r\n"
+          "% Ctrl+J and Ctrl+M work as <ENTER>\r\n"
+          "% Ctrl+B and Ctrl+F work as <- and -> (left & right arrows)>\r\n"
+          "% Ctrl+D works as <Delete> key\r\n"
+          "% Ctrl+H works as <BACKSPACE> key\r\n"
+          "% Ctrl+A is <HOME> and Ctrl+E is <END>\r\n");
+  return 0;
+}
+
+// "? pinout"
+// display some known interfaces pin numbers
+static int help_pinout(int argc, char **argv) {
+  argc = argc;
+  argv = argv;
+  //TODO: basic pin numvers are in pins_arduino.h. i2c1 and spi1/2 as well as
+  //      uart1/2 default pin numbers must be in technical reference
+  return 0;
+}
+
+// "? COMMAND_NAME"
 //
-// question mark command: display all commands available
-// along with their brief description.
+// display a command usage details ("? some_command")
 //
-static int cmd_question(int argc, char **argv) {
+static int help_command(int argc, char **argv) {
+
+  int i = 0;
+  bool found = false;
+
+  // go through all matched commands (only name is matched) and print their
+  // help lines. hidden commands are ignored
+  while (keywords[i].cmd) {
+    if (keywords[i].help || keywords[i].brief) {  //skip hidden commands
+      if (!q_strcmp(argv[1], keywords[i].cmd)) {
+        if (!found && keywords[i].brief)
+          q_printf("\r\n -- %s --\r\n", keywords[i].brief);  //display brief (must not happen)
+
+        if (keywords[i].help)
+          q_printf("\r\n%s\r\n", keywords[i].help);  //display long help
+        else if (keywords[i].brief)
+          q_printf("\r\n%s\r\n", keywords[i].brief);  //display brief (must not happen)
+        found = true;
+      }
+    }
+    i++;
+  }
+  return found ? 0 : 1;
+}
+
+//"?" 
+// display command list
+//
+static int help_command_list(int argc, char **argv) {
 
 #define INDENT 10  //TODO: use a variable calculated at shell task startup
   int i = 0;
   const char *prev = "";
   char indent[INDENT + 1];
 
-  //"? arg"
-  if (argc > 1) {
-    if (!q_strcmp(argv[1], "keys")) {
-      // 25 lines maximum to fit in default terminal window without scrolling
-      q_print("%             -- ESPShell Keys -- \r\n\r\n"
-              "% <ENTER>       : Execute command.\r\n"
-              "% <- -> /\\ \\/   : Arrows: move cursor left or right. Up and down to scroll\r\n"
-              "%                 through command history\r\n"
-              "% <DEL>         : As in Notepad\r\n"
-              "% <BACKSPACE>   : As in Notepad\r\n"
-              "% <HOME>, <END> : Use Ctrl+A instead of <HOME> and Ctrl+E as <END>\r\n"
-              "% Ctrl+R        : Command history search\r\n"
-              "% Ctrl+W        : Wipe : clear input line\r\n"
-              "% Ctrl+O        : Move cursor to previous argument\r\n"
-              "% Ctrl+P        : Move cursor to the next argument\r\n"
-              "% Ctrl+L        : Clear screen\r\n"
-              "% Ctrl+Z        : Same as entering \"exit\" command\r\n"
-              "% Ctrl+C        : Suspend sketch execution\r\n%\r\n"
-              "% -- Terminal compatibility workarounds (alternative key sequences) --\r\n%\r\n"
-              "% Ctrl+J and Ctrl+M work as <ENTER>\r\n"
-              "% Ctrl+B and Ctrl+F work as <- and -> (left & right arrows)>\r\n"
-              "% Ctrl+D works as <Delete> key\r\n"
-              "% Ctrl+H works as <BACKSPACE> key\r\n"
-              "% Ctrl+A is <HOME> and Ctrl+E is <END>\r\n");
-      return 0;
-    } else {  // "? command"
-      i = 0;
-      bool found = false;
-      // go through all matched commands (only name is matched) and print their
-      // help lines. hidden commands are ignored
-      while (keywords[i].cmd) {
-        if (keywords[i].help || keywords[i].brief) {  //skip hidden commands
-          if (!q_strcmp(argv[1], keywords[i].cmd)) {
-            if (keywords[i].help)
-              q_printf("\r\n%s\r\n", keywords[i].help);  //display long help
-            else if (keywords[i].brief)
-              q_printf("\r\n%s\r\n", keywords[i].brief);  //display brief (must not happen)
-            found = true;
-          }
-        }
-        i++;
-      }
-      // return 1 if arguemnt #1 was not understood
-      return found ? 0 : 1;
-    }
-    //NOTREACHED
-    abort();
-  }  // if (argc > 1)
-
-  // process "?" command (no arguments given)
   // commands which are shorter than INDENT will be padded with extra spaces to be INDENT bytes long
   memset(indent, ' ', INDENT);
   indent[INDENT] = 0;
   char *spaces;
 
-  q_print("% Enter \"? command\" to get details about specific command.\r\n"
-          "% Enter \"? keys\" to learn keys used in ESPShell.\r\n"
+  q_print("% Enter \"? command\" to get details about specific command.\r\n" \
+          "% Enter \"? keys\" to display the espshell keyboard help page\r\n" \
           "%\r\n");
 
   //run through the keywords[] and print brief info for every entry
@@ -4605,6 +4686,28 @@ static int cmd_question(int argc, char **argv) {
   }
 
   return 0;
+}
+
+
+// "?"
+//
+// question mark command: display general help pages ("? keys", "? pinout")
+// display a command usage details ("? some_command") or display the list
+// of available commands ("?" with no arguments)
+//
+static int cmd_question(int argc, char **argv) {
+
+   //"? arg"
+  if (argc > 1) {
+    //"? keys"
+    if (!q_strcmp(argv[1], "keys")) return help_keys(argc,argv);
+    //"? pinout"
+    // use strcmp to not mess with "? pin" command
+    if (!strcmp("pinout",argv[1])) return help_pinout(argc,argv);
+    //"? command"
+    return help_command(argc,argv);
+  }
+  return help_command_list(argc,argv);
 }
 #endif  // WITH_HELP
 
