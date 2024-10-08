@@ -69,7 +69,7 @@ SHELL BRIEF DESCRIPTION
  that. Full description of UART commands can be found in UART_Commands
 
  i2c commands include 'i2c scan', read/write commands and interface configuration:
- pins to use and clock frequency. More details on I2C commands in I2C_Commands.txt
+ pins to use and clock frequency. More details on I2C commands in "docs/I2C_Commands.txt"
 
  There are some limited execution control over user sketches: shell allows to
  suspend/resume main loop(), keeps track of uptime, allow changing of CPU frequency,
@@ -78,14 +78,16 @@ SHELL BRIEF DESCRIPTION
  Pin commands allow for changing pin modes, writing/reading  values, changing pullup
  modes, displaying current pin configuration. There are commands to generate PWM
  signal on arbitrary pin, and commands to count pulses arrived on given pin.
- Details in Pin_Commands.txt
+ Details in "docs/Pin_Commands.txt"
 
- Refer to Tone_Generator_And_Counter.txt on how to use squarewave generator and
+ Refer to "docs/Tone_Generator_And_Counter.txt" on how to use squarewave generator and
  count pulses on arbitrary pin
 
- For pattern generation please read Pulse_Generator.txt
+ For pattern generation please read "docs/Pulse_Generator.txt"
 
- For ESP32Cam support read extra/README.md
+ For ESP32Cam support read "extra/README.md"
+
+Example session: initialize I2C interface and read I2C EEPROM by means of ESPShell:
 
   ![ESPShell I2C EEPROM example](https://github.com/vvb333007/espshell/blob/main/docs/Screenshot_EEPROM_I2C_Read.jpg?raw=true)
  
