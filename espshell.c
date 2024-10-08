@@ -393,18 +393,24 @@ static const KEYMAP MetaMap[16] = {
 //
 #if WITH_COLOR
 // these are exclusively for editline library
+
+// prompt & user input colors (bright/bold white)
 #define START_COLORING \
   do { \
     if (Color) TTYputs((const unsigned char *)"\033[1;37m"); \
-  } while (0)  // prompt & user input colors (bright/bold white)
+  } while (0)  
+
+// "Search:" colors (bright/bold syan)
 #define START_COLORING_SEARCH \
   do { \
     if (Color) TTYputs((const unsigned char *)"\033[1;36m"); \
-  } while (0)  // "Search:" colors (bright/bold cyan)
+  } while (0)  
+
+// diable coloring
 #define STOP_COLORING \
   do { \
     if (Color) TTYputs((const unsigned char *)"\033[0m"); \
-  } while (0)  // diable coloring
+  } while (0)  
 
 // following one is used by espshell parser & command handlers
 #define color_important() \
@@ -424,7 +430,7 @@ static const KEYMAP MetaMap[16] = {
     if (Color) q_print("\033[0m"); \
   } while (0)  // Disable coloring
 #else
-#// No coloring
+// No coloring
 #define START_COLORING
 #define START_COLORING_SEARCH
 #define STOP_COLORING
@@ -1396,6 +1402,7 @@ static int cmd_seq_levels(int argc, char **argv);
 static int cmd_seq_show(int argc, char **argv);
 #if WITH_VAR
 static int cmd_var(int, char **);
+static int cmd_var_show(int, char **);
 #endif
 static int cmd_show(int, char **);
 
@@ -2096,7 +2103,7 @@ static const struct keywords_t keywords_main[] = {
   { "count", cmd_count, 2, HIDDEN_KEYWORD },  //hidden "count" with 2 args
   { "count", cmd_count, 1, HIDDEN_KEYWORD },  //hidden with 1 arg
 #if WITH_VAR
-  { "var", cmd_var, -1, HELP("% \"var [VARIABLE_NAME[ NUMBER]]\"\r\n%\r\n"
+  { "var", cmd_var, 2, HELP("% \"var [VARIABLE_NAME[ NUMBER]]\"\r\n%\r\n"
                              "% Set/display sketch variable \r\n"
                              "% NUMBER can be integer or float point values, positive or negative\r\n"
                              "%\r\n"
@@ -2104,6 +2111,8 @@ static const struct keywords_t keywords_main[] = {
                              "% Ex.: \"var a -12.3\" - Set sketch variable \"a\" = \"-12.3\"\r\n"
                              "% Ex.: \"var\"         - List all registered sketch variables"),
     "Sketch variables" },
+  { "var", cmd_var_show, 1, HIDDEN_KEYWORD },
+  { "var", cmd_var_show, 0, HIDDEN_KEYWORD },
 #endif  //WITH_VAR
 
 #ifdef EXTERNAL_KEYWORDS
@@ -2933,6 +2942,50 @@ static int cmd_count(int argc, char **argv) {
 }
 
 #if WITH_VAR
+// "var"     - display registered variables list
+// "var X"   - display variable X value
+static int cmd_var_show(int argc, char **argv) {
+
+  int len;
+
+  // composite variable value. 
+  // had to use union because of variables different sizeof()
+  union {
+    unsigned char  uchar;  // unsigned char
+    signed char    ichar;  // signed -- 
+    unsigned short ush;    // unsigned short
+    signed short   ish;    // signed --
+    int            ival;   // signed int
+    unsigned int   uval;   // unsigned --
+    float          fval;   // float
+  } u;
+
+  // "var": display variables list if no arguments were given
+  if (argc < 2) {
+    struct convar *var = var_head;
+    q_print("% Registered variables:\r\n");
+    while (var) {
+      q_printf("\"%s\", %d bytes long\r\n", var->name, var->size);
+      var = var->next;
+    }
+    return 0;
+  }
+
+  //"var X": display variable value
+  if (argc < 3) {
+    if ((len = convar_get(argv[1], &u)) == 0)
+      return 1;
+    switch (len) {
+      case 1: q_printf("%% \"%s\" == Unsigned: %u, or Signed: %d (hex: %02x)\r\n", argv[1], u.uchar, u.ichar,u.uchar); break;
+      case 2: q_printf("%% \"%s\" == Unsigned: %u, or Signed: %d (hex: %04x)\r\n", argv[1], u.ush, u.ish, u.ush); break;
+      case 4: q_printf("%% \"%s\" == Unsigned: %u, or Signed: %d, or Float: %f (hex: %x)\r\n", argv[1], u.uval, u.ival, u.fval, u.uval); break;
+      default: q_printf("%% Variable \"%s\" has unsupported size of %d bytes\r\n",argv[1],len); return 1;
+    };
+    return 0;
+  }
+  return -1;
+}
+
 // "var"
 // "var X"
 // "var X NUMBER"
@@ -2965,62 +3018,36 @@ static int cmd_var(int argc, char **argv) {
 #endif  //WITH_HELP
 
   // "var": display variables list if no arguments were given
-  if (argc < 2) {
-    struct convar *var = var_head;
-    q_print("% Registered variables:\r\n");
-    while (var) {
-      q_printf("\"%s\", %d bytes long\r\n", var->name, var->size);
-      var = var->next;
-    }
-    return 0;
-  }
-
-  //"var X": display variable value
-
-  if (argc < 3) {
-    
-    if ((len = convar_get(argv[1], &u)) == 0)
-      return 1;
-    switch (len) {
-      case 1: q_printf("\"%s\" == Unsigned: %u, Signed: %d (hex: %02x)\r\n", argv[1], u.uchar, u.ichar,u.uchar); break;
-      case 2: q_printf("\"%s\" == Unsigned: %u, Signed: %d (hex: %04x)\r\n", argv[1], u.ush, u.ish, u.ush); break;
-      case 4: q_printf("\"%s\" == Unsigned: %u, Signed: %d, Float: %f (hex: %x)\r\n", argv[1], u.uval, u.ival, u.fval, u.uval); break;
-      default: q_printf("Variable \"%s\" has unsupported size of %d bytes\r\n",argv[1],len);
-    };
-    return 0;
-  }
+  if (argc < 3)
+    return cmd_var_show(argc, argv);
 
   // Set variable
-  if (argc < 4) {
-    // does variable exist? get its size
-    if ((len = convar_get(argv[1], &u)) == 0)
-      return 1;
+  // does variable exist? get its size
+  if ((len = convar_get(argv[1], &u)) == 0)
+    return 1;
 
-    // value is a decimal number?
-    if (isnum(argv[2])) {
-      // negative integer number
-      if (argv[2][0] == '-') {
-        u.ival = atoi(argv[2]);
-        if (len == sizeof(char)) u.ichar = u.ival; else
-        if (len == sizeof(short)) u.ish = u.ival;
-      } else {
-      // positive integer number 
-        u.uval = atol(argv[2]);
-        if (len == sizeof(char)) u.uchar = u.uval & 0xff; else
-        if (len == sizeof(short)) u.ush = u.uval & 0xffff;
-      }
-    } else if (isfloat(argv[2]))
+  // value is a decimal number?
+  if (isnum(argv[2])) {
+    // negative integer number
+    if (argv[2][0] == '-') {
+      u.ival = atoi(argv[2]);
+      if (len == sizeof(char)) u.ichar = u.ival; else
+      if (len == sizeof(short)) u.ish = u.ival;
+    } else {
+    // positive integer number 
+      u.uval = atol(argv[2]);
+      if (len == sizeof(char)) u.uchar = u.uval & 0xff; else
+      if (len == sizeof(short)) u.ush = u.uval & 0xffff;
+    }
+  } else if (isfloat(argv[2]))
       // floating point number
       u.fval = atof(argv[2]);
-    else
-      // unknown
+  else
+    // unknown
       return 2;
 
-    convar_set(argv[1], &u);
-    return 0;
-  }
-
-  return -1;
+  convar_set(argv[1], &u);
+  return 0;
 }
 #endif  //WITH_VAR
 
