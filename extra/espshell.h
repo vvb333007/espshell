@@ -12,12 +12,8 @@
 //
 // Registered variables can be accessed by "var" command:
 //
-// esp32#>var my_var=666       <--- set variable
+// esp32#>var my_var 666       <--- set variable
 // esp32#>var my_var           <--- display variable
-
-
-// Register sketch's variable so it can be accessed from ESPShell by 
-// "var" command
 #if 1
 #  define convar_add( VAR ) espshell_varadd( #VAR, &VAR, sizeof(VAR))
 #else
@@ -27,9 +23,18 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+// Execute an arbitrary shell command (\n are allowed for multiline).
+// it is an async call: it returns immediately. one can use espshell_exec_finished()
+// to check if actual shell command has finished its execution. Data pointed by "p"
+// must remain allocated until command execution finishes
+void espshell_exec(const char *p);
 
-// use convar_add() instead
-//
+// check if last espshell_exec() call has completed its
+// execution
+bool espshell_exec_finished();
+
+
+// DONT USE THIS! use convar_add() instead
 void espshell_varadd(const char name, void *ptr, int size);
 
 // By default ESPShell occupies UART0. It could be changed
