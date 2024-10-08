@@ -4,19 +4,14 @@
 
 // command entries for main command tree
 
-{ "camera", cmd_cam, 1, 
-#if WITH_HELP
-                        "% \"camera settings|capture|filesize|download|init\" Camera commands:\n\r" \
+{ "camera", cmd_cam, 1, HELP("% \"camera up|down|settings|capture|filesize|transfer\" - Camera commands:\n\r" \
                         "%\n\r" \
-                        "% setting  - enter ESPCam setting\n\r" \
-                        "% capture  - capture a single shot (JPEG)\n\r" \
-                        "% filesize - print last captured shot file size\n\r" \
-                        "% download - transmit the last shot over uart\n\r" \
-                        "% init     - detect & initialize camera\n\r" \
-                        "% deinit   - free espcam resources",
-#else
-                        "",
-#endif
+                        "% setting  - Enter ESPCam setting\n\r" \
+                        "% capture  - Capture a single shot (JPEG)\n\r" \
+                        "% filesize - Display last captured shot file size\n\r" \
+                        "% transfer - Transmit the last shot over uart\n\r" \
+                        "% up       - Detect & initialize the camera\n\r" \
+                        "% down     - Camera shutdown & power-off"),
                         "ESP32Cam commands" },
 
 
