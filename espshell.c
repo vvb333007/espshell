@@ -154,7 +154,7 @@ int console_write_bytes(const void *buf, size_t len) {
   return uart_write_bytes(uart, buf, len);
 }
 
-// read user input, blocking!
+// read user input, with timeout
 static inline __attribute__((always_inline)) 
 int console_read_bytes(void *buf, uint32_t len, TickType_t wait) {
   return uart_read_bytes(uart, buf, len, wait);
@@ -261,7 +261,7 @@ typedef struct _HISTORY {
  *  Globals.
  */
 
-
+// TTYq command queue locking
 static portMUX_TYPE ttyq_mux = portMUX_INITIALIZER_UNLOCKED;
 
 static unsigned rl_eof = 0;
@@ -284,7 +284,7 @@ static bool Color = false;  //enable coloring
 #endif
 
 static const char *TTYq = "";  //"artificial input queue". if non empty then symbols are
-                               // fed to TTYget as if it was user input. No locking so far
+                               // fed to TTYget as if it was user input.
 static unsigned int Length;
 static unsigned int ScreenCount;
 static unsigned int ScreenSize;
