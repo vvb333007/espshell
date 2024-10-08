@@ -87,7 +87,7 @@ SHELL BRIEF DESCRIPTION
 
  For ESP32Cam support read extra/README.md
 
- ![alt text](https://github.com/vvb333007/espshell/blob/main/Screenshot_EEPROM_Read.jpg?raw=true)
+ ![alt text](https://github.com/vvb333007/espshell/blob/main/docs/Screenshot_EEPROM_Read.jpg?raw=true)
  
 MEMORY FOOTPRINT/OVERHEAD
 -------------------------
