@@ -35,7 +35,7 @@ bool espshell_exec_finished();
 
 
 // DONT USE THIS! use convar_add() instead
-void espshell_varadd(const char name, void *ptr, int size);
+void espshell_varadd(const char *name, void *ptr, int size);
 
 // By default ESPShell occupies UART0. It could be changed
 // at compile time by setting #define USE_UART in espshell.c
