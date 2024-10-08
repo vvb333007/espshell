@@ -47,19 +47,19 @@ Enter camera configuration subtree: "camera settings" (or "cam set")
 
 Typical command sequence to take shot is:
 
-"camera init"
+"camera up"
 "camera capture"
 "camera filesize"
-"camera download"
+"camera transfer"
 ....
-"camera deinit"
+"camera down"
 
 
 Captured picture filesize:
 "camera filesize" - prints out captured picture (JPEG) filesize, something like "% 1234567" followed by CR,LF
 
 Transfer picture over UART:
-"camera download"
+"camera transfer"
 Once "camera download" command is entered the ESPCam replies with filesize and follows with
 picture content encoded in hex ascii bytes (it is up to user to decode this). Pictures are JPEG
 files
@@ -72,3 +72,4 @@ Can it be used with other ESP32-based camera boards?
 Yes it can be used however you need to modify pin numbers in esp32cam_handler.c : locate cam_init() function
 and look into it: there are pin assignments. Change them to fit your camera/board models and recompile
 
+a
