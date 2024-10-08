@@ -86,6 +86,8 @@ SHELL BRIEF DESCRIPTION
  For pattern generation please read Pulse_Generator.txt
 
  For ESP32Cam support read extra/README.md
+
+ ![alt text](https://github.com/vvb333007/espshell/blob/main/Screenshot_EEPROM_Read.jpg?raw=true)
  
 MEMORY FOOTPRINT/OVERHEAD
 -------------------------
