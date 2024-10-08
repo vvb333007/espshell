@@ -57,7 +57,7 @@
 // COMPILE TIME SETTINGS
 // ---------------------
 //#define SERIAL_IS_USB        //Not yet
-//#define ESPCAM               //include ESP32CAM commands (read extra/README.md).
+#define ESPCAM               //include ESP32CAM commands (read extra/README.md).
 
 #define WITH_COLOR 1         // Enable terminal colors
 #define WITH_HELP 1          // Set to 0 to save some program space by excluding help strings/functions
@@ -104,20 +104,22 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#include <driver/uart.h>
+
 
 //autostart espshell
 static void __attribute__((constructor)) espshell_start();
 
 // misc forwards
+static inline bool uart_isup(int u);
 static int __attribute__((format(printf, 1, 2))) q_printf(const char *, ...);
 static int __attribute__((format(printf, 1, 2))) q_error(const char *, ...);
 static int q_print(const char *);
 void pinMode2(unsigned int pin, unsigned int flags);
 
-#include <driver/uart.h>
-static uart_port_t uart = STARTUP_PORT;  // Port to use for ESPShell. Set to 99 for USBCDC
-static inline bool uart_isup(int u);
 
+// Port to use for ESPShell. Set to 99 for USBCDC
+static uart_port_t uart = STARTUP_PORT;  
 
 // --   SHELL TO CONSOLE HARDWARE GLUE --
 // espshell uses console_read../console_write.. and some other functions to
@@ -179,10 +181,13 @@ int console_here(int i) {
 static bool anykey_pressed() {
 
   size_t av = 0;
-
   if (ESP_OK == uart_get_buffered_data_len(uart, &av))
-    if (av > 0)
+    if (av > 0) {
+      // read & discard a keypress
+      unsigned char c;
+      console_read_bytes(&c,1,0);
       return true;
+    }
 
   return false;
 }
@@ -443,7 +448,7 @@ static const KEYMAP MetaMap[16] = {
 // queue an arbitrary asciiz string t simulate user input.
 // string queued has higher priority than user input so console_read() would
 // "read" from this string first.
-static inline void __attribute__((always_inline))
+static inline void 
 TTYqueue(const char *input) {
   portENTER_CRITICAL(&ttyq_mux);
   TTYq = input;
@@ -3747,11 +3752,11 @@ static int cmd_pin(int argc, char **argv) {
         pinMode2(pin, flags);
       } else if (!q_strcmp(argv[i], "low")) {
         flags |= OUTPUT;
-        pinMode2(pin, flags);
+        pinMode(pin, flags);
         digitalWrite(pin, LOW);
       } else if (!q_strcmp(argv[i], "high")) {
         flags |= OUTPUT;
-        pinMode2(pin, flags);
+        pinMode(pin, flags);
         digitalWrite(pin, HIGH);
       } else if (!q_strcmp(argv[i], "read")) q_printf("%% GPIO%d : logic %d\r\n", pin, digitalForceRead(pin));
       else if (!q_strcmp(argv[i], "aread")) q_printf("%% GPIO%d : analog %d\r\n", pin, analogRead(pin));
