@@ -1365,6 +1365,7 @@ static int cmd_cpu(int, char **);
 static int cmd_cpu_freq(int, char **);
 static int cmd_uptime(int, char **);
 static int cmd_mem(int, char **);
+static int cmd_mem_read(int, char **);
 static int cmd_reload(int, char **);
 static int cmd_nap(int, char **);
 
@@ -1476,6 +1477,24 @@ static unsigned char ascii2hex(const char *p) {
   else return 0;
 
   return (f << 4) | l;
+}
+
+// convert a hex string to uint32_t
+// if string is too long then number converted will be equal
+// to last 4 bytes of the string
+static unsigned int hex2uint32(const char *p) {
+  
+  unsigned int value = 0;
+  unsigned int four = 0;
+  while (*p) {
+    if (*p >= '0' && *p <= '9') four = *p - '0'; else
+    if (*p >= 'a' && *p <= 'f') four = *p - 'a' + 10; else
+    if (*p >= 'A' && *p <= 'F') four = *p - 'A' + 10; else return 0;
+    value <<= 4;
+    value |= four;
+    p++;
+  }
+  return value;
 }
 
 // strcmp() which deoes partial match. It us used
@@ -1679,7 +1698,7 @@ void espshell_varadd(const char *name, void *ptr, int size) {
   }
 }
 
-// get registered variable value
+// get registered variable value & length
 //
 static int convar_get(const char *name, void *value) {
 
@@ -1687,11 +1706,11 @@ static int convar_get(const char *name, void *value) {
   while (var) {
     if (!strcmp(var->name, name)) {
       memcpy(value, var->ptr, var->size);
-      return 0;
+      return var->size;
     }
     var = var->next;
   }
-  return -1;
+  return 0;
 }
 
 // set registered variable value
@@ -1701,11 +1720,11 @@ static int convar_set(const char *name, void *value) {
   while (var) {
     if (!strcmp(var->name, name)) {
       memcpy(var->ptr, value, var->size);
-      return 0;
+      return var->size;
     }
     var = var->next;
   }
-  return -1;
+  return 0;
 }
 #endif  //WITH_VAR
 
@@ -2011,7 +2030,15 @@ static const struct keywords_t keywords_main[] = {
   { "cpu", cmd_cpu_freq, 1, HELP("% \"cpu FREQ\" : Set CPU frequency to FREQ Mhz"), "Set/show CPU parameters" },
   { "cpu", cmd_cpu, 0, HELP("% \"cpu\" : Show CPUID and CPU/XTAL/APB frequencies"), NULL },
   { "reload", cmd_reload, 0, HELP("% \"reload\" - Restarts CPU"), "Reset CPU" },
-  { "mem", cmd_mem, 0, HELP("% Show memory usage info"), "Memory usage" },
+  { "mem", cmd_mem, 0, HELP("% \"mem\"\r\n" \
+                            "% Shows memory usage info & availability, no arguments"), 
+                            "Memory commands" },
+  { "mem", cmd_mem_read, 2, HELP("% \"mem ADDR [LENGTH]\"\r\n" \
+                            "% Display LENGTH bytes of memory starting from address ADDR\r\n" \
+                            "% Address must be in the form \"1234ABCDE\", (hexadecimal numbers)\r\n%\r\n" \
+                            "% Ex.: mem 40078000 100 : display 100 bytes starting from address 40078000"),
+                             NULL },
+  { "mem", cmd_mem_read, 1, HIDDEN_KEYWORD },
 
 
   { "nap", cmd_nap, 1, HELP("% \"nap SEC\"\r\n%\r\n% Put the CPU into light sleep mode for SEC seconds."), "CPU sleep" },
@@ -2911,10 +2938,15 @@ static int cmd_count(int argc, char **argv) {
 // "var X NUMBER"
 static int cmd_var(int argc, char **argv) {
 
+  int len;
   union {
-    int ival;
-    unsigned int uval;
-    float fval;
+    unsigned char  uchar;
+    signed char    ichar;
+    unsigned short ush;
+    signed short   ish;
+    int            ival;
+    unsigned int   uval;
+    float          fval;
   } u;
 
   // no variables were registered but user invoked "var" command:
@@ -2946,25 +2978,45 @@ static int cmd_var(int argc, char **argv) {
   //"var X": display variable value
 
   if (argc < 3) {
-    if (convar_get(argv[1], &u) < 0)
+    
+    if ((len = convar_get(argv[1], &u)) == 0)
       return 1;
-    q_printf("\"%s\" == Unsigned: %u, Signed: %d, Float: %f (0x%x)\r\n", argv[1], u.uval, u.ival, u.fval, u.uval);
+    switch (len) {
+      case 1: q_printf("\"%s\" == Unsigned: %u, Signed: %d (hex: %02x)\r\n", argv[1], u.uchar, u.ichar,u.uchar); break;
+      case 2: q_printf("\"%s\" == Unsigned: %u, Signed: %d (hex: %04x)\r\n", argv[1], u.ush, u.ish, u.ush); break;
+      case 4: q_printf("\"%s\" == Unsigned: %u, Signed: %d, Float: %f (hex: %x)\r\n", argv[1], u.uval, u.ival, u.fval, u.uval); break;
+      default: q_printf("Variable \"%s\" has unsupported size of %d bytes\r\n",argv[1],len);
+    };
     return 0;
   }
 
+  // Set variable
   if (argc < 4) {
+    // does variable exist? get its size
+    if ((len = convar_get(argv[1], &u)) == 0)
+      return 1;
+
+    // value is a decimal number?
     if (isnum(argv[2])) {
-      if (argv[2][0] == '-')
+      // negative integer number
+      if (argv[2][0] == '-') {
         u.ival = atoi(argv[2]);
-      else
+        if (len == sizeof(char)) u.ichar = u.ival; else
+        if (len == sizeof(short)) u.ish = u.ival;
+      } else {
+      // positive integer number 
         u.uval = atol(argv[2]);
+        if (len == sizeof(char)) u.uchar = u.uval & 0xff; else
+        if (len == sizeof(short)) u.ush = u.uval & 0xffff;
+      }
     } else if (isfloat(argv[2]))
+      // floating point number
       u.fval = atof(argv[2]);
     else
+      // unknown
       return 2;
 
-    if (convar_set(argv[1], &u) < 0)
-      return 1;
+    convar_set(argv[1], &u);
     return 0;
   }
 
@@ -3717,7 +3769,30 @@ static int cmd_mem(int argc, char **argv) {
 
   return 0;
 }
+//"mem ADDR LENGTH"
+//
+static int cmd_mem_read(int argc, char **argv) {
 
+  unsigned long length = 256;
+  unsigned char *address;
+
+  if (argc < 2)
+    return -1;
+
+  address = (unsigned char *)(hex2uint32(argv[1]));
+  if (address == NULL)
+    return 1;
+
+  if (argc > 2) {
+    if (!isnum(argv[2]))
+        return 2;
+    length = atol(argv[2]);
+  }
+
+  q_printhex(address,length);
+
+  return 0;
+}
 
 //TAG:nap
 //"nap NUM"
