@@ -3204,12 +3204,16 @@ static void pin_load(int pin) {
 // of Input & Output
 //
 static bool pin_is_input_only_pin(int pin) {
+#if 1  
+  return !GPIO_IS_VALID_OUTPUT_GPIO(pin);
+#else 
   switch (pin) {
-#ifdef CONFIG_IDF_TARGET_ESP32
+#  ifdef CONFIG_IDF_TARGET_ESP32
     case 34: case 35: case 36: case 39: return true;
-#endif
+#  endif
     default: return false;
   }
+#endif
 }
 
 
@@ -3270,7 +3274,12 @@ void pinMode2(unsigned int pin, unsigned int flags) {
   if (flags & PULLDOWN)   gpio_ll_pulldown_en(&GPIO, pin);   else gpio_ll_pulldown_dis(&GPIO, pin);
   if (flags & OPEN_DRAIN) gpio_ll_od_enable(&GPIO, pin);     else gpio_ll_od_disable(&GPIO, pin);
   if (flags & INPUT)      gpio_ll_input_enable(&GPIO, pin);  else gpio_ll_input_disable(&GPIO, pin);
-  if (flags & OUTPUT)     gpio_ll_output_enable(&GPIO, pin); else gpio_ll_output_disable(&GPIO, pin);
+  if (flags & OUTPUT) {
+    // not every esp32 gpio is capable of OUTPUT
+    if (!pin_is_input_only_pin(pin))
+      gpio_ll_output_enable(&GPIO, pin); 
+  } else
+      gpio_ll_output_disable(&GPIO, pin);
 }
 
 
@@ -3749,8 +3758,23 @@ static int cmd_pin(int argc, char **argv) {
       else if (!q_strcmp(argv[i], "open")) { flags |= OPEN_DRAIN; pinMode2(pin, flags); } 
       else if (!q_strcmp(argv[i], "in")) {   flags |= INPUT;      pinMode2(pin, flags); } 
       else if (!q_strcmp(argv[i], "out")) {  flags |= OUTPUT;     pinMode2(pin, flags); } 
-      else if (!q_strcmp(argv[i], "low")) {  flags |= OUTPUT;     pinMode2(pin, flags); digitalForceWrite(pin, LOW); }   //use pinMode() or digitalWrite will fail
-      else if (!q_strcmp(argv[i], "high")) { flags |= OUTPUT;     pinMode2(pin, flags);  digitalForceWrite(pin, HIGH); } 
+      else if (!q_strcmp(argv[i], "low")) {  //TODO: do "low"|"high"
+        if (pin_is_input_only_pin(pin)) {
+abort_if_input_only:          
+          q_error("%% Pin %u is **INPUT-ONLY**, can not be set %s\r\n",pin,argv[i]);
+          return i;
+        }
+        flags |= OUTPUT;     
+        pinMode2(pin, flags); 
+        digitalForceWrite(pin, LOW); 
+      }
+      else if (!q_strcmp(argv[i], "high")) { 
+        if (pin_is_input_only_pin(pin))
+          goto abort_if_input_only;
+        flags |= OUTPUT;     
+        pinMode2(pin, flags);  
+        digitalForceWrite(pin, HIGH); 
+      } 
       else if (!q_strcmp(argv[i], "read")) q_printf("%% GPIO%d : logic %d\r\n", pin, digitalForceRead(pin));
       else if (!q_strcmp(argv[i], "aread")) q_printf("%% GPIO%d : analog %d\r\n", pin, analogRead(pin));
       //"new pin number" keyword. when we see a number we use it as a pin number
