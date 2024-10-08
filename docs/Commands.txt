@@ -96,6 +96,7 @@ Here is the list of currently supported commands (main command tree):
 % "resume"   : Resume sketch execution
 % "pwm"      : PWM output
 % "count"    : Pulse counter
+% "var"      : Sketch variables
 % "exit"     : Exit
 
 
@@ -233,15 +234,36 @@ Here is the list of currently supported commands (main command tree):
              of 5% one can enter "pwm 2 312000 0.05" and press <Enter>
 
 "count"    - Pulse counter: counts pulses arrived on pin. Details on the
-           - counter and squarewave generator can be found in documentation
-           - file "docs/Tone_Generator_And_Counter.txt", but in short it
+             counter and squarewave generator can be found in documentation
+             file "docs/Tone_Generator_And_Counter.txt", but in short it
              is "count 10" to count pulses for 1000ms on pin 10. Type 
              "count 10 100" to count pulses for 100ms or "count 10 100 neg"
              if you want to count negative edges (default behaviour is to count
              positive edges)
 
+"var"        Display/Set user sketch variables. Variables must be registered, by
+             calling convar_add(VariableName) from the main sketch. You also will
+             need "extra/espshell.h" where convar_add() macro is declared.
+             
+             "var" with no arguments displays the list of registered sketch variables:
 
+               esp32#>var
+               % Registered variables:
+               % "Short", 2 bytes long
+               % "Char", 1 bytes long
+               % "test", 4 bytes long
+               esp32#>
+             
+             The output above says we have 3 variables registered, all of different length.
 
+             "var NAME" will display a variable value:
 
+               esp32#>var Short
+               % "Short" == Unsigned: 65535, or Signed: -1 (hex: ffff)
+               esp32#>
+             
 
+             When variable is displayed it is displayed in a number of formats: as if it was
+             signed, unsigned or floating point value. Floating point conversion is attempted
+             only on 4-byte long variables
 
