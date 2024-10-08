@@ -57,7 +57,7 @@
 // COMPILE TIME SETTINGS
 // ---------------------
 //#define SERIAL_IS_USB        //Not yet
-#define ESPCAM               //include ESP32CAM commands (read extra/README.md).
+//#define ESPCAM               //include ESP32CAM commands (read extra/README.md).
 
 #define WITH_COLOR 1         // Enable terminal colors
 #define WITH_HELP 1          // Set to 0 to save some program space by excluding help strings/functions
