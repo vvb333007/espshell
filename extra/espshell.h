@@ -54,6 +54,13 @@ int console_attach2port(int i);
 // for OUTPUT pins it enables INPUT automatically.
 int digitalForceRead(int pin);
 
+// same as digitalWrite() but bypasses periman so no init/deinit
+// callbacks are called. pin bus type remain unchanged.
+// GPIO configured as GPIO via IO MUX remain on IO_MUX and dont get
+// reconfigured as "simple GPIO" via GPIO matrix
+void digitalForceWrite(int pin, unsigned char level);
+
+
 // same as pinMode() but calls IDF directly bypassing
 // PeriMan's pin deinit/init. As a result it allows flags manipulation on
 // reserved pins without crashing & rebooting. And it is much faster than 
