@@ -3247,6 +3247,16 @@ int digitalForceRead(int pin) {
   return gpio_ll_get_level(&GPIO, pin) ? HIGH : LOW;
 }
 
+// same as digitalWrite() but bypasses periman so no init/deinit
+// callbacks are called. pin bus type remain unchanged
+//
+void digitalForceWrite(int pin, unsigned char level) {
+  gpio_ll_output_enable(&GPIO, pin);
+  gpio_set_level((gpio_num_t)pin, level == HIGH ? 1 : 0);
+}
+
+
+
 // same as pinMode() but calls IDF directly bypassing
 // PeriMan's pin deinit/init. As a result it allows flags manipulation on
 // reserved pins without crashing & rebooting
@@ -3734,31 +3744,14 @@ static int cmd_pin(int argc, char **argv) {
       else if (!q_strcmp(argv[i], "load")) pin_load(pin);
       else if (!q_strcmp(argv[i], "hold")) gpio_hold_en((gpio_num_t)pin);
       else if (!q_strcmp(argv[i], "release")) gpio_hold_dis((gpio_num_t)pin);
-      else if (!q_strcmp(argv[i], "up")) {
-        flags |= PULLUP;
-        pinMode2(pin, flags);
-      }  // set flags immediately as we read them
-      else if (!q_strcmp(argv[i], "down")) {
-        flags |= PULLDOWN;
-        pinMode2(pin, flags);
-      } else if (!q_strcmp(argv[i], "open")) {
-        flags |= OPEN_DRAIN;
-        pinMode2(pin, flags);
-      } else if (!q_strcmp(argv[i], "in")) {
-        flags |= INPUT;
-        pinMode2(pin, flags);
-      } else if (!q_strcmp(argv[i], "out")) {
-        flags |= OUTPUT;
-        pinMode2(pin, flags);
-      } else if (!q_strcmp(argv[i], "low")) {
-        flags |= OUTPUT;
-        pinMode(pin, flags);
-        digitalWrite(pin, LOW);
-      } else if (!q_strcmp(argv[i], "high")) {
-        flags |= OUTPUT;
-        pinMode(pin, flags);
-        digitalWrite(pin, HIGH);
-      } else if (!q_strcmp(argv[i], "read")) q_printf("%% GPIO%d : logic %d\r\n", pin, digitalForceRead(pin));
+      else if (!q_strcmp(argv[i], "up")) {   flags |= PULLUP;     pinMode2(pin, flags); }  // set flags immediately as we read them
+      else if (!q_strcmp(argv[i], "down")) { flags |= PULLDOWN;   pinMode2(pin, flags); } 
+      else if (!q_strcmp(argv[i], "open")) { flags |= OPEN_DRAIN; pinMode2(pin, flags); } 
+      else if (!q_strcmp(argv[i], "in")) {   flags |= INPUT;      pinMode2(pin, flags); } 
+      else if (!q_strcmp(argv[i], "out")) {  flags |= OUTPUT;     pinMode2(pin, flags); } 
+      else if (!q_strcmp(argv[i], "low")) {  flags |= OUTPUT;     pinMode2(pin, flags); digitalForceWrite(pin, LOW); }   //use pinMode() or digitalWrite will fail
+      else if (!q_strcmp(argv[i], "high")) { flags |= OUTPUT;     pinMode2(pin, flags);  digitalForceWrite(pin, HIGH); } 
+      else if (!q_strcmp(argv[i], "read")) q_printf("%% GPIO%d : logic %d\r\n", pin, digitalForceRead(pin));
       else if (!q_strcmp(argv[i], "aread")) q_printf("%% GPIO%d : analog %d\r\n", pin, analogRead(pin));
       //"new pin number" keyword. when we see a number we use it as a pin number
       //for subsequent keywords. must be valid GPIO number.
@@ -4935,8 +4928,13 @@ static void espshell_task(const void *arg) {
       q_print("% ESPShell is started already\r\n");
       return;
     }
-    //TODO: on multicore CPUs pin espshell task to another core (relative to the Arduino's loop())
-    if (pdPASS != xTaskCreate((TaskFunction_t)espshell_task, NULL, STACKSIZE, NULL, tskIDLE_PRIORITY, &shell_task))
+    
+    // on multicore processors use another core: if Arduino uses Core1 then
+    // espshell will be on core 0. 
+		unsigned int core =  xPortGetCoreID();
+		if (portNUM_PROCESSORS > 1)
+			core = core ? 0 : 1;
+    if (pdPASS != xTaskCreatePinnedToCore((TaskFunction_t)espshell_task, NULL, STACKSIZE, NULL, tskIDLE_PRIORITY, &shell_task,core))
       q_print("% ESPShell failed to start its task\r\n");
   } else {
 
@@ -4945,7 +4943,7 @@ static void espshell_task(const void *arg) {
       delay(1000);
 
 #if WITH_HELP
-    q_print("% ESP Shell. Type \"?\" and press enter for help\r\n");
+    q_print("% ESPShell. Type \"?\" and press <Enter> for help\r\n");
 #endif
 
     while (!Exit) {
