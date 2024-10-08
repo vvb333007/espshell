@@ -98,7 +98,11 @@
 #include <string.h>
 #include <stdarg.h>
 #include <ctype.h>
+
 #include <Arduino.h>
+
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 
 //autostart espshell
@@ -258,9 +262,9 @@ typedef struct _HISTORY {
  */
 
 
+static portMUX_TYPE ttyq_mux = portMUX_INITIALIZER_UNLOCKED;
 
 static unsigned rl_eof = 0;
-
 static unsigned char NIL[] = "";
 static unsigned char *Line = NULL;
 static const char *Prompt = NULL;
@@ -435,7 +439,9 @@ static const KEYMAP MetaMap[16] = {
 // "read" from this string first.
 static inline void __attribute__((always_inline))
 TTYqueue(const char *input) {
+  portENTER_CRITICAL(&ttyq_mux);
   TTYq = input;
+  portEXIT_CRITICAL(&ttyq_mux);
 }
 
 // Print buffered (by TTYputc/TTYputs) data. editline uses buffered IO
@@ -500,7 +506,7 @@ TTYstring(unsigned char *p) {
 //
 static unsigned int
 TTYget() {
-  unsigned char c;
+  unsigned char c = 0;
 
   TTYflush();
 
@@ -508,14 +514,19 @@ TTYget() {
     Pushed = 0;
     return PushBack;
   }
-
+try_again:
   // read byte from a priority queue if any.
+  portENTER_CRITICAL(&ttyq_mux);
   if (*TTYq)
-    return *TTYq++;
+    c = *TTYq++;
+  portEXIT_CRITICAL(&ttyq_mux);    
+  if (c)
+    return c;
 
-  // read 1 byte from user
-  if (console_read_bytes(&c, 1, portMAX_DELAY) < 1)
-    return EOF;
+  // read 1 byte from user. use timeout to enable TTYq processing if was set
+  // mid console_read_bytes() call
+  if (console_read_bytes(&c, 1, pdMS_TO_TICKS(500)) < 1)
+    goto try_again;
 
 #if WITH_COLOR
   // Trying to be smart:
@@ -2059,12 +2070,12 @@ static const struct keywords_t keywords_main[] = {
   { "count", cmd_count, 1, HIDDEN_KEYWORD },  //hidden with 1 arg
 #if WITH_VAR
   { "var", cmd_var, -1, HELP("% \"var [VARIABLE_NAME[ NUMBER]]\"\r\n%\r\n"
-                             "% Set sketch variable to new value.\r\n"
+                             "% Set/display sketch variable \r\n"
                              "% NUMBER can be integer or float point values, positive or negative\r\n"
                              "%\r\n"
                              "% Ex.: \"var button1\" - Display current value of \"button1\" sketch variable\r\n"
-                             "% Ex.: \"var a -12.3\" - Set sketch variable \"a\" to new value \"-12.3\"\r\n"
-                             "% Ex.: \"var\"         - List all variables"),
+                             "% Ex.: \"var a -12.3\" - Set sketch variable \"a\" = \"-12.3\"\r\n"
+                             "% Ex.: \"var\"         - List all registered sketch variables"),
     "Sketch variables" },
 #endif  //WITH_VAR
 
@@ -2102,7 +2113,7 @@ static void change_command_directory(int context, const struct keywords_t *dir,c
   keywords = dir;
   prompt = prom;
 #if WITH_HELP
-  q_printf("% Entering %s configuration mode. Type \"exit\" or press Ctrl+Z to exit\r\n",text);
+  q_printf("%% Entering %s configuration mode. Type \"exit\" or press Ctrl+Z to exit\r\n",text);
   q_print("% Type \"?\" and press <Enter> to get the list of available commands\r\n");
 #endif
 }
@@ -4493,9 +4504,6 @@ cmd_uptime(int argc, char **argv) {
 
 
 //TAG:suspend
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
-
 // task handle of a task which calls Arduino's loop()
 // defined somewhere in the ESP32 Arduino Core
 extern TaskHandle_t loopTaskHandle;
@@ -4680,9 +4688,6 @@ static int cmd_question(int argc, char **argv) {
 // String p - is the user input as returned by readline()
 //
 // returns 0 on success
-//
-// TODO: for subdirectories: if command is not found, also scan keywords_main
-//       this is useful to exec "pin" or "var" commands while in a subdirectory
 static int
 espshell_command(char *p) {
 
@@ -4791,11 +4796,20 @@ one_more_try:
 
 
 // Execute an arbitrary shell command (\n are allowed for multiline).
-// TODO: no locking
-// TODO: does nothing until blocking TTYget() returns
-int espshell_exec(const char *p) {
+// it is an async call: it returns immediately. one can use espshell_exec_finished()
+// to check if actual shell command has finished its execution
+void espshell_exec(const char *p) {
+  TTYqueue(p);
+}
 
-  TTYq = p;
+// check if last espshell_exec() call has completed its
+// execution
+bool espshell_exec_finished() {
+  bool ret;
+  portENTER_CRITICAL(&ttyq_mux);
+  ret = (*TTYq == '\0');
+  portEXIT_CRITICAL(&ttyq_mux);
+  return ret;
 }
 
 
@@ -4811,21 +4825,20 @@ static void espshell_task(const void *arg) {
   //start task and return
   if (arg) {
     if (shell_task != NULL) {
-      q_print("% ESPShell is already started\r\n");
+      q_print("% ESPShell is started already\r\n");
       return;
     }
+    //TODO: on multicore CPUs pin espshell task to another core (relative to the Arduino's loop())
     if (pdPASS != xTaskCreate((TaskFunction_t)espshell_task, NULL, STACKSIZE, NULL, tskIDLE_PRIORITY, &shell_task))
-      q_print("% ESPShell failed to start task\r\n");
+      q_print("% ESPShell failed to start its task\r\n");
   } else {
 
     // wait until user code calls Serial.begin()
     while (!console_isup())
-      delay(100);
+      delay(1000);
 
 #if WITH_HELP
-
     q_print("% ESP Shell. Type \"?\" and press enter for help\r\n");
-    q_print("% Type \"? keys\" to learn this shell keys\r\n");
 #endif
 
     while (!Exit) {
@@ -4835,8 +4848,8 @@ static void espshell_task(const void *arg) {
 #if WITH_HELP
     q_print("% Bye!\r\n");
 #endif
-    vTaskDelete(NULL);
-    shell_task = NULL;
+    Exit = false;
+    vTaskDelete((shell_task = NULL));
   }
 }
 
