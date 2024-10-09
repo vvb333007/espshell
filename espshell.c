@@ -287,14 +287,16 @@ static int Signal = 0;
 #if WITH_COLOR
 static bool Color = false;  //enable coloring
 #endif
+static bool Exit = false;  // True == close the shell and kill its FreeRTOS task. TODO: free seq memory before killing the task
 
 static const char *TTYq = "";  //"artificial input queue". if non empty then symbols are
-                               // fed to TTYget as if it was user input.
+                               // fed to TTYget as if it was user input. used by espshell_exec()
 static unsigned int Length;
 static unsigned int ScreenCount;
 static unsigned int ScreenSize;
 static char *backspace = NULL;
-static int Echo = DO_ECHO;
+
+static int Echo = DO_ECHO;     // Runtime echo flag: -1=silent,0=off,1=on
 
 /* Display print 8-bit chars as `M-x' or as the actual 8-bit char? */
 static int rl_meta_chars = 0;
@@ -305,14 +307,14 @@ static STATUS ring_bell();
 static STATUS inject_exit();
 static STATUS inject_suspend();
 static STATUS tab_pressed();
-static STATUS beg_line();
-static STATUS end_line();
+static STATUS home_pressed();
+static STATUS end_pressed();
 static STATUS kill_line();
-static STATUS accept_line();
-static STATUS bk_char();
-static STATUS del_char();
-static STATUS fd_char();
-static STATUS bk_del_char();
+static STATUS enter_pressed();
+static STATUS left_pressed();
+static STATUS del_pressed();
+static STATUS right_pressed();
+static STATUS backspace_pressed();
 static STATUS bk_kill_word();
 static STATUS bk_word();
 
@@ -328,17 +330,17 @@ static const KEYMAP Map[] = {
   { CTL('C'), inject_suspend },  // "exit" + "suspend" commands
   { CTL('Z'), inject_exit },     // "exit" command
 
-  { CTL('A'), beg_line },        // <HOME> 
-  { CTL('E'), end_line },        // <END>
+  { CTL('A'), home_pressed },        // <HOME> 
+  { CTL('E'), end_pressed },        // <END>
 
-  { CTL('B'), bk_char },         // Arrow left. Terminal compatibility
-  { CTL('F'), fd_char },         // Arrow right. Terminal compatibility
+  { CTL('B'), left_pressed },         // Arrow left. Terminal compatibility
+  { CTL('F'), right_pressed },         // Arrow right. Terminal compatibility
 
-  { CTL('D'), del_char },        // <DEL>
-  { CTL('H'), bk_del_char },     // <BACKSPACE>
+  { CTL('D'), del_pressed },        // <DEL>
+  { CTL('H'), backspace_pressed },     // <BACKSPACE>
 
-  { CTL('J'), accept_line },     // <ENTER>
-  { CTL('M'), accept_line },     // <ENTER>
+  { CTL('J'), enter_pressed },     // <ENTER>
+  { CTL('M'), enter_pressed },     // <ENTER>
 
   { CTL('K'), kill_line },       // Erase from cursor till the end
   
@@ -865,7 +867,7 @@ h_search() {
 }
 
 static STATUS
-fd_char() {
+right_pressed() {
   int i;
 
   i = 0;
@@ -916,7 +918,7 @@ delete_string(int count) {
 }
 
 static STATUS
-bk_char() {
+left_pressed() {
   int i;
 
   i = 0;
@@ -929,19 +931,6 @@ bk_char() {
   return CSstay;
 }
 
-static STATUS
-bk_del_char() {
-  int i;
-
-  i = 0;
-  do {
-    if (Point == 0)
-      break;
-    left(CSmove);
-  } while (++i < Repeat);
-
-  return delete_string(i);
-}
 
 static STATUS
 clear_screen() {
@@ -1013,8 +1002,8 @@ meta() {
       case EOF: return CSeof;
       case 'A': return h_prev();   // Arrow UP
       case 'B': return h_next();   // Arrow DOWN
-      case 'C': return fd_char();  // Arrow RIGHT
-      case 'D': return bk_char();  // Arrow LEFT
+      case 'C': return right_pressed();  // Arrow RIGHT
+      case 'D': return left_pressed();  // Arrow LEFT
     }
 
 
@@ -1063,18 +1052,8 @@ TTYspecial(unsigned int c) {
     return CSdispatch;
 
   if (c == DEL)
-    return del_char();
+    return del_pressed();
 
-  /*
-  if (c == rl_kill) {
-    if (Point != 0) {
-      Point = 0;
-      reposition();
-    }
-    Repeat = NO_ARG;
-    return kill_line();
-  }
-*/
   if (c == rl_eof && Point == 0 && End == 0)
     return CSeof;
 
@@ -1166,9 +1145,11 @@ readline(const char *prompt) {
 
 
 
-  hist_add(NIL);
-  ScreenSize = SCREEN_INC;
-  Screen = NEW(char, ScreenSize);
+  hist_add(NIL); //TODO: ??
+  
+  ScreenSize = SCREEN_INC;           
+  Screen = NEW(char, ScreenSize);    // TODO: allocate once, never DISPOSE()
+
   Prompt = prompt ? prompt : (char *)NIL;
   START_COLORING;
   TTYputs((const unsigned char *)Prompt);
@@ -1183,7 +1164,7 @@ readline(const char *prompt) {
 
 
   DISPOSE(Screen);
-  DISPOSE(H.Lines[--H.Size]);
+  DISPOSE(H.Lines[--H.Size]); //TODO: ??
   //TODO: remove signal processing
   if (Signal > 0) {
     //s = Signal;
@@ -1194,23 +1175,39 @@ readline(const char *prompt) {
 }
 
 // add an arbitrary string p to the command history
-// ARROW UP and ARROW DOWN are history navigation keys
-// CTRL+R is history search key
-//
+// duplicates are added only if UNIQUE_HISTORY == 0
 static void rl_add_history(char *p) {
-  if (p == NULL || *p == '\0')
-    return;
-
+  if (p && *p) {
 #if UNIQUE_HISTORY
-  if (H.Size && strcmp(p, (char *)H.Lines[H.Size - 1]) == 0)
-    return;
+    if (H.Size && strcmp(p, (char *)H.Lines[H.Size - 1]) == 0)
+      return;
 #endif
-  hist_add((unsigned char *)p);
+    hist_add((unsigned char *)p);
+  }
 }
 
 
 static STATUS
-beg_line() {
+del_pressed() {
+  return delete_string(Repeat == NO_ARG ? 1 : Repeat);
+}
+
+static STATUS
+backspace_pressed() {
+  int i;
+
+  i = 0;
+  do {
+    if (Point == 0)
+      break;
+    left(CSmove);
+  } while (++i < Repeat);
+
+  return delete_string(i);
+}
+
+static STATUS
+home_pressed() {
   if (Point) {
     Point = 0;
     return CSmove;
@@ -1219,12 +1216,7 @@ beg_line() {
 }
 
 static STATUS
-del_char() {
-  return delete_string(Repeat == NO_ARG ? 1 : Repeat);
-}
-
-static STATUS
-end_line() {
+end_pressed() {
   if (Point != End) {
     Point = End;
     return CSmove;
@@ -1233,7 +1225,7 @@ end_line() {
 }
 
 static STATUS
-accept_line() {
+enter_pressed() {
   Line[End] = '\0';
   //
   // user has pressed <Enter>: set colors to default
@@ -1275,7 +1267,14 @@ bk_kill_word() {
 // to individual tokens. Whitespace is the token separator.
 // Original string p gets modified ('\0' are inserted)
 //
-// Use: int argc; char **argv; argc = argify(p,&argv);
+// Usage: 
+//
+// int argc; 
+// char **argv; 
+// argc = argify(p,&argv);
+// ...
+// if (argv)
+//   free(argv);
 static int
 argify(unsigned char *line, unsigned char ***avp) {
   unsigned char *c;
@@ -1350,7 +1349,7 @@ extern gpio_dev_t GPIO;
 
 // this is not in .h files of IDF so declare it here
 #ifdef __cplusplus
-     extern "C" bool esp_gpio_is_pin_reserved(unsigned int gpio);
+     extern "C" bool esp_gpio_is_pin_reserved(unsigned int gpio); //TODO: is it unsigned char arg?
 #else
      extern bool esp_gpio_is_pin_reserved(unsigned int gpio);
 #endif
@@ -1363,8 +1362,6 @@ extern gpio_dev_t GPIO;
 #define ystr(s) #s
 
 #define MAGIC_FREQ 312000  // max allowed frequency for the "pwm" command
-
-static bool Exit = false;  // True == close the shell and kill its FreeRTOS task
 
 static int q_strcmp(const char *, const char *);  // loose strcmp
 #if WITH_HELP
@@ -3270,16 +3267,17 @@ void digitalForceWrite(int pin, unsigned char level) {
 //
 void pinMode2(unsigned int pin, unsigned int flags) {
 
-  if (flags & PULLUP)     gpio_ll_pullup_en(&GPIO, pin);     else gpio_ll_pullup_dis(&GPIO, pin);
-  if (flags & PULLDOWN)   gpio_ll_pulldown_en(&GPIO, pin);   else gpio_ll_pulldown_dis(&GPIO, pin);
-  if (flags & OPEN_DRAIN) gpio_ll_od_enable(&GPIO, pin);     else gpio_ll_od_disable(&GPIO, pin);
-  if (flags & INPUT)      gpio_ll_input_enable(&GPIO, pin);  else gpio_ll_input_disable(&GPIO, pin);
-  if (flags & OUTPUT) {
+  if ((flags & PULLUP) == PULLUP)     gpio_ll_pullup_en(&GPIO, pin);      else gpio_ll_pullup_dis(&GPIO, pin);
+  if ((flags & PULLDOWN) == PULLDOWN)   gpio_ll_pulldown_en(&GPIO, pin);  else gpio_ll_pulldown_dis(&GPIO, pin);
+  if ((flags & OPEN_DRAIN) == OPEN_DRAIN) gpio_ll_od_enable(&GPIO, pin);  else gpio_ll_od_disable(&GPIO, pin);
+  if ((flags & INPUT) == INPUT)      gpio_ll_input_enable(&GPIO, pin);    else gpio_ll_input_disable(&GPIO, pin);
+  if ((flags & OUTPUT) == OUTPUT) {
     // not every esp32 gpio is capable of OUTPUT
     if (!pin_is_input_only_pin(pin))
       gpio_ll_output_enable(&GPIO, pin); 
-  } else
+  } else {
       gpio_ll_output_disable(&GPIO, pin);
+  }
 }
 
 
@@ -3743,7 +3741,7 @@ static int cmd_pin(int argc, char **argv) {
 #if WITH_HELP
         if (!informed) {
           informed = true;
-          q_printf("%% Repeating the command %u times. Press/Enter any key to abort\r\n", count);
+          q_printf("%% Repeating %u times, press <Enter> to abort\r\n", count);
         }
 #endif
       }
@@ -3764,7 +3762,11 @@ abort_if_input_only:
           q_error("%% Pin %u is **INPUT-ONLY**, can not be set %s\r\n",pin,argv[i]);
           return i;
         }
-        flags |= OUTPUT;     
+        flags |= OUTPUT; 
+        // use pinMode2/digitalForceWrite to not let the pin to be reconfigured
+        // to GPIO Matrix pin. By default many GPIO pins are handled by IOMUX. However if
+        // one starts to use that pin it gets configured as "GPIO Matrix simple GPIO". Code below
+        // keps the pin at IOMUX, not switching to GPIO Matrix
         pinMode2(pin, flags); 
         digitalForceWrite(pin, LOW); 
       }
@@ -3880,6 +3882,7 @@ static int cmd_nap(int argc, char **argv) {
 
 //TAG:iic
 //check if I2C has its driver installed
+// TODO: this is bad. need more low level call. esp32cams i2c is not detected as "up"
 static inline bool i2c_isup(int iic) {
 
   extern bool i2cIsInit(uint8_t i2c_num);  //not a public API, no .h file
