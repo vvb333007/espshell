@@ -2131,11 +2131,10 @@ static const struct keywords_t keywords_main[] = {
                              "%\r\n" \
                              "% Ex.: \"var\"             - List all registered sketch variables\r\n" \
                              "% Ex.: \"var button1\"     - Display current value of \"button1\" sketch variable\r\n" \
-                             "% Ex.: \"var angle -12.3\" - Set sketch variable \"button1\" to \"-12.3\"\r\n" \
-                             "%                             Value can be integer or float, **decimal** value\r\n" \
+                             "% Ex.: \"var angle -12.3\" - Set sketch variable \"angle\" to \"-12.3\"\r\n" \
                              "% Ex.: \"var 1234\"        - Display a decimal number as hex, float, int etc.\r\n" \
-                             "% Ex.: \"var 0x1234\"      - -- // octal // --\r\n" \
-                             "% Ex.: \"var 01234\"       - -- // binary // --\r\n" \
+                             "% Ex.: \"var 0x1234\"      - -- // hex // --\r\n" \
+                             "% Ex.: \"var 01234\"       - -- // octal // --\r\n" \
                              "% Use prefix \"0x\" for hex, \"0\" for octal or \"0b\" for binary numbers"),
     "Sketch variables" },
   { "var", cmd_var_show, 1, HIDDEN_KEYWORD },
