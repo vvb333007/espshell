@@ -401,12 +401,6 @@ static const KEYMAP MetaMap[16] = {
 #if WITH_COLOR
 // these are exclusively for editline library
 
-// prompt & user input colors (bright/bold white)
-#define START_COLORING \
-  do { \
-    if (Color) TTYputs((const unsigned char *)"\033[1;37m"); \
-  } while (0)  
-
 // "Search:" colors (bright/bold syan)
 #define START_COLORING_SEARCH \
   do { \
@@ -438,7 +432,7 @@ static const KEYMAP MetaMap[16] = {
   } while (0)  // Disable coloring
 #else
 // No coloring
-#define START_COLORING
+
 #define START_COLORING_SEARCH
 #define STOP_COLORING
 #define color_important()
@@ -569,7 +563,6 @@ reposition() {
   unsigned char *p;
 
   TTYput('\r');
-  START_COLORING;
   TTYputs((const unsigned char *)Prompt);
 
   for (i = Point, p = Line; --i >= 0; p++)
@@ -723,7 +716,6 @@ insert_string(unsigned char *p) {
 static STATUS
 redisplay() {
   TTYputs((const unsigned char *)NEWLINE);
-  START_COLORING;
   TTYputs((const unsigned char *)Prompt);
 
   TTYstring(Line);
@@ -1151,7 +1143,7 @@ readline(const char *prompt) {
   Screen = NEW(char, ScreenSize);    // TODO: allocate once, never DISPOSE()
 
   Prompt = prompt ? prompt : (char *)NIL;
-  START_COLORING;
+  
   TTYputs((const unsigned char *)Prompt);
 
   TTYflush();
@@ -1506,6 +1498,33 @@ static unsigned int hex2uint32(const char *p) {
   return value;
 }
 
+static unsigned int octal2uint32(const char *p) {
+  unsigned int value = 0;
+  unsigned int three = 0;
+  while (*p) {
+    if (*p >= '0' && *p <= '7') three = *p - '0'; else return 0;
+    value <<= 3;
+    value |= three;
+    p++;
+  }
+  return value;
+}
+
+static unsigned int binary2uint32(const char *p) {
+  unsigned int value = 0;
+  unsigned int one = 0;
+  while (*p) {
+    if (*p == '0' || *p == '1') one = *p - '0'; else return 0;
+    value <<= 1;
+    value |= one;
+    p++;
+  }
+  return value;
+}
+
+
+
+
 // strcmp() which deoes partial match. It us used
 // to match commands and parameters which are incomplete
 //
@@ -1803,8 +1822,8 @@ struct sequence {
 struct keywords_t {
   const char *cmd;                   // Command keyword ex.: "pin"
   int (*cb)(int argc, char **argv);  // Callback to call (one of cmd_xxx functions)
-  int argc;                          // Number of arguments required. Negative values mean "any"
-  const char *help;                  // Help text displayed on "command ?"
+  int argc;                          // Number of arguments required. Negative value means "any"
+  const char *help;                  // Help text displayed on "? command"
   const char *brief;                 // Brief text displayed on "?". NULL means "use help text, not brief"
 };
 
@@ -1861,7 +1880,7 @@ static const struct keywords_t keywords_uart[] = {
                              "% Bridge the UART IO directly to/from shell\r\n"
                              "% User input will be forwarded to uart X;\r\n"
                              "% Anything UART X sends back will be forwarded to the user"),
-    "Talk to UARTs device" },
+    "Talk to device connected" },
 
   { "write", cmd_uart, -1, HELP("% \"write TEXT\"\r\n"
                                 "%\r\n"
@@ -2105,13 +2124,19 @@ static const struct keywords_t keywords_main[] = {
   { "count", cmd_count, 2, HIDDEN_KEYWORD },  //hidden "count" with 2 args
   { "count", cmd_count, 1, HIDDEN_KEYWORD },  //hidden with 1 arg
 #if WITH_VAR
-  { "var", cmd_var, 2, HELP("% \"var [VARIABLE_NAME[ NUMBER]]\"\r\n%\r\n"
-                             "% Set/display sketch variable \r\n"
-                             "% NUMBER can be integer or float point values, positive or negative\r\n"
-                             "%\r\n"
-                             "% Ex.: \"var button1\" - Display current value of \"button1\" sketch variable\r\n"
-                             "% Ex.: \"var a -12.3\" - Set sketch variable \"a\" = \"-12.3\"\r\n"
-                             "% Ex.: \"var\"         - List all registered sketch variables"),
+  { "var", cmd_var, 2, HELP("% \"var [VARIABLE_NAME] [ NUMBER]]\"\r\n%\r\n" \
+                             "% Set/display sketch variable \r\n" \
+                             "% VARIABLE_NAME is the variable name, optional argument\r\n" \
+                             "% NUMBER can be integer or float point values, positive or negative, optional argument\r\n" \
+                             "%\r\n" \
+                             "% Ex.: \"var\"             - List all registered sketch variables\r\n" \
+                             "% Ex.: \"var button1\"     - Display current value of \"button1\" sketch variable\r\n" \
+                             "% Ex.: \"var angle -12.3\" - Set sketch variable \"button1\" to \"-12.3\"\r\n" \
+                             "%                             Value can be integer or float, **decimal** value\r\n" \
+                             "% Ex.: \"var 1234\"        - Display a decimal number as hex, float, int etc.\r\n" \
+                             "% Ex.: \"var 0x1234\"      - -- // octal // --\r\n" \
+                             "% Ex.: \"var 01234\"       - -- // binary // --\r\n" \
+                             "% Use prefix \"0x\" for hex, \"0\" for octal or \"0b\" for binary numbers"),
     "Sketch variables" },
   { "var", cmd_var_show, 1, HIDDEN_KEYWORD },
   { "var", cmd_var_show, 0, HIDDEN_KEYWORD },
@@ -2973,8 +2998,63 @@ static int cmd_var_show(int argc, char **argv) {
     return 0;
   }
 
-  //"var X": display variable value
+  //"var X": display variable value OR 
+  //"var NUMBER" different representaton of a number
+  //
   if (argc < 3) {
+    unsigned int unumber;
+    signed int   inumber;
+    float        fnumber;
+    // argv[n] is at least 2 bytes long (1 symbol + '\0')
+
+    // Octal, Binary or Hex number?
+    if (argv[1][0] == '0') {
+      if (argv[1][1] == 'x')
+        unumber = hex2uint32(&argv[1][2]);
+      else if (argv[1][1] == 'b')
+        unumber = binary2uint32(&argv[1][2]);
+      else 
+        unumber = octal2uint32(&argv[1][1]);
+      memcpy(&fnumber,&unumber,sizeof(fnumber));
+      memcpy(&inumber,&unumber,sizeof(inumber));
+    } else {
+    // Integer (signed or unsigned) or floating point number?
+      if (isnum(argv[1])) {
+        if (argv[1][0] == '-') {
+          inumber = atoi(argv[1]);
+          memcpy(&unumber,&inumber,sizeof(unumber));
+        } else {
+          unumber = atol(argv[1]);
+          memcpy(&inumber,&unumber,sizeof(inumber));
+        }
+        memcpy(&fnumber,&unumber,sizeof(fnumber));
+      } else if (isfloat(argv[1])) {
+        fnumber = atol(argv[1]);
+        memcpy(&unumber,&fnumber,sizeof(unumber));
+        memcpy(&inumber,&fnumber,sizeof(inumber));
+      } else 
+      // no brother, this defenitely not a number
+        goto process_as_variable_name;
+    }
+
+    // display a number in hex, octal, binary, integer or float representation
+    bool found_one = false;
+    q_printf("%% Hex: 0x%x, Octal: 0%o, Unsigned: %u, Signed: %i\r\n%% Floating point:%f\r\n%% Binary: 0b",unumber,unumber,unumber,inumber,fnumber);
+    for (inumber = 0; inumber < 32; inumber++) {
+      if (unumber & 0x80000000) {
+        q_print("1");
+        found_one = true;
+      }
+      else 
+        if (found_one)
+          q_print("0");
+      unumber <<= 1;
+    }
+    q_print(CRLF);
+
+    return 0;
+
+process_as_variable_name:
     if ((len = convar_get(argv[1], &u)) == 0)
       return 1;
     switch (len) {
@@ -3074,7 +3154,8 @@ static int pwm_enable(unsigned int pin, unsigned int freq, float duty) {
     resolution = 10;
 
   pinMode(pin, OUTPUT);
-  ledcWriteTone(pin, 0);  //disable ledc at pin. FIXME: use ledcDetach!
+  //ledcWriteTone(pin, 0);  //disable ledc at pin.
+  ledcDetach(pin);
 
   if (freq) {
     if (ledcAttach(pin, freq, resolution) == 0)
