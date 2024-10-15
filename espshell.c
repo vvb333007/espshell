@@ -1851,7 +1851,7 @@ static int convar_set(const char *name, void *value) {
 //
 // `duration` - delay time in milliseconds
 //  returns duration if ok, <duration if was interrupted
-//
+// TODO: rewrite to use NotifyDelay only and make anykey_pressed sending notifications?
 static unsigned int delay_interruptible(unsigned int duration) {
 
   // if duration is longer than 4999ms split it in 250ms
@@ -1862,7 +1862,7 @@ static unsigned int delay_interruptible(unsigned int duration) {
     while (duration >= 250) {
       duration -= 250;
       delayed += 250;
-      //delay(250);
+      //These NotifyWait are used as interruptible delays only
       if (xTaskNotifyWait(0,0xffffffff,NULL,pdMS_TO_TICKS(250)) == pdPASS) {
         return delayed;
       }
@@ -1872,8 +1872,10 @@ static unsigned int delay_interruptible(unsigned int duration) {
   }
   if (duration) {
     unsigned int now = millis();
-    
+
+    //These NotifyWait are used as interruptible delays only
     if (xTaskNotifyWait(0,0xffffffff,NULL,pdMS_TO_TICKS(duration)) == pdPASS)
+      //calculate how long we were in waiting state,
       duration = millis() - now;
 
     delayed += duration;
@@ -2223,18 +2225,20 @@ static const struct keywords_t keywords_main[] = {
 
   { "uptime", cmd_uptime, 0, HELP("% \"uptime\" - Shows time passed since last boot"), "System uptime" },
   { "show", cmd_show, 2, HELP("\"show seq X\" - display sequence X\r\n"), "Display information" },
+#if NotYet  
   { "filesystem", cmd_filesystem_if, 1, HELP("% \"filesystem spiffs|fat|littlefs\"\r\n"
                                              "%\r\n"
                                              "% Choose filesystem to use. Supported are SPIFFS, FAT(vfat,exfat), LittleFS\r\n"
                                              "% Ex.: filesystem spiffs"),  //TODO: example comment
     "File system access" },
+#endif    
 
   { "pin", cmd_pin, 1, HELP("% \"pin X\" - Show pin X configuration.\r\n% Ex.: \"pin 2\" - show GPIO2 information"), "Pins (GPIO) commands" },
   { "pin", cmd_pin, -1, HELP("% \"pin X (hold|release|up|down|out|in|open|high|low|save|load|read|aread|delay|loop|pwm|seq)...\"\r\n"
-                             "%\r\n"
+                             "% Various functions:\r\n"
                              "% 1. Set/Save/Load pin configuration and settings\r\n"
                              "% 2. Enable/disable PWM and pattern generation on pin\r\n"
-                             "% 3. Set/read digital pin values\r\n"
+                             "% 3. Set/read digital and/or analog pin values\r\n"
                              "%\r\n"
                              "% Multiple arguments must be separated with spaces, see examples below:\r\n%\r\n"
                              "% Ex.: pin 1 read aread         -pin1: read digital and then analog values\r\n"
@@ -2244,8 +2248,9 @@ static const struct keywords_t keywords_main[] = {
                              "% Ex.: pin 1 high delay 100 low -set pin1 to logic \"1\", after 100ms to \"0\"\r\n"
                              "% Ex.: pin 1 pwm 2000 0.3       -set 5kHz, 30% duty square wave output\r\n"
                              "% Ex.: pin 1 pwm 0 0            -disable generation\r\n"
-                             "% Ex.: pin 1 high delay 500 low delay 500 loop 10 - Blink a led 10 times\r\n"
-                             "% (see \"docs/Pin_commands.txt\" for more details & examples)\r\n"),NULL },
+                             "% Ex.: pin 1 high delay 500 low delay 500 loop 10 - Blink a led 10 times\r\n%\r\n"
+                             "% Use \"pin&\" instead of \"pin\" to execute in background\r\n"
+                             "% (see \"docs/Pin_Commands.txt\" for more details & examples)\r\n"),NULL },
   // first async command                              
   { "pin&", cmd_pin_async, -1, HIDDEN_KEYWORD },
     
@@ -2291,7 +2296,7 @@ static const struct keywords_t keywords_main[] = {
 
   { "suspend", cmd_suspend, 0, HELP("% \"suspend\" : Suspend main loop()\r\n"), "Suspend sketch execution" },
   { "resume", cmd_resume, 0, HELP("% \"resume\" : Resume main loop()\r\n"), "Resume sketch execution" },
-  { "kill", cmd_kill, 1, HELP("% \"kill TASK_ID\" : Stop and delete task TASK_ID\r\n% CAUTION: wrong id will crash whole system :(\r\n"), "Kill tasks" },
+  { "kill", cmd_kill, 1, HELP("% \"kill TASK_ID\" : Stop and delete task TASK_ID\r\n% CAUTION: wrong id will crash whole system :(\r\n% For use with \"pin&\" and \"count&\" tasks only!"), "Kill tasks" },
 
   { "pwm", cmd_pwm, 3, HELP("% \"pwm X FREQ DUTY\"\r\n"
                             "%\r\n"
@@ -2315,7 +2320,8 @@ static const struct keywords_t keywords_main[] = {
                                 "%\r\n"
                                 "% Ex.: \"count 4\"           - count positive edges on pin 4 for 1000ms\r\n"
                                 "% Ex.: \"count 4 2000\"      - count pulses (falling edge) on pin 4 for 2 sec.\r\n"
-                                "% Ex.: \"count 4 2000 both\" - count pulses (falling and rising edge) on pin 4 for 2 sec."),
+                                "% Ex.: \"count 4 2000 both\" - count pulses (falling and rising edge) on pin 4 for 2 sec.\r\n%\r\n" \
+                                "% Use \"count&\" instead of \"count\" to execute in background\r\n"),
     "Pulse counter" },
   { "count", cmd_count, 2, HIDDEN_KEYWORD },  //hidden "count" with 2 args
   { "count", cmd_count, 1, HIDDEN_KEYWORD },  //hidden with 1 arg
@@ -2326,7 +2332,7 @@ static const struct keywords_t keywords_main[] = {
 
 
 #if WITH_VAR
-  { "var", cmd_var, 2, HELP("% \"var [VARIABLE_NAME] [ NUMBER]]\"\r\n%\r\n"
+  { "var", cmd_var, 2, HELP("% \"var [VARIABLE_NAME] [NUMBER]\"\r\n%\r\n"
                             "% Set/display sketch variable \r\n"
                             "% VARIABLE_NAME is the variable name, optional argument\r\n"
                             "% NUMBER can be integer or float point values, positive or negative, optional argument\r\n"
@@ -3201,7 +3207,7 @@ static int cmd_count_async(int argc, char **argv) {
 #endif      
       userinput_unref(aa_current);
   }
-  q_printf("%% Async \"count\" command task ID is %x\r\n%% Use \"kill %x\" to stop command execution\r\n",(unsigned int)ignored,(unsigned int)ignored);
+  q_printf("%% Background task started\r\n%% Copy/paste \"kill %x\" command to stop execution\r\n",(unsigned int)ignored);
 
   return 0;
 }
@@ -4128,49 +4134,57 @@ static int cmd_pin(int argc, char **argv) {
 #endif
       }
       //Now all the single-line keywords:
-      else if (!q_strcmp(argv[i], "save"))
-        pin_save(pin);
-      else if (!q_strcmp(argv[i], "load")) pin_load(pin);
-      else if (!q_strcmp(argv[i], "hold")) gpio_hold_en((gpio_num_t)pin);
+      // 5. "pin X save"
+      else if (!q_strcmp(argv[i], "save"))    pin_save(pin);
+      // 6. "pin X load"
+      else if (!q_strcmp(argv[i], "load"))    pin_load(pin);
+      // 7. "pin X hold"
+      else if (!q_strcmp(argv[i], "hold"))    gpio_hold_en((gpio_num_t)pin);
+      // 8. "pin X release"
       else if (!q_strcmp(argv[i], "release")) gpio_hold_dis((gpio_num_t)pin);
-      else if (!q_strcmp(argv[i], "up")) {
-        flags |= PULLUP;
-        pinMode2(pin, flags);
-      }  // set flags immediately as we read them
-      else if (!q_strcmp(argv[i], "down")) {
-        flags |= PULLDOWN;
-        pinMode2(pin, flags);
-      } else if (!q_strcmp(argv[i], "open")) {
-        flags |= OPEN_DRAIN;
-        pinMode2(pin, flags);
-      } else if (!q_strcmp(argv[i], "in")) {
-        flags |= INPUT;
-        pinMode2(pin, flags);
-      } else if (!q_strcmp(argv[i], "out")) {
-        flags |= OUTPUT;
-        pinMode2(pin, flags);
-      } else if (!q_strcmp(argv[i], "low")) {  //TODO: do "low"|"high"
+      // 9. "pin X up"
+      else if (!q_strcmp(argv[i], "up")) {    flags |= PULLUP; pinMode2(pin, flags); }  // set flags immediately as we read them
+      // 10. "pin X down"
+      else if (!q_strcmp(argv[i], "down")) {  flags |= PULLDOWN; pinMode2(pin, flags); } 
+      // 11. "pin X open"
+      else if (!q_strcmp(argv[i], "open")) {  flags |= OPEN_DRAIN; pinMode2(pin, flags); } 
+      // 12. "pin X in"
+      else if (!q_strcmp(argv[i], "in")) {    flags |= INPUT; pinMode2(pin, flags); } 
+      // 13. "pin X out"
+      else if (!q_strcmp(argv[i], "out")) {   flags |= OUTPUT; pinMode2(pin, flags); } 
+      else 
+      // 14. "pin X low" keyword. only applies to I/O pins, fails for input-only pins
+      if (!q_strcmp(argv[i], "low")) {  
         if (pin_is_input_only_pin(pin)) {
 abort_if_input_only:
-          q_error("%% Pin %u is **INPUT-ONLY**, can not be set %s\r\n", pin, argv[i]);
+          q_error("%% Pin %u is **INPUT-ONLY**, can not be set \"%s\"\r\n", pin, argv[i]);
           return i;
         }
-        flags |= OUTPUT;
         // use pinMode2/digitalForceWrite to not let the pin to be reconfigured
         // to GPIO Matrix pin. By default many GPIO pins are handled by IOMUX. However if
         // one starts to use that pin it gets configured as "GPIO Matrix simple GPIO". Code below
-        // keps the pin at IOMUX, not switching to GPIO Matrix
+        // keeps the pin at IOMUX, not switching to GPIO Matrix
+        flags |= OUTPUT;
         pinMode2(pin, flags);
         digitalForceWrite(pin, LOW);
-      } else if (!q_strcmp(argv[i], "high")) {
+      } else 
+      // 15. "pin X high" keyword. I/O pins only
+      if (!q_strcmp(argv[i], "high")) {
+
         if (pin_is_input_only_pin(pin))
           goto abort_if_input_only;
+
         flags |= OUTPUT;
         pinMode2(pin, flags);
         digitalForceWrite(pin, HIGH);
-      } else if (!q_strcmp(argv[i], "read")) q_printf("%% GPIO%d : logic %d\r\n", pin, digitalForceRead(pin));
-      else if (!q_strcmp(argv[i], "aread")) q_printf("%% GPIO%d : analog %d\r\n", pin, analogRead(pin));
-      //"new pin number" keyword. when we see a number we use it as a pin number
+
+      } else 
+      // 16. "pin X read"
+      if (!q_strcmp(argv[i], "read")) q_printf("%% GPIO%d : logic %d\r\n", pin, digitalForceRead(pin)); else 
+      // 17. "pin X read"
+      if (!q_strcmp(argv[i], "aread")) q_printf("%% GPIO%d : analog %d\r\n", pin, analogRead(pin));
+      //
+      //"X" keyword. when we see a number we use it as a pin number
       //for subsequent keywords. must be valid GPIO number.
       else if (isnum(argv[i])) {
         pin = atoi(argv[i]);
@@ -4220,6 +4234,7 @@ static void pin_async_task(void *arg) {
 
 // "pin& ARG1 ARG2 .. ARGn"
 //
+//TODO: make cmd_async() and async_task() to be common for all async commands
 static int cmd_pin_async(int argc, char **argv) {
 
   TaskHandle_t ignored;
@@ -4233,7 +4248,7 @@ static int cmd_pin_async(int argc, char **argv) {
       q_error("%% Can not start a new task. Resources low?\r\n");
       userinput_unref(aa_current);
   }
-  q_printf("%% Async \"pin\" command task ID is %x\r\n%% Use \"kill %x\" to stop command execution\r\n",(unsigned int)ignored,(unsigned int)ignored);
+  q_printf("%% Background task started\r\n%% Copy/paste \"kill %x\" command to stop execution\r\n",(unsigned int)ignored);
 
   return 0;
 }
