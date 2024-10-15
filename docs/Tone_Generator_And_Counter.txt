@@ -50,8 +50,8 @@ Command syntax is: "count PIN [TIME_MS [pos|neg|both]]" where PIN is a pin numbe
 is the time during which measurements are made (default is 1000 ms). Last two
 parameters can be omitted. Their default values are "pos" and "1000".
 
-Pulse counting can be interrupted at any moment by pressing any key in termianl
-software or sending a character in Arduino IDE Serial Monitor.
+Pulse counting can be interrupted at any moment by pressing <Enter> in either 
+termianl software or in Arduino IDE Serial Monitor.
 
 Lets connect pin2 and pin4 with a jumper. Start a squarewave generator on pin2 
 and count pulses on pin4:
@@ -60,6 +60,38 @@ esp32#>pwm 2 10
 esp32#>count 4
 % Counting pulses on GPIO4.. 10 pulses (1.000 sec)
 esp32#>
+
+
+COUNTING PULSES IN BACKGROUND (ASYNC "COUNT")
+---------------------------------------------
+
+"Count" is a blocking command: it blocks user from executing next commands until
+this one finishes. It is ok for most of use cases but sometimes we want to count 
+irregular pulses for a long period of time but still be able to use espshell command 
+line. 
+
+Typical scenario is to count pulses for indefinite long time and being able to read 
+the counter at any time and execute other commands. I.e. running "count" command in
+a background.
+
+One of such examples is counting pulses from the "door open/door closed" sensor: we don't
+know how often pulses will arrive, we don't know for how long we need to count it.
+
+Good news: it is possible to run "count" command in background: just use "count&" instead of 
+"count". This async command can be interrupted at any time with "kill" command. When 
+interrupted via "kill" command it will print its current pulses/timer measurements:
+
+
+  esp32#>count& 4 100000                               <-- start counting
+  % Async "count" command task ID is 3ffb8fdc
+  % Use "kill 3ffb8fdc" to stop command execution
+  % Counting pulses on GPIO4 (any key to abort)..
+  esp32#>
+  esp32#>kill 3ffb8fdc                                 <-- stop counting
+  34 pulses in 17.250 sec
+
+Note you can use your mouse to copy/paste "kill 3ffb8fdc" command
+
 
 
 NOTE: Use "pin X save" and "pin X load" to save/restore pin state. Configuring
