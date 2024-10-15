@@ -45,7 +45,7 @@
  */
 
 #undef WITH_HELP
-#undef WITH_VAR
+
 #undef UNIQUE_HISTORY
 #undef HIST_SIZE
 #undef STACKSIZE
@@ -61,7 +61,6 @@
 
 #define WITH_COLOR 1             // Enable terminal colors
 #define WITH_HELP 1              // Set to 0 to save some program space by excluding help strings/functions
-#define WITH_VAR 1               // Enable or disable "var" command.
 #define UNIQUE_HISTORY 1         // Wheither to discard repeating commands from the history or not
 #define HIST_SIZE 20             // History buffer size (number of commands to remember)
 #define STACKSIZE 5000           // Shell task stack size
@@ -121,32 +120,37 @@
 #endif
 
 
-//autostart espshell
+// Autostart espshell.
+// Called automatically by C runtime startup code.
 static void __attribute__((constructor)) espshell_start();
 
-// misc forwards
+// Miscellaneous forwards:
+// Check if UART u is up and operationg (driver installed)
 static inline bool uart_isup(int u);
+
+// Various printfs: q_error is magenta-colored version of q_printf, q_print is fast but
+// only prints non-formatted strings
 static int __attribute__((format(printf, 1, 2))) q_printf(const char *, ...);
 static int __attribute__((format(printf, 1, 2))) q_error(const char *, ...);
 static int q_print(const char *);
+
+// Safe version of Arduino's pinMode(). Bypasses Arduino Core's peripherial manager code
+// Yes you can change flags of ESP32's pins 6..11 to make them readable. Classic pinMode()
+// called on these pins (connected to SPI memory) crashes whole system
 void pinMode2(unsigned int pin, unsigned int flags);
 
 
-// Port to use for ESPShell. Set to 99 for USBCDC
+// Port to use for ESPShell. Set to 99 for USB
 static uart_port_t uart = STARTUP_PORT;
 
 // --   SHELL TO CONSOLE HARDWARE GLUE --
-// espshell uses console_read../console_write.. and some other functions to
-// print data or read user input. In order to implement support for another type
-// of hardware (say USBCDC) one have to implement functions below
+// espshell uses console_read../console_write.. and some other functions to print data or read user input. 
+// In order to implement support for another typeof hardware (say USBCDC) one have to implement functions 
+// below
 
-// Serial is class USBCDC, not yet implemented
-#ifdef SERIAL_IS_USB
-#error "console_here() is not implemented"
-#error "console_write_bytes() is not implemented"
-#error "console_read_bytes() is not implemented"
-#error "console_isup() is not implemented"
-#error "anykey_pressed() is not implemented"
+#ifdef SERIAL_IS_USB 
+// Serial is class USBCDC ie native USB port
+#  error "console_...() functions are not implemented"
 #else
 // Serial is class HardwareSerial ie UART
 
@@ -160,12 +164,12 @@ static inline __attribute__((always_inline)) int console_read_bytes(void *buf, u
   return uart_read_bytes(uart, buf, len, wait);
 }
 
-// is UART driver installed and can be used?
+// is UART (or USBCDC) driver installed and can be used?
 static inline __attribute__((always_inline)) bool console_isup() {
   return uart_isup(uart);
 }
 
-// Make ESPShell to use specified UART for its IO. Default is uart0.
+// Make ESPShell to use specified UART (or USB) for its IO. Default is uart0.
 // console_here(-1) returns uart port number occupied by espshell
 static inline __attribute__((always_inline)) int console_here(int i) {
   return i < 0 ? uart : (i > UART_NUM_MAX ? -1 : (uart = i));
@@ -184,20 +188,12 @@ static bool anykey_pressed() {
       console_read_bytes(&c, 1, 0);
       return true;
     }
-
   return false;
 }
 
 #endif  //SERIAL_IS_USB
 
-// external command queue.
-// commands placed on this queue gets executed first
-
-
-
 //========>=========>======= EDITLINE CODE BELOW (modified ancient version) =======>=======>
-
-
 
 #define CRLF "\r\n"
 
@@ -392,53 +388,34 @@ static const KEYMAP MetaMap[16] = {
 };
 
 // coloring macros.
-// coloring is auto-enabled upon reception of ESC code
+// coloring is auto-enabled upon reception of certain symbols from user: arrow keys,
+// <tab>, Ctrl+??? and such will enable syntax coloring
 //
 #if WITH_COLOR
-// these are exclusively for editline library
+// these are exclusively for editline library (buffered editline output)
+// "Search:" coloring (bright/bold syan)
+#  define START_COLORING_SEARCH do { if (Color) TTYputs((const unsigned char *)"\033[1;36m"); } while (0)
+// Normal coloring
+#  define STOP_COLORING do { if (Color) TTYputs((const unsigned char *)"\033[0m"); } while (0)
 
-// "Search:" colors (bright/bold syan)
-#define START_COLORING_SEARCH \
-  do { \
-    if (Color) TTYputs((const unsigned char *)"\033[1;36m"); \
-  } while (0)
-
-// diable coloring
-#define STOP_COLORING \
-  do { \
-    if (Color) TTYputs((const unsigned char *)"\033[0m"); \
-  } while (0)
-
-// following one is used by espshell parser & command handlers
-#define color_important() \
-  do { \
-    if (Color) q_print("\033[1;33m"); \
-  } while (0)  // Bright/bold yellow
-#define color_warning() \
-  do { \
-    if (Color) q_print("\033[1;31m"); \
-  } while (0)  // Warning/caution message colors (bright/bold red)
-#define color_error() \
-  do { \
-    if (Color) q_print("\033[1;35m"); \
-  } while (0)  // Error message colors. (bright/bold magenta)
-#define color_normal() \
-  do { \
-    if (Color) q_print("\033[0m"); \
-  } while (0)  // Disable coloring
+// following one is used by espshell parser & command handlers (direct terminal output)
+//
+#  define color_important() do { if (Color) q_print("\033[1;33m"); } while (0) // Bright/bold yellow
+#  define color_warning() do { if (Color) q_print("\033[1;31m"); } while (0)   // Warning/caution message colors (bright/bold red)
+#  define color_error() do { if (Color) q_print("\033[1;35m"); } while (0)     // Error message colors. (bright/bold magenta)
+#  define color_normal() do { if (Color) q_print("\033[0m"); } while (0)       // Disable coloring
 #else
-// No coloring
-
-#define START_COLORING_SEARCH
-#define STOP_COLORING
-#define color_important()
-#define color_warning()
-#define color_error()
-#define color_normal()
+// Coloring disabled at compile time
+#  define START_COLORING_SEARCH
+#  define STOP_COLORING
+#  define color_important()
+#  define color_warning()
+#  define color_error()
+#  define color_normal()
 #endif  //WITH_COLOR
 
-// queue an arbitrary asciiz string t simulate user input.
-// string queued has higher priority than user input so console_read() would
+// Queue an arbitrary asciiz string to simulate user input.
+// String queued has higher priority than user input so console_read() would
 // "read" from this string first.
 static inline void
 TTYqueue(const char *input) {
@@ -526,8 +503,8 @@ try_again:
   if (c)
     return c;
 
-  // read 1 byte from user. use timeout to enable TTYq processing if was set
-  // mid console_read_bytes() call
+  // read 1 byte from user. we use timeout to enable TTYq processing if it was set
+  // mid console_read_bytes() call: i.e. TTYq polling happens every 500ms
   if (console_read_bytes(&c, 1, pdMS_TO_TICKS(500)) < 1)
     goto try_again;
 
@@ -1162,8 +1139,9 @@ readline(const char *prompt) {
   return (char *)line;
 }
 
-// add an arbitrary string p to the command history
-// duplicates are added only if UNIQUE_HISTORY == 0
+// Add an arbitrary string p to the command history.
+// Duplicates are added only if UNIQUE_HISTORY == 0
+//
 static void rl_add_history(char *p) {
   if (p && *p) {
 #if UNIQUE_HISTORY
@@ -1332,16 +1310,14 @@ static int          shell_core = 0; // CPU core number ESPShell is running on. F
 
 
 // Mutex to protect reference counters of argcargv_t structure.
-// Yes it is global single lock. No point to create per-struct mutex: 
-// we are not optimizing for speed, we are optimizing for memory
-//static portMUX_TYPE argv_mux = portMUX_INITIALIZER_UNLOCKED;
+// Yes it is global single lock
 static xSemaphoreHandle argv_mux = NULL;
 
 // Tokenized user input:
-// argc/argv are amount of tokens, pointers to tokens
-// userinput is the raw user input with some zeros inserted by tokenizer
+// argc/argv are amount of tokens and pointers to tokens respectively.
+// userinput is the raw user input with some zeros inserted by tokenizer.
 // ref is the reference counter (we have async commands so deletion of user 
-// input needs to be delayed)
+// input needs to be delayed via refcounting)
 typedef struct {
   int    ref;
   int    argc;
@@ -1349,29 +1325,32 @@ typedef struct {
   char  *userinput;
 } argcargv_t;
 
+// User input which is currently processed
 static argcargv_t *aa_current = NULL;
 
-// Increase refcounter
+// Increase refcounter on argcargv structure.
+//
 static inline void userinput_ref(argcargv_t *a) {
-  //portENTER_CRITICAL(&argv_mux);
+  
   if (xSemaphoreTake(argv_mux, portMAX_DELAY)) {
     if (a)
       a->ref++;
       xSemaphoreGive(argv_mux);
   }
-  //portEXIT_CRITICAL(&argv_mux);
+  
 }
 
 // Decrease refcounter
 // When refcounter hits zero the whole argcargv gets freed
 //
 static inline void userinput_unref(argcargv_t *a) {
-  //portENTER_CRITICAL(&argv_mux);
+  
   if (xSemaphoreTake(argv_mux, portMAX_DELAY)) {
     if (a) {
       if (a->ref < 1) //must not happen
         abort();
       a->ref--;
+      // ref dropped to zero: delete everything
       if (a->ref == 0) {
         if (a->argv)
           free(a->argv);
@@ -1382,13 +1361,12 @@ static inline void userinput_unref(argcargv_t *a) {
     }
     xSemaphoreGive(argv_mux);
   }
-  //portEXIT_CRITICAL(&argv_mux);
 }
 
-// split user input string to tokens.
-// returns NULL if strings is empty or there were memory allocation errors
-// returns pointer to allocated argcargv_t structure on success
-// Structure must be freed after use via userinput_unref();
+// Split user input string to tokens.
+// Returns NULL if string is empty or there were memory allocation errors.
+// Returns pointer to allocated argcargv_t structure on success, which contains tokenized user input.
+// NOTE: ** Structure must be freed after use via userinput_unref() **;
 //
 static argcargv_t *userinput_tokenize(char *userinput) {
   argcargv_t *a = NULL;
@@ -1405,7 +1383,6 @@ static argcargv_t *userinput_tokenize(char *userinput) {
       }
     }
   }
-  //q_printf("aa created %p, ref is %d\r\n",a,a->ref);
   return a;
 }
 
@@ -1417,7 +1394,9 @@ static argcargv_t *userinput_tokenize(char *userinput) {
 #define esp_gpio_is_pin_reserved esp_gpio_pin_reserved
 #endif
 
-// this is not in .h files of IDF so declare it here
+// this is not in .h files of IDF so declare it here:
+// check if ESP32 pin is **reserved**. Pins used internally for external ram or flash memory access
+// are ** reserved **.
 #ifdef __cplusplus
 extern "C" bool esp_gpio_is_pin_reserved(unsigned int gpio);  //TODO: is it unsigned char arg?
 #else
@@ -1438,7 +1417,8 @@ static int q_strcmp(const char *, const char *);  // loose strcmp
 static int cmd_question(int, char **);
 #endif
 static int cmd_pin(int, char **);
-static int cmd_pin_async(int, char **);
+
+static int cmd_async(int, char **); // "pin&" , "count&", ..
 
 static int cmd_cpu(int, char **);
 static int cmd_cpu_freq(int, char **);
@@ -1467,7 +1447,6 @@ static int cmd_kill(int, char **argv);
 
 static int cmd_pwm(int, char **);
 static int cmd_count(int, char **);
-static int cmd_count_async(int, char **);
 
 static int cmd_seq_if(int, char **);
 static int cmd_seq_eot(int argc, char **argv);
@@ -1477,10 +1456,10 @@ static int cmd_seq_tick(int argc, char **argv);
 static int cmd_seq_bits(int argc, char **argv);
 static int cmd_seq_levels(int argc, char **argv);
 static int cmd_seq_show(int argc, char **argv);
-#if WITH_VAR
+
 static int cmd_var(int, char **);
 static int cmd_var_show(int, char **);
-#endif
+
 static int cmd_show(int, char **);
 
 static int cmd_exit(int, char **);
@@ -1778,7 +1757,7 @@ static void q_printhex(const unsigned char *p, unsigned int len) {
   }
 }
 
-#if WITH_VAR
+
 // Console Variables.
 //
 // User sketch can register global or static variables to be accessible
@@ -1840,7 +1819,7 @@ static int convar_set(const char *name, void *value) {
   }
   return 0;
 }
-#endif  //WITH_VAR
+
 
 
 
@@ -2224,15 +2203,55 @@ static const struct keywords_t keywords_main[] = {
   KEYWORDS_BEGIN
 
   { "uptime", cmd_uptime, 0, HELP("% \"uptime\" - Shows time passed since last boot"), "System uptime" },
-  { "show", cmd_show, 2, HELP("\"show seq X\" - display sequence X\r\n"), "Display information" },
 #if NotYet  
   { "filesystem", cmd_filesystem_if, 1, HELP("% \"filesystem spiffs|fat|littlefs\"\r\n"
                                              "%\r\n"
                                              "% Choose filesystem to use. Supported are SPIFFS, FAT(vfat,exfat), LittleFS\r\n"
-                                             "% Ex.: filesystem spiffs"),  //TODO: example comment
-    "File system access" },
+                                             "% Ex.: filesystem spiffs - enter SPIFF filesystem(s)"),"File system access" },
 #endif    
 
+  // System commands    
+  { "cpu", cmd_cpu_freq, 1, HELP("% \"cpu FREQ\" : Set CPU frequency to FREQ Mhz"), "Set/show CPU parameters" },
+  { "cpu", cmd_cpu, 0, HELP("% \"cpu\" : Show CPUID and CPU/XTAL/APB frequencies"), NULL },
+  { "suspend", cmd_suspend, 0, HELP("% \"suspend\" : Suspend main loop()\r\n"), "Suspend sketch execution" },
+  { "resume", cmd_resume, 0, HELP("% \"resume\" : Resume main loop()\r\n"), "Resume sketch execution" },
+  { "kill", cmd_kill, 1, HELP("% \"kill TASK_ID\" : Stop and delete task TASK_ID\r\n% CAUTION: wrong id will crash whole system :(\r\n% For use with \"pin&\" and \"count&\" tasks only!"), "Kill tasks" },
+  { "reload", cmd_reload, 0, HELP("% \"reload\" - Restarts CPU"), "Reset CPU" },
+  { "mem", cmd_mem, 0, HELP("% \"mem\"\r\n"
+                            "% Shows memory usage info & availability, no arguments"),"Memory commands" },
+  { "mem", cmd_mem_read, 2, HELP("% \"mem ADDR [LENGTH]\"\r\n"
+                                 "% Display LENGTH bytes of memory starting from address ADDR\r\n"
+                                 "% Address must be in the form \"1234ABCDE\", (hexadecimal numbers)\r\n%\r\n"
+                                 "% Ex.: mem 40078000 100 : display 100 bytes starting from address 40078000"),NULL },
+  { "mem", cmd_mem_read, 1, HIDDEN_KEYWORD },
+  { "nap", cmd_nap, 1, HELP("% \"nap SEC\"\r\n%\r\n% Put the CPU into light sleep mode for SEC seconds."), "CPU sleep" },
+  { "nap", cmd_nap, 0, HELP("% \"nap\"\r\n%\r\n% Put the CPU into light sleep mode, wakeup by console"), NULL },
+
+  // Interfaces (UART,I2C, RMT..)
+  { "iic", cmd_i2c_if, 1, HELP("% \"iic X\" \r\n%\r\n"
+                               "% Enter I2C interface X configuration mode \r\n"
+                               "% Ex.: iic 0 - configure/use interface I2C 0"),
+    "I2C commands" },
+
+  { "uart", cmd_uart_if, 1, HELP("% \"uart X\"\r\n"
+                                 "%\r\n"
+                                 "% Enter UART interface X configuration mode\r\n"
+                                 "% Ex.: uart 1 - configure/use interface UART 1"),
+    "UART commands" },
+
+  { "sequence", cmd_seq_if, 1, HELP("% \"sequence X\"\r\n"
+                                    "%\r\n"
+                                    "% Create/configure a sequence\r\n"
+                                    "% Ex.: sequence 0 - configure Sequence0"),"Sequence configuration" },
+
+  // Show funcions (more will be added)                                    
+  { "show", cmd_show, 2, HELP("\"show seq X\" - display sequence X\r\n"), "Display information" },                                    
+
+  // Shell input/output settings
+  { "tty", cmd_tty, 1, HELP("% \"tty X\" Use uart X for command line interface"), "IO redirect" },
+  { "echo", cmd_echo, 1, HELP("% \"echo on|off|silent\" Echo user input on/off (default is on)"), "Enable/Disable user input echo" },
+  { "echo", cmd_echo, 0, HIDDEN_KEYWORD },  //hidden command, displays echo status (on / off)
+  // Generic pin commands
   { "pin", cmd_pin, 1, HELP("% \"pin X\" - Show pin X configuration.\r\n% Ex.: \"pin 2\" - show GPIO2 information"), "Pins (GPIO) commands" },
   { "pin", cmd_pin, -1, HELP("% \"pin X (hold|release|up|down|out|in|open|high|low|save|load|read|aread|delay|loop|pwm|seq)...\"\r\n"
                              "% Various functions:\r\n"
@@ -2251,68 +2270,21 @@ static const struct keywords_t keywords_main[] = {
                              "% Ex.: pin 1 high delay 500 low delay 500 loop 10 - Blink a led 10 times\r\n%\r\n"
                              "% Use \"pin&\" instead of \"pin\" to execute in background\r\n"
                              "% (see \"docs/Pin_Commands.txt\" for more details & examples)\r\n"),NULL },
-  // first async command                              
-  { "pin&", cmd_pin_async, -1, HIDDEN_KEYWORD },
-    
+  // "pin&"" async (background) "pin" command                              
+  { "pin&", cmd_async, -1, HIDDEN_KEYWORD },
 
-
-  { "cpu", cmd_cpu_freq, 1, HELP("% \"cpu FREQ\" : Set CPU frequency to FREQ Mhz"), "Set/show CPU parameters" },
-  { "cpu", cmd_cpu, 0, HELP("% \"cpu\" : Show CPUID and CPU/XTAL/APB frequencies"), NULL },
-  { "reload", cmd_reload, 0, HELP("% \"reload\" - Restarts CPU"), "Reset CPU" },
-  { "mem", cmd_mem, 0, HELP("% \"mem\"\r\n"
-                            "% Shows memory usage info & availability, no arguments"),
-    "Memory commands" },
-  { "mem", cmd_mem_read, 2, HELP("% \"mem ADDR [LENGTH]\"\r\n"
-                                 "% Display LENGTH bytes of memory starting from address ADDR\r\n"
-                                 "% Address must be in the form \"1234ABCDE\", (hexadecimal numbers)\r\n%\r\n"
-                                 "% Ex.: mem 40078000 100 : display 100 bytes starting from address 40078000"),
-    NULL },
-  { "mem", cmd_mem_read, 1, HIDDEN_KEYWORD },
-
-
-  { "nap", cmd_nap, 1, HELP("% \"nap SEC\"\r\n%\r\n% Put the CPU into light sleep mode for SEC seconds."), "CPU sleep" },
-  { "nap", cmd_nap, 0, HELP("% \"nap\"\r\n%\r\n% Put the CPU into light sleep mode, wakeup by console"), NULL },
-
-  { "iic", cmd_i2c_if, 1, HELP("% \"iic X\" \r\n%\r\n"
-                               "% Enter I2C interface X configuration mode \r\n"
-                               "% Ex.: iic 0 - configure/use interface I2C 0"),
-    "I2C commands" },
-
-  { "uart", cmd_uart_if, 1, HELP("% \"uart X\"\r\n"
-                                 "%\r\n"
-                                 "% Enter UART interface X configuration mode\r\n"
-                                 "% Ex.: uart 1 - configure/use interface UART 1"),
-    "UART commands" },
-
-  { "sequence", cmd_seq_if, 1, HELP("% \"sequence X\"\r\n"
-                                    "%\r\n"
-                                    "% Create/configure a sequence\r\n"
-                                    "% Ex.: sequence 0 - configure Sequence0"),
-    "Sequence configuration" },
-
-  { "tty", cmd_tty, 1, HELP("% \"tty X\" Use uart X for command line interface"), "IO redirect" },
-  { "echo", cmd_echo, 1, HELP("% \"echo on|off|silent\" Echo user input on/off (default is on)"), "Enable/Disable user input echo" },
-  { "echo", cmd_echo, 0, HIDDEN_KEYWORD },  //hidden command, displays echo status (on / off)
-
-  { "suspend", cmd_suspend, 0, HELP("% \"suspend\" : Suspend main loop()\r\n"), "Suspend sketch execution" },
-  { "resume", cmd_resume, 0, HELP("% \"resume\" : Resume main loop()\r\n"), "Resume sketch execution" },
-  { "kill", cmd_kill, 1, HELP("% \"kill TASK_ID\" : Stop and delete task TASK_ID\r\n% CAUTION: wrong id will crash whole system :(\r\n% For use with \"pin&\" and \"count&\" tasks only!"), "Kill tasks" },
-
+  // PWM generation
   { "pwm", cmd_pwm, 3, HELP("% \"pwm X FREQ DUTY\"\r\n"
                             "%\r\n"
                             "% Start PWM generator on pin X, frequency FREQ Hz and duty cycle of DUTY\r\n"
                             "% Max frequency is 312000 Hz\r\n"
                             "% Value of DUTY is in range [0..1] with 0.123 being a 12.3% duty cycle"
-                            "% Duty resolution is 0.005 (0.5%)"),
-    "PWM output" },
-
+                            "% Duty resolution is 0.005 (0.5%)"), "PWM output" },
   { "pwm", cmd_pwm, 2, HELP("% \"pwm X FREQ\"\r\n"
                             "% Start squarewave generator on pin X, frequency FREQ Hz\r\n"
-                            "% duty cycle is  set to 50%"),
-    NULL },
-
+                            "% duty cycle is  set to 50%"), NULL },
   { "pwm", cmd_pwm, 1, HELP("% \"pwm X\" Stop generator on pin X"), NULL },
-
+  // Pulse counting
   { "count", cmd_count, 3, HELP("% \"count PIN [DURATION [neg|pos|both]]\"\r\n%\r\n"
                                 "% Count pulses (negative/positive edge or both) on pin PIN within DURATION time\r\n"
                                 "% Time is measured in milliseconds, optional. Default is 1000\r\n"
@@ -2321,17 +2293,15 @@ static const struct keywords_t keywords_main[] = {
                                 "% Ex.: \"count 4\"           - count positive edges on pin 4 for 1000ms\r\n"
                                 "% Ex.: \"count 4 2000\"      - count pulses (falling edge) on pin 4 for 2 sec.\r\n"
                                 "% Ex.: \"count 4 2000 both\" - count pulses (falling and rising edge) on pin 4 for 2 sec.\r\n%\r\n" \
-                                "% Use \"count&\" instead of \"count\" to execute in background\r\n"),
-    "Pulse counter" },
+                                "% Use \"count&\" instead of \"count\" to execute in background\r\n"),"Pulse counter" },
   { "count", cmd_count, 2, HIDDEN_KEYWORD },  //hidden "count" with 2 args
   { "count", cmd_count, 1, HIDDEN_KEYWORD },  //hidden with 1 arg
+  { "count&", cmd_async, 3, HIDDEN_KEYWORD },  //hidden "count&" with 3 args
+  { "count&", cmd_async, 2, HIDDEN_KEYWORD },  //hidden "count&" with 2 args
+  { "count&", cmd_async, 1, HIDDEN_KEYWORD },  //hidden "count&" with 1 arg
 
-  { "count&", cmd_count_async, 3, HIDDEN_KEYWORD },  //hidden "count&" with 3 args
-  { "count&", cmd_count_async, 2, HIDDEN_KEYWORD },  //hidden "count&" with 2 args
-  { "count&", cmd_count_async, 1, HIDDEN_KEYWORD },  //hidden "count&" with 1 arg
 
 
-#if WITH_VAR
   { "var", cmd_var, 2, HELP("% \"var [VARIABLE_NAME] [NUMBER]\"\r\n%\r\n"
                             "% Set/display sketch variable \r\n"
                             "% VARIABLE_NAME is the variable name, optional argument\r\n"
@@ -2343,11 +2313,10 @@ static const struct keywords_t keywords_main[] = {
                             "% Ex.: \"var 1234\"        - Display a decimal number as hex, float, int etc.\r\n"
                             "% Ex.: \"var 0x1234\"      - -- // hex // --\r\n"
                             "% Ex.: \"var 01234\"       - -- // octal // --\r\n"
-                            "% Use prefix \"0x\" for hex, \"0\" for octal or \"0b\" for binary numbers"),
-    "Sketch variables" },
+                            "% Use prefix \"0x\" for hex, \"0\" for octal or \"0b\" for binary numbers"),"Sketch variables" },
   { "var", cmd_var_show, 1, HIDDEN_KEYWORD },
   { "var", cmd_var_show, 0, HIDDEN_KEYWORD },
-#endif  //WITH_VAR
+
 
 #ifdef EXTERNAL_KEYWORDS
 #include EXTERNAL_KEYWORDS
@@ -3190,31 +3159,8 @@ static void count_async_task(void *arg) {
   vTaskDelete(NULL);
 }
 
-// "
-//
-static int cmd_count_async(int argc, char **argv) {
-
-  TaskHandle_t ignored;
-
-  if (aa_current == NULL) //must not happen
-    abort();
-  
-  //increase refcount so espshell_command() will not delete argcargv upon completion
-  userinput_ref(aa_current);
-  if (pdPASS != xTaskCreatePinnedToCore((TaskFunction_t)count_async_task, "Cnt Async", STACKSIZE, aa_current, tskIDLE_PRIORITY, &ignored, shell_core)) {
-#if WITH_HELP    
-      q_error("%% Can not start a new task. Resources low?\r\n");
-#endif      
-      userinput_unref(aa_current);
-  }
-  q_printf("%% Background task started\r\n%% Copy/paste \"kill %x\" command to stop execution\r\n",(unsigned int)ignored);
-
-  return 0;
-}
 
 
-
-#if WITH_VAR
 // "var"     - display registered variables list
 // "var X"   - display variable X value
 static int cmd_var_show(int argc, char **argv) {
@@ -3375,7 +3321,7 @@ static int cmd_var(int argc, char **argv) {
   convar_set(argv[1], &u);
   return 0;
 }
-#endif  //WITH_VAR
+
 
 
 //TAG:pwm
@@ -3612,27 +3558,27 @@ void digitalForceWrite(int pin, unsigned char level) {
 //
 void pinMode2(unsigned int pin, unsigned int flags) {
 
-  if ((flags & PULLUP) == PULLUP) gpio_ll_pullup_en(&GPIO, pin);
-  else gpio_ll_pullup_dis(&GPIO, pin);
-  if ((flags & PULLDOWN) == PULLDOWN) gpio_ll_pulldown_en(&GPIO, pin);
-  else gpio_ll_pulldown_dis(&GPIO, pin);
-  if ((flags & OPEN_DRAIN) == OPEN_DRAIN) gpio_ll_od_enable(&GPIO, pin);
-  else gpio_ll_od_disable(&GPIO, pin);
-  if ((flags & INPUT) == INPUT) gpio_ll_input_enable(&GPIO, pin);
-  else gpio_ll_input_disable(&GPIO, pin);
+  // set ARDUINO flags to the pin using ESP-IDF functions
+  if ((flags & PULLUP) == PULLUP) gpio_ll_pullup_en(&GPIO, pin); else gpio_ll_pullup_dis(&GPIO, pin);
+  if ((flags & PULLDOWN) == PULLDOWN) gpio_ll_pulldown_en(&GPIO, pin); else gpio_ll_pulldown_dis(&GPIO, pin);
+  if ((flags & OPEN_DRAIN) == OPEN_DRAIN) gpio_ll_od_enable(&GPIO, pin); else gpio_ll_od_disable(&GPIO, pin);
+  if ((flags & INPUT) == INPUT) gpio_ll_input_enable(&GPIO, pin); else gpio_ll_input_disable(&GPIO, pin);
+
+  // not every esp32 gpio is capable of OUTPUT
   if ((flags & OUTPUT) == OUTPUT) {
-    // not every esp32 gpio is capable of OUTPUT
     if (!pin_is_input_only_pin(pin))
       gpio_ll_output_enable(&GPIO, pin);
-  } else {
+  } else
     gpio_ll_output_disable(&GPIO, pin);
-  }
 }
 
 
 // IO_MUX function code --> human readable text mapping
 // Each ESP32 variant has its own mapping but I made tables
 // only for ESP32 and ESP32S3/2 simply because I have these boards
+//
+// Each pin of ESP32 can carry a function: be either a GPIO or be an periferial pin: 
+// SD_DATA0 or UART_TX etc. 
 //
 //TODO: add support for other Espressif ESP32 variants
 //
@@ -3957,13 +3903,22 @@ static int pin_show(int argc, char **argv) {
   if (sleep_sel)
     q_print("% Sleep select: YES\r\n");
 
+  // enable INPUT if was not enabled before. This is needed to read the pin digital value
+  // using IDF functions allows for reading UART or I2C (or other periferial) digital values.
+  //
+  // As of Arduino Core 3.0.5 digitalRead() does not work in many cases: pin is interface pin (uart_tx as example),
+  // pin is not configured through PeriMan as "simple GPIO" etc. 
   if (!ie)
     gpio_ll_input_enable(&GPIO, pin);
   type = gpio_ll_get_level(&GPIO, pin);
+
   q_print("% Digital pin value is ");
+
   color_important();
   q_print(type ? "HIGH (1)\r\n" : "LOW (0)\r\n");
   color_normal();
+
+  // disable input if was temporary enabled 
   if (!ie)
     gpio_ll_input_disable(&GPIO, pin);
 
@@ -4103,55 +4058,19 @@ static int cmd_pin(int argc, char **argv) {
           return 0;
         }
       }
-      //4. "loop" keyword
-      else if (!q_strcmp(argv[i], "loop")) {
-        //must have an extra argument (loop count)
-        if ((i + 1) >= argc) {
-#if WITH_HELP
-          q_error("%% Loop count expected after keyword \"loop\"\r\n");
-#endif
-          return i;
-        }
-        i++;
-        // loop count must be a number
-        if (!isnum(argv[i]))
-          return i;
-
-        // loop must be the last keyword, so we can strip it later
-        if ((i + 1) < argc) {
-#if WITH_HELP
-          q_error("%% \"loop\" must be the last keyword\r\n");
-#endif
-          return i + 1;
-        }
-        count = atol(argv[i]);
-        argc -= 2;  //strip "loop NUMBER" keyword
-#if WITH_HELP
-        if (!informed) {
-          informed = true;
-          q_printf("%% Repeating %u times, press <Enter> to abort\r\n", count);
-        }
-#endif
-      }
       //Now all the single-line keywords:
       // 5. "pin X save"
       else if (!q_strcmp(argv[i], "save"))    pin_save(pin);
-      // 6. "pin X load"
-      else if (!q_strcmp(argv[i], "load"))    pin_load(pin);
-      // 7. "pin X hold"
-      else if (!q_strcmp(argv[i], "hold"))    gpio_hold_en((gpio_num_t)pin);
-      // 8. "pin X release"
-      else if (!q_strcmp(argv[i], "release")) gpio_hold_dis((gpio_num_t)pin);
       // 9. "pin X up"
       else if (!q_strcmp(argv[i], "up")) {    flags |= PULLUP; pinMode2(pin, flags); }  // set flags immediately as we read them
       // 10. "pin X down"
       else if (!q_strcmp(argv[i], "down")) {  flags |= PULLDOWN; pinMode2(pin, flags); } 
-      // 11. "pin X open"
-      else if (!q_strcmp(argv[i], "open")) {  flags |= OPEN_DRAIN; pinMode2(pin, flags); } 
       // 12. "pin X in"
       else if (!q_strcmp(argv[i], "in")) {    flags |= INPUT; pinMode2(pin, flags); } 
       // 13. "pin X out"
       else if (!q_strcmp(argv[i], "out")) {   flags |= OUTPUT; pinMode2(pin, flags); } 
+      // 11. "pin X open"
+      else if (!q_strcmp(argv[i], "open")) {  flags |= OPEN_DRAIN; pinMode2(pin, flags); } 
       else 
       // 14. "pin X low" keyword. only applies to I/O pins, fails for input-only pins
       if (!q_strcmp(argv[i], "low")) {  
@@ -4182,7 +4101,44 @@ abort_if_input_only:
       // 16. "pin X read"
       if (!q_strcmp(argv[i], "read")) q_printf("%% GPIO%d : logic %d\r\n", pin, digitalForceRead(pin)); else 
       // 17. "pin X read"
-      if (!q_strcmp(argv[i], "aread")) q_printf("%% GPIO%d : analog %d\r\n", pin, analogRead(pin));
+      if (!q_strcmp(argv[i], "aread")) q_printf("%% GPIO%d : analog %d\r\n", pin, analogRead(pin)); else
+      // 7. "pin X hold"
+      if (!q_strcmp(argv[i], "hold"))    gpio_hold_en((gpio_num_t)pin); else
+      // 8. "pin X release"
+      if (!q_strcmp(argv[i], "release")) gpio_hold_dis((gpio_num_t)pin); else
+      // 6. "pin X load"
+      if (!q_strcmp(argv[i], "load"))    pin_load(pin); else 
+      //4. "loop" keyword
+      if (!q_strcmp(argv[i], "loop")) {
+        //must have an extra argument (loop count)
+        if ((i + 1) >= argc) {
+#if WITH_HELP
+          q_error("%% Loop count expected after keyword \"loop\"\r\n");
+#endif
+          return i;
+        }
+        i++;
+        // loop count must be a number
+        if (!isnum(argv[i]))
+          return i;
+
+        // loop must be the last keyword, so we can strip it later
+        if ((i + 1) < argc) {
+#if WITH_HELP
+          q_error("%% \"loop\" must be the last keyword\r\n");
+#endif
+          return i + 1;
+        }
+        count = atol(argv[i]);
+        argc -= 2;  //strip "loop NUMBER" keyword
+#if WITH_HELP
+        if (!informed) {
+          informed = true;
+          q_printf("%% Repeating %u times, press <Enter> to abort\r\n", count);
+        }
+#endif
+      }
+
       //
       //"X" keyword. when we see a number we use it as a pin number
       //for subsequent keywords. must be valid GPIO number.
@@ -4233,21 +4189,41 @@ static void pin_async_task(void *arg) {
 }
 
 // "pin& ARG1 ARG2 .. ARGn"
+// "count& ... "
+// and other async commands (commands which ends with "&")
 //
-//TODO: make cmd_async() and async_task() to be common for all async commands
-static int cmd_pin_async(int argc, char **argv) {
+static int cmd_async(int argc, char **argv) {
 
   TaskHandle_t ignored;
 
   if (aa_current == NULL) //must not happen
     abort();
-  
-  //increase refcount so espshell_command() will not delete argcargv upon completion
+
+  TaskFunction_t cmd;
+
+  // which command was called as async?
+  if (!q_strcmp(argv[0],"pin&"))
+    cmd = (TaskFunction_t)pin_async_task;
+  else if (!q_strcmp(argv[0],"count&"))
+    cmd = (TaskFunction_t)count_async_task;
+  else {
+    color_error();
+    q_printf("%% Don't know how to run \"%s\" in background\r\n",argv[0]);
+    color_normal();
+    return 0;
+  }
+
+  //increase refcount on argcargv (tokenized user input) because it will be used by async task and
+  // we dont want this memory to be freed immediately after this command finishes
   userinput_ref(aa_current);
-  if (pdPASS != xTaskCreatePinnedToCore((TaskFunction_t)pin_async_task, "Pin Async", STACKSIZE, aa_current, tskIDLE_PRIORITY, &ignored, shell_core)) {
+
+  // Start async task
+  if (pdPASS != xTaskCreatePinnedToCore(cmd, "Pin Async", STACKSIZE, aa_current, tskIDLE_PRIORITY, &ignored, shell_core)) {
       q_error("%% Can not start a new task. Resources low?\r\n");
       userinput_unref(aa_current);
   }
+
+  //Hint user on how to stop bg command
   q_printf("%% Background task started\r\n%% Copy/paste \"kill %x\" command to stop execution\r\n",(unsigned int)ignored);
 
   return 0;
@@ -4255,6 +4231,9 @@ static int cmd_pin_async(int argc, char **argv) {
 
 //TAG:mem
 //"mem"
+// Display memory amount (total/available) for different
+// API functions: malloc() and heap_caps() allocator with different flags
+//
 static int cmd_mem(int argc, char **argv) {
 
   unsigned int total;
@@ -4270,6 +4249,8 @@ static int cmd_mem(int argc, char **argv) {
   return 0;
 }
 //"mem ADDR LENGTH"
+// Display memory contens
+// Only use with readable memory otherwise it will crash 
 //
 static int cmd_mem_read(int argc, char **argv) {
 
@@ -5002,13 +4983,14 @@ static int cmd_cpu_freq(int argc, char **argv) {
 
     if ((freq == xtal) || (freq == xtal / 2)) break;
     if ((xtal >= 40) && (freq == xtal / 4)) break;
-
+#if WITH_HELP
     q_print("% Supported frequencies are: 240, 160, 120, 80, ");
 
     if (xtal >= 40)
       q_printf("%u, %u and %u\r\n", xtal, xtal / 2, xtal / 4);
     else
       q_printf("%u and %u\r\n", xtal, xtal / 2);
+#endif      
     return 1;
   }
 
@@ -5134,13 +5116,15 @@ static int cmd_kill(int argc, char **argv) {
 
   unsigned int taskid = hex2uint32(argv[1]);
   if (taskid == 0) {
+#if WITH_HELP    
     q_print("% Task id is a hex number, something like \"3fff0030\"\r\n");
+#endif    
     return 1;
   }
 
   TaskHandle_t handle = (TaskHandle_t )taskid;
   if (shell_task == handle) {
-    q_print("% No.\r\n");
+    q_print(Failed);
     return 0;
   }
 
@@ -5153,7 +5137,9 @@ static int cmd_kill(int argc, char **argv) {
   if (argc > 2) {
     if (!q_strcmp(argv[2],"terminate")) {
       vTaskDelete(handle);
+#if WITH_HELP
       q_printf("%% Terminated: \"%p\"\r\n",handle);
+#endif      
     }
   }
   return 0;
@@ -5456,7 +5442,9 @@ static void espshell_task(const void *arg) {
   //start task and return
   if (arg) {
     if (shell_task != NULL) {
+#if WITH_HELP      
       q_print("% ESPShell is started already\r\n");
+#endif      
       return;
     }
 
