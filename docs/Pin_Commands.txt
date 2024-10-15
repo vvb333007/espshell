@@ -244,8 +244,34 @@ Example 9: blink a led on GPIO2 with of its 30% brightness
 
   esp32#>pin 2 pwm 5000 0.3 delay 500 pwm 0 0 delay 500 loop 999
 
-  NOTE
 
+
+As you might notice from examples above, sometimes "pin" commands takes long time
+to execute: for example, when your command has "loop" or "delay" with big values 
+it might take tens of seconds or even minutes to complete. Of course this command
+can be interrupted at any time simple by pressing <Enter> (either in your terminal
+software or Arduino IDE Serial Monitor). 
+
+But what if we don't want it to be interrupted?
+What if we just want this command to execute in background? 
+
+Yes, it is possible: just use "pin&" instead of "pin". The "pin&" command executes 
+in background. Below is the simple example of a "blinking led": pin 2 toggled HIGH 
+and LOW every 100ms for quite long time.
+
+  esp32#>pin& 2 low de 100 high de 100 loop 999999
+  % Async "pin" command task ID is 3ffb9038
+  % Use "kill 3ffb9038" to stop command execution
+  esp32#>% Repeating 999999 times, press <Enter> to abort
+
+  esp32#>  
+
+You may notice from the example above, that command "pin" is started as a /separate task/
+which either finish by itself or can be finished manually with "kill" command. Just copy
+and paste this "kill 3ffb9038" line and press <Enter> to stop the task.
+
+NOTE: using command "kill" outside this scope is dangerous: wrong argument (a task ID) will
+cause immediate system crash.
 
 
 Some more examples:
