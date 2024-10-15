@@ -1,4 +1,7 @@
 ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
+  ![Русская документация находится тут!]((https://github.com/vvb333007/espshell/tree/main/docs/ru_RU))
+ 
+
 
 WHAT IS THIS:
 -------------
@@ -90,7 +93,7 @@ SHELL BRIEF DESCRIPTION
 Example session: initialize I2C interface and read I2C EEPROM by means of ESPShell:
 
   ![ESPShell I2C EEPROM example](https://github.com/vvb333007/espshell/blob/main/docs/Screenshot_EEPROM_I2C_Read.jpg?raw=true)
- 
+
 MEMORY FOOTPRINT/OVERHEAD
 -------------------------
 
