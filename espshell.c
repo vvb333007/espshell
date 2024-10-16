@@ -77,20 +77,13 @@
 #undef EXTERNAL_KEYWORDS
 #undef EXTERNAL_HANDLERS
 
-// include user-defined commands and their handlers
-// if any like this:
+// External (additional) commands can be added by defining 3 #defines below:
 //
 // #define EXTERNAL_PROTOTYPES "prototypes.h"
 // #define EXTERNAL_KEYWORDS "keywords.c"
 // #define EXTERNAL_HANDLERS "handlers.c"
 //
-//
 
-#ifdef ESPCAM
-#define EXTERNAL_PROTOTYPES "esp32cam_prototypes.h"  //TODO: include always (with __has_include)
-#define EXTERNAL_KEYWORDS "esp32cam_keywords.c"
-#define EXTERNAL_HANDLERS "esp32cam_handlers.c"
-#endif
 
 
 #define PROMPT "esp32#>"
@@ -98,7 +91,6 @@
 #define PROMPT_UART "esp32-uart#>"
 #define PROMPT_SEQ "esp32-seq#>"
 #define PROMPT_VFAT "esp32-fat#>"
-
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -113,11 +105,40 @@
 
 #include <driver/uart.h>
 
+// Do we have full installation with "extra/" folder? Include "espshell.h" if we do: 
+// file may contain user overrides for some of espshell parameters (see bunch of
+// #defines at the beginning of this file)
+//
 #if __has_include("extra/espshell.h")
 #  include "extra/espshell.h"
 #elif __has_include("espshell.h")
 #  include "espshell.h"
 #endif
+
+
+// Compile basic AiThinker ESP32Cam support: ESPCam commands are arranged as "external" 
+// commands and their source code is in "extra/" folder. These 3 files (esp32cam_*.[ch])
+// serve as an example also for those who want implement their own external commands
+//
+#ifdef ESPCAM
+#  if defined(EXTERNAL_PROTOTYPES) || defined(EXTERNAL_KEYWORDS) || defined(EXTERNAL_HANDLERS)
+#    error "External commands are specified while ESPCAM flag is set too"
+#  endif
+#  if __has_include("esp32cam_prototypes.h")
+#    define EXTERNAL_PROTOTYPES "esp32cam_prototypes.h"
+#    define EXTERNAL_KEYWORDS "esp32cam_keywords.c"
+#    define EXTERNAL_HANDLERS "esp32cam_handlers.c"
+#  elif __has_include("extra/esp32cam_prototypes.h")
+#    define EXTERNAL_PROTOTYPES "extra/esp32cam_prototypes.h"
+#    define EXTERNAL_KEYWORDS "extra/esp32cam_keywords.c"
+#    define EXTERNAL_HANDLERS "extra/esp32cam_handlers.c"
+#  else
+#    warning "ESPCAM is defined, but no ESP32Cam source files found"
+#    warning "Disabling ESPCam support"
+#    undef ESPCAM
+#  endif // Have esp32cam_* sources?
+#endif // ESPCAM?
+
 
 
 // Autostart espshell.
@@ -175,7 +196,7 @@ static inline __attribute__((always_inline)) int console_here(int i) {
   return i < 0 ? uart : (i > UART_NUM_MAX ? -1 : (uart = i));
 }
 
-//detects if ANY key is pressed in serial terminal
+//Detects if ANY key is pressed in serial terminal
 //or any character was sent in Arduino IDE Serial Monitor.
 //
 static bool anykey_pressed() {
@@ -259,6 +280,7 @@ typedef struct _HISTORY {
  */
 
 // TTYq command queue locking
+//TODO: replace with semaphore or mutex
 static portMUX_TYPE ttyq_mux = portMUX_INITIALIZER_UNLOCKED;
 
 static unsigned rl_eof = 0;
@@ -1512,7 +1534,7 @@ static bool ishex(const char *p) {
 
 //convert hex ascii byte.
 //input strings are 1 or 2 chars long:  Ex.:  "0A", "A","6E"
-//TODO: rewrite. as of now it accepts whole latin1 set not just ABCDEF
+
 static unsigned char ascii2hex(const char *p) {
 
   unsigned char f, l;  //first and last
@@ -1526,8 +1548,8 @@ static unsigned char ascii2hex(const char *p) {
   } else l = *p;
 
   // make it lowercase
-  if (f >= 'A' && f <= 'Z') f = f + 'a' - 'A';
-  if (l >= 'A' && l <= 'Z') l = l + 'a' - 'A';
+  if (f >= 'A' && f <= 'F') f = f + 'a' - 'A';
+  if (l >= 'A' && l <= 'F') l = l + 'a' - 'A';
 
   //convert first hex character to decimal
   if (f >= '0' && f <= '9') f = f - '0';
@@ -2216,6 +2238,7 @@ static const struct keywords_t keywords_main[] = {
   { "suspend", cmd_suspend, 0, HELP("% \"suspend\" : Suspend main loop()\r\n"), "Suspend sketch execution" },
   { "resume", cmd_resume, 0, HELP("% \"resume\" : Resume main loop()\r\n"), "Resume sketch execution" },
   { "kill", cmd_kill, 1, HELP("% \"kill TASK_ID\" : Stop and delete task TASK_ID\r\n% CAUTION: wrong id will crash whole system :(\r\n% For use with \"pin&\" and \"count&\" tasks only!"), "Kill tasks" },
+  { "kill", cmd_kill, 2, HIDDEN_KEYWORD}, //undocumented "kill TASK_ID terminate"
   { "reload", cmd_reload, 0, HELP("% \"reload\" - Restarts CPU"), "Reset CPU" },
   { "mem", cmd_mem, 0, HELP("% \"mem\"\r\n"
                             "% Shows memory usage info & availability, no arguments"),"Memory commands" },
@@ -2230,14 +2253,12 @@ static const struct keywords_t keywords_main[] = {
   // Interfaces (UART,I2C, RMT..)
   { "iic", cmd_i2c_if, 1, HELP("% \"iic X\" \r\n%\r\n"
                                "% Enter I2C interface X configuration mode \r\n"
-                               "% Ex.: iic 0 - configure/use interface I2C 0"),
-    "I2C commands" },
+                               "% Ex.: iic 0 - configure/use interface I2C 0"),"I2C commands" },
 
   { "uart", cmd_uart_if, 1, HELP("% \"uart X\"\r\n"
                                  "%\r\n"
                                  "% Enter UART interface X configuration mode\r\n"
-                                 "% Ex.: uart 1 - configure/use interface UART 1"),
-    "UART commands" },
+                                 "% Ex.: uart 1 - configure/use interface UART 1"),"UART commands" },
 
   { "sequence", cmd_seq_if, 1, HELP("% \"sequence X\"\r\n"
                                     "%\r\n"
@@ -4679,7 +4700,7 @@ uart_tap(int remote) {
       char *buf[av];
 
       uart_read_bytes(remote, buf, av, portMAX_DELAY);
-      console_write_bytes(buf, av);  //TODO: should it be affected by "echo silent"?
+      console_write_bytes(buf, av); 
       delay(1);
     }
   }
@@ -4699,10 +4720,12 @@ static int cmd_uart(int argc, char **argv) {
 
   u = Context;
 
-  // UART TAP
+  //
+  // "tap" command
+  //
   if (!q_strcmp(argv[0], "tap")) {
-    //do not tap to the same uart
     if (uart == u) {
+      //do not tap to the same uart we are running on
       q_error("%% Can not bridge to itself\r\n");
       return 0;
     }
@@ -4714,29 +4737,39 @@ static int cmd_uart(int argc, char **argv) {
     uart_tap(u);
     q_print("\r\n% Ctrl+C, exiting\r\n");
     return 0;
-  } else if (!q_strcmp(argv[0], "up")) {  //up RX TX SPEED
+  } else 
+  //
+  // "up" command
+  //
+  if (!q_strcmp(argv[0], "up")) {  //up RX TX SPEED
     if (argc < 4)
       return -1;
-    // uart number, rx/tx pins and speed must be numbers
 
+    // uart number, rx/tx pins and speed must be numbers
+    // sanity checks for arguments
     unsigned int rx, tx, speed;
-    if (!isnum(argv[1])) return 1;
-    else rx = atol(argv[1]);
+    if (!isnum(argv[1])) return 1; else rx = atol(argv[1]);
     if (!pin_exist(rx)) return 1;
-    if (!isnum(argv[2])) return 2;
-    else tx = atol(argv[2]);
+      if (!isnum(argv[2])) return 2; else tx = atol(argv[2]);
     if (!pin_exist(tx)) return 2;
-    if (!isnum(argv[3])) return 3;
-    else speed = atol(argv[3]);  //TODO: check speed
+    if (!isnum(argv[3])) return 3; else speed = atol(argv[3]);
 
     if (NULL == uartBegin(u, speed, SERIAL_8N1, rx, tx, 256, 0, false, 112))
       q_error(Failed);
-  } else if (!q_strcmp(argv[0], "down")) {  // down
+  } else 
+  //
+  // "down" command
+  //
+  if (!q_strcmp(argv[0], "down")) {  // down
     if (!uart_isup(u))
       goto noinit;
     else
       uartEnd(u);
-  } else if (!q_strcmp(argv[0], "write")) {  //write TEXT
+  } else 
+  //
+  // "write TEXT1 TEXT2 ... TEXTn" command
+  //
+  if (!q_strcmp(argv[0], "write")) {  
     if (argc < 2)
       return -1;
 
@@ -4761,27 +4794,16 @@ static int cmd_uart(int argc, char **argv) {
         if (c == '\\') {
 
           switch (*p) {
-            case '\\':
-              p++;
-              c = '\\';
-              break;
-            case 'n':
-              p++;
-              c = '\n';
-              break;
-            case 'r':
-              p++;
-              c = '\r';
-              break;
-            case 't':
-              p++;
-              c = '\t';
-              break;
+            case '\\': p++; c = '\\'; break;
+            case 'n':  p++; c = '\n'; break;
+            case 'r':  p++; c = '\r'; break;
+            case 't':  p++; c = '\t'; break;
+            case 'e':  p++; c = '\e'; break;
             default:
               if (ishex(p))
                 c = ascii2hex(p);
               else {
-                q_error("%% Unknown escape sequence: \"\\%s\"\r\n", p);
+                q_error("%% Unknown escape sequence: \"\\%s\"\r\n", *p ? p : "at the end of the line");
                 return i;
               }
               p++;
@@ -4803,7 +4825,11 @@ static int cmd_uart(int argc, char **argv) {
     } while (i < argc);
 
     q_printf("%% %u bytes sent\r\n", sent);
-  } else if (!q_strcmp(argv[0], "read")) {  // read
+  } else 
+  //
+  // "read" command
+  //
+  if (!q_strcmp(argv[0], "read")) {  
     size_t available = 0, tmp;
     if (ESP_OK != uart_get_buffered_data_len(u, &available))
       goto noinit;
@@ -5134,6 +5160,7 @@ static int cmd_kill(int argc, char **argv) {
   //
   xTaskNotify(handle,0,eNoAction);
 
+  //undocumented
   if (argc > 2) {
     if (!q_strcmp(argv[2],"terminate")) {
       vTaskDelete(handle);
