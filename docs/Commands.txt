@@ -68,9 +68,6 @@ Same applies to command arguments:
   like "pi 2 ou h" to get the same result. If there is ambiguity happens then
   parser just chooses first match:
 
-  "pi 2 o h" will expand to "pin 2 open high" not "pin 2 out high" because "open"
-  is the first in the list for partial match, not "out". Make sure that you use
-  "short" but not very short commands and arguments
 
 List of all supported command can be obtained by typing "?" and pressing <Enter>
 
@@ -79,26 +76,29 @@ and pressing <Enter>: "? command_name"
 
 Here is the list of currently supported commands (main command tree):
 
-% "?"        : Show the list of available commands
-% "uptime"   : System uptime
-% "show"     : Display information
-% "pin"      : GPIO commands
-% "cpu"      : Set/show CPU parameters
-% "mem"      : Memory usage
-% "reload"   : Reset CPU
-% "nap"      : CPU sleep
-% "iic"      : I2C commands
-% "uart"     : UART commands
-% "sequence" : Pulses/levels sequence configuration
-% "tty"      : IO redirect
-% "echo"     : Disable/enable user input echo
-% "suspend"  : Suspend sketch execution
-% "resume"   : Resume sketch execution
-% "pwm"      : PWM output
-% "count"    : Pulse counter
-% "var"      : Sketch variables
-% "exit"     : Exit
-
+% Enter "? keys" to display the espshell keyboard help page
+%
+% "?"          : Commands list & help
+% "uptime"     : System uptime
+% "show"       : Display information
+% "filesystem" : File system access
+% "pin"        : Pins (GPIO) commands
+% "cpu"        : Set/show CPU parameters
+% "reload"     : Reset CPU
+% "mem"        : Memory commands
+% "nap"        : CPU sleep
+% "iic"        : I2C commands
+% "uart"       : UART commands
+% "sequence"   : Sequence configuration
+% "tty"        : IO redirect
+% "echo"       : Enable/Disable user input echo
+% "suspend"    : Suspend sketch execution
+% "resume"     : Resume sketch execution
+% "kill"       : Kill tasks
+% "pwm"        : PWM output
+% "count"      : Pulse counter
+% "var"        : Sketch variables
+% "exit"       : Exit
 
 
 "exit"     - Executed in a command subdirectory exits from that subdirectory; 
