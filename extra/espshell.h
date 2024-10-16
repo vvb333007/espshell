@@ -1,11 +1,19 @@
 #ifndef espshell_h
 #define espshell_h
 
-// ESPShell compile-time setting overrides
-// Uncomment whatever you need. Default state is "all commented out"
+// -- ESPShell compile-time setting default values. --
+//
+// Uncomment whatever you need and change default value to values you want to
+// override default settings.
+//
 // IMPORTANT: also please #undef the setting BEFORE #define'ing it or it will
 //            be bunch of GCC warnings on macro redefinition.
+//            i.e. #undef POMPT before uncommenting #define PROMPT
+//
 
+
+//#define AUTOSTART 1                 // Autostart ESPShell with sketch.
+                                      // if disabled, then sketch can call "extern "C" void espshell_start();" function to start
 
 //#define PROMPT      "esp32#>"       // Normal prompt
 //#define PROMPT_I2C  "esp32-i2c#>"   // i2c prompt
@@ -62,6 +70,11 @@
 extern "C" {
 #endif
 
+
+//
+
+
+
 // Execute an arbitrary shell command (\n are allowed for multiline).
 // it is an async call: it returns immediately. one can use espshell_exec_finished()
 // to check if actual shell command has finished its execution. Data pointed by "p"
@@ -110,6 +123,8 @@ void digitalForceWrite(int pin, unsigned char level);
 // reserved pins without crashing & rebooting. And it is much faster than 
 // classic pinMode()
 void pinMode2(unsigned int pin, unsigned int flags);
+
+
 
 #ifdef __cplusplus
 };
