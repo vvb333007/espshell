@@ -1,51 +1,58 @@
-// Minimal sketch - example, blining LED
-// to use together with espshell.
+// Minimal sketch - example, blinking LED.
+// Also registers few variables to play with shell command "var"
 
 #include <Arduino.h>
 
 
-#if 0 // Set to 1 to see how sketch variables are accessed from the shell
-#include "extra/espshell.h"
+#if __has_include("espshell.h")
+#  include "espshell.h"
+#elif __has_include("extra/espshell.h")
+#  include "extra/espshell.h"
 #else
-#define convar_add(X)
+#  define convar_add(X)
 #endif
 
-#define LED 2
-
-static unsigned int test = 0xdeadbeef;
-static unsigned char Char = 12;
-signed short Short = -1;
+#define LED 2       // Generic ESP32 Dev Board
+//#define LED 4     // ESP32Cam
+//#define LED 33    // ESP32Cam
 
 
+static unsigned int test = 0x1234;  // test variables for "var" shell command
+static unsigned char Char = 12;     // test variables for "var" shell command 
+       signed short Short = -1;     // test variables for "var" shell command
+static  int Blink = 1;              // "var Blink 0" will set Blink to 0 causing loop() to stop
 
-// Small blue LED on many ESP32 Devkit clones, 
-#define LED 2 // ESPCam has led on pins 33 and 4
+
 
 // setup our serial port & led pin
 void setup() {
   
   Serial.begin(115200);
-  delay(1000);
 
-  // prepare our blink led, pin2
+  // prepare our blinking led
   pinMode(LED,OUTPUT);
 
-  //Make 3 variables accessible from the shell
-  convar_add(test);
+  //Make 4 variables accessible from the shell
+  convar_add(Blink);
   convar_add(Char);
   convar_add(Short);
+  convar_add(test);
   
 }
 
 
-// blink led to indicate running loop() task
-// type "suspend" in serial monitor to stop this task, type "resume" to resume
 void loop() {
 
-  while(1) {
+  Serial.println("Start blinking");
+  
+  while(Blink) {
     digitalWrite(LED,0);
     delay(250);
     digitalWrite(LED,1);
     delay(250);
   }
+
+  Serial.println("Stop blinking");
+
+  while (1) delay(9999);
 } 
