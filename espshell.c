@@ -45,7 +45,7 @@
  */
 
 #undef WITH_HELP
-
+#undef AUTOSTART
 #undef UNIQUE_HISTORY
 #undef HIST_SIZE
 #undef STACKSIZE
@@ -53,12 +53,14 @@
 #undef STARTUP_PORT
 #undef DO_ECHO
 #undef WITH_COLOR
+#undef WITH_FS
 
 // COMPILE TIME SETTINGS
-// ---------------------
-//#define SERIAL_IS_USB        //Not yet
-//#define ESPCAM               //include ESP32CAM commands (read extra/README.md).
-
+// (don't change these #defines - they are default values. User can override these with espshell.h
+//
+//#define SERIAL_IS_USB            // Not yet
+//#define ESPCAM                   // Include ESP32CAM commands (read extra/README.md).
+#define AUTOSTART 1              // Set to 0 for manual shell start via espshell_start().
 #define WITH_COLOR 1             // Enable terminal colors
 #define WITH_HELP 1              // Set to 0 to save some program space by excluding help strings/functions
 #define UNIQUE_HISTORY 1         // Wheither to discard repeating commands from the history or not
@@ -70,6 +72,7 @@
                                  //  0 - espshell does not do echo for user input (as modem ATE0 command). commands are executed and their output is displayed
                                  //  1 - espshell default behaviour (do echo, enable all output)
 #define STARTUP_PORT UART_NUM_0  // Uart number (or 99 for USBCDC) where shell will be deployed at startup
+#define WITH_FS 0 // Not yet
 
 #define COMPILING_ESPSHELL 1  // dont touch this!
 
@@ -78,19 +81,21 @@
 #undef EXTERNAL_HANDLERS
 
 // External (additional) commands can be added by defining 3 #defines below:
+// Example of use is esp32cam commands in "extra/"
 //
 // #define EXTERNAL_PROTOTYPES "prototypes.h"
 // #define EXTERNAL_KEYWORDS "keywords.c"
 // #define EXTERNAL_HANDLERS "handlers.c"
 //
 
-
-
 #define PROMPT "esp32#>"
 #define PROMPT_I2C "esp32-i2c#>"
 #define PROMPT_UART "esp32-uart#>"
 #define PROMPT_SEQ "esp32-seq#>"
 #define PROMPT_VFAT "esp32-fat#>"
+#define PROMPT_LITTLEFS "esp32-lil#>"
+#define PROMPT_SPIFFS "esp32-spif#>"
+#define PROMPT_SEARCH "Search: "
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -105,9 +110,9 @@
 
 #include <driver/uart.h>
 
-// Do we have full installation with "extra/" folder? Include "espshell.h" if we do: 
-// file may contain user overrides for some of espshell parameters (see bunch of
-// #defines at the beginning of this file)
+
+// Pickup compile-time setting overrides if any
+// "espshell.h" file is optional: compile-time settings can be changed in this file as well
 //
 #if __has_include("extra/espshell.h")
 #  include "extra/espshell.h"
@@ -115,14 +120,12 @@
 #  include "espshell.h"
 #endif
 
-
-// Compile basic AiThinker ESP32Cam support: ESPCam commands are arranged as "external" 
-// commands and their source code is in "extra/" folder. These 3 files (esp32cam_*.[ch])
-// serve as an example also for those who want implement their own external commands
+// Compile basic AiThinker ESP32Cam support: ESPCam commands are arranged as "external"
+// commands and their source code is in "extra/" folder.
 //
 #ifdef ESPCAM
 #  if defined(EXTERNAL_PROTOTYPES) || defined(EXTERNAL_KEYWORDS) || defined(EXTERNAL_HANDLERS)
-#    error "External commands are specified while ESPCAM flag is set too"
+#    error "EXTERNAL_KEYWORDS and ESPCAM are both set"
 #  endif
 #  if __has_include("esp32cam_prototypes.h")
 #    define EXTERNAL_PROTOTYPES "esp32cam_prototypes.h"
@@ -133,17 +136,21 @@
 #    define EXTERNAL_KEYWORDS "extra/esp32cam_keywords.c"
 #    define EXTERNAL_HANDLERS "extra/esp32cam_handlers.c"
 #  else
-#    warning "ESPCAM is defined, but no ESP32Cam source files found"
+#    warning "ESPCAM is defined, but no ESP32Cam source files were found"
 #    warning "Disabling ESPCam support"
 #    undef ESPCAM
-#  endif // Have esp32cam_* sources?
-#endif // ESPCAM?
+#  endif  // Have esp32cam_* sources?
+#endif  // ESPCAM?
 
 
 
-// Autostart espshell.
-// Called automatically by C runtime startup code.
+// Autostart/start espshell.
+// Called automatically by C runtime startup code if AUTOSTART == 1 (Default)
+#if AUTOSTART
 static void __attribute__((constructor)) espshell_start();
+#else
+void espshell_start();
+#endif
 
 // Miscellaneous forwards:
 // Check if UART u is up and operationg (driver installed)
@@ -165,13 +172,13 @@ void pinMode2(unsigned int pin, unsigned int flags);
 static uart_port_t uart = STARTUP_PORT;
 
 // --   SHELL TO CONSOLE HARDWARE GLUE --
-// espshell uses console_read../console_write.. and some other functions to print data or read user input. 
-// In order to implement support for another typeof hardware (say USBCDC) one have to implement functions 
+// espshell uses console_read../console_write.. and some other functions to print data or read user input.
+// In order to implement support for another typeof hardware (say USBCDC) one have to implement functions
 // below
 
-#ifdef SERIAL_IS_USB 
+#ifdef SERIAL_IS_USB
 // Serial is class USBCDC ie native USB port
-#  error "console_...() functions are not implemented"
+#error "console_...() functions are not implemented"
 #else
 // Serial is class HardwareSerial ie UART
 
@@ -215,6 +222,16 @@ static bool anykey_pressed() {
 #endif  //SERIAL_IS_USB
 
 //========>=========>======= EDITLINE CODE BELOW (modified ancient version) =======>=======>
+//
+// This is modified version: fixed memory access bugs, keybindings, coloring
+// The Editline core function is readline() : returns user input allowing for line editing and history
+// All editline output is buffered: ttyputs etc functions do their output in Screen buffer which eventually
+// printed by TTYflush()
+//
+// readline() is a semi-blocking call: it blocks until <Enter> is pressed, however internally it only blocks for 500
+// milliseconds, then perform some check and blocks again and cycle repeats
+//
+// ESPShell interacts with user via wrapper calls: console_read_bytes() and console_write_bytes()
 
 #define CRLF "\r\n"
 
@@ -250,14 +267,6 @@ typedef enum _STATUS {
 } STATUS;
 
 /*
-**  The type of case-changing to perform.
-*/
-typedef enum _CASE {
-  TOupper,
-  TOlower
-} CASE;
-
-/*
 **  Key to command mapping.
 */
 typedef struct _KEYMAP {
@@ -283,10 +292,10 @@ typedef struct _HISTORY {
 //TODO: replace with semaphore or mutex
 static portMUX_TYPE ttyq_mux = portMUX_INITIALIZER_UNLOCKED;
 
-static unsigned rl_eof = 0;
-static unsigned char NIL[] = "";
-static unsigned char *Line = NULL;
-static const char *Prompt = NULL;
+static unsigned rl_eof = 0;         //TODO: remove
+static unsigned char NIL[] = "";    // Empty string
+static unsigned char *Line = NULL;  // Raw user input
+static const char *Prompt = NULL;   // Current prompt to use
 static char *Screen = NULL;
 static const char NEWLINE[] = CRLF;
 static HISTORY H;
@@ -301,7 +310,7 @@ static int Signal = 0;
 #if WITH_COLOR
 static bool Color = false;  //enable coloring
 #endif
-static bool Exit = false;  // True == close the shell and kill its FreeRTOS task. TODO: free seq memory before killing the task
+static bool Exit = false;  // True == close the shell and kill its FreeRTOS task.
 
 static const char *TTYq = "";  //"artificial input queue". if non empty then symbols are
                                // fed to TTYget as if it was user input. used by espshell_exec()
@@ -372,7 +381,8 @@ static const KEYMAP Map[] = {
                               // in a few button presses (undocumented)
   { CTL('I'), tab_pressed },  // <TAB>
 
-  //currently unused
+//currently unused
+#if 0  
   { CTL('\\'), ring_bell },
   { CTL('@'), ring_bell },  // ?
   { CTL('G'), ring_bell },
@@ -387,12 +397,13 @@ static const KEYMAP Map[] = {
   { CTL(']'), ring_bell },
   { CTL('^'), ring_bell },  // ?
   { CTL('_'), ring_bell },  // ?
-
+#endif
   { 0, NULL }
 };
 
 static const KEYMAP MetaMap[16] = {
   { CTL('H'), bk_kill_word },  // <ESC>, <BACKSPACE> - deletes a word (undocumented)
+#if 0  
   { DEL, ring_bell },
   { ' ', ring_bell },
   { '.', ring_bell },
@@ -406,6 +417,7 @@ static const KEYMAP MetaMap[16] = {
   { 'u', ring_bell },
   { 'y', ring_bell },
   { 'w', ring_bell },
+#endif
   { 0, NULL }
 };
 
@@ -416,24 +428,42 @@ static const KEYMAP MetaMap[16] = {
 #if WITH_COLOR
 // these are exclusively for editline library (buffered editline output)
 // "Search:" coloring (bright/bold syan)
-#  define START_COLORING_SEARCH do { if (Color) TTYputs((const unsigned char *)"\033[1;36m"); } while (0)
+#define START_COLORING_SEARCH \
+  do { \
+    if (Color) TTYputs((const unsigned char *)"\033[1;36m"); \
+  } while (0)
 // Normal coloring
-#  define STOP_COLORING do { if (Color) TTYputs((const unsigned char *)"\033[0m"); } while (0)
+#define STOP_COLORING \
+  do { \
+    if (Color) TTYputs((const unsigned char *)"\033[0m"); \
+  } while (0)
 
 // following one is used by espshell parser & command handlers (direct terminal output)
 //
-#  define color_important() do { if (Color) q_print("\033[1;33m"); } while (0) // Bright/bold yellow
-#  define color_warning() do { if (Color) q_print("\033[1;31m"); } while (0)   // Warning/caution message colors (bright/bold red)
-#  define color_error() do { if (Color) q_print("\033[1;35m"); } while (0)     // Error message colors. (bright/bold magenta)
-#  define color_normal() do { if (Color) q_print("\033[0m"); } while (0)       // Disable coloring
+#define color_important() \
+  do { \
+    if (Color) q_print("\033[1;33m"); \
+  } while (0)  // Bright/bold yellow
+#define color_warning() \
+  do { \
+    if (Color) q_print("\033[1;31m"); \
+  } while (0)  // Warning/caution message colors (bright/bold red)
+#define color_error() \
+  do { \
+    if (Color) q_print("\033[1;35m"); \
+  } while (0)  // Error message colors. (bright/bold magenta)
+#define color_normal() \
+  do { \
+    if (Color) q_print("\033[0m"); \
+  } while (0)  // Disable coloring
 #else
 // Coloring disabled at compile time
-#  define START_COLORING_SEARCH
-#  define STOP_COLORING
-#  define color_important()
-#  define color_warning()
-#  define color_error()
-#  define color_normal()
+#define START_COLORING_SEARCH
+#define STOP_COLORING
+#define color_important()
+#define color_warning()
+#define color_error()
+#define color_normal()
 #endif  //WITH_COLOR
 
 // Queue an arbitrary asciiz string to simulate user input.
@@ -479,7 +509,7 @@ TTYputs(const unsigned char *p) {
 
 // display a character in a human-readable form:
 // normal chars are displayed as is
-// CTRL/ALT+Key sequences are displayed as ^Key or M-Key
+// Crel+Key or ESC+Key sequences are displayed as ^Key or M-Key
 // DEL is "^?"
 static void
 TTYshow(unsigned char c) {
@@ -796,6 +826,7 @@ search_hist(unsigned char *search, unsigned char *(*move)()) {
   }
 
   /* Set up pattern-finder. */
+  //TODO: document "^" symbol use in search request
   if (*search == '^') {
     match = (int (*)(char *, char *, size_t))strncmp;
     pat = (char *)(search + 1);
@@ -827,10 +858,13 @@ h_search() {
 
   clear_line();
   old_prompt = Prompt;
-  Prompt = "Search: ";
+  Prompt = PROMPT_SEARCH;
 
   START_COLORING_SEARCH;
-
+#if WITH_HELP
+  const char *Hint = "% Command history search: start typing and press <Enter> to\r\n% find a matching command executed previously\r\n";
+  TTYputs((const unsigned char *)Hint);
+#endif
   TTYputs((const unsigned char *)Prompt);
 
   move = Repeat == NO_ARG ? prev_hist : next_hist;
@@ -1320,15 +1354,45 @@ argify(unsigned char *line, unsigned char ***avp) {
 }
 ////////////////////////////// EDITLINE CODE END
 
+//TAG:includes
+#include <soc/soc_caps.h>
 #include <soc/gpio_struct.h>
-#include <hal/gpio_ll.h>
-#include <driver/gpio.h>
-#include <rom/gpio.h>
-#include <esp32-hal-periman.h>
+#include <soc/pcnt_struct.h>
+#include <soc/efuse_reg.h>
 
-extern gpio_dev_t   GPIO;           // low-level GPIO driver structure (used by gpio_ll_... functions)
-static TaskHandle_t shell_task = 0; // Main espshell task ID
-static int          shell_core = 0; // CPU core number ESPShell is running on. For single core systems it is always 0
+#include <hal/gpio_ll.h>
+
+#include <driver/gpio.h>
+#include <driver/pcnt.h>
+
+#include <rom/gpio.h>
+
+#include <esp_timer.h>
+#include <esp_chip_info.h>
+#if WITH_FS
+#  include <esp_vfs_fat.h>
+#  include <diskio.h>
+#  include <diskio_wl.h>
+#  include <vfs_fat_internal.h>
+#endif
+
+#include <esp32-hal-periman.h>
+#include <esp32-hal-ledc.h>
+#include <esp32-hal-rmt.h>
+#include <esp32-hal-uart.h>
+
+
+
+
+
+
+
+
+
+
+extern gpio_dev_t GPIO;              // low-level GPIO driver structure (used by gpio_ll_... functions)
+static TaskHandle_t shell_task = 0;  // Main espshell task ID
+static int shell_core = 0;           // CPU core number ESPShell is running on. For single core systems it is always 0
 
 
 // Mutex to protect reference counters of argcargv_t structure.
@@ -1338,13 +1402,13 @@ static xSemaphoreHandle argv_mux = NULL;
 // Tokenized user input:
 // argc/argv are amount of tokens and pointers to tokens respectively.
 // userinput is the raw user input with some zeros inserted by tokenizer.
-// ref is the reference counter (we have async commands so deletion of user 
+// ref is the reference counter (we have async commands so deletion of user
 // input needs to be delayed via refcounting)
 typedef struct {
-  int    ref;
-  int    argc;
+  int ref;
+  int argc;
   char **argv;
-  char  *userinput;
+  char *userinput;
 } argcargv_t;
 
 // User input which is currently processed
@@ -1353,23 +1417,22 @@ static argcargv_t *aa_current = NULL;
 // Increase refcounter on argcargv structure.
 //
 static inline void userinput_ref(argcargv_t *a) {
-  
+
   if (xSemaphoreTake(argv_mux, portMAX_DELAY)) {
     if (a)
       a->ref++;
-      xSemaphoreGive(argv_mux);
+    xSemaphoreGive(argv_mux);
   }
-  
 }
 
 // Decrease refcounter
 // When refcounter hits zero the whole argcargv gets freed
 //
 static inline void userinput_unref(argcargv_t *a) {
-  
+
   if (xSemaphoreTake(argv_mux, portMAX_DELAY)) {
     if (a) {
-      if (a->ref < 1) //must not happen
+      if (a->ref < 1)  //must not happen
         abort();
       a->ref--;
       // ref dropped to zero: delete everything
@@ -1408,6 +1471,14 @@ static argcargv_t *userinput_tokenize(char *userinput) {
   return a;
 }
 
+// check if *this* task (a caller) is executed as separate (background) task
+// or it is executed in context of ESPShell
+//
+static inline __attribute__((always_inline))
+int is_foreground_task() {
+  return shell_task == xTaskGetCurrentTaskHandle();
+}
+
 
 // Upcoming IDF has this function renamed.
 // TODO: use arduino core version or IDF version number to find out which
@@ -1440,7 +1511,7 @@ static int cmd_question(int, char **);
 #endif
 static int cmd_pin(int, char **);
 
-static int cmd_async(int, char **); // "pin&" , "count&", ..
+static int cmd_async(int, char **);  // "pin&" , "count&", ..
 
 static int cmd_cpu(int, char **);
 static int cmd_cpu_freq(int, char **);
@@ -1457,9 +1528,10 @@ static int cmd_i2c(int, char **);
 static int cmd_uart_if(int, char **);
 static int cmd_uart_baud(int, char **);
 static int cmd_uart(int, char **);
-
+#if WITH_FS
+static int cmd_filesystem(int, char **);
 static int cmd_filesystem_if(int, char **);
-
+#endif //WITH_FS
 static int cmd_tty(int, char **);
 static int cmd_echo(int, char **);
 
@@ -1852,33 +1924,36 @@ static int convar_set(const char *name, void *value) {
 //
 // `duration` - delay time in milliseconds
 //  returns duration if ok, <duration if was interrupted
+
 // TODO: rewrite to use NotifyDelay only and make anykey_pressed sending notifications?
+//       then we don't need 250ms polling thing
+//
+
+#define TOO_LONG   4999
+#define DELAY_POLL 250
+
 static unsigned int delay_interruptible(unsigned int duration) {
 
   // if duration is longer than 4999ms split it in 250ms
-  // intervals and check for user input in between these
-  // intervals.
+  // intervals and check for a keypress or task "kill" ntofication from the "kill" command
+  // in between
   unsigned int delayed = 0;
-  if (duration > 4999) {
-    while (duration >= 250) {
-      duration -= 250;
-      delayed += 250;
-      //These NotifyWait are used as interruptible delays only
-      if (xTaskNotifyWait(0,0xffffffff,NULL,pdMS_TO_TICKS(250)) == pdPASS) {
+  if (duration > TOO_LONG) {
+    while (duration >= DELAY_POLL) {
+      duration -= DELAY_POLL;
+      delayed += DELAY_POLL;
+      
+      if (xTaskNotifyWait(0, 0xffffffff, NULL, pdMS_TO_TICKS(DELAY_POLL)) == pdPASS)
         return delayed;
-      }
+
       if (anykey_pressed())
         return delayed;
     }
   }
   if (duration) {
     unsigned int now = millis();
-
-    //These NotifyWait are used as interruptible delays only
-    if (xTaskNotifyWait(0,0xffffffff,NULL,pdMS_TO_TICKS(duration)) == pdPASS)
-      //calculate how long we were in waiting state,
-      duration = millis() - now;
-
+    if (xTaskNotifyWait(0, 0xffffffff, NULL, pdMS_TO_TICKS(duration)) == pdPASS)
+      duration = millis() - now; // calculate how long we were in waiting state before notification was received
     delayed += duration;
   }
   return delayed;
@@ -1892,11 +1967,8 @@ static unsigned int delay_interruptible(unsigned int duration) {
 // pulses train on an arbitrary GPIO pin using ESP32's hardware RMT peri
 //
 // These are used by "sequence X" command (and by a sequence subdirectory
-// commands as well)
-//
-// TODO: bytes, head, tail (NEC protocol support)
-//
-#include <esp32-hal-rmt.h>
+// commands as well) (see seq_...() functions and cmd_sequence_if() function)
+
 
 struct sequence {
 
@@ -1905,16 +1977,17 @@ struct sequence {
   unsigned int mod_freq : 30;  // modulator frequency
   unsigned int mod_high : 1;   // modulate "1"s or "0"s
   unsigned int eot : 1;        // end of transmission level
-  int seq_len;                 // how may rmt_data_t items is in "seq"
+  int seq_len;                 // how many rmt_data_t items is in "seq"
   rmt_data_t *seq;             // array of rmt_data_t
   rmt_data_t alph[2];          // alphabet. representation of "0" and "1"
-  char *bits;                  // asciiz
+  // TODO: bytes, head, tail (NEC protocol support)
+  char *bits;                  // asciiz "100101101"
 };
 
 
 // TAG:keywords
 //
-// Shell commands list structure
+// Shell command.
 struct keywords_t {
   const char *cmd;                   // Command keyword ex.: "pin"
   int (*cb)(int argc, char **argv);  // Callback to call (one of cmd_xxx functions)
@@ -1923,6 +1996,7 @@ struct keywords_t {
   const char *brief;                 // Brief text displayed on "?". NULL means "use help text, not brief"
 };
 
+// KEYWORDS_BEGIN - common commands inserted in every command tree at the beginning 
 #if WITH_HELP
 #define HELP(X) X
 #define KEYWORDS_BEGIN { "?", cmd_question, -1, "% \"?\" - Show the list of available commands\r\n% \"? comm\" - Get help on command \"comm\"\r\n% \"? keys\" - Get information on terminal keys used by ESPShell", "Commands list & help" },
@@ -1932,17 +2006,20 @@ struct keywords_t {
 #endif
 
 
+// KEYWORDS_END - common commands inserted at the end of every command tree
 #define KEYWORDS_END \
   { "exit", cmd_exit, -1, "Exit", NULL }, { \
     NULL, NULL, 0, NULL, NULL \
   }
 
+// Command flag to mark any keyword as "hidden" i.e. not displayable by "?"
+// command
 #define HIDDEN_KEYWORD NULL, NULL
 
 
-//Custom uart commands (uart subderictory)
-//Those displayed after executing "uart 2" (or any other uart interface)
-//TAG:keywords_uart
+// Custom uart commands (uart subderictory or uart command tree)
+// Those displayed after executing "uart 2" (or any other uart interface)
+// TAG:keywords_uart
 //
 static const struct keywords_t keywords_uart[] = {
 
@@ -1951,32 +2028,27 @@ static const struct keywords_t keywords_uart[] = {
   { "up", cmd_uart, 3, HELP("% \"up RX TX BAUD\"\r\n"
                             "%\r\n"
                             "% Initialize uart interface X on pins RX/TX,baudrate BAUD, 8N1 mode\r\n"
-                            "% Ex.: up 18 19 115200 - Setup uart on pins rx=18, tx=19, at speed 115200"),
-    "Initialize uart (pins/speed)" },
+                            "% Ex.: up 18 19 115200 - Setup uart on pins rx=18, tx=19, at speed 115200"),"Initialize uart (pins/speed)" },
 
   { "baud", cmd_uart_baud, 1, HELP("% \"baud SPEED\"\r\n"
                                    "%\r\n"
                                    "% Set speed for the uart (uart must be initialized)\r\n"
-                                   "% Ex.: baud 115200 - Set uart baud rate to 115200"),
-    "Set baudrate" },
+                                   "% Ex.: baud 115200 - Set uart baud rate to 115200"),"Set baudrate" },
 
   { "down", cmd_uart, 0, HELP("% \"down\"\r\n"
                               "%\r\n"
-                              "% Shutdown interface, detach pins"),
-    "Shutdown" },
+                              "% Shutdown interface, detach pins"),"Shutdown" },
 
   // overlaps with "uart X down", never called, here is for the help text only
   { "read", cmd_uart, 0, HELP("% \"read\"\r\n"
                               "%\r\n"
-                              "% Read bytes (available) from uart interface X"),
-    "Read data from UART" },
+                              "% Read bytes (available) from uart interface X"),"Read data from UART" },
 
   { "tap", cmd_uart, 0, HELP("% \"tap\\r\n"
                              "%\r\n"
                              "% Bridge the UART IO directly to/from shell\r\n"
                              "% User input will be forwarded to uart X;\r\n"
-                             "% Anything UART X sends back will be forwarded to the user"),
-    "Talk to device connected" },
+                             "% Anything UART X sends back will be forwarded to the user"), "Talk to device connected" },
 
   { "write", cmd_uart, -1, HELP("% \"write TEXT\"\r\n"
                                 "%\r\n"
@@ -1984,8 +2056,7 @@ static const struct keywords_t keywords_uart[] = {
                                 "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
                                 "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n"
                                 "%\r\n"
-                                "% Ex.: \"write ATI\\n\\rMixed\\20Text and \\20\\21\\ff\""),
-    "Send bytes over this UART" },
+                                "% Ex.: \"write ATI\\n\\rMixed\\20Text and \\20\\21\\ff\""), "Send bytes over this UART" },
 
   KEYWORDS_END
 };
@@ -2002,37 +2073,31 @@ static const struct keywords_t keywords_i2c[] = {
   { "up", cmd_i2c, 3, HELP("% \"up SDA SCL CLOCK\"\r\n"
                            "%\r\n"
                            "% Initialize I2C interface X, use pins SDA/SCL, clock rate CLOCK\r\n"
-                           "% Ex.: up 21 22 100000 - enable i2c at pins sda=21, scl=22, 100kHz clock"),
-    "initialize interface (pins and speed)" },
+                           "% Ex.: up 21 22 100000 - enable i2c at pins sda=21, scl=22, 100kHz clock"), "initialize interface (pins and speed)" },
 
   { "clock", cmd_i2c_clock, 1, HELP("% \"clock SPEED\"\r\n"
                                     "%\r\n"
                                     "% Set I2C master clock (i2c must be initialized)\r\n"
-                                    "% Ex.: clock 100000 - Set i2c clock to 100kHz"),
-    "Set clock" },
+                                    "% Ex.: clock 100000 - Set i2c clock to 100kHz"), "Set clock" },
 
 
   { "read", cmd_i2c, 2, HELP("% \"read ADDR SIZE\"\r\n"
                              "%\r\n"
                              "% I2C bus X : read SIZE bytes from a device at address ADDR (hex)\r\n"
-                             "% Ex.: read 68 7 - read 7 bytes from device address 0x68"),
-    "Read data from a device" },
+                             "% Ex.: read 68 7 - read 7 bytes from device address 0x68"), "Read data from a device" },
 
   { "down", cmd_i2c, 0, HELP("% \"down\"\r\n"
                              "%\r\n"
-                             "% Shutdown I2C interface X"),
-    "Shutdown i2c interface" },
+                             "% Shutdown I2C interface X"), "Shutdown i2c interface" },
 
   { "scan", cmd_i2c, 0, HELP("% \"scan\"\r\n"
                              "%\r\n"
-                             "% Scan I2C bus X for devices. Interface must be initialized!"),
-    "Scan i2c bus" },
+                             "% Scan I2C bus X for devices. Interface must be initialized!"), "Scan i2c bus" },
 
   { "write", cmd_i2c, -1, HELP("% \"write ADDR D1 [D2 ... Dn]\"\r\n"
                                "%\r\n"
                                "% Write bytes D1..Dn (hex values) to address ADDR (hex) on I2C bus X\r\n"
-                               "% Ex.: write 78 0 1 FF - write 3 bytes to address 0x78: 0,1 and 255"),
-    "Send bytes to the device" },
+                               "% Ex.: write 78 0 1 FF - write 3 bytes to address 0x78: 0,1 and 255"), "Send bytes to the device" },
 
   KEYWORDS_END
 };
@@ -2046,22 +2111,19 @@ static const struct keywords_t keywords_sequence[] = {
   { "eot", cmd_seq_eot, 1, HELP("% \"eot high|low\"\r\n"
                                 "%\r\n"
                                 "% End of transmission: pull the line high or low at the\r\n"
-                                "% end of a sequence. Default is \"low\""),
-    "End-of-Transmission pin state" },
+                                "% end of a sequence. Default is \"low\""), "End-of-Transmission pin state" },
 
   { "tick", cmd_seq_tick, 1, HELP("% \"tick TIME\"\r\n"
                                   "%\r\n"
                                   "% Set the sequence tick time: defines a resolution of a pulse sequence.\r\n"
                                   "% Expressed in microseconds, can be anything between 0.0125 and 3.2\r\n"
-                                  "% Ex.: tick 0.1 - set resolution to 0.1 microsecond"),
-    "Set resolution" },
+                                  "% Ex.: tick 0.1 - set resolution to 0.1 microsecond"), "Set resolution" },
 
   { "zero", cmd_seq_zeroone, 2, HELP("% \"zero LEVEL/DURATION [LEVEL2/DURATION2]\"\r\n"
                                      "%\r\n"
                                      "% Define a logic \"0\"\r\n"
                                      "% Ex.: zero 0/50      - 0 is a level: LOW for 50 ticks\r\n"
-                                     "% Ex.: zero 1/50 0/20 - 0 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"),
-    "Define a zero" },
+                                     "% Ex.: zero 1/50 0/20 - 0 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"), "Define a zero" },
 
   { "zero", cmd_seq_zeroone, 1, HIDDEN_KEYWORD },  //1 arg command
 
@@ -2069,8 +2131,7 @@ static const struct keywords_t keywords_sequence[] = {
                                     "%\r\n"
                                     "% Define a logic \"1\"\r\n"
                                     "% Ex.: one 1/50       - 1 is a level: HIGH for 50 ticks\r\n"
-                                    "% Ex.: one 1/50 0/20  - 1 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"),
-    "Define an one" },
+                                    "% Ex.: one 1/50 0/20  - 1 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"), "Define an one" },
 
   { "one", cmd_seq_zeroone, 1, HIDDEN_KEYWORD },  //1 arg command
 
@@ -2080,8 +2141,7 @@ static const struct keywords_t keywords_sequence[] = {
                                   "% Overrides previously set \"levels\" command\r\n"
                                   "% See commands \"one\" and \"zero\" to define \"1\" and \"0\"\r\n"
                                   "%\r\n"
-                                  "% Ex.: bits 11101000010111100  - 17 bit sequence"),
-    "Set pattern to transmit" },
+                                  "% Ex.: bits 11101000010111100  - 17 bit sequence"), "Set pattern to transmit" },
 
   { "levels", cmd_seq_levels, -1, HELP("% \"levels L/D L/D ... L/D\"\r\n"
                                        "%\r\n"
@@ -2090,8 +2150,7 @@ static const struct keywords_t keywords_sequence[] = {
                                        "% Overrides previously set \"bits\" command\r\n"
                                        "%\r\n"
                                        "% Ex.: levels 1/50 0/20 1/100 0/500  - HIGH 50 ticks, LOW 20, HIGH 100 and 0 for 500 ticks\r\n"
-                                       "% Ex.: levels 1/32767 1/17233 0/32767 0/7233 - HIGH for 50000 ticks, LOW for 40000 ticks"),
-    "Set levels to transmit" },
+                                       "% Ex.: levels 1/32767 1/17233 0/32767 0/7233 - HIGH for 50000 ticks, LOW for 40000 ticks"), "Set levels to transmit" },
 
   { "modulation", cmd_seq_modulation, 3, HELP("% \"modulation FREQ [DUTY [low|high]]\"\r\n"
                                               "%\r\n"
@@ -2100,8 +2159,7 @@ static const struct keywords_t keywords_sequence[] = {
                                               "%\r\n"
                                               "% Ex.: modulation 100         - modulate all 1s with 100Hz, 50% duty cycle\r\n"
                                               "% Ex.: modulation 100 0.3 low - modulate all 0s with 100Hz, 30% duty cycle\r\n"
-                                              "% Ex.: modulation 0           - disable modulation\r\n"),
-    "Enable/disable modulation" },
+                                              "% Ex.: modulation 0           - disable modulation\r\n"), "Enable/disable modulation" },
 
   { "modulation", cmd_seq_modulation, 2, HIDDEN_KEYWORD },
   { "modulation", cmd_seq_modulation, 1, HIDDEN_KEYWORD },
@@ -2119,100 +2177,87 @@ static const struct keywords_t keywords_vfat[] = {
 
   KEYWORDS_BEGIN
 
-  { "mount", 0, 3, HELP("% \"mount [/MOUNT_POINT [LABEL]]\"\r\n" \
-                            "%\r\n" \
-                            "% Mount vFAT filesystem (SPI FLASH), arguments are optional:\r\n" \
-                            "% /MOUNT_POINT - A path, starting with \"/\" where filesystem will be mounted.\r\n" \
-                            "%                Sefault value is \"/ffat\"\r\n" \
-                            "% LABEL        - SPI FLASH partition label, default value is \"ffat\"\r\n" \
-                            "%                Use \"mount\" without arguments to see partition labels\r\n%\r\n"
-                            "% Ex.: mount /My_FAT_partition ffat"),
-                            "Mount partition as FAT file system" },
+  { "mount", 0, 3, HELP("% \"mount [/MOUNT_POINT [LABEL]]\"\r\n"
+                        "%\r\n"
+                        "% Mount vFAT filesystem (SPI FLASH), arguments are optional:\r\n"
+                        "% /MOUNT_POINT - A path, starting with \"/\" where filesystem will be mounted.\r\n"
+                        "%                Default value is \"/ffat\"\r\n"
+                        "% LABEL        - SPI FLASH partition label, default value is \"ffat\"\r\n"
+                        "%\r\n"
+                        "% Ex.: mount /My_FAT_partition ffat"),  "Mount partition as FAT file system" },
+
   { "mount", 0, 2, HIDDEN_KEYWORD },
   { "mount", 0, 1, HIDDEN_KEYWORD },
 
   { "unmount", 0, 1, HELP("% \"unmount [/MOUNT_POINT]\"\r\n"
                           "%\r\n"
                           "% Unmount vFAT file system. Mount point argument is optional and\r\n"
-                          "% its default value is \"/ffat\""),
-    "Unmount partition" },
+                          "% its default value is \"/ffat\""), "Unmount partition" },
 
   { "ls", 0, 0, HELP("% \"ls\"\r\n"
-                              "%\r\n"
-                              "% Show directory listing"),
-    "List directory" },
-  { "pwd", 0, 0, HELP("% \"pwd\"\r\n"
-                              "%\r\n"
-                              "% Print working directory"),
-    "Working directory" },
-  { "cd", 0, 0, HELP("% \"cd PATH\"\r\n"
-                              "%\r\n"
-                              "% Change current directory to PATH"),
-    "Change directory" },
+                     "%\r\n"
+                     "% Show directory listing"), "List directory" },
 
-  
+  { "pwd", 0, 0, HELP("% \"pwd\"\r\n"
+                      "%\r\n"
+                      "% Print working directory"), "Working directory" },
+
+  { "cd", 0, 0, HELP("% \"cd PATH\"\r\n"
+                     "%\r\n"
+                     "% Change current directory to PATH"), "Change directory" },
+
+
   // "rm" will land here, not at "rmdir"
   { "rm", 0, 1, HELP("% \"rm FILENAME\"\r\n"
-                              "%\r\n"
-                              "% Remove file FILENAME"),
-    "Delete files" },
+                     "%\r\n"
+                     "% Remove file FILENAME"), "Delete files" },
 
   { "mv", 0, 2, HELP("% \"mv SOURCE DESTINATION\\r\n"
-                             "%\r\n"
-                             "% Move or Rename file SOURCE to file DESTINATION\r\n"),
-    "Move/Rename files" },
+                     "%\r\n"
+                     "% Move or Rename file SOURCE to file DESTINATION\r\n"), "Move/Rename files" },
 
   { "cp", 0, 2, HELP("% \"cp SOURCE DESTINATION\\r\n"
-                             "%\r\n"
-                             "% Move file SOURCE to file DESTINATION\r\n"),
-    "Copy files" },
+                     "%\r\n"
+                     "% Move file SOURCE to file DESTINATION\r\n"), "Copy files" },
 
   { "write", 0, -1, HELP("% \"write FILENAME TEXT1 TEXT2 ... TEXTn\"\r\n"
-                                "%\r\n"
-                                "% Write an ascii/hex string(s) to file\r\n"
-                                "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
-                                "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n"
-                                "%\r\n"
-                                "% Ex.: \"write /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""),
-    "Write bytes" },
+                         "%\r\n"
+                         "% Write an ascii/hex string(s) to file\r\n"
+                         "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
+                         "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n"
+                         "%\r\n"
+                         "% Ex.: \"write /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""), "Write bytes" },
+
   { "append", 0, -1, HELP("% \"append FILENAME TEXT1 TEXT2 ... TEXTn\"\r\n"
-                                "%\r\n"
-                                "% Append an ascii/hex string(s) to file\r\n"
-                                "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
-                                "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n"
-                                "%\r\n"
-                                "% Ex.: \"append /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""),
-    "Append bytes" },
-
-
+                          "%\r\n"
+                          "% Append an ascii/hex string(s) to file\r\n"
+                          "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
+                          "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n"
+                          "%\r\n"
+                          "% Ex.: \"append /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""), "Append bytes" },
 
   // "mk" will land here, not at mkfs
   { "mkdir", 0, 1, HELP("% \"mkdir\"\r\n"
-                             "%\r\n"
-                             "% Create an empty directory\r\n"),
-    "Create directory" },
+                        "%\r\n"
+                        "% Create an empty directory\r\n"), "Create directory" },
 
   { "rmdir", 0, 1, HELP("% \"rmdir DIRNAME\"\r\n"
-                             "%\r\n"
-                             "% Remove an empty directory\r\n"),
-    "Remove directory" },
+                        "%\r\n"
+                        "% Remove an empty directory\r\n"), "Remove directory" },
 
   { "cat", 0, 1, HELP("% \"cat FILENAME\"\r\n"
-                             "%\r\n"
-                             "% Display file FILENAME\r\n"),
-    "Display text/binary file" },
+                      "%\r\n"
+                      "% Display file FILENAME\r\n"), "Display text/binary file" },
 
   { "touch", 0, 1, HELP("% \"touch FILENAME\"\r\n"
-                             "%\r\n"
-                             "% Ceate a new file or \"touch\" existing\r\n"),
-    "Touch/Create file" },
+                        "%\r\n"
+                        "% Ceate a new file or \"touch\" existing\r\n"), "Touch/Create file" },
 
-  { "mkfs", 0, 0, HELP("% \"mkfs\"\r\n"
-                             "%\r\n"
-                             "% Format current partition\r\n"),
-    "Erase old & create new FAT filesystem" },
+  { "mkfs", 0, 0, HELP("% \"mkfs [quick]\"\r\n"
+                       "%\r\n"
+                       "% Format current partition\r\n"), "Erase old & create new FAT filesystem" },
 
-
+  { "mkfs", 0, 1, HIDDEN_KEYWORD },
 
   KEYWORDS_END
 };
@@ -2225,27 +2270,33 @@ static const struct keywords_t keywords_main[] = {
   KEYWORDS_BEGIN
 
   { "uptime", cmd_uptime, 0, HELP("% \"uptime\" - Shows time passed since last boot"), "System uptime" },
-#if NotYet  
+#if WITH_FS
+  { "filesystem", cmd_filesystem, 0, HELP("% \"filesystem\r\n"
+                                             "%\r\n"
+                                             "% List all filesystems available on in-package SPI FLASH (partitions)\r\n"),"File system access" },
+
   { "filesystem", cmd_filesystem_if, 1, HELP("% \"filesystem spiffs|fat|littlefs\"\r\n"
                                              "%\r\n"
                                              "% Choose filesystem to use. Supported are SPIFFS, FAT(vfat,exfat), LittleFS\r\n"
-                                             "% Ex.: filesystem spiffs - enter SPIFF filesystem(s)"),"File system access" },
-#endif    
+                                             "% Ex.: filesystem spiffs - enter SPIFF filesystem(s)"), "File system access" },
+#endif
 
-  // System commands    
+  // System commands
   { "cpu", cmd_cpu_freq, 1, HELP("% \"cpu FREQ\" : Set CPU frequency to FREQ Mhz"), "Set/show CPU parameters" },
   { "cpu", cmd_cpu, 0, HELP("% \"cpu\" : Show CPUID and CPU/XTAL/APB frequencies"), NULL },
   { "suspend", cmd_suspend, 0, HELP("% \"suspend\" : Suspend main loop()\r\n"), "Suspend sketch execution" },
   { "resume", cmd_resume, 0, HELP("% \"resume\" : Resume main loop()\r\n"), "Resume sketch execution" },
   { "kill", cmd_kill, 1, HELP("% \"kill TASK_ID\" : Stop and delete task TASK_ID\r\n% CAUTION: wrong id will crash whole system :(\r\n% For use with \"pin&\" and \"count&\" tasks only!"), "Kill tasks" },
-  { "kill", cmd_kill, 2, HIDDEN_KEYWORD}, //undocumented "kill TASK_ID terminate"
+  { "kill", cmd_kill, 2, HIDDEN_KEYWORD },  //undocumented "kill TASK_ID terminate"
   { "reload", cmd_reload, 0, HELP("% \"reload\" - Restarts CPU"), "Reset CPU" },
   { "mem", cmd_mem, 0, HELP("% \"mem\"\r\n"
-                            "% Shows memory usage info & availability, no arguments"),"Memory commands" },
+                            "% Shows memory usage info & availability, no arguments"),
+    "Memory commands" },
   { "mem", cmd_mem_read, 2, HELP("% \"mem ADDR [LENGTH]\"\r\n"
                                  "% Display LENGTH bytes of memory starting from address ADDR\r\n"
                                  "% Address must be in the form \"1234ABCDE\", (hexadecimal numbers)\r\n%\r\n"
-                                 "% Ex.: mem 40078000 100 : display 100 bytes starting from address 40078000"),NULL },
+                                 "% Ex.: mem 40078000 100 : display 100 bytes starting from address 40078000"),
+    NULL },
   { "mem", cmd_mem_read, 1, HIDDEN_KEYWORD },
   { "nap", cmd_nap, 1, HELP("% \"nap SEC\"\r\n%\r\n% Put the CPU into light sleep mode for SEC seconds."), "CPU sleep" },
   { "nap", cmd_nap, 0, HELP("% \"nap\"\r\n%\r\n% Put the CPU into light sleep mode, wakeup by console"), NULL },
@@ -2253,20 +2304,23 @@ static const struct keywords_t keywords_main[] = {
   // Interfaces (UART,I2C, RMT..)
   { "iic", cmd_i2c_if, 1, HELP("% \"iic X\" \r\n%\r\n"
                                "% Enter I2C interface X configuration mode \r\n"
-                               "% Ex.: iic 0 - configure/use interface I2C 0"),"I2C commands" },
+                               "% Ex.: iic 0 - configure/use interface I2C 0"),
+    "I2C commands" },
 
   { "uart", cmd_uart_if, 1, HELP("% \"uart X\"\r\n"
                                  "%\r\n"
                                  "% Enter UART interface X configuration mode\r\n"
-                                 "% Ex.: uart 1 - configure/use interface UART 1"),"UART commands" },
+                                 "% Ex.: uart 1 - configure/use interface UART 1"),
+    "UART commands" },
 
   { "sequence", cmd_seq_if, 1, HELP("% \"sequence X\"\r\n"
                                     "%\r\n"
                                     "% Create/configure a sequence\r\n"
-                                    "% Ex.: sequence 0 - configure Sequence0"),"Sequence configuration" },
+                                    "% Ex.: sequence 0 - configure Sequence0"),
+    "Sequence configuration" },
 
-  // Show funcions (more will be added)                                    
-  { "show", cmd_show, 2, HELP("\"show seq X\" - display sequence X\r\n"), "Display information" },                                    
+  // Show funcions (more will be added)
+  { "show", cmd_show, 2, HELP("\"show seq X\" - display sequence X\r\n"), "Display information" },
 
   // Shell input/output settings
   { "tty", cmd_tty, 1, HELP("% \"tty X\" Use uart X for command line interface"), "IO redirect" },
@@ -2290,8 +2344,9 @@ static const struct keywords_t keywords_main[] = {
                              "% Ex.: pin 1 pwm 0 0            -disable generation\r\n"
                              "% Ex.: pin 1 high delay 500 low delay 500 loop 10 - Blink a led 10 times\r\n%\r\n"
                              "% Use \"pin&\" instead of \"pin\" to execute in background\r\n"
-                             "% (see \"docs/Pin_Commands.txt\" for more details & examples)\r\n"),NULL },
-  // "pin&"" async (background) "pin" command                              
+                             "% (see \"docs/Pin_Commands.txt\" for more details & examples)\r\n"),
+    NULL },
+  // "pin&"" async (background) "pin" command
   { "pin&", cmd_async, -1, HIDDEN_KEYWORD },
 
   // PWM generation
@@ -2300,10 +2355,12 @@ static const struct keywords_t keywords_main[] = {
                             "% Start PWM generator on pin X, frequency FREQ Hz and duty cycle of DUTY\r\n"
                             "% Max frequency is 312000 Hz\r\n"
                             "% Value of DUTY is in range [0..1] with 0.123 being a 12.3% duty cycle"
-                            "% Duty resolution is 0.005 (0.5%)"), "PWM output" },
+                            "% Duty resolution is 0.005 (0.5%)"),
+    "PWM output" },
   { "pwm", cmd_pwm, 2, HELP("% \"pwm X FREQ\"\r\n"
                             "% Start squarewave generator on pin X, frequency FREQ Hz\r\n"
-                            "% duty cycle is  set to 50%"), NULL },
+                            "% duty cycle is  set to 50%"),
+    NULL },
   { "pwm", cmd_pwm, 1, HELP("% \"pwm X\" Stop generator on pin X"), NULL },
   // Pulse counting
   { "count", cmd_count, 3, HELP("% \"count PIN [DURATION [neg|pos|both]]\"\r\n%\r\n"
@@ -2313,10 +2370,11 @@ static const struct keywords_t keywords_main[] = {
                                 "%\r\n"
                                 "% Ex.: \"count 4\"           - count positive edges on pin 4 for 1000ms\r\n"
                                 "% Ex.: \"count 4 2000\"      - count pulses (falling edge) on pin 4 for 2 sec.\r\n"
-                                "% Ex.: \"count 4 2000 both\" - count pulses (falling and rising edge) on pin 4 for 2 sec.\r\n%\r\n" \
-                                "% Use \"count&\" instead of \"count\" to execute in background\r\n"),"Pulse counter" },
-  { "count", cmd_count, 2, HIDDEN_KEYWORD },  //hidden "count" with 2 args
-  { "count", cmd_count, 1, HIDDEN_KEYWORD },  //hidden with 1 arg
+                                "% Ex.: \"count 4 2000 both\" - count pulses (falling and rising edge) on pin 4 for 2 sec.\r\n%\r\n"
+                                "% Use \"count&\" instead of \"count\" to execute in background\r\n"),
+    "Pulse counter" },
+  { "count", cmd_count, 2, HIDDEN_KEYWORD },   //hidden "count" with 2 args
+  { "count", cmd_count, 1, HIDDEN_KEYWORD },   //hidden with 1 arg
   { "count&", cmd_async, 3, HIDDEN_KEYWORD },  //hidden "count&" with 3 args
   { "count&", cmd_async, 2, HIDDEN_KEYWORD },  //hidden "count&" with 2 args
   { "count&", cmd_async, 1, HIDDEN_KEYWORD },  //hidden "count&" with 1 arg
@@ -2334,7 +2392,8 @@ static const struct keywords_t keywords_main[] = {
                             "% Ex.: \"var 1234\"        - Display a decimal number as hex, float, int etc.\r\n"
                             "% Ex.: \"var 0x1234\"      - -- // hex // --\r\n"
                             "% Ex.: \"var 01234\"       - -- // octal // --\r\n"
-                            "% Use prefix \"0x\" for hex, \"0\" for octal or \"0b\" for binary numbers"),"Sketch variables" },
+                            "% Use prefix \"0x\" for hex, \"0\" for octal or \"0b\" for binary numbers"),
+    "Sketch variables" },
   { "var", cmd_var_show, 1, HIDDEN_KEYWORD },
   { "var", cmd_var_show, 0, HIDDEN_KEYWORD },
 
@@ -2358,7 +2417,7 @@ static const char *Failed = "%% Failed\r\n";
 static const char *prompt = PROMPT;
 
 // sequences
-static struct sequence sequences[SEQUENCES_NUM];
+static struct sequence sequences[SEQUENCES_NUM] = { 0 };
 
 // interface unit number when entering a subderictory.
 // also sequence number when entering "sequence" subdir
@@ -2425,15 +2484,32 @@ unsigned long __attribute__((const)) seq_tick2freq(float tick_us) {
   return tick_us ? (unsigned long)((float)1000000 / tick_us) : 0;
 }
 
+// free memory buffers associated with the sequence:
+// ->"bits" and ->"seq"
+static void seq_freemem(int seq) {
+
+  if (sequences[seq].bits) {
+    free(sequences[seq].bits);
+    sequences[seq].bits = NULL;
+  }
+  if (sequences[seq].seq) {
+    free(sequences[seq].seq);
+    sequences[seq].seq = NULL;
+  }
+}
+
+
 // initialize sequences to default values
 //
 static void seq_init() {
   int i;
 
   for (i = 0; i < SEQUENCES_NUM; i++) {
+
     sequences[i].tick = 1;
-    sequences[i].seq = NULL;
-    sequences[i].bits = NULL;
+    seq_freemem(i);
+    //sequences[i].seq = NULL;
+    //sequences[i].bits = NULL;
 
     sequences[i].alph[0].duration0 = 0;
     sequences[i].alph[0].duration1 = 0;
@@ -2535,19 +2611,6 @@ static int seq_atol(int *level, int *duration, char *p) {
   return -1;
 }
 
-// free memory buffers associated with the sequence:
-// ->"bits" and ->"seq"
-static void seq_freemem(int seq) {
-
-  if (sequences[seq].bits) {
-    free(sequences[seq].bits);
-    sequences[seq].bits = NULL;
-  }
-  if (sequences[seq].seq) {
-    free(sequences[seq].seq);
-    sequences[seq].seq = NULL;
-  }
-}
 
 // check if sequence is configured and an be used
 // to generate pulses. The criteria is:
@@ -3073,10 +3136,6 @@ static int cmd_seq_show(int argc, char **argv) {
 
 
 
-#include "driver/gpio.h"
-#include "driver/pcnt.h"
-#include "soc/pcnt_struct.h"
-#include "esp_timer.h"
 
 #define PULSE_WAIT 1000
 #define PCNT_OVERFLOW 20000
@@ -3140,7 +3199,13 @@ static int cmd_count(int argc, char **argv) {
     }
   }
 
-  q_printf("%% Counting pulses on GPIO%d (any key to abort)..\r\n", pin);
+  q_printf("%% Counting pulses on GPIO%d...", pin);
+#if WITH_HELP  
+  if (is_foreground_task())
+    q_print("(press <Enter> to stop counting)");
+#endif
+    q_print(CRLF);
+
 
   pcnt_unit_config(&cfg);
   pcnt_counter_pause(PCNT_UNIT_0);
@@ -3160,7 +3225,7 @@ static int cmd_count(int argc, char **argv) {
   pcnt_intr_disable(PCNT_UNIT_0);
 
   count_overflow = count_overflow / 2 * PCNT_OVERFLOW + count;
-  q_printf("%u pulses in %.3f sec\r\n", count_overflow, (float)wait / 1000.0f);
+  q_printf("%% %u pulses in %.3f seconds (%.1f Hz)\r\n", count_overflow, (float)wait / 1000.0f, count_overflow * 1000.0f / (float )wait );
   return 0;
 }
 
@@ -3187,6 +3252,7 @@ static void count_async_task(void *arg) {
 static int cmd_var_show(int argc, char **argv) {
 
   int len;
+  bool found_one = false;
 
   // composite variable value.
   // had to use union because of variables different sizeof()
@@ -3205,7 +3271,7 @@ static int cmd_var_show(int argc, char **argv) {
     struct convar *var = var_head;
     q_print("% Registered variables:\r\n");
     while (var) {
-      q_printf("\"%s\", %d bytes long\r\n", var->name, var->size);
+      q_printf("%% \"%s\", %d bytes long (%s)\r\n", var->name, var->size, var->size == 4 ? "float, int or unsigned int" : (var->size == 2 ? "short int" : "char" ));
       var = var->next;
     }
     return 0;
@@ -3251,7 +3317,7 @@ static int cmd_var_show(int argc, char **argv) {
     }
 
     // display a number in hex, octal, binary, integer or float representation
-    bool found_one = false;
+    
     q_printf("%% Hex: 0x%x, Octal: 0%o, Unsigned: %u, Signed: %i\r\n%% Floating point:%f\r\n%% Binary: 0b", unumber, unumber, unumber, inumber, fnumber);
     for (inumber = 0; inumber < 32; inumber++) {
       if (unumber & 0x80000000) {
@@ -3346,9 +3412,6 @@ static int cmd_var(int argc, char **argv) {
 
 
 //TAG:pwm
-#include "soc/soc_caps.h"
-#include "esp32-hal-ledc.h"
-
 // enable or disable (freq==0) tone generation on
 // pin. freq is in (0..312kHz), duty is [0..1]
 //
@@ -3580,10 +3643,14 @@ void digitalForceWrite(int pin, unsigned char level) {
 void pinMode2(unsigned int pin, unsigned int flags) {
 
   // set ARDUINO flags to the pin using ESP-IDF functions
-  if ((flags & PULLUP) == PULLUP) gpio_ll_pullup_en(&GPIO, pin); else gpio_ll_pullup_dis(&GPIO, pin);
-  if ((flags & PULLDOWN) == PULLDOWN) gpio_ll_pulldown_en(&GPIO, pin); else gpio_ll_pulldown_dis(&GPIO, pin);
-  if ((flags & OPEN_DRAIN) == OPEN_DRAIN) gpio_ll_od_enable(&GPIO, pin); else gpio_ll_od_disable(&GPIO, pin);
-  if ((flags & INPUT) == INPUT) gpio_ll_input_enable(&GPIO, pin); else gpio_ll_input_disable(&GPIO, pin);
+  if ((flags & PULLUP) == PULLUP) gpio_ll_pullup_en(&GPIO, pin);
+  else gpio_ll_pullup_dis(&GPIO, pin);
+  if ((flags & PULLDOWN) == PULLDOWN) gpio_ll_pulldown_en(&GPIO, pin);
+  else gpio_ll_pulldown_dis(&GPIO, pin);
+  if ((flags & OPEN_DRAIN) == OPEN_DRAIN) gpio_ll_od_enable(&GPIO, pin);
+  else gpio_ll_od_disable(&GPIO, pin);
+  if ((flags & INPUT) == INPUT) gpio_ll_input_enable(&GPIO, pin);
+  else gpio_ll_input_disable(&GPIO, pin);
 
   // not every esp32 gpio is capable of OUTPUT
   if ((flags & OUTPUT) == OUTPUT) {
@@ -3598,8 +3665,8 @@ void pinMode2(unsigned int pin, unsigned int flags) {
 // Each ESP32 variant has its own mapping but I made tables
 // only for ESP32 and ESP32S3/2 simply because I have these boards
 //
-// Each pin of ESP32 can carry a function: be either a GPIO or be an periferial pin: 
-// SD_DATA0 or UART_TX etc. 
+// Each pin of ESP32 can carry a function: be either a GPIO or be an periferial pin:
+// SD_DATA0 or UART_TX etc.
 //
 //TODO: add support for other Espressif ESP32 variants
 //
@@ -3822,7 +3889,7 @@ static int pin_show(int argc, char **argv) {
 
   bool pu, pd, ie, oe, od, sleep_sel, res;
   uint32_t drv, fun_sel, sig_out;
-  int type;
+  peripheral_bus_type_t type;
 
   res = esp_gpio_is_pin_reserved(pin);
   q_printf("%% Pin %d is ", pin);
@@ -3928,18 +3995,18 @@ static int pin_show(int argc, char **argv) {
   // using IDF functions allows for reading UART or I2C (or other periferial) digital values.
   //
   // As of Arduino Core 3.0.5 digitalRead() does not work in many cases: pin is interface pin (uart_tx as example),
-  // pin is not configured through PeriMan as "simple GPIO" etc. 
+  // pin is not configured through PeriMan as "simple GPIO" etc.
   if (!ie)
     gpio_ll_input_enable(&GPIO, pin);
-  type = gpio_ll_get_level(&GPIO, pin);
+  int val = gpio_ll_get_level(&GPIO, pin);
 
   q_print("% Digital pin value is ");
 
   color_important();
-  q_print(type ? "HIGH (1)\r\n" : "LOW (0)\r\n");
+  q_print(val ? "HIGH (1)\r\n" : "LOW (0)\r\n");
   color_normal();
 
-  // disable input if was temporary enabled 
+  // disable input if was temporary enabled
   if (!ie)
     gpio_ll_input_disable(&GPIO, pin);
 
@@ -4070,105 +4137,129 @@ static int cmd_pin(int argc, char **argv) {
 #if WITH_HELP
         if (!informed && (duration > 4999)) {
           informed = true;
-          q_print("% Hint: Press <Enter> to interrupt the command\r\n");
+          if (is_foreground_task())
+            q_print("% Hint: Press <Enter> to interrupt the command\r\n");
         }
 #endif
         // was interrupted by keypress or by "kill" command ? abort whole command
-        if (delay_interruptible(duration) != duration) { 
+        if (delay_interruptible(duration) != duration) {
           q_print("% Aborted\r\n");
           return 0;
         }
       }
       //Now all the single-line keywords:
       // 5. "pin X save"
-      else if (!q_strcmp(argv[i], "save"))    pin_save(pin);
+      else if (!q_strcmp(argv[i], "save"))
+        pin_save(pin);
       // 9. "pin X up"
-      else if (!q_strcmp(argv[i], "up")) {    flags |= PULLUP; pinMode2(pin, flags); }  // set flags immediately as we read them
+      else if (!q_strcmp(argv[i], "up")) {
+        flags |= PULLUP;
+        pinMode2(pin, flags);
+      }  // set flags immediately as we read them
       // 10. "pin X down"
-      else if (!q_strcmp(argv[i], "down")) {  flags |= PULLDOWN; pinMode2(pin, flags); } 
-      // 12. "pin X in"
-      else if (!q_strcmp(argv[i], "in")) {    flags |= INPUT; pinMode2(pin, flags); } 
-      // 13. "pin X out"
-      else if (!q_strcmp(argv[i], "out")) {   flags |= OUTPUT; pinMode2(pin, flags); } 
-      // 11. "pin X open"
-      else if (!q_strcmp(argv[i], "open")) {  flags |= OPEN_DRAIN; pinMode2(pin, flags); } 
-      else 
-      // 14. "pin X low" keyword. only applies to I/O pins, fails for input-only pins
-      if (!q_strcmp(argv[i], "low")) {  
-        if (pin_is_input_only_pin(pin)) {
-abort_if_input_only:
-          q_error("%% Pin %u is **INPUT-ONLY**, can not be set \"%s\"\r\n", pin, argv[i]);
-          return i;
-        }
-        // use pinMode2/digitalForceWrite to not let the pin to be reconfigured
-        // to GPIO Matrix pin. By default many GPIO pins are handled by IOMUX. However if
-        // one starts to use that pin it gets configured as "GPIO Matrix simple GPIO". Code below
-        // keeps the pin at IOMUX, not switching to GPIO Matrix
-        flags |= OUTPUT;
+      else if (!q_strcmp(argv[i], "down")) {
+        flags |= PULLDOWN;
         pinMode2(pin, flags);
-        digitalForceWrite(pin, LOW);
-      } else 
-      // 15. "pin X high" keyword. I/O pins only
-      if (!q_strcmp(argv[i], "high")) {
-
-        if (pin_is_input_only_pin(pin))
-          goto abort_if_input_only;
-
-        flags |= OUTPUT;
-        pinMode2(pin, flags);
-        digitalForceWrite(pin, HIGH);
-
-      } else 
-      // 16. "pin X read"
-      if (!q_strcmp(argv[i], "read")) q_printf("%% GPIO%d : logic %d\r\n", pin, digitalForceRead(pin)); else 
-      // 17. "pin X read"
-      if (!q_strcmp(argv[i], "aread")) q_printf("%% GPIO%d : analog %d\r\n", pin, analogRead(pin)); else
-      // 7. "pin X hold"
-      if (!q_strcmp(argv[i], "hold"))    gpio_hold_en((gpio_num_t)pin); else
-      // 8. "pin X release"
-      if (!q_strcmp(argv[i], "release")) gpio_hold_dis((gpio_num_t)pin); else
-      // 6. "pin X load"
-      if (!q_strcmp(argv[i], "load"))    pin_load(pin); else 
-      //4. "loop" keyword
-      if (!q_strcmp(argv[i], "loop")) {
-        //must have an extra argument (loop count)
-        if ((i + 1) >= argc) {
-#if WITH_HELP
-          q_error("%% Loop count expected after keyword \"loop\"\r\n");
-#endif
-          return i;
-        }
-        i++;
-        // loop count must be a number
-        if (!isnum(argv[i]))
-          return i;
-
-        // loop must be the last keyword, so we can strip it later
-        if ((i + 1) < argc) {
-#if WITH_HELP
-          q_error("%% \"loop\" must be the last keyword\r\n");
-#endif
-          return i + 1;
-        }
-        count = atol(argv[i]);
-        argc -= 2;  //strip "loop NUMBER" keyword
-#if WITH_HELP
-        if (!informed) {
-          informed = true;
-          q_printf("%% Repeating %u times, press <Enter> to abort\r\n", count);
-        }
-#endif
       }
-
-      //
-      //"X" keyword. when we see a number we use it as a pin number
-      //for subsequent keywords. must be valid GPIO number.
-      else if (isnum(argv[i])) {
-        pin = atoi(argv[i]);
-        if (!pin_exist(pin))
-          return i;
+      // 12. "pin X in"
+      else if (!q_strcmp(argv[i], "in")) {
+        flags |= INPUT;
+        pinMode2(pin, flags);
+      }
+      // 13. "pin X out"
+      else if (!q_strcmp(argv[i], "out")) {
+        flags |= OUTPUT;
+        pinMode2(pin, flags);
+      }
+      // 11. "pin X open"
+      else if (!q_strcmp(argv[i], "open")) {
+        flags |= OPEN_DRAIN;
+        pinMode2(pin, flags);
       } else
-        return i;  // argument i was not recognized
+        // 14. "pin X low" keyword. only applies to I/O pins, fails for input-only pins
+        if (!q_strcmp(argv[i], "low")) {
+          if (pin_is_input_only_pin(pin)) {
+abort_if_input_only:
+            q_error("%% Pin %u is **INPUT-ONLY**, can not be set \"%s\"\r\n", pin, argv[i]);
+            return i;
+          }
+          // use pinMode2/digitalForceWrite to not let the pin to be reconfigured
+          // to GPIO Matrix pin. By default many GPIO pins are handled by IOMUX. However if
+          // one starts to use that pin it gets configured as "GPIO Matrix simple GPIO". Code below
+          // keeps the pin at IOMUX, not switching to GPIO Matrix
+          flags |= OUTPUT;
+          pinMode2(pin, flags);
+          digitalForceWrite(pin, LOW);
+        } else
+          // 15. "pin X high" keyword. I/O pins only
+          if (!q_strcmp(argv[i], "high")) {
+
+            if (pin_is_input_only_pin(pin))
+              goto abort_if_input_only;
+
+            flags |= OUTPUT;
+            pinMode2(pin, flags);
+            digitalForceWrite(pin, HIGH);
+
+          } else
+            // 16. "pin X read"
+            if (!q_strcmp(argv[i], "read")) q_printf("%% GPIO%d : logic %d\r\n", pin, digitalForceRead(pin));
+            else
+              // 17. "pin X read"
+              if (!q_strcmp(argv[i], "aread")) q_printf("%% GPIO%d : analog %d\r\n", pin, analogRead(pin));
+              else
+                // 7. "pin X hold"
+                if (!q_strcmp(argv[i], "hold")) gpio_hold_en((gpio_num_t)pin);
+                else
+                  // 8. "pin X release"
+                  if (!q_strcmp(argv[i], "release")) gpio_hold_dis((gpio_num_t)pin);
+                  else
+                    // 6. "pin X load"
+                    if (!q_strcmp(argv[i], "load")) pin_load(pin);
+                    else
+                      //4. "loop" keyword
+                      if (!q_strcmp(argv[i], "loop")) {
+                        //must have an extra argument (loop count)
+                        if ((i + 1) >= argc) {
+#if WITH_HELP
+                          q_error("%% Loop count expected after keyword \"loop\"\r\n");
+#endif
+                          return i;
+                        }
+                        i++;
+                        // loop count must be a number
+                        if (!isnum(argv[i]))
+                          return i;
+
+                        // loop must be the last keyword, so we can strip it later
+                        if ((i + 1) < argc) {
+#if WITH_HELP
+                          q_error("%% \"loop\" must be the last keyword\r\n");
+#endif
+                          return i + 1;
+                        }
+                        count = atol(argv[i]);
+                        argc -= 2;  //strip "loop NUMBER" keyword
+#if WITH_HELP
+                        if (!informed) {
+                          informed = true;
+                          q_printf("%% Repeating %u times", count);
+                          if (is_foreground_task())
+                            q_print(", press <Enter> to abort");
+                          q_print(CRLF);
+                        }
+#endif
+                      }
+
+                      //
+                      //"X" keyword. when we see a number we use it as a pin number
+                      //for subsequent keywords. must be valid GPIO number.
+                      else if (isnum(argv[i])) {
+                        pin = atoi(argv[i]);
+                        if (!pin_exist(pin))
+                          return i;
+                      } else
+                        return i;  // argument i was not recognized
       i++;
     }
     i = 1;  // start over again
@@ -4217,19 +4308,19 @@ static int cmd_async(int argc, char **argv) {
 
   TaskHandle_t ignored;
 
-  if (aa_current == NULL) //must not happen
+  if (aa_current == NULL)  //must not happen
     abort();
 
   TaskFunction_t cmd;
 
   // which command was called as async?
-  if (!q_strcmp(argv[0],"pin&"))
+  if (!q_strcmp(argv[0], "pin&"))
     cmd = (TaskFunction_t)pin_async_task;
-  else if (!q_strcmp(argv[0],"count&"))
+  else if (!q_strcmp(argv[0], "count&"))
     cmd = (TaskFunction_t)count_async_task;
   else {
     color_error();
-    q_printf("%% Don't know how to run \"%s\" in background\r\n",argv[0]);
+    q_printf("%% Don't know how to run \"%s\" in background\r\n", argv[0]);
     color_normal();
     return 0;
   }
@@ -4240,12 +4331,12 @@ static int cmd_async(int argc, char **argv) {
 
   // Start async task
   if (pdPASS != xTaskCreatePinnedToCore(cmd, "Pin Async", STACKSIZE, aa_current, tskIDLE_PRIORITY, &ignored, shell_core)) {
-      q_error("%% Can not start a new task. Resources low?\r\n");
-      userinput_unref(aa_current);
+    q_error("%% Can not start a new task. Resources low?\r\n");
+    userinput_unref(aa_current);
   }
 
   //Hint user on how to stop bg command
-  q_printf("%% Background task started\r\n%% Copy/paste \"kill %x\" command to stop execution\r\n",(unsigned int)ignored);
+  q_printf("%% Background task started\r\n%% Copy/paste \"kill %x\" command to stop execution\r\n", (unsigned int)ignored);
 
   return 0;
 }
@@ -4271,7 +4362,7 @@ static int cmd_mem(int argc, char **argv) {
 }
 //"mem ADDR LENGTH"
 // Display memory contens
-// Only use with readable memory otherwise it will crash 
+// Only use with readable memory otherwise it will crash
 //
 static int cmd_mem_read(int argc, char **argv) {
 
@@ -4365,54 +4456,6 @@ static int cmd_i2c_if(int argc, char **argv) {
   return 0;
 }
 
-// same as the above but for uart commands
-// "uart X"
-static int cmd_uart_if(int argc, char **argv) {
-
-  unsigned int u;
-  if (argc < 2)
-    return -1;
-
-  if (!isnum(argv[1]))
-    return 1;
-
-  u = atol(argv[1]);
-  if (u >= SOC_UART_NUM) {
-#if WITH_HELP
-    q_error("%% Valid UART interface numbers are 0..%d\r\n", SOC_UART_NUM - 1);
-#endif
-    return 1;
-  }
-#if WITH_HELP
-  if (uart == u) {
-    color_warning();
-    q_print("% You are configuring Serial interface shell is running on! BE CAREFUL :)\r\n");
-    color_normal();
-  }
-#endif
-
-  change_command_directory(u, keywords_uart, PROMPT_UART, "uart");
-  return 0;
-}
-
-// same as the above but for file system commands
-// "filesystem X"
-static int cmd_filesystem_if(int argc, char **argv) {
-  
-  if (argc < 2)
-    return -1;
-  
-  if (!q_strcmp(argv[1], "fat")) change_command_directory(0, keywords_vfat, PROMPT_VFAT, "filesystem"); else
-  if (!q_strcmp(argv[1], "littlefs")) { q_error("%% No support for LittleFS yet\r\n"); return 1; } else
-  if (!q_strcmp(argv[1], "spiffs"))  { q_error("%% No support for SPIFFS yet\r\n"); return 1; } else return 1;
-  
-  return 0;
-}
-
-#include <esp_vfs_fat.h>
-#include <diskio.h>
-#include <diskio_wl.h>
-#include <vfs_fat_internal.h>
 
 
 //TAG:clock
@@ -4601,9 +4644,6 @@ noinit:
 }
 
 
-
-#include <esp32-hal-uart.h>
-
 //defined in HardwareSerial and must be kept in sync
 //unfortunately HardwareSerial.h can not be included directly in a .c code
 #define SERIAL_8N1 0x800001c
@@ -4612,6 +4652,36 @@ noinit:
 static inline bool uart_isup(int u) {
 
   return (u < 0 || u >= SOC_UART_NUM) ? 0 : uart_is_driver_installed(u);
+}
+
+// Change to uart command tree
+// "uart X"
+static int cmd_uart_if(int argc, char **argv) {
+
+  unsigned int u;
+  if (argc < 2)
+    return -1;
+
+  if (!isnum(argv[1]))
+    return 1;
+
+  u = atol(argv[1]);
+  if (u >= SOC_UART_NUM) {
+#if WITH_HELP
+    q_error("%% Valid UART interface numbers are 0..%d\r\n", SOC_UART_NUM - 1);
+#endif
+    return 1;
+  }
+#if WITH_HELP
+  if (uart == u) {
+    color_warning();
+    q_print("% You are configuring Serial interface shell is running on! BE CAREFUL :)\r\n");
+    color_normal();
+  }
+#endif
+
+  change_command_directory(u, keywords_uart, PROMPT_UART, "uart");
+  return 0;
 }
 
 
@@ -4700,7 +4770,7 @@ uart_tap(int remote) {
       char *buf[av];
 
       uart_read_bytes(remote, buf, av, portMAX_DELAY);
-      console_write_bytes(buf, av); 
+      console_write_bytes(buf, av);
       delay(1);
     }
   }
@@ -4737,114 +4807,132 @@ static int cmd_uart(int argc, char **argv) {
     uart_tap(u);
     q_print("\r\n% Ctrl+C, exiting\r\n");
     return 0;
-  } else 
-  //
-  // "up" command
-  //
-  if (!q_strcmp(argv[0], "up")) {  //up RX TX SPEED
-    if (argc < 4)
-      return -1;
+  } else
+    //
+    // "up" command
+    //
+    if (!q_strcmp(argv[0], "up")) {  //up RX TX SPEED
+      if (argc < 4)
+        return -1;
 
-    // uart number, rx/tx pins and speed must be numbers
-    // sanity checks for arguments
-    unsigned int rx, tx, speed;
-    if (!isnum(argv[1])) return 1; else rx = atol(argv[1]);
-    if (!pin_exist(rx)) return 1;
-      if (!isnum(argv[2])) return 2; else tx = atol(argv[2]);
-    if (!pin_exist(tx)) return 2;
-    if (!isnum(argv[3])) return 3; else speed = atol(argv[3]);
+      // uart number, rx/tx pins and speed must be numbers
+      // sanity checks for arguments
+      unsigned int rx, tx, speed;
+      if (!isnum(argv[1])) return 1;
+      else rx = atol(argv[1]);
+      if (!pin_exist(rx)) return 1;
+      if (!isnum(argv[2])) return 2;
+      else tx = atol(argv[2]);
+      if (!pin_exist(tx)) return 2;
+      if (!isnum(argv[3])) return 3;
+      else speed = atol(argv[3]);
 
-    if (NULL == uartBegin(u, speed, SERIAL_8N1, rx, tx, 256, 0, false, 112))
-      q_error(Failed);
-  } else 
-  //
-  // "down" command
-  //
-  if (!q_strcmp(argv[0], "down")) {  // down
-    if (!uart_isup(u))
-      goto noinit;
-    else
-      uartEnd(u);
-  } else 
-  //
-  // "write TEXT1 TEXT2 ... TEXTn" command
-  //
-  if (!q_strcmp(argv[0], "write")) {  
-    if (argc < 2)
-      return -1;
-
-    int i = 1;
-
-    if (!uart_isup(u))
-      goto noinit;
-
-    // go thru all the arguments and send them. the space is inserted between arguments
-    do {
-      char *p = argv[i];
-
-      // char by char. parse c-style escape sequences if any
-      // XY are hexadecimal characters
-      // hexadecimals at the end of every token allowed to be in a short form as well: \X
-      // valid: "write Hello\20World!\9"
-      // valid: "write Hello\9 World"
-      // invalid: "write Hello\9World" (Must be \09)
-      while (*p) {
-        char c = *p;
-        p++;
-        if (c == '\\') {
-
-          switch (*p) {
-            case '\\': p++; c = '\\'; break;
-            case 'n':  p++; c = '\n'; break;
-            case 'r':  p++; c = '\r'; break;
-            case 't':  p++; c = '\t'; break;
-            case 'e':  p++; c = '\e'; break;
-            default:
-              if (ishex(p))
-                c = ascii2hex(p);
-              else {
-                q_error("%% Unknown escape sequence: \"\\%s\"\r\n", *p ? p : "at the end of the line");
-                return i;
-              }
-              p++;
-              if (*p) p++;
-          }
-        }
-        if (uart_write_bytes(u, &c, 1) == 1)
-          sent++;
-      }
-
-      i++;
-      //if there are more arguments - insert a space
-      if (i < argc) {
-        char space = ' ';
-
-        if (uart_write_bytes(u, &space, 1) == 1)
-          sent++;
-      }
-    } while (i < argc);
-
-    q_printf("%% %u bytes sent\r\n", sent);
-  } else 
-  //
-  // "read" command
-  //
-  if (!q_strcmp(argv[0], "read")) {  
-    size_t available = 0, tmp;
-    if (ESP_OK != uart_get_buffered_data_len(u, &available))
-      goto noinit;
-    tmp = available;
-    while (available--) {
-      unsigned char c;
-      if (uart_read_bytes(u, &c, 1, portMAX_DELAY /* TODO: make short delay! */) == 1) {
-        if (c >= ' ' || c == '\r' || c == '\n' || c == '\t')
-          q_printf("%c", c);
+      if (NULL == uartBegin(u, speed, SERIAL_8N1, rx, tx, 256, 0, false, 112))
+        q_error(Failed);
+    } else
+      //
+      // "down" command
+      //
+      if (!q_strcmp(argv[0], "down")) {  // down
+        if (!uart_isup(u))
+          goto noinit;
         else
-          q_printf("\\x%02x", c);
-      }
-    }
-    q_printf("\r\n%% %d bytes read\r\n", tmp);
-  }
+          uartEnd(u);
+      } else
+        //
+        // "write TEXT1 TEXT2 ... TEXTn" command
+        //
+        if (!q_strcmp(argv[0], "write")) {
+          if (argc < 2)
+            return -1;
+
+          int i = 1;
+
+          if (!uart_isup(u))
+            goto noinit;
+
+          // go thru all the arguments and send them. the space is inserted between arguments
+          do {
+            char *p = argv[i];
+
+            // char by char. parse c-style escape sequences if any
+            // XY are hexadecimal characters
+            // hexadecimals at the end of every token allowed to be in a short form as well: \X
+            // valid: "write Hello\20World!\9"
+            // valid: "write Hello\9 World"
+            // invalid: "write Hello\9World" (Must be \09)
+            while (*p) {
+              char c = *p;
+              p++;
+              if (c == '\\') {
+
+                switch (*p) {
+                  case '\\':
+                    p++;
+                    c = '\\';
+                    break;
+                  case 'n':
+                    p++;
+                    c = '\n';
+                    break;
+                  case 'r':
+                    p++;
+                    c = '\r';
+                    break;
+                  case 't':
+                    p++;
+                    c = '\t';
+                    break;
+                  case 'e':
+                    p++;
+                    c = '\e';
+                    break;
+                  default:
+                    if (ishex(p))
+                      c = ascii2hex(p);
+                    else {
+                      q_error("%% Unknown escape sequence: \"\\%s\"\r\n", *p ? p : "at the end of the line");
+                      return i;
+                    }
+                    p++;
+                    if (*p) p++;
+                }
+              }
+              if (uart_write_bytes(u, &c, 1) == 1)
+                sent++;
+            }
+
+            i++;
+            //if there are more arguments - insert a space
+            if (i < argc) {
+              char space = ' ';
+
+              if (uart_write_bytes(u, &space, 1) == 1)
+                sent++;
+            }
+          } while (i < argc);
+
+          q_printf("%% %u bytes sent\r\n", sent);
+        } else
+          //
+          // "read" command
+          //
+          if (!q_strcmp(argv[0], "read")) {
+            size_t available = 0, tmp;
+            if (ESP_OK != uart_get_buffered_data_len(u, &available))
+              goto noinit;
+            tmp = available;
+            while (available--) {
+              unsigned char c;
+              if (uart_read_bytes(u, &c, 1, portMAX_DELAY /* TODO: make short delay! */) == 1) {
+                if (c >= ' ' || c == '\r' || c == '\n' || c == '\t')
+                  q_printf("%c", c);
+                else
+                  q_printf("\\x%02x", c);
+              }
+            }
+            q_printf("\r\n%% %d bytes read\r\n", tmp);
+          }
 
   // command executed or was not understood
   return 0;
@@ -4910,9 +4998,6 @@ static int cmd_reload(int argc, char **argv) {
   return 0;
 }
 
-
-#include <soc/efuse_reg.h>
-#include <esp_chip_info.h>
 
 extern uint32_t getCpuFrequencyMhz();
 extern bool setCpuFrequencyMhz(uint32_t cpu_freq_mhz);
@@ -5016,7 +5101,7 @@ static int cmd_cpu_freq(int argc, char **argv) {
       q_printf("%u, %u and %u\r\n", xtal, xtal / 2, xtal / 4);
     else
       q_printf("%u and %u\r\n", xtal, xtal / 2);
-#endif      
+#endif
     return 1;
   }
 
@@ -5035,24 +5120,6 @@ static int cmd_cpu_freq(int argc, char **argv) {
 //main()/app_main()
 static unsigned int uptime = 0;
 
-
-// pre-main() hook
-//
-// the function gets called right before entering main()
-// FreeRTOS is initialized but task scheduler is not started yet.
-static void espshell_task(const void *arg);
-static void __attribute__((constructor)) espshell_start() {
-
-  // save the counter value (seconds) on program start
-  // must be 0 but just in case
-  uptime = (uint32_t)(esp_timer_get_time() / 1000000);
-
-  //initialize sequences
-  seq_init();
-
-  //start shell task.
-  espshell_task((const void *)1);
-}
 
 
 // "uptime"
@@ -5133,7 +5200,7 @@ static int cmd_resume(int argc, char **argv) {
 }
 
 //"kill TASK_ID"
-// kill a espshell task. 
+// kill a espshell task.
 // TODO: make async tasks have their TASK_ID mapped to simple numbers starting from 1.
 static int cmd_kill(int argc, char **argv) {
 
@@ -5142,13 +5209,13 @@ static int cmd_kill(int argc, char **argv) {
 
   unsigned int taskid = hex2uint32(argv[1]);
   if (taskid == 0) {
-#if WITH_HELP    
+#if WITH_HELP
     q_print("% Task id is a hex number, something like \"3fff0030\"\r\n");
-#endif    
+#endif
     return 1;
   }
 
-  TaskHandle_t handle = (TaskHandle_t )taskid;
+  TaskHandle_t handle = (TaskHandle_t)taskid;
   if (shell_task == handle) {
     q_print(Failed);
     return 0;
@@ -5158,19 +5225,50 @@ static int cmd_kill(int argc, char **argv) {
   // to print their intermediate results: one of examples is "count&" command:
   // being killed it will print out packets count arrived so far
   //
-  xTaskNotify(handle,0,eNoAction);
+  xTaskNotify(handle, 0, eNoAction);
 
   //undocumented
   if (argc > 2) {
-    if (!q_strcmp(argv[2],"terminate")) {
+    if (!q_strcmp(argv[2], "terminate")) {
       vTaskDelete(handle);
 #if WITH_HELP
-      q_printf("%% Terminated: \"%p\"\r\n",handle);
-#endif      
+      q_printf("%% Terminated: \"%p\"\r\n", handle);
+#endif
     }
   }
   return 0;
 }
+
+
+#if WITH_FS
+// "filesystem fat"
+// Change to FAT,SPIFFS or LittleFS fileystem command trees
+//
+static int cmd_filesystem_if(int argc, char **argv) {
+
+  if (argc < 2)
+    return -1;
+
+  if (!q_strcmp(argv[1], "fat")) change_command_directory(0, keywords_vfat, PROMPT_VFAT, "filesystem");
+  else if (!q_strcmp(argv[1], "littlefs")) {
+    q_error("%% No support for LittleFS yet\r\n");
+    return 1;
+  } else if (!q_strcmp(argv[1], "spiffs")) {
+    q_error("%% No support for SPIFFS yet\r\n");
+    return 1;
+  } else return 1;
+
+  return 0;
+}
+
+// "filesystem"
+// List available partitions/filesystems
+//
+static int cmd_filesystem(int argc, char **argv) {
+
+  return 0;
+}
+#endif //WITH_FS
 
 #if WITH_HELP
 // "? keys"
@@ -5196,7 +5294,7 @@ static int help_keys(int argc, char **argv) {
           "% Ctrl+Z        : Same as entering \"exit\" command\r\n"
           "% Ctrl+C        : Suspend sketch execution\r\n%\r\n"
           "% -- Terminal compatibility workarounds (alternative key sequences) --\r\n%\r\n"
-          "% Ctrl+B and Ctrl+F work as \"<-\" and \"->| ([B]ack & [F]orward arrows)>\r\n"
+          "% Ctrl+B and Ctrl+F work as \"<-\" and \"->\" ([B]ack & [F]orward arrows)>\r\n"
           "% Ctrl+O or P   : Go through the command history: O=backward, P=forward\r\n"
           "% Ctrl+D works as <[D]elete> key\r\n"
           "% Ctrl+H works as <BACKSPACE> key\r\n");
@@ -5345,7 +5443,7 @@ espshell_command(char *p) {
   argcargv_t *aa = NULL;
 
   // sanity checks
-  if (!p )   return -1;
+  if (!p) return -1;
   if (!p[0]) return -1;
 
   //make a history entry
@@ -5466,12 +5564,12 @@ bool espshell_exec_finished() {
 //
 static void espshell_task(const void *arg) {
 
-  //start task and return
+  // arg is not NULL - first time call: start a task and return immediately
   if (arg) {
     if (shell_task != NULL) {
-#if WITH_HELP      
+#if WITH_HELP
       q_print("% ESPShell is started already\r\n");
-#endif      
+#endif
       return;
     }
 
@@ -5505,6 +5603,29 @@ static void espshell_task(const void *arg) {
     vTaskDelete((shell_task = NULL));
   }
 }
+
+// Start ESPShell
+//
+// If AUTOSTART == 1 then this /static/ function is called atomatically by GCC code.
+// if AUTOSTART == 0 then it is up to user to start the shell by calling /global/ espshell_start()
+//
+#if AUTOSTART
+static void __attribute__((constructor)) espshell_start() {
+#else
+void espshell_start() {
+#endif
+  // save the counter value (seconds) on program start
+  // must be 0 but just in case
+  uptime = (uint32_t)(esp_timer_get_time() / 1000000);
+
+  //initialize sequences
+  seq_init();
+
+  //start shell task.
+  espshell_task((const void *)1);
+}
+
+
 
 /* espshell code copyright 2024, vvb33007 <vvb@nym.hush.com> */
 
