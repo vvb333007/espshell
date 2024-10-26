@@ -41,7 +41,7 @@
  *
  * 6. To create support for new type of console device (e.g. USB-CDC console, 
  *    not supported at the moment) one have to implement console_read_bytes(), 
- *    console_write_bytes(),anykey_pressed() and console_isup() functions
+ *    console_write_bytes() etc
  *
  * 7. Copyright information is at the end of this file
  */
@@ -57,6 +57,10 @@
 #undef WITH_COLOR
 #undef WITH_FS
 #undef MOUNTPOINTS_NUM
+#undef EXTERNAL_PROTOTYPES
+#undef EXTERNAL_KEYWORDS
+#undef EXTERNAL_HANDLERS
+
 
 // COMPILE TIME SETTINGS
 // (User can override these with espshell.h
@@ -73,25 +77,15 @@
 #define SEQUENCES_NUM 10         // Max number of sequences available for command "sequence"
 #define MOUNTPOINTS_NUM 5        // Max number of simultaneously mounted filesystems
 #define DO_ECHO 1                // -1 - espshell is completely silent, commands are executed but all screen output is disabled
-                                 //  0 - espshell does not do echo for user input (as modem ATE0 command). commands are executed and their output is displayed
+                                 //  0 - espshell does not do echo for user input (just as "ATE0" modem command), commands are executed and their output is displayed
                                  //  1 - espshell default behaviour (do echo, enable all output)
 #define STARTUP_PORT UART_NUM_0  // Uart number (or 99 for USBCDC) where shell will be deployed at startup
 #define WITH_FS 0                // Filesystems (fat/spiffs/littlefs) support (compilable but not done yet!)
 
 #define COMPILING_ESPSHELL 1  // dont touch this!
 
-#undef EXTERNAL_PROTOTYPES
-#undef EXTERNAL_KEYWORDS
-#undef EXTERNAL_HANDLERS
 
-// External (additional) commands can be added by defining 3 #defines below:
-// Example of use is esp32cam commands in "extra/"
-//
-// #define EXTERNAL_PROTOTYPES "prototypes.h"
-// #define EXTERNAL_KEYWORDS "keywords.c"
-// #define EXTERNAL_HANDLERS "handlers.c"
-//
-
+//TAG:prompts
 #define PROMPT "esp32#>"
 #define PROMPT_I2C "esp32-i2c#>"
 #define PROMPT_UART "esp32-uart#>"
@@ -99,6 +93,7 @@
 #define PROMPT_FILES "esp32-file#>"
 #define PROMPT_SEARCH "Search: "
 
+//TAG:includes
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -110,119 +105,135 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#include <soc/soc_caps.h>
+#include <soc/gpio_struct.h>
+#include <soc/pcnt_struct.h>
+#include <soc/efuse_reg.h>
+
+#include <hal/gpio_ll.h>
+
+#include <driver/gpio.h>
+#include <driver/pcnt.h>
 #include <driver/uart.h>
 
+#include <rom/gpio.h>
 
-// Pickup compile-time setting overrides if any
+#include <esp_timer.h>
+#include <esp_chip_info.h>
+
+#include <esp32-hal-periman.h>
+#include <esp32-hal-ledc.h>
+#include <esp32-hal-rmt.h>
+#include <esp32-hal-uart.h>
+
+#if WITH_FS
+// Support files for LittleFS, FAT and SPIFFS filesystems
+#include <sys/unistd.h>
+#include <sys/stat.h>
+#include <dirent.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
+#include <esp_vfs_fat.h>
+#include <diskio.h>
+#include <diskio_wl.h>
+#include <vfs_fat_internal.h>
+#include <esp_littlefs.h>
+#include <wear_levelling.h>
+#ifdef __cplusplus
+};
+#endif
+
+#endif
+
+// Pickup compile-time setting overrides if any from "espshell.h" or "extra/espshell.h"
 // "espshell.h" file is optional: compile-time settings can be changed in this file as well
-//
-#if __has_include("extra/espshell.h")
-#  include "extra/espshell.h"
-#elif __has_include("espshell.h")
-#  include "espshell.h"
+// espshell.h has priority over extra/espshell.h
+#if __has_include("espshell.h")
+#include "espshell.h"
+#elif __has_include("extra/espshell.h")
+#include "extra/espshell.h"
 #endif
 
 // Compile basic AiThinker ESP32Cam support: ESPCam commands are arranged as "external"
-// commands and their source code is in "extra/" folder.
-//
+// commands and their source code is in "extra/" folder. These are used for a side project
+// and are left here for the reference on how to write external commands
 #ifdef ESPCAM
-#  if defined(EXTERNAL_PROTOTYPES) || defined(EXTERNAL_KEYWORDS) || defined(EXTERNAL_HANDLERS)
-#    error "EXTERNAL_KEYWORDS and ESPCAM are both set"
-#  endif
-#  if __has_include("esp32cam_prototypes.h")
-#    define EXTERNAL_PROTOTYPES "esp32cam_prototypes.h"
-#    define EXTERNAL_KEYWORDS "esp32cam_keywords.c"
-#    define EXTERNAL_HANDLERS "esp32cam_handlers.c"
-#  elif __has_include("extra/esp32cam_prototypes.h")
-#    define EXTERNAL_PROTOTYPES "extra/esp32cam_prototypes.h"
-#    define EXTERNAL_KEYWORDS "extra/esp32cam_keywords.c"
-#    define EXTERNAL_HANDLERS "extra/esp32cam_handlers.c"
-#  else
-#    warning "ESPCAM is defined, but no ESP32Cam source files were found"
-#    warning "Disabling ESPCam support"
-#    undef ESPCAM
-#  endif  // Have esp32cam_* sources?
+#if defined(EXTERNAL_PROTOTYPES) || defined(EXTERNAL_KEYWORDS) || defined(EXTERNAL_HANDLERS)
+#error "EXTERNAL_KEYWORDS and ESPCAM are both set"
+#endif
+#if __has_include("esp32cam_prototypes.h")
+#define EXTERNAL_PROTOTYPES "esp32cam_prototypes.h"
+#define EXTERNAL_KEYWORDS "esp32cam_keywords.c"
+#define EXTERNAL_HANDLERS "esp32cam_handlers.c"
+#elif __has_include("extra/esp32cam_prototypes.h")
+#define EXTERNAL_PROTOTYPES "extra/esp32cam_prototypes.h"
+#define EXTERNAL_KEYWORDS "extra/esp32cam_keywords.c"
+#define EXTERNAL_HANDLERS "extra/esp32cam_handlers.c"
+#else
+#warning "ESPCAM is defined, but no ESP32Cam source files were found"
+#warning "Disabling ESPCam support"
+#undef ESPCAM
+#endif  // Have esp32cam_* sources?
 #endif  // ESPCAM?
-
-
 
 // Autostart/start espshell.
 // Called automatically by C runtime startup code if AUTOSTART == 1 (Default)
+// otherwhise it is up to user sketch to call espshell_start().
 #if AUTOSTART
 static void __attribute__((constructor)) espshell_start();
 #else
 void espshell_start();
 #endif
 
-// Miscellaneous forwards:
-// Check if UART u is up and operationg (driver installed)
-static inline bool uart_isup(int u);
+// Miscellaneous forwards
+static inline bool uart_isup(int u);                                           // Check if UART u is up and operationg (driver installed)
+static int q_strcmp(const char *, const char *);                               // loose strcmp
+static int __attribute__((format(printf, 1, 2))) q_printf(const char *, ...);  // printf()
+static int __attribute__((format(printf, 1, 2))) q_errorf(const char *, ...);  // printf() in magenta color
+static int q_print(const char *);                                              // puts()
+static int q_error(const char *);                                              // puts() in magenta color
 
-// Various printfs: q_error is magenta-colored version of q_printf, q_print is fast but
-// only prints non-formatted strings
-static int __attribute__((format(printf, 1, 2))) q_printf(const char *, ...);
-static int __attribute__((format(printf, 1, 2))) q_errorf(const char *, ...);
-static int q_print(const char *);
-static int q_error(const char *);
-
-// Safe version of Arduino's pinMode(). Bypasses Arduino Core's peripherial manager code
-// Yes you can change flags of ESP32's pins 6..11 to make them readable. Classic pinMode()
-// called on these pins (connected to SPI memory) crashes whole system
+// Safe version of Arduino's pinMode(). Bypasses Arduino Core's peripherial manager code,
+// thus does not reconfigures pins. Does not change GPIO Matrix or/and IO_MUX function for the pin
+// Safe to call on ESP32's pins 6..11 (internal SPI FLASH)
 void pinMode2(unsigned int pin, unsigned int flags);
 
-
-// Port to use for ESPShell. Set to 99 for USB
+// espshell runs on this port:
 static uart_port_t uart = STARTUP_PORT;
 
 // --   SHELL TO CONSOLE HARDWARE GLUE --
 // espshell uses console_read../console_write.. and some other functions to print data or read user input.
-// In order to implement support for another typeof hardware (say USBCDC) one have to implement functions
+// In order to implement support for another type of hardware (say USBCDC) one have to implement functions
 // below
 
 #ifdef SERIAL_IS_USB
-// Serial is class USBCDC ie native USB port
 #error "console_...() functions are not implemented"
 #else
-// Serial is class HardwareSerial ie UART
-
 // Send characters to user terminal
 static inline __attribute__((always_inline)) int console_write_bytes(const void *buf, size_t len) {
   return uart_write_bytes(uart, buf, len);
 }
-
+// How many characters are available for read without blocking?
+static inline __attribute__((always_inline)) int console_available() {
+  size_t av;
+  return ESP_OK == uart_get_buffered_data_len(uart, &av) ? (int)av : -1;
+}
 // read user input, with timeout
 static inline __attribute__((always_inline)) int console_read_bytes(void *buf, uint32_t len, TickType_t wait) {
   return uart_read_bytes(uart, buf, len, wait);
 }
-
 // is UART (or USBCDC) driver installed and can be used?
 static inline __attribute__((always_inline)) bool console_isup() {
   return uart_isup(uart);
 }
+#endif  //SERIAL_IS_USB
 
 // Make ESPShell to use specified UART (or USB) for its IO. Default is uart0.
-// console_here(-1) returns uart port number occupied by espshell
 static inline __attribute__((always_inline)) int console_here(int i) {
-  return i < 0 ? uart : (i > UART_NUM_MAX ? -1 : (uart = i));
+  return i < 0 ? uart : (i > UART_NUM_MAX ? (i == 99 ? (uart = i) : -1) : (uart = i));
 }
 
-//Detects if ANY key is pressed in serial terminal
-//or any character was sent in Arduino IDE Serial Monitor.
-//
-static bool anykey_pressed() {
-
-  size_t av = 0;
-  if (ESP_OK == uart_get_buffered_data_len(uart, &av))
-    if (av > 0) {
-      // read & discard a keypress
-      unsigned char c;
-      console_read_bytes(&c, 1, 0);
-      return true;
-    }
-  return false;
-}
-
-#endif  //SERIAL_IS_USB
 
 //========>=========>======= EDITLINE CODE BELOW (modified ancient version) =======>=======>
 //
@@ -353,7 +364,7 @@ static STATUS meta();
 
 static const KEYMAP Map[] = {
   //Key       callback           action
-  { CTL('C'), inject_suspend },  // "exit" + "suspend" commands
+  { CTL('C'), inject_suspend },  // "suspend" commands
   { CTL('Z'), inject_exit },     // "exit" command
 
   { CTL('A'), home_pressed },  // <HOME>
@@ -633,10 +644,10 @@ inject_exit() {
   return CSstay;
 }
 
-// Ctrl+C handler: sends "exit" followed by "suspend"
+// Ctrl+C handler: sends "suspend"
 static STATUS
 inject_suspend() {
-  TTYqueue("exit\nsuspend\n");
+  TTYqueue("suspend\n");
   return CSstay;
 }
 
@@ -1041,8 +1052,8 @@ meta() {
     unsigned char code = 0;
 
     for (i = 0; (i < 3) && isdigit(c); i++) {
-     code = code * 10 + c - '0';
-     c = TTYget();
+      code = code * 10 + c - '0';
+      c = TTYget();
     }
     Pushed = 1;
     PushBack = code;
@@ -1366,39 +1377,9 @@ argify(unsigned char *line, unsigned char ***avp) {
 }
 ////////////////////////////// EDITLINE CODE END
 
-//TAG:includes
-#include <soc/soc_caps.h>
-#include <soc/gpio_struct.h>
-#include <soc/pcnt_struct.h>
-#include <soc/efuse_reg.h>
 
-#include <hal/gpio_ll.h>
-
-#include <driver/gpio.h>
-#include <driver/pcnt.h>
-
-#include <rom/gpio.h>
-
-#include <esp_timer.h>
-#include <esp_chip_info.h>
-
-#if WITH_FS
-#  include <esp_vfs_fat.h>
-#  include <diskio.h>
-#  include <diskio_wl.h>
-#  include <vfs_fat_internal.h>
-#  include <esp_littlefs.h>
-#endif
-
-#include <esp32-hal-periman.h>
-#include <esp32-hal-ledc.h>
-#include <esp32-hal-rmt.h>
-#include <esp32-hal-uart.h>
-
-extern gpio_dev_t GPIO;              // low-level GPIO driver structure (used by gpio_ll_... functions)
 static TaskHandle_t shell_task = 0;  // Main espshell task ID
 static int shell_core = 0;           // CPU core number ESPShell is running on. For single core systems it is always 0
-
 
 // Mutex to protect reference counters of argcargv_t structure.
 // Yes it is global single lock
@@ -1479,8 +1460,7 @@ static argcargv_t *userinput_tokenize(char *userinput) {
 // check if *this* task (a caller) is executed as separate (background) task
 // or it is executed in context of ESPShell
 //
-static inline __attribute__((always_inline))
-int is_foreground_task() {
+static inline __attribute__((always_inline)) int is_foreground_task() {
   return shell_task == xTaskGetCurrentTaskHandle();
 }
 
@@ -1503,14 +1483,14 @@ extern bool esp_gpio_is_pin_reserved(unsigned int gpio);
 
 
 
-//TAG:forwards
+
 //GCC stringify magic.
 #define xstr(s) ystr(s)
 #define ystr(s) #s
 
 #define MAGIC_FREQ 312000  // max allowed frequency for the "pwm" command
 
-static int q_strcmp(const char *, const char *);  // loose strcmp
+
 #if WITH_HELP
 static int cmd_question(int, char **);
 #endif
@@ -1538,7 +1518,21 @@ static int cmd_files_if(int, char **);
 static int cmd_files_mount0(int, char **);
 static int cmd_files_mount(int, char **);
 static int cmd_files_unmount(int, char **);
-#endif //WITH_FS
+static int cmd_files_cd(int, char **);
+static int cmd_files_pwd(int, char **);
+static int cmd_files_ls(int, char **);
+static int cmd_files_rm(int, char **);
+static int cmd_files_mv(int, char **);
+static int cmd_files_cp(int, char **);
+static int cmd_files_write(int, char **);
+static int cmd_files_append(int, char **);
+static int cmd_files_insert(int, char **);
+static int cmd_files_delete(int, char **);
+static int cmd_files_mkdir(int, char **);
+static int cmd_files_cat(int, char **);
+static int cmd_files_touch(int, char **);
+static int cmd_files_format(int, char **);
+#endif  //WITH_FS
 static int cmd_tty(int, char **);
 static int cmd_echo(int, char **);
 
@@ -1933,13 +1927,25 @@ static int convar_set(const char *name, void *value) {
 //
 // `duration` - delay time in milliseconds
 //  returns duration if ok, <duration if was interrupted
-
-// TODO: rewrite to use NotifyDelay only and make anykey_pressed sending notifications?
-//       then we don't need 250ms polling thing
-//
-
-#define TOO_LONG   4999
+#define TOO_LONG 4999
 #define DELAY_POLL 250
+
+
+//Detects if ANY key is pressed in serial terminal
+//or any character was sent in Arduino IDE Serial Monitor.
+// TODO: rewrite to use NotifyDelay only and make anykey_pressed sending notifications? Then we don't need 250ms polling thing
+static bool anykey_pressed() {
+
+  int av;
+  if ((av = console_available()) > 0) {
+    // read & discard a keypress
+    unsigned char c;
+    console_read_bytes(&c, 1, 0);
+    return true;
+  }
+  return false;
+}
+
 
 static unsigned int delay_interruptible(unsigned int duration) {
 
@@ -1951,7 +1957,7 @@ static unsigned int delay_interruptible(unsigned int duration) {
     while (duration >= DELAY_POLL) {
       duration -= DELAY_POLL;
       delayed += DELAY_POLL;
-      
+
       if (xTaskNotifyWait(0, 0xffffffff, NULL, pdMS_TO_TICKS(DELAY_POLL)) == pdPASS)
         return delayed;
 
@@ -1962,7 +1968,7 @@ static unsigned int delay_interruptible(unsigned int duration) {
   if (duration) {
     unsigned int now = millis();
     if (xTaskNotifyWait(0, 0xffffffff, NULL, pdMS_TO_TICKS(duration)) == pdPASS)
-      duration = millis() - now; // calculate how long we were in waiting state before notification was received
+      duration = millis() - now;  // calculate how long we were in waiting state before notification was received
     delayed += duration;
   }
   return delayed;
@@ -1990,7 +1996,7 @@ struct sequence {
   rmt_data_t *seq;             // array of rmt_data_t
   rmt_data_t alph[2];          // alphabet. representation of "0" and "1"
   // TODO: bytes, head, tail (NEC protocol support)
-  char *bits;                  // asciiz "100101101"
+  char *bits;  // asciiz "100101101"
 };
 
 
@@ -2005,7 +2011,7 @@ struct keywords_t {
   const char *brief;                 // Brief text displayed on "?". NULL means "use help text, not brief"
 };
 
-// KEYWORDS_BEGIN - common commands inserted in every command tree at the beginning 
+// KEYWORDS_BEGIN - common commands inserted in every command tree at the beginning
 #if WITH_HELP
 #define HELP(X) X
 #define KEYWORDS_BEGIN { "?", cmd_question, -1, "% \"?\" - Show the list of available commands\r\n% \"? comm\" - Get help on command \"comm\"\r\n% \"? keys\" - Get information on terminal keys used by ESPShell", "Commands list & help" },
@@ -2037,27 +2043,32 @@ static const struct keywords_t keywords_uart[] = {
   { "up", cmd_uart, 3, HELP("% \"up RX TX BAUD\"\r\n"
                             "%\r\n"
                             "% Initialize uart interface X on pins RX/TX,baudrate BAUD, 8N1 mode\r\n"
-                            "% Ex.: up 18 19 115200 - Setup uart on pins rx=18, tx=19, at speed 115200"),"Initialize uart (pins/speed)" },
+                            "% Ex.: up 18 19 115200 - Setup uart on pins rx=18, tx=19, at speed 115200"),
+    "Initialize uart (pins/speed)" },
 
   { "baud", cmd_uart_baud, 1, HELP("% \"baud SPEED\"\r\n"
                                    "%\r\n"
                                    "% Set speed for the uart (uart must be initialized)\r\n"
-                                   "% Ex.: baud 115200 - Set uart baud rate to 115200"),"Set baudrate" },
+                                   "% Ex.: baud 115200 - Set uart baud rate to 115200"),
+    "Set baudrate" },
 
   { "down", cmd_uart, 0, HELP("% \"down\"\r\n"
                               "%\r\n"
-                              "% Shutdown interface, detach pins"),"Shutdown" },
+                              "% Shutdown interface, detach pins"),
+    "Shutdown" },
 
   // overlaps with "uart X down", never called, here is for the help text only
   { "read", cmd_uart, 0, HELP("% \"read\"\r\n"
                               "%\r\n"
-                              "% Read bytes (available) from uart interface X"),"Read data from UART" },
+                              "% Read bytes (available) from uart interface X"),
+    "Read data from UART" },
 
   { "tap", cmd_uart, 0, HELP("% \"tap\\r\n"
                              "%\r\n"
                              "% Bridge the UART IO directly to/from shell\r\n"
                              "% User input will be forwarded to uart X;\r\n"
-                             "% Anything UART X sends back will be forwarded to the user"), "Talk to device connected" },
+                             "% Anything UART X sends back will be forwarded to the user"),
+    "Talk to device connected" },
 
   { "write", cmd_uart, -1, HELP("% \"write TEXT\"\r\n"
                                 "%\r\n"
@@ -2065,7 +2076,8 @@ static const struct keywords_t keywords_uart[] = {
                                 "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
                                 "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n"
                                 "%\r\n"
-                                "% Ex.: \"write ATI\\n\\rMixed\\20Text and \\20\\21\\ff\""), "Send bytes over this UART" },
+                                "% Ex.: \"write ATI\\n\\rMixed\\20Text and \\20\\21\\ff\""),
+    "Send bytes over this UART" },
 
   KEYWORDS_END
 };
@@ -2082,31 +2094,37 @@ static const struct keywords_t keywords_i2c[] = {
   { "up", cmd_i2c, 3, HELP("% \"up SDA SCL CLOCK\"\r\n"
                            "%\r\n"
                            "% Initialize I2C interface X, use pins SDA/SCL, clock rate CLOCK\r\n"
-                           "% Ex.: up 21 22 100000 - enable i2c at pins sda=21, scl=22, 100kHz clock"), "initialize interface (pins and speed)" },
+                           "% Ex.: up 21 22 100000 - enable i2c at pins sda=21, scl=22, 100kHz clock"),
+    "initialize interface (pins and speed)" },
 
   { "clock", cmd_i2c_clock, 1, HELP("% \"clock SPEED\"\r\n"
                                     "%\r\n"
                                     "% Set I2C master clock (i2c must be initialized)\r\n"
-                                    "% Ex.: clock 100000 - Set i2c clock to 100kHz"), "Set clock" },
+                                    "% Ex.: clock 100000 - Set i2c clock to 100kHz"),
+    "Set clock" },
 
 
   { "read", cmd_i2c, 2, HELP("% \"read ADDR SIZE\"\r\n"
                              "%\r\n"
                              "% I2C bus X : read SIZE bytes from a device at address ADDR (hex)\r\n"
-                             "% Ex.: read 68 7 - read 7 bytes from device address 0x68"), "Read data from a device" },
+                             "% Ex.: read 68 7 - read 7 bytes from device address 0x68"),
+    "Read data from a device" },
 
   { "down", cmd_i2c, 0, HELP("% \"down\"\r\n"
                              "%\r\n"
-                             "% Shutdown I2C interface X"), "Shutdown i2c interface" },
+                             "% Shutdown I2C interface X"),
+    "Shutdown i2c interface" },
 
   { "scan", cmd_i2c, 0, HELP("% \"scan\"\r\n"
                              "%\r\n"
-                             "% Scan I2C bus X for devices. Interface must be initialized!"), "Scan i2c bus" },
+                             "% Scan I2C bus X for devices. Interface must be initialized!"),
+    "Scan i2c bus" },
 
   { "write", cmd_i2c, -1, HELP("% \"write ADDR D1 [D2 ... Dn]\"\r\n"
                                "%\r\n"
                                "% Write bytes D1..Dn (hex values) to address ADDR (hex) on I2C bus X\r\n"
-                               "% Ex.: write 78 0 1 FF - write 3 bytes to address 0x78: 0,1 and 255"), "Send bytes to the device" },
+                               "% Ex.: write 78 0 1 FF - write 3 bytes to address 0x78: 0,1 and 255"),
+    "Send bytes to the device" },
 
   KEYWORDS_END
 };
@@ -2120,19 +2138,22 @@ static const struct keywords_t keywords_sequence[] = {
   { "eot", cmd_seq_eot, 1, HELP("% \"eot high|low\"\r\n"
                                 "%\r\n"
                                 "% End of transmission: pull the line high or low at the\r\n"
-                                "% end of a sequence. Default is \"low\""), "End-of-Transmission pin state" },
+                                "% end of a sequence. Default is \"low\""),
+    "End-of-Transmission pin state" },
 
   { "tick", cmd_seq_tick, 1, HELP("% \"tick TIME\"\r\n"
                                   "%\r\n"
                                   "% Set the sequence tick time: defines a resolution of a pulse sequence.\r\n"
                                   "% Expressed in microseconds, can be anything between 0.0125 and 3.2\r\n"
-                                  "% Ex.: tick 0.1 - set resolution to 0.1 microsecond"), "Set resolution" },
+                                  "% Ex.: tick 0.1 - set resolution to 0.1 microsecond"),
+    "Set resolution" },
 
   { "zero", cmd_seq_zeroone, 2, HELP("% \"zero LEVEL/DURATION [LEVEL2/DURATION2]\"\r\n"
                                      "%\r\n"
                                      "% Define a logic \"0\"\r\n"
                                      "% Ex.: zero 0/50      - 0 is a level: LOW for 50 ticks\r\n"
-                                     "% Ex.: zero 1/50 0/20 - 0 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"), "Define a zero" },
+                                     "% Ex.: zero 1/50 0/20 - 0 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"),
+    "Define a zero" },
 
   { "zero", cmd_seq_zeroone, 1, HIDDEN_KEYWORD },  //1 arg command
 
@@ -2140,7 +2161,8 @@ static const struct keywords_t keywords_sequence[] = {
                                     "%\r\n"
                                     "% Define a logic \"1\"\r\n"
                                     "% Ex.: one 1/50       - 1 is a level: HIGH for 50 ticks\r\n"
-                                    "% Ex.: one 1/50 0/20  - 1 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"), "Define an one" },
+                                    "% Ex.: one 1/50 0/20  - 1 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"),
+    "Define an one" },
 
   { "one", cmd_seq_zeroone, 1, HIDDEN_KEYWORD },  //1 arg command
 
@@ -2150,7 +2172,8 @@ static const struct keywords_t keywords_sequence[] = {
                                   "% Overrides previously set \"levels\" command\r\n"
                                   "% See commands \"one\" and \"zero\" to define \"1\" and \"0\"\r\n"
                                   "%\r\n"
-                                  "% Ex.: bits 11101000010111100  - 17 bit sequence"), "Set pattern to transmit" },
+                                  "% Ex.: bits 11101000010111100  - 17 bit sequence"),
+    "Set pattern to transmit" },
 
   { "levels", cmd_seq_levels, -1, HELP("% \"levels L/D L/D ... L/D\"\r\n"
                                        "%\r\n"
@@ -2159,7 +2182,8 @@ static const struct keywords_t keywords_sequence[] = {
                                        "% Overrides previously set \"bits\" command\r\n"
                                        "%\r\n"
                                        "% Ex.: levels 1/50 0/20 1/100 0/500  - HIGH 50 ticks, LOW 20, HIGH 100 and 0 for 500 ticks\r\n"
-                                       "% Ex.: levels 1/32767 1/17233 0/32767 0/7233 - HIGH for 50000 ticks, LOW for 40000 ticks"), "Set levels to transmit" },
+                                       "% Ex.: levels 1/32767 1/17233 0/32767 0/7233 - HIGH for 50000 ticks, LOW for 40000 ticks"),
+    "Set levels to transmit" },
 
   { "modulation", cmd_seq_modulation, 3, HELP("% \"modulation FREQ [DUTY [low|high]]\"\r\n"
                                               "%\r\n"
@@ -2168,7 +2192,8 @@ static const struct keywords_t keywords_sequence[] = {
                                               "%\r\n"
                                               "% Ex.: modulation 100         - modulate all 1s with 100Hz, 50% duty cycle\r\n"
                                               "% Ex.: modulation 100 0.3 low - modulate all 0s with 100Hz, 30% duty cycle\r\n"
-                                              "% Ex.: modulation 0           - disable modulation\r\n"), "Enable/disable modulation" },
+                                              "% Ex.: modulation 0           - disable modulation\r\n"),
+    "Enable/disable modulation" },
 
   { "modulation", cmd_seq_modulation, 2, HIDDEN_KEYWORD },
   { "modulation", cmd_seq_modulation, 1, HIDDEN_KEYWORD },
@@ -2188,121 +2213,140 @@ static const struct keywords_t keywords_files[] = {
   KEYWORDS_BEGIN
 
   { "mount", cmd_files_mount, 2, HELP("% \"mount LABEL [/MOUNT_POINT]\"\r\n"
-                        "%\r\n"
-                        "% Mount a filesystem located on built-in SPI FLASH\r\n"
-                        "%\r\n"
-                        "% LABEL        - SPI FLASH partition label\r\n"
-                        "% /MOUNT_POINT - A path, starting with \"/\" where filesystem will be mounted.\r\n"
-                        "%\r\n"
-                        "% Ex.: mount ffat /ffat - mount partition \"ffat\" at directory \"/ffat\""),  "Mount partition" },
+                                      "%\r\n"
+                                      "% Mount a filesystem located on built-in SPI FLASH\r\n"
+                                      "%\r\n"
+                                      "% LABEL        - SPI FLASH partition label\r\n"
+                                      "% /MOUNT_POINT - A path, starting with \"/\" where filesystem will be mounted.\r\n"
+                                      "%\r\n"
+                                      "% Ex.: mount ffat /ffat - mount partition \"ffat\" at directory \"/ffat\""),
+    "Mount partition" },
   { "mount", cmd_files_mount, 1, HIDDEN_KEYWORD },
   { "mount", cmd_files_mount0, 0, HELP("% \"mount\"\r\n"
-                        "%\r\n"
-                        "% Command \"mount\" **without arguments** displays information about partitions\r\n"
-                        "% and mounted file systems (mount point, FS type, total/used counters)"), NULL },
+                                       "%\r\n"
+                                       "% Command \"mount\" **without arguments** displays information about partitions\r\n"
+                                       "% and mounted file systems (mount point, FS type, total/used counters)"),
+    NULL },
 
 
   { "unmount", cmd_files_unmount, 1, HELP("% \"unmount /MOUNT_POINT\"\r\n"
-                        "%\r\n"
-                        "% Unmount a file system. If MOUNT_POINT is \"*\" then all filesystems are unmounted\r\n"), "Unmount partition" },
+                                          "%\r\n"
+                                          "% Unmount a file system. If MOUNT_POINT is \"*\" then all filesystems are unmounted\r\n"),
+    "Unmount partition" },
 
-  { "ls", 0, 1, HELP("% \"ls [PATH]\"\r\n"
-                     "%\r\n"
-                     "% Show directory listing at PATH given\r\n"
-                     "% If PATH is omitted then current directory list is shown"), "List directory" },
+  { "ls", cmd_files_ls, 1, HELP("% \"ls [PATH]\"\r\n"
+                                "%\r\n"
+                                "% Show directory listing at PATH given\r\n"
+                                "% If PATH is omitted then current directory list is shown"),
+    "List directory" },
 
-  { "ls", 0, 0, HIDDEN_KEYWORD },
-
-
-  { "pwd", 0, 0, HELP("% \"pwd\"\r\n"
-                      "%\r\n"
-                      "% Print working directory. Includes a mount point"), "Working directory" },
-
-  { "cd", 0, 0, HELP("% \"cd [PATH|..]\"\r\n"
-                     "%\r\n"
-                     "% Change current directory. Paths having .. (i.e \"../dir/\") are not supported\r\n"
-                     "%\r\n"
-                     "% Ex.: \"cd\"            - change current directory to \"/\"\r\n"
-                     "% Ex.: \"cd ..\"         - go one directory up\r\n"
-                     "% Ex.: \"cd /ffat/test/  - change to \"/ffat/test/\"\r\n"
-                     "% Ex.: \"cd test2/test3/ - change to \"/ffat/test/test2/test3\"\r\n"), "Change directory" },
+  { "ls", cmd_files_ls, 0, HIDDEN_KEYWORD },
 
 
-  { "rm", 0, 1, HELP("% \"rm PATH\"\r\n"
-                     "%\r\n"
-                     "% Remove a file or a directory with files.\r\n"
-                     "% When removing directories: removed with files and subdirs"), "Delete files" },
+  { "pwd", cmd_files_pwd, 0, HELP("% \"pwd\"\r\n"
+                                  "%\r\n"
+                                  "% Print working directory. Includes a mount point"),
+    "Working directory" },
 
-  { "mv", 0, 2, HELP("% \"mv SOURCE DESTINATION\\r\n"
-                     "%\r\n"
-                     "% Move or Rename file or dicetory SOURCE to DESTINATION\r\n"
-                     "%\r\n"
-                     "% Ex.: \"mv /ffat/dir1 /ffat/dir2\"             - rename directory \"dir1\" to \"dir2\"\r\n"
-                     "% Ex.: \"mv /ffat/fileA.txt /ffat/fileB.txt\"   - rename file \"fileA.txt\" to \"fileB.txt\"\r\n"
-                     "% Ex.: \"mv /ffat/dir1/file1 /ffat/dir2\"       - move file to directory\r\n"
-                     "% Ex.: \"mv /ffat/fileA.txt /spiffs/fileB.txt\" - move file between filesystems\r\n"), "Move/Rename files" },
+  { "cd", cmd_files_cd, 1, HELP("% \"cd [PATH|..]\"\r\n"
+                                "%\r\n"
+                                "% Change current directory. Paths having .. (i.e \"../dir/\") are not supported\r\n"
+                                "%\r\n"
+                                "% Ex.: \"cd\"            - change current directory to \"/\"\r\n"
+                                "% Ex.: \"cd ..\"         - go one directory up\r\n"
+                                "% Ex.: \"cd /ffat/test/  - change to \"/ffat/test/\"\r\n"
+                                "% Ex.: \"cd test2/test3/ - change to \"/ffat/test/test2/test3\"\r\n"),
+    "Change directory" },
+  { "cd", cmd_files_cd, 0, HIDDEN_KEYWORD },
 
-  { "cp", 0, 2, HELP("% \"cp SOURCE DESTINATION\\r\n"
-                     "%\r\n"
-                     "% Copy file SOURCE to file DESTINATION.\r\n"
-                     "% Files SOURCE and DESTINATION can be on different filesystems\r\n"
-                     "%\r\n"
-                     "% Ex.: \"cp /ffat/test.txt /ffat/test2.txt\"       - copy file to file\r\n"
-                     "% Ex.: \"cp /ffat/test.txt /ffat/dir/\"            - copy file to directory\r\n"
-                     "% Ex.: \"cp /spiffs/test.txt /ffat/dir/test2.txt\" - copy between filesystems\r\n"
-                     
-                     ), "Copy files" },
+  { "rm", cmd_files_rm, 1, HELP("% \"rm PATH\"\r\n"
+                                "%\r\n"
+                                "% Remove a file or a directory with files.\r\n"
+                                "% When removing directories: removed with files and subdirs"),
+    "Delete files" },
 
-  { "write", 0, -1, HELP("% \"write FILENAME TEXT1 TEXT2 ... TEXTn\"\r\n"
-                         "%\r\n"
-                         "% Write an ascii/hex string(s) to file\r\n"
-                         "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
-                         "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n"
-                         "%\r\n"
-                         "% Ex.: \"write /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""), "Write bytes" },
+  { "mv", cmd_files_mv, 2, HELP("% \"mv SOURCE DESTINATION\\r\n"
+                                "%\r\n"
+                                "% Move or Rename file or dicetory SOURCE to DESTINATION\r\n"
+                                "%\r\n"
+                                "% Ex.: \"mv /ffat/dir1 /ffat/dir2\"             - rename directory \"dir1\" to \"dir2\"\r\n"
+                                "% Ex.: \"mv /ffat/fileA.txt /ffat/fileB.txt\"   - rename file \"fileA.txt\" to \"fileB.txt\"\r\n"
+                                "% Ex.: \"mv /ffat/dir1/file1 /ffat/dir2\"       - move file to directory\r\n"
+                                "% Ex.: \"mv /ffat/fileA.txt /spiffs/fileB.txt\" - move file between filesystems\r\n"),
+    "Move/Rename files" },
 
-  { "append", 0, -1, HELP("% \"append FILENAME TEXT1 TEXT2 ... TEXTn\"\r\n"
-                          "%\r\n"
-                          "% Append an ascii/hex string(s) to file\r\n"
-                          "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
-                          "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n"
-                          "%\r\n"
-                          "% Ex.: \"append /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""), "Append bytes" },
+  { "cp", cmd_files_cp, 2, HELP("% \"cp SOURCE DESTINATION\\r\n"
+                                "%\r\n"
+                                "% Copy file SOURCE to file DESTINATION.\r\n"
+                                "% Files SOURCE and DESTINATION can be on different filesystems\r\n"
+                                "%\r\n"
+                                "% Ex.: \"cp /ffat/test.txt /ffat/test2.txt\"       - copy file to file\r\n"
+                                "% Ex.: \"cp /ffat/test.txt /ffat/dir/\"            - copy file to directory\r\n"
+                                "% Ex.: \"cp /spiffs/test.txt /ffat/dir/test2.txt\" - copy between filesystems\r\n"
 
-  { "insert", 0, -1, HELP("% \"insert LINE_NUMBER FILENAME TEXT1 TEXT2 ... TEXTn\"\r\n"                          
-                          "% Insert TEX1..TEXTn to file FILENAME before line LINE_NUMBER\r\n"
-                          "% \"\\n\" is appended to the string being inserted, \"\\r\" is not\r\n"
-                          "% Lines are numbered starting from 0. Use \"cat\" command to find out line numbers\r\n"
-                          "%\r\n"
-                          "% Ex.: \"insert 0 /ffat/test.txt Hello World!\""), "Insert bytes"},
+                                ),
+    "Copy files" },
 
-  { "delete", 0, -1, HELP("% \"delete LINE_NUMBER FILENAME\"\r\n"                          
-                          "% Delete line LINE_NUMBER from a text file FILENAME\r\n"
-                          "% Lines are numbered starting from 0. Use \"cat\" command to find out line numbers\r\n"
-                          "%\r\n"
-                          "Ex.: \"delete 10 /ffat/test.txt\""), "Delete bytes"},
-  
-  { "mkdir", 0, 1, HELP("% \"mkdir\"\r\n"
-                        "%\r\n"
-                        "% Create an empty directory\r\n"), "Create directory" },
+  { "write", cmd_files_write, -1, HELP("% \"write FILENAME TEXT1 TEXT2 ... TEXTn\"\r\n"
+                                       "%\r\n"
+                                       "% Write an ascii/hex string(s) to file\r\n"
+                                       "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
+                                       "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n"
+                                       "%\r\n"
+                                       "% Ex.: \"write /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""),
+    "Write bytes" },
 
-  { "cat", 0, 1, HELP("% \"cat FILENAME\"\r\n"
-                      "%\r\n"
-                      "% Display file FILENAME with line numbers\r\n"), "Display text/binary file" },
+  { "append", cmd_files_append, -1, HELP("% \"append FILENAME TEXT1 TEXT2 ... TEXTn\"\r\n"
+                                         "%\r\n"
+                                         "% Append an ascii/hex string(s) to file\r\n"
+                                         "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
+                                         "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n"
+                                         "%\r\n"
+                                         "% Ex.: \"append /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""),
+    "Append bytes" },
 
-  { "touch", 0, 1, HELP("% \"touch FILENAME\"\r\n"
-                        "%\r\n"
-                        "% Ceate a new file or \"touch\" existing\r\n"), "Touch/Create file" },
+  { "insert", cmd_files_insert, -1, HELP("% \"insert LINE_NUMBER FILENAME TEXT1 TEXT2 ... TEXTn\"\r\n"
+                                         "% Insert TEX1..TEXTn to file FILENAME before line LINE_NUMBER\r\n"
+                                         "% \"\\n\" is appended to the string being inserted, \"\\r\" is not\r\n"
+                                         "% Lines are numbered starting from 0. Use \"cat\" command to find out line numbers\r\n"
+                                         "%\r\n"
+                                         "% Ex.: \"insert 0 /ffat/test.txt Hello World!\""),
+    "Insert bytes" },
 
-  { "format", 0, 2, HELP("% \"format LABEL [quick]]\"\r\n"
-                       "%\r\n"
-                       "% Format partition LABEL. Use \"quick\" option for FAT quick-format\r\n"), "Erase old & create new filesystem" },
+  { "delete", cmd_files_delete, 2, HELP("% \"delete FILENAME LINE_NUM [COUNT]\"\r\n"
+                                        "% Delete line LINE_NUM from a text file FILENAME\r\n"
+                                        "% Optionsl COUNT argument is the number of lines to remove (default is 1)"
+                                        "% Lines are numbered starting from 0. Use \"cat\" command to find out line numbers\r\n"
+                                        "%\r\n"
+                                        "Ex.: \"delete 10 /ffat/test.txt\" - remove line #10 from \"/ffat/test.txt\""),
+    "Delete lines" },
+  { "delete", cmd_files_delete, 1, HIDDEN_KEYWORD },
 
-  { "format", 0, 1, HIDDEN_KEYWORD }, // same as above but with 1 arg
+  { "mkdir", cmd_files_mkdir, 1, HELP("% \"mkdir PATH\"\r\n"
+                                      "%\r\n"
+                                      "% Create an empty directory PATH\r\n"),
+    "Create directory" },
+
+  { "cat", cmd_files_cat, 1, HELP("% \"cat FILENAME\"\r\n"
+                                  "%\r\n"
+                                  "% Display file FILENAME with line numbers\r\n"),
+    "Display text/binary file" },
+
+  { "touch", cmd_files_touch, 1, HELP("% \"touch FILENAME\"\r\n"
+                                      "%\r\n"
+                                      "% Ceate a new file or \"touch\" existing\r\n"),
+    "Touch/Create file" },
+
+  { "format", cmd_files_format, 2, HELP("% \"format LABEL [quick]]\"\r\n"
+                                        "%\r\n"
+                                        "% Format partition LABEL. Use \"quick\" option for FAT quick-format\r\n"),
+    "Erase old & create new filesystem" },
+
+  { "format", cmd_files_format, 1, HIDDEN_KEYWORD },
 
   KEYWORDS_END
 };
-#endif //WITH_FS
+#endif  //WITH_FS
 
 // root directory commands
 //TAG:keywords_main
@@ -2314,7 +2358,8 @@ static const struct keywords_t keywords_main[] = {
 #if WITH_FS
   { "files", cmd_files_if, 0, HELP("% \"files\"\r\n"
                                    "%\r\n"
-                                   "% Enter files & file system operations mode"), "File system access" },
+                                   "% Enter files & file system operations mode"),
+    "File system access" },
 #endif
 
   // System commands
@@ -2356,7 +2401,7 @@ static const struct keywords_t keywords_main[] = {
     "Sequence configuration" },
 
   // Show funcions (more will be added)
-  { "show", cmd_show, 2, HELP("\"show seq X\" - display sequence X\r\n"), "Display information" },
+  { "show", cmd_show, 2, HELP("% \"show seq X\" - display sequence X\r\n"), "Display information" },
 
   // Shell input/output settings
   { "tty", cmd_tty, 1, HELP("% \"tty X\" Use uart X for command line interface"), "IO redirect" },
@@ -2386,18 +2431,22 @@ static const struct keywords_t keywords_main[] = {
   { "pin&", cmd_async, -1, HIDDEN_KEYWORD },
 
   // PWM generation
-  { "pwm", cmd_pwm, 3, HELP("% \"pwm X FREQ DUTY\"\r\n"
+  { "pwm", cmd_pwm, 3, HELP("% \"pwm X [FREQ [DUTY]]\"\r\n"
                             "%\r\n"
                             "% Start PWM generator on pin X, frequency FREQ Hz and duty cycle of DUTY\r\n"
-                            "% Max frequency is 312000 Hz\r\n"
-                            "% Value of DUTY is in range [0..1] with 0.123 being a 12.3% duty cycle"
-                            "% Duty resolution is 0.005 (0.5%)"),
+                            "% Maximum frequency is 312 kHz, and DUTY is in range [0..1] with 0.123 being\r\n"
+                            "% a 12.3% duty cycle\r\n"
+                            "%\r\n"
+                            "% DUTY is optional and its default value is 50% (if not specified) and\r\n"
+                            "% its resolution is 0.005 (0.5%)"
+                            "%\r\n"
+                            "% Ex.: pwm 2 1000     - enable PWM of 1kHz, 50% duty on pin 2\r\n"
+                            "% Ex.: pwm 2          - disable PWM on pin 2\r\n"
+                            "% Ex.: pwm 2 6400 0.1 - enable PWM of 6.4kHz, duty cycle of 10% on pin 2\r\n"),
     "PWM output" },
-  { "pwm", cmd_pwm, 2, HELP("% \"pwm X FREQ\"\r\n"
-                            "% Start squarewave generator on pin X, frequency FREQ Hz\r\n"
-                            "% duty cycle is  set to 50%"),
-    NULL },
-  { "pwm", cmd_pwm, 1, HELP("% \"pwm X\" Stop generator on pin X"), NULL },
+  { "pwm", cmd_pwm, 2, HIDDEN_KEYWORD },
+  { "pwm", cmd_pwm, 1, HIDDEN_KEYWORD },
+
   // Pulse counting
   { "count", cmd_count, 3, HELP("% \"count PIN [DURATION [neg|pos|both]]\"\r\n%\r\n"
                                 "% Count pulses (negative/positive edge or both) on pin PIN within DURATION time\r\n"
@@ -2447,7 +2496,8 @@ static const struct keywords_t keywords_main[] = {
 static const struct keywords_t *keywords = keywords_main;
 
 //common Failed message
-static const char *Failed = "%% Failed\r\n";
+static const char *Failed = "% Failed\r\n";
+static const char *Notset = "not set\r\n";
 
 // prompt
 static const char *prompt = PROMPT;
@@ -2538,23 +2588,16 @@ static void seq_freemem(int seq) {
 // initialize sequences to default values
 //
 static void seq_init() {
-  int i;
 
-  for (i = 0; i < SEQUENCES_NUM; i++) {
-
+  for (int i = 0; i < SEQUENCES_NUM; i++) {
     sequences[i].tick = 1;
     seq_freemem(i);
-    //sequences[i].seq = NULL;
-    //sequences[i].bits = NULL;
-
-    sequences[i].alph[0].duration0 = 0;
-    sequences[i].alph[0].duration1 = 0;
-    sequences[i].alph[1].duration0 = 0;
-    sequences[i].alph[1].duration1 = 0;
+    sequences[i].alph[0].duration0 = sequences[i].alph[0].duration1 = 0;
+    sequences[i].alph[1].duration0 = sequences[i].alph[1].duration1 = 0;
   }
 }
 
-static const char *Notset = "is not set yet\r\n";
+
 
 // dump sequence content
 static void seq_dump(int seq) {
@@ -2568,20 +2611,11 @@ static void seq_dump(int seq) {
 
   s = &sequences[seq];
 
-  q_printf("%%\r\n%% Sequence #%d:\r\n%% Resolution ", seq);
-
-  if (s->tick)
-    q_printf(": %.4fuS  (Frequency: %lu Hz)\r\n", s->tick, seq_tick2freq(s->tick));
-  else
-    q_print(Notset);
-
-  q_print("% Levels ");
+  q_printf("%%\r\n%% Sequence #%d:\r\n%% Resolution : %.4fuS  (Frequency: %lu Hz)\r\n", seq, s->tick, seq_tick2freq(s->tick));
+  q_print("% Levels are ");
   if (s->seq) {
-
     int i;
     unsigned long total = 0;
-
-    q_print("are :");
 
     for (i = 0; i < s->seq_len; i++) {
       if (!(i & 3))
@@ -2599,11 +2633,11 @@ static void seq_dump(int seq) {
   else
     q_print("is not used\r\n");
 
-  q_print("% Bit sequence ");
+  q_print("% Bit sequence is ");
   if (s->bits) {
 
     q_printf(": (%d bits) \"%s\"\r\n", strlen(s->bits), s->bits);
-    q_print("% Zero ");
+    q_print("% Zero is ");
     if (s->alph[0].duration0) {
       if (s->alph[0].duration1)
         q_printf("%d/%d %d/%d\r\n", s->alph[0].level0, s->alph[0].duration0, s->alph[0].level1, s->alph[0].duration1);
@@ -2612,7 +2646,7 @@ static void seq_dump(int seq) {
     } else
       q_print(Notset);
 
-    q_print("% One ");
+    q_print("% One is ");
     if (s->alph[1].duration0) {
       if (s->alph[1].duration1)
         q_printf("%d/%d %d/%d\r\n", s->alph[1].level0, s->alph[1].duration0, s->alph[1].level1, s->alph[1].duration1);
@@ -3236,11 +3270,11 @@ static int cmd_count(int argc, char **argv) {
   }
 
   q_printf("%% Counting pulses on GPIO%d...", pin);
-#if WITH_HELP  
+#if WITH_HELP
   if (is_foreground_task())
     q_print("(press <Enter> to stop counting)");
 #endif
-    q_print(CRLF);
+  q_print(CRLF);
 
 
   pcnt_unit_config(&cfg);
@@ -3261,7 +3295,7 @@ static int cmd_count(int argc, char **argv) {
   pcnt_intr_disable(PCNT_UNIT_0);
 
   count_overflow = count_overflow / 2 * PCNT_OVERFLOW + count;
-  q_printf("%% %u pulses in %.3f seconds (%.1f Hz)\r\n", count_overflow, (float)wait / 1000.0f, count_overflow * 1000.0f / (float )wait );
+  q_printf("%% %u pulses in %.3f seconds (%.1f Hz)\r\n", count_overflow, (float)wait / 1000.0f, count_overflow * 1000.0f / (float)wait);
   return 0;
 }
 
@@ -3307,7 +3341,7 @@ static int cmd_var_show(int argc, char **argv) {
     struct convar *var = var_head;
     q_print("% Registered variables:\r\n");
     while (var) {
-      q_printf("%% \"%s\", %d bytes long (%s)\r\n", var->name, var->size, var->size == 4 ? "float, int or unsigned int" : (var->size == 2 ? "short int" : "char" ));
+      q_printf("%% \"%s\", %d bytes long (%s)\r\n", var->name, var->size, var->size == 4 ? "float, int or unsigned int" : (var->size == 2 ? "short int" : "char"));
       var = var->next;
     }
     return 0;
@@ -3353,7 +3387,7 @@ static int cmd_var_show(int argc, char **argv) {
     }
 
     // display a number in hex, octal, binary, integer or float representation
-    
+
     q_printf("%% Hex: 0x%x, Octal: 0%o, Unsigned: %u, Signed: %i\r\n%% Floating point:%f\r\n%% Binary: 0b", unumber, unumber, unumber, inumber, fnumber);
     for (inumber = 0; inumber < 32; inumber++) {
       if (unumber & 0x80000000) {
@@ -3591,20 +3625,8 @@ static void pin_load(int pin) {
 // ESP32 has these while newer models have all GPIO capable
 // of Input & Output
 //
-static bool pin_is_input_only_pin(int pin) {
-#if 1
+static inline bool pin_is_input_only_pin(int pin) {
   return !GPIO_IS_VALID_OUTPUT_GPIO(pin);
-#else
-  switch (pin) {
-#ifdef CONFIG_IDF_TARGET_ESP32
-    case 34:
-    case 35:
-    case 36:
-    case 39: return true;
-#endif
-    default: return false;
-  }
-#endif
 }
 
 
@@ -4762,17 +4784,14 @@ uart_tap(int remote) {
 
     // 1. read all user input and send it to remote
     while (1) {
-      av = 0;
+
       // fails when interface is down. must not happen.
-      if (ESP_OK != uart_get_buffered_data_len(uart, &av))
+      if ((av = console_available()) <= 0)
         break;
 
       // must not happen unless UART FIFO sizes were changed in ESP-IDF
       if (av > UART_RXTX_BUF)
         av = UART_RXTX_BUF;
-
-      else if (!av)  //nothing to read?
-        break;
 
       char buf[av];
 
@@ -4782,8 +4801,6 @@ uart_tap(int remote) {
       if (buf[0] == BREAK_KEY)
         return;
       uart_write_bytes(remote, buf, av);
-      // make WDT happy if we get flooded.
-      //delay(1);
       yield();
     }
 
@@ -4807,7 +4824,7 @@ uart_tap(int remote) {
 
       uart_read_bytes(remote, buf, av, portMAX_DELAY);
       console_write_bytes(buf, av);
-      delay(1);
+      delay(1);  //TODO: yield() ?
     }
   }
 }
@@ -4901,7 +4918,6 @@ static int cmd_uart(int argc, char **argv) {
               char c = *p;
               p++;
               if (c == '\\') {
-
                 switch (*p) {
                   case '\\':
                     p++;
@@ -4977,28 +4993,26 @@ noinit:
   return 0;
 }
 
-
 //TAG:tty
 //"tty NUM"
 //
-// Set UART to use by this shell. By default it
-// is set to UART_0 which corresponds to Serial in Arduino (inless it
-// is an USB-enabled board )
+// Set UART (or USBCDC) to use by this shell.
 static int cmd_tty(int argc, char **argv) {
-
 
   int u;
   if (!isnum(argv[1]))
     return 1;
-  u = atoi(argv[1]);
-  if (!uart_isup(u))
-    q_errorf("%% UART%d is not initialized\r\n", u);
-  else {
+
+  // if not USB then check if requested UART is up & running
+  if ((u = atoi(argv[1])) != 99)
+    if (!uart_isup(u)) {
+      q_errorf("%% UART%d is not initialized\r\n", u);
+      return 0;
+    }
 #if WITH_HELP
-    q_printf("%% See you on UART%d. Bye!\r\n", u);
+  q_print("% See you there\r\n");
 #endif
-    uart = u;
-  }
+  console_here(u);
   return 0;
 }
 
@@ -5277,40 +5291,78 @@ static int cmd_kill(int argc, char **argv) {
 
 
 #if WITH_FS
-// Subtype of DATA entries in human-readable form
-static const char *partition_data_subtype(unsigned char subtype) {
 
-  switch (subtype) {
+static char *Cwd = NULL;  // Current working directory. Must end with "/"
 
-    case ESP_PARTITION_SUBTYPE_DATA_OTA:       return "  OTA data ";
-    case ESP_PARTITION_SUBTYPE_DATA_PHY:       return "  PHY data ";
-    case ESP_PARTITION_SUBTYPE_DATA_NVS:       return " NVStorage ";
-    case ESP_PARTITION_SUBTYPE_DATA_COREDUMP:  return " Core dump ";
-    case ESP_PARTITION_SUBTYPE_DATA_NVS_KEYS:  return "  NVS keys ";
-    case ESP_PARTITION_SUBTYPE_DATA_EFUSE_EM:  return " eFuse emu ";
-    case ESP_PARTITION_SUBTYPE_DATA_UNDEFINED: return " Undefined ";
-    case ESP_PARTITION_SUBTYPE_DATA_ESPHTTPD:  return " ESP HTTPD ";
-    case ESP_PARTITION_SUBTYPE_DATA_FAT:       return " FAT/exFAT ";
-    case ESP_PARTITION_SUBTYPE_DATA_SPIFFS:    return "    SPIFFS ";
-    case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS:  return "  LittleFS ";
-    default:                                   return " *Unknown* ";
+// set CWD
+// path must include a mountpoint as well: "/ffat/my_dir" if
+// one wishes to read/write files
+//
+static const char *files_set_cwd(const char *cwd) {
+
+  if (Cwd) {
+    free(Cwd);
+    Cwd = NULL;
   }
+
+  if (cwd) {
+    int len = strlen(cwd);
+    if (len) {
+      Cwd = (char *)malloc(len + 2);
+      if (Cwd) {
+        strcpy(Cwd, cwd);
+
+        len--;
+        if (Cwd[len] != '/' && cwd[len] != '\\')
+          strcat(Cwd, "/");
+      }
+    }
+  }
+#if 0
+  printf("files_set_cwd() : \"%s\"\r\n", Cwd ? Cwd : "(not set)");
+#endif
+  return Cwd;
+}
+
+// return current working directory or NULL if there
+// were memory allocation errors
+//
+static inline const char *files_get_cwd() {
+  return Cwd ? Cwd : files_set_cwd("/");
 }
 
 
-#include <wear_levelling.h> // SPI FLASH wear levelling library to use with FAT filesystem
+// Subtype of DATA entries in human-readable form
+static const char *files_subtype2text(unsigned char subtype) {
+
+  switch (subtype) {
+
+    case ESP_PARTITION_SUBTYPE_DATA_OTA: return "  OTA data ";
+    case ESP_PARTITION_SUBTYPE_DATA_PHY: return "  PHY data ";
+    case ESP_PARTITION_SUBTYPE_DATA_NVS: return " NVStorage ";
+    case ESP_PARTITION_SUBTYPE_DATA_COREDUMP: return " Core dump ";
+    case ESP_PARTITION_SUBTYPE_DATA_NVS_KEYS: return "  NVS keys ";
+    case ESP_PARTITION_SUBTYPE_DATA_EFUSE_EM: return " eFuse emu ";
+    case ESP_PARTITION_SUBTYPE_DATA_UNDEFINED: return " Undefined ";
+    case ESP_PARTITION_SUBTYPE_DATA_ESPHTTPD: return " ESP HTTPD ";
+    case ESP_PARTITION_SUBTYPE_DATA_FAT: return " FAT/exFAT ";
+    case ESP_PARTITION_SUBTYPE_DATA_SPIFFS: return "    SPIFFS ";
+    case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS: return "  LittleFS ";
+    default: return " *Unknown* ";
+  }
+}
 
 // espshell allows for simultaneous mounting up to MOUNTPOINTS_NUM partitions
 // mountpoints[] holds information about mounted filesystems. Only entries with
 // non-null 'mountpoint' member
 //
 static struct {
-  unsigned char flags;       // future extensions
-  char         *mp;          // "/ffat" , "/spiffs", etc
-  char          label[16+1]; // "ffat" strdup?
-  unsigned char type;        // ESP_PARTITION_SUBTYPE_DATA_[FAT|LITTLEFS|SPIFFS]
-  wl_handle_t   wl_handle;
-} mountpoints[ MOUNTPOINTS_NUM ] = { 0 };
+  unsigned char flags;  // future extensions
+  char *mp;             // "/ffat" , "/spiffs", etc
+  char label[16 + 1];   // "ffat" strdup?
+  unsigned char type;   // ESP_PARTITION_SUBTYPE_DATA_[FAT|LITTLEFS|SPIFFS]
+  wl_handle_t wl_handle;
+} mountpoints[MOUNTPOINTS_NUM] = { 0 };
 
 // return index in mountpoints[] array ot -1 on failure
 static int files_mountpoint_by_label(const char *label) {
@@ -5321,7 +5373,7 @@ static int files_mountpoint_by_label(const char *label) {
     if (label && !q_strcmp(label, mountpoints[i].label))
       return i;
   }
-  return -1;  
+  return -1;
 }
 
 static int files_mountpoint_by_path(const char *path) {
@@ -5335,6 +5387,104 @@ static int files_mountpoint_by_path(const char *path) {
   return -1;
 }
 
+// make full path from path and put result in out
+// return number of bytes in resulting path (0 == failed to make path)
+// If path starts from "/" then it is used as is
+//                otherwhise
+// path is appended to cwd and this full path is used
+//
+static int files_make_full_path(const char *path, char *out, size_t out_size) {
+
+  if (Cwd == NULL)
+    if (files_set_cwd("/") == NULL)
+      return 0;
+
+  int len = strlen(path);
+
+  if (path[0] == '/' || path[0] == '\\') {
+    if (len >= out_size)
+      return 0;
+    strcpy(out, path);
+    return len;
+  }
+
+  int cwd_len = strlen(Cwd);
+  if ((len + cwd_len) >= out_size)
+    return 0;
+  strcpy(out, Cwd);
+  strcat(out, path);
+  return len + cwd_len;
+}
+
+// check if given path (directory or file) exists
+//
+static bool files_path_exist(const char *path) {
+
+  struct stat st;
+  return (0 == stat(path, &st)) ? (S_ISREG(st.st_mode) || S_ISDIR(st.st_mode)) : false;
+}
+
+// return total bytes available on mounted filesystem index i (index in mountpoints[i])
+//
+static unsigned int files_space_total(int i) {
+
+  switch (mountpoints[i].type) {
+    case ESP_PARTITION_SUBTYPE_DATA_FAT:
+      FATFS *fs;
+      DWORD free_clust, tot_sect, sect_size;
+      BYTE pdrv = ff_diskio_get_pdrv_wl(mountpoints[i].wl_handle);
+      char drv[3] = { (char)(48 + pdrv), ':', 0 };
+      if (f_getfree(drv, &free_clust, &fs) != FR_OK)
+        return 0;
+      tot_sect = (fs->n_fatent - 2) * fs->csize;
+      sect_size = CONFIG_WL_SECTOR_SIZE;
+      return tot_sect * sect_size;
+
+    case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS:
+      size_t total, used;
+      if (esp_littlefs_info(mountpoints[i].label, &total, &used))
+        return 0;
+      return total;
+
+    //TODO: implement
+    case ESP_PARTITION_SUBTYPE_DATA_SPIFFS:
+    default:
+  }
+  return 0;
+}
+
+// return amount of space available for allocating
+//
+static unsigned int files_space_free(int i) {
+  switch (mountpoints[i].type) {
+    case ESP_PARTITION_SUBTYPE_DATA_FAT:
+      FATFS *fs;
+      DWORD free_clust, free_sect, sect_size;
+
+      BYTE pdrv = ff_diskio_get_pdrv_wl(mountpoints[i].wl_handle);
+      char drv[3] = { (char)(48 + pdrv), ':', 0 };
+      if (f_getfree(drv, &free_clust, &fs) != FR_OK)
+        return 0;
+
+      free_sect = free_clust * fs->csize;
+      sect_size = CONFIG_WL_SECTOR_SIZE;
+      return free_sect * sect_size;
+
+    
+    case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS:
+      size_t total, used;
+      if (esp_littlefs_info(mountpoints[i].label, &total, &used))
+        return 0;
+      return total - used;
+
+//TODO: implement
+    case ESP_PARTITION_SUBTYPE_DATA_SPIFFS:
+    default:
+  }
+  return 0;
+}
+
+
 // "unmount *"
 // "unmount /Mount_point"
 //
@@ -5347,14 +5497,14 @@ static int cmd_files_unmount(int argc, char **argv) {
 
   int i;
   esp_err_t err = -1;
-  
+
   // find a corresponding mountpoint
   if ((i = files_mountpoint_by_path(argv[1])) < 0) {
-    q_errorf("%% Unmount failed: nothing is mounted on \"%s\"\r\n",argv[1]);
+    q_errorf("%% Unmount failed: nothing is mounted on \"%s\"\r\n", argv[1]);
     return 0;
   }
 
-  switch(mountpoints[i].type) {
+  switch (mountpoints[i].type) {
 
     case ESP_PARTITION_SUBTYPE_DATA_FAT:
       if (mountpoints[i].wl_handle != WL_INVALID_HANDLE) {
@@ -5370,24 +5520,24 @@ static int cmd_files_unmount(int argc, char **argv) {
       goto failed_unmount;
 
     case ESP_PARTITION_SUBTYPE_DATA_SPIFFS:
-            // TODO:
-    goto failed_unmount;
+      // TODO:
+      goto failed_unmount;
     case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS:
-            //TODO:
-    goto failed_unmount;
+      //TODO:
+      goto failed_unmount;
     default:
-    //NOTREACHED
+      //NOTREACHED
       abort();
   }
 #if WITH_HELP
-  q_printf("%% Unmounted %s partition \"%s\"\r\n",partition_data_subtype(mountpoints[i].type),argv[1]);
-#endif        
+  q_printf("%% Unmounted %s partition \"%s\"\r\n", files_subtype2text(mountpoints[i].type), argv[1]);
+#endif
   return 0;
 
 failed_unmount:
 #if WITH_HELP
-  q_errorf("%% Unmount failed, error code is \"0x%x\"\r\n",err);
-#endif                
+  q_errorf("%% Unmount failed, error code is \"0x%x\"\r\n", err);
+#endif
   return 0;
 }
 
@@ -5404,15 +5554,15 @@ static int cmd_files_if(int argc, char **argv) {
 // mount a filesystem. filesystem type is defined by its label (see partitions.csv file).
 // supported filesystems: fat, littlefs, spiffs
 //
-#define ESP_VFS_PATH_MAX 18 //TODO: #include corresponding idf file
+#define ESP_VFS_PATH_MAX 18  //TODO: #include corresponding idf file
 static int cmd_files_mount(int argc, char **argv) {
 
   int i;
   esp_partition_iterator_t it;
-  char mp0[ESP_VFS_PATH_MAX+1];
+  char mp0[ESP_VFS_PATH_MAX + 1];
   const esp_partition_t *part = NULL;
   char *mp = NULL;
-  
+
   esp_err_t err = 0;
 
   // enough arguments?
@@ -5434,21 +5584,21 @@ static int cmd_files_mount(int argc, char **argv) {
       q_error("% Invalid partition name (too long)\r\n");
       return 1;
     }
-    sprintf(mp0,"/%s",argv[1]);
+    sprintf(mp0, "/%s", argv[1]);
     mp = mp0;
   }
 
   // due to VFS internals there are restrictions on mount point length.
   // longer paths will work for mounting but fail for unmount so we just
-  // restrict it here 
+  // restrict it here
   if (strlen(mp) >= ESP_VFS_PATH_MAX) {
-    q_errorf("%% Mount point path max length is %u characters\r\n",ESP_VFS_PATH_MAX - 1);
+    q_errorf("%% Mount point path max length is %u characters\r\n", ESP_VFS_PATH_MAX - 1);
     return 0;
   }
 
   // check if given mountpoint is already used
   if ((i = files_mountpoint_by_path(mp)) >= 0) {
-    q_errorf("%% Mount point \"%s\" is already used to mount partition \"%s\"\r\n",mp,mountpoints[i].label);
+    q_errorf("%% Mount point \"%s\" is already used to mount partition \"%s\"\r\n", mp, mountpoints[i].label);
     return 0;
   }
 
@@ -5464,23 +5614,23 @@ static int cmd_files_mount(int argc, char **argv) {
     part = esp_partition_get(it);
 
     if (part && (part->type == ESP_PARTITION_TYPE_DATA))
-      if (!q_strcmp(argv[1],part->label)) {
+      if (!q_strcmp(argv[1], part->label)) {
 
         // We found a partition user wants to mount.
         // Mount/Format depending on FS type
-        argv[1] = (char *)part->label;   // handle shortened label names. we dont write into argv[1]
-        switch(part->subtype) {
+        argv[1] = (char *)part->label;  // handle shortened label names. we dont write into argv[1]
+        switch (part->subtype) {
 
           // Mount FAT partition
-          case ESP_PARTITION_SUBTYPE_DATA_FAT:  
+          case ESP_PARTITION_SUBTYPE_DATA_FAT:
 
             esp_vfs_fat_mount_config_t conf = {
-              .format_if_mount_failed = true, 
+              .format_if_mount_failed = true,
               .max_files = 2,
               .allocation_unit_size = CONFIG_WL_SECTOR_SIZE,
               .disk_status_check_enable = false
             };
-            err = esp_vfs_fat_spiflash_mount_rw_wl(mp,part->label, &conf, &mountpoints[i].wl_handle);
+            err = esp_vfs_fat_spiflash_mount_rw_wl(mp, part->label, &conf, &mountpoints[i].wl_handle);
             if (err)
               goto mount_failed;
             else
@@ -5495,13 +5645,13 @@ static int cmd_files_mount(int argc, char **argv) {
           case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS:
 
             if (esp_littlefs_mounted(part->label)) {
-              q_errorf("%% Partition \"%s\" is already mounted\r\n",part->label);
+              q_errorf("%% Partition \"%s\" is already mounted\r\n", part->label);
               goto mount_failed;
             }
 
             esp_vfs_littlefs_conf_t conf1 = {
               .base_path = mp,
-              .partition_label = part->label, // strdup?
+              .partition_label = part->label,  // strdup?
               .partition = NULL,
               .format_if_mount_failed = true,
               .read_only = false,
@@ -5523,14 +5673,14 @@ static int cmd_files_mount(int argc, char **argv) {
     it = esp_partition_next(it);
   }
 
-  q_errorf("%% Partition label \"%s\" is not found\r\n",argv[1]);
+  q_errorf("%% Partition label \"%s\" is not found\r\n", argv[1]);
 
 mount_failed:
-  q_errorf("%% Mount partition \"%s\" failed (error: %d, slot%d)\r\n",argv[1],err,i);
+  q_errorf("%% Mount partition \"%s\" failed (error: %d, slot%d)\r\n", argv[1], err, i);
   mountpoints[i].wl_handle = WL_INVALID_HANDLE;
   if (it)
     esp_partition_iterator_release(it);
- 
+
   return 0;
 
 finalize_mount:
@@ -5542,8 +5692,8 @@ finalize_mount:
     q_error("% Out of memory\r\n");
   else {
     mountpoints[i].type = part->subtype;
-    strcpy(mountpoints[i].label,part->label); //TODO: strncpy or compile time check for sizeof(part->label) <= sizeof(mountpoints[0].label)
-    q_printf("%% %s on partition \"%s\" is mounted under \"%s\"\r\n",partition_data_subtype(part->subtype),part->label,mp);
+    strcpy(mountpoints[i].label, part->label);  //TODO: strncpy or compile time check for sizeof(part->label) <= sizeof(mountpoints[0].label)
+    q_printf("%% %s on partition \"%s\" is mounted under \"%s\"\r\n", files_subtype2text(part->subtype), part->label, mp);
   }
   return 0;
 }
@@ -5553,7 +5703,7 @@ finalize_mount:
 //
 static int cmd_files_mount0(int argc, char **argv) {
 
-  char buf[18]; // ESP-IDF says partition name length is 16 bytes maximum
+  char buf[18];  // ESP-IDF says partition name length is 16 bytes maximum
 
   int found = 0, usable = 0, i;
 
@@ -5564,7 +5714,7 @@ static int cmd_files_mount0(int argc, char **argv) {
       len = dst_len - 1;
     memset(dst, ' ', dst_len);
     dst[dst_len - 1] = '\0';
-    memcpy(dst,src,len);
+    memcpy(dst, src, len);
     return dst;
   }
 
@@ -5576,37 +5726,36 @@ static int cmd_files_mount0(int argc, char **argv) {
     return 0;
   }
 
-  q_print("%  Partition label |   Type    |  Size   |    Mounted on    |  Total  |  Free  \r\n" \
+  q_print("%  Partition label |   Type    |Size(Kb) |    Mounted on    |Total(Kb)|Free(Kb)\r\n"
           "% -----------------+-----------+---------+------------------+---------+--------\r\n");
-	
-  
+
+
   while (it) {
     const esp_partition_t *part = esp_partition_get(it);
 
     found++;
     if (part && (part->type == ESP_PARTITION_TYPE_DATA)) {
 
-      if (part->subtype == ESP_PARTITION_SUBTYPE_DATA_FAT || 
-          part->subtype == ESP_PARTITION_SUBTYPE_DATA_SPIFFS || 
-          part->subtype == ESP_PARTITION_SUBTYPE_DATA_LITTLEFS) {
+      if (part->subtype == ESP_PARTITION_SUBTYPE_DATA_FAT || part->subtype == ESP_PARTITION_SUBTYPE_DATA_SPIFFS || part->subtype == ESP_PARTITION_SUBTYPE_DATA_LITTLEFS) {
         usable++;
         color_important();
       } else
         color_normal();
 
       q_print("% ");
-      q_print(indent(buf,part->label,sizeof(buf)));
+      q_print(indent(buf, part->label, sizeof(buf)));
       q_print("|");
-      q_print(partition_data_subtype(part->subtype));
+      q_print(files_subtype2text(part->subtype));
       q_print("|");
-      q_printf("% 6uKb",(unsigned int)part->size / 1024);
+      q_printf("% 6uKb", (unsigned int)part->size / 1024);
       q_print(" | ");
-      if ((i = files_mountpoint_by_label(part->label)) >= 0)
-        q_print(indent(buf,mountpoints[i].mp,sizeof(buf)));
-      else
-        q_print(indent(buf," ",sizeof(buf)));
-      //TODO: query filesystem for total/free counters
-      q_print("| 00000Kb | 00000Kb\r\n");
+      if ((i = files_mountpoint_by_label(part->label)) >= 0) {
+        q_print(indent(buf, mountpoints[i].mp, sizeof(buf)));
+        q_printf("|  % 6u | % 6u\r\n", files_space_total(i)/1024, files_space_free(i)/1024);
+      } else {
+        q_print(indent(buf, " ", sizeof(buf)));
+        q_print("|         |\r\n");
+      }
     }
     it = esp_partition_next(it);
   }
@@ -5617,25 +5766,209 @@ static int cmd_files_mount0(int argc, char **argv) {
     q_print("% No usable partitions were found. Use (Tools->Partition Scheme) in Arduino IDE\r\n");
   else
     q_printf("%% %u mountable partition%s found\r\n", usable, usable == 1 ? "" : "s");
-#endif //WITH_HELP    
+#endif  //WITH_HELP
 
-  if (it)  
-    esp_partition_iterator_release(it); //FIXME:
+  if (it)
+    esp_partition_iterator_release(it);  //FIXME:
 
   return 0;
 }
 
-//"format"
+
+
+
+// "cd"
+// "cd .."
+// "cd /full/path"
+// "cd relative/path"
 //
-static int cmd_files_format(int argc, char **argv) {
+//  Change current working directory. Double dots (relative
+//  paths) are not supported on purpose: paths like "some/../../path" are considered invalid
+//  Paths which starts with double dot are treated as if user typed "cd .." i.e. change to upper
+//  level directory.
+//  Single dot (a reference to *this* directory) is not supported. Path "some/./path" is not
+//  valid for "cd" command
+//
+static int cmd_files_cd(int argc, char **argv) {
 
-  if (argc < 2)
-    return -1;
+  if (files_get_cwd() == NULL)
+    return 0;
 
-  
+  //"cd" no args
+  if (argc < 2) {
+    files_set_cwd("/");
+    return 0;
+  }
+
+  //"cd Path With Spaces"
+  if (argc > 2) {
+    q_error("% Too many arguments.\r\n"
+            "% If your path contains spaces, please enter spaces as \"*\":\r\n"
+            "% Examples: \"cd Path*With*Spaces\",  \"cd /ffat/Program*Files\"\r\n");
+    return 0;
+  }
+
+  int i;
+  // just in case. 
+  if (argv[1][0] == '\0')
+    return 1;
+
+  // Case#1:
+  // Two leading dots - go 1 level up if possible.
+  // Paths like "../some/path" will be processed as if it was simply ".."
+  // No support of relative paths
+  if (argv[1][0] == '.' && argv[1][1] == '.') {
+    i = strlen(Cwd);
+    if (i < 3) {  //  minimal path "/a/"
+      q_print("% Root directory reached\r\n");
+      return 0;
+    }
+
+    // remove trailing path separator and recerse search
+    // for another one.aaaaannd....
+    if (Cwd[i - 1] == '/' || Cwd[i - 1] == '\\')
+      Cwd[i - 1] = '\0';
+
+    char *p = strrchr(Cwd, '/');
+    if (!p)
+      p = strrchr(Cwd, '\\');
+    if (!p)
+      abort();  //must not happen
+
+    // ......strip it
+    *p = '\0';
+    if (Cwd[0] == '\0')
+      files_set_cwd("/");
+#if 1      
+    else
+      q_printf("%% cmd_files_cd() : \"%s\"\r\n", Cwd);
+#endif  
+    return 0;
+  }
+
+  // Case#2:
+  // Relative/absolute path
+  i = 0;
+  // Sanity check: must be no double dots in path
+  while (argv[1][i]) {
+    if (argv[1][i] == '.' && argv[1][i + 1] == '.') {
+      printf("%% Two dots (..) are not supported in path\r\n");
+      return 1;
+    }
+    i++;
+  }
+
+  // Replace all "*" with spaces " "
+  i = 0;
+  while (argv[1][i] != '\0') {
+    if (argv[1][i] == '*')
+      argv[1][i] = ' ';
+    i++;
+  }
+
+  // Path is absolute: check if it exists and
+  // store it as current working directory
+  if (argv[1][0] == '/') {
+    if (files_path_exist(argv[1])) {
+      files_set_cwd(argv[1]);
+      return 0;
+    }
+    goto path_does_not_exist;
+  }
+
+  // Path is relative: append path to the CWD
+  // and check if path exists as well
+  if (strlen(Cwd) + strlen(argv[1]) > 254) {
+    q_error("% Path is too long\r\n");
+    return 1;
+  }
+
+  char tmp[512] = { 0 };
+
+  strcpy(tmp, Cwd);
+  i = strlen(tmp);
+
+  if (i < 1)
+    abort();  //must not happen
+
+  if (tmp[i - 1] != '/' && tmp[i - 1] != '\\')
+    tmp[i] = '/';
+
+  strcat(tmp, argv[1]);
+
+  i = strlen(tmp);
+  if (tmp[i - 1] != '\\' && tmp[i - 1] != '/') {
+    tmp[i] = '/';
+    tmp[i + 1] = '\0';
+  }
+  if (files_path_exist(tmp)) {
+    if (files_set_cwd(tmp)) {
+      q_printf("%% Changed to \"%s\"\r\n",tmp);
+      return 0;
+    } else
+      q_error(Failed);
+  } else
+path_does_not_exist:
+    q_error("% Path does not exist\r\n");
+  return 1;
+}
+
+static int cmd_files_pwd(int argc, char **argv) {
+
+  q_printf("%% %s\r\n", files_get_cwd());
   return 0;
 }
-#endif //WITH_FS
+
+// "ls"
+// "ls PATH"
+// Directory listing for current working directory or PATH if specified
+//
+//   Size          Modified          Name
+//            Jun-10-2022 10:40:07   [..]
+//            Jun-10-2022 10:40:07   [Directory1]
+// 00000177   Jun-10-2022 10:40:07   file1.txt
+static int cmd_files_ls(int argc, char **argv) {
+
+
+
+  return 0;
+}
+
+static int cmd_files_rm(int argc, char **argv) {
+  return 0;
+}
+static int cmd_files_mv(int argc, char **argv) {
+  return 0;
+}
+static int cmd_files_cp(int argc, char **argv) {
+  return 0;
+}
+static int cmd_files_write(int argc, char **argv) {
+  return 0;
+}
+static int cmd_files_append(int argc, char **argv) {
+  return 0;
+}
+static int cmd_files_insert(int argc, char **argv) {
+  return 0;
+}
+static int cmd_files_delete(int argc, char **argv) {
+  return 0;
+}
+static int cmd_files_mkdir(int argc, char **argv) {
+  return 0;
+}
+static int cmd_files_cat(int argc, char **argv) {
+  return 0;
+}
+static int cmd_files_touch(int argc, char **argv) {
+  return 0;
+}
+static int cmd_files_format(int argc, char **argv) {
+  return 0;
+}
+
+#endif  //WITH_FS
 
 #if WITH_HELP
 // "? keys"
