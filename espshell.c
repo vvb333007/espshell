@@ -90,7 +90,7 @@
 #define PROMPT_I2C "esp32-i2c#>"
 #define PROMPT_UART "esp32-uart#>"
 #define PROMPT_SEQ "esp32-seq#>"
-#define PROMPT_FILES "esp32-file#>"
+#define PROMPT_FILES "esp32#(%s)>"
 #define PROMPT_SEARCH "Search: "
 
 //TAG:includes
@@ -99,6 +99,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <ctype.h>
+#include <errno.h>
 
 #include <Arduino.h>
 
@@ -138,8 +139,9 @@ extern "C" {
 #include <diskio.h>
 #include <diskio_wl.h>
 #include <vfs_fat_internal.h>
-#include <esp_littlefs.h>
 #include <wear_levelling.h>
+#include <esp_littlefs.h>
+#include <esp_spiffs.h>
 #ifdef __cplusplus
 };
 #endif
@@ -1561,7 +1563,7 @@ static int cmd_exit(int, char **);
 
 // suport for user-defined commands
 #ifdef EXTERNAL_PROTOTYPES
-#include EXTERNAL_PROTOTYPES
+#  include EXTERNAL_PROTOTYPES
 #endif
 
 
@@ -2219,51 +2221,43 @@ static const struct keywords_t keywords_files[] = {
                                       "% LABEL        - SPI FLASH partition label\r\n"
                                       "% /MOUNT_POINT - A path, starting with \"/\" where filesystem will be mounted.\r\n"
                                       "%\r\n"
-                                      "% Ex.: mount ffat /ffat - mount partition \"ffat\" at directory \"/ffat\""),
-    "Mount partition" },
+                                      "% Ex.: mount ffat /ffat - mount partition \"ffat\" at directory \"/ffat\""),"Mount partition" },
   { "mount", cmd_files_mount, 1, HIDDEN_KEYWORD },
   { "mount", cmd_files_mount0, 0, HELP("% \"mount\"\r\n"
                                        "%\r\n"
                                        "% Command \"mount\" **without arguments** displays information about partitions\r\n"
-                                       "% and mounted file systems (mount point, FS type, total/used counters)"),
-    NULL },
+                                       "% and mounted file systems (mount point, FS type, total/used counters)"), NULL },
 
 
   { "unmount", cmd_files_unmount, 1, HELP("% \"unmount /MOUNT_POINT\"\r\n"
                                           "%\r\n"
-                                          "% Unmount a file system. If MOUNT_POINT is \"*\" then all filesystems are unmounted\r\n"),
-    "Unmount partition" },
+                                          "% Unmount a file system. If MOUNT_POINT is \"*\" then all filesystems are unmounted\r\n"),"Unmount partition" },
 
   { "ls", cmd_files_ls, 1, HELP("% \"ls [PATH]\"\r\n"
                                 "%\r\n"
                                 "% Show directory listing at PATH given\r\n"
-                                "% If PATH is omitted then current directory list is shown"),
-    "List directory" },
+                                "% If PATH is omitted then current directory list is shown"),"List directory" },
 
   { "ls", cmd_files_ls, 0, HIDDEN_KEYWORD },
 
 
   { "pwd", cmd_files_pwd, 0, HELP("% \"pwd\"\r\n"
                                   "%\r\n"
-                                  "% Print working directory. Includes a mount point"),
-    "Working directory" },
+                                  "% Print working directory. Includes a mount point"),"Working directory" },
 
-  { "cd", cmd_files_cd, 1, HELP("% \"cd [PATH|..]\"\r\n"
+  { "cd", cmd_files_cd, -1, HELP("% \"cd [PATH|..]\"\r\n"
                                 "%\r\n"
                                 "% Change current directory. Paths having .. (i.e \"../dir/\") are not supported\r\n"
                                 "%\r\n"
                                 "% Ex.: \"cd\"            - change current directory to \"/\"\r\n"
                                 "% Ex.: \"cd ..\"         - go one directory up\r\n"
                                 "% Ex.: \"cd /ffat/test/  - change to \"/ffat/test/\"\r\n"
-                                "% Ex.: \"cd test2/test3/ - change to \"/ffat/test/test2/test3\"\r\n"),
-    "Change directory" },
-  { "cd", cmd_files_cd, 0, HIDDEN_KEYWORD },
-
+                                "% Ex.: \"cd test2/test3/ - change to \"/ffat/test/test2/test3\"\r\n"),"Change directory" },
+  
   { "rm", cmd_files_rm, 1, HELP("% \"rm PATH\"\r\n"
                                 "%\r\n"
                                 "% Remove a file or a directory with files.\r\n"
-                                "% When removing directories: removed with files and subdirs"),
-    "Delete files" },
+                                "% When removing directories: removed with files and subdirs"), "Delete files" },
 
   { "mv", cmd_files_mv, 2, HELP("% \"mv SOURCE DESTINATION\\r\n"
                                 "%\r\n"
@@ -2272,8 +2266,7 @@ static const struct keywords_t keywords_files[] = {
                                 "% Ex.: \"mv /ffat/dir1 /ffat/dir2\"             - rename directory \"dir1\" to \"dir2\"\r\n"
                                 "% Ex.: \"mv /ffat/fileA.txt /ffat/fileB.txt\"   - rename file \"fileA.txt\" to \"fileB.txt\"\r\n"
                                 "% Ex.: \"mv /ffat/dir1/file1 /ffat/dir2\"       - move file to directory\r\n"
-                                "% Ex.: \"mv /ffat/fileA.txt /spiffs/fileB.txt\" - move file between filesystems\r\n"),
-    "Move/Rename files" },
+                                "% Ex.: \"mv /ffat/fileA.txt /spiffs/fileB.txt\" - move file between filesystems\r\n"), "Move/Rename files" },
 
   { "cp", cmd_files_cp, 2, HELP("% \"cp SOURCE DESTINATION\\r\n"
                                 "%\r\n"
@@ -2282,10 +2275,7 @@ static const struct keywords_t keywords_files[] = {
                                 "%\r\n"
                                 "% Ex.: \"cp /ffat/test.txt /ffat/test2.txt\"       - copy file to file\r\n"
                                 "% Ex.: \"cp /ffat/test.txt /ffat/dir/\"            - copy file to directory\r\n"
-                                "% Ex.: \"cp /spiffs/test.txt /ffat/dir/test2.txt\" - copy between filesystems\r\n"
-
-                                ),
-    "Copy files" },
+                                "% Ex.: \"cp /spiffs/test.txt /ffat/dir/test2.txt\" - copy between filesystems\r\n"), "Copy files" },
 
   { "write", cmd_files_write, -1, HELP("% \"write FILENAME TEXT1 TEXT2 ... TEXTn\"\r\n"
                                        "%\r\n"
@@ -2293,8 +2283,7 @@ static const struct keywords_t keywords_files[] = {
                                        "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
                                        "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n"
                                        "%\r\n"
-                                       "% Ex.: \"write /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""),
-    "Write bytes" },
+                                       "% Ex.: \"write /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""), "Write bytes" },
 
   { "append", cmd_files_append, -1, HELP("% \"append FILENAME TEXT1 TEXT2 ... TEXTn\"\r\n"
                                          "%\r\n"
@@ -2302,45 +2291,38 @@ static const struct keywords_t keywords_files[] = {
                                          "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
                                          "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n"
                                          "%\r\n"
-                                         "% Ex.: \"append /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""),
-    "Append bytes" },
+                                         "% Ex.: \"append /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""),"Append bytes" },
 
   { "insert", cmd_files_insert, -1, HELP("% \"insert LINE_NUMBER FILENAME TEXT1 TEXT2 ... TEXTn\"\r\n"
                                          "% Insert TEX1..TEXTn to file FILENAME before line LINE_NUMBER\r\n"
                                          "% \"\\n\" is appended to the string being inserted, \"\\r\" is not\r\n"
                                          "% Lines are numbered starting from 0. Use \"cat\" command to find out line numbers\r\n"
                                          "%\r\n"
-                                         "% Ex.: \"insert 0 /ffat/test.txt Hello World!\""),
-    "Insert bytes" },
+                                         "% Ex.: \"insert 0 /ffat/test.txt Hello World!\""), "Insert bytes" },
 
   { "delete", cmd_files_delete, 2, HELP("% \"delete FILENAME LINE_NUM [COUNT]\"\r\n"
                                         "% Delete line LINE_NUM from a text file FILENAME\r\n"
                                         "% Optionsl COUNT argument is the number of lines to remove (default is 1)"
                                         "% Lines are numbered starting from 0. Use \"cat\" command to find out line numbers\r\n"
                                         "%\r\n"
-                                        "Ex.: \"delete 10 /ffat/test.txt\" - remove line #10 from \"/ffat/test.txt\""),
-    "Delete lines" },
+                                        "Ex.: \"delete 10 /ffat/test.txt\" - remove line #10 from \"/ffat/test.txt\""), "Delete lines" },
   { "delete", cmd_files_delete, 1, HIDDEN_KEYWORD },
 
   { "mkdir", cmd_files_mkdir, 1, HELP("% \"mkdir PATH\"\r\n"
                                       "%\r\n"
-                                      "% Create an empty directory PATH\r\n"),
-    "Create directory" },
+                                      "% Create an empty directory PATH\r\n"),"Create directory" },
 
   { "cat", cmd_files_cat, 1, HELP("% \"cat FILENAME\"\r\n"
                                   "%\r\n"
-                                  "% Display file FILENAME with line numbers\r\n"),
-    "Display text/binary file" },
+                                  "% Display file FILENAME with line numbers\r\n"),"Display text/binary file" },
 
   { "touch", cmd_files_touch, 1, HELP("% \"touch FILENAME\"\r\n"
                                       "%\r\n"
-                                      "% Ceate a new file or \"touch\" existing\r\n"),
-    "Touch/Create file" },
+                                      "% Ceate a new file or \"touch\" existing\r\n"), "Touch/Create file" },
 
   { "format", cmd_files_format, 2, HELP("% \"format LABEL [quick]]\"\r\n"
                                         "%\r\n"
-                                        "% Format partition LABEL. Use \"quick\" option for FAT quick-format\r\n"),
-    "Erase old & create new filesystem" },
+                                        "% Format partition LABEL. Use \"quick\" option for FAT quick-format\r\n"), "Erase old & create new filesystem" },
 
   { "format", cmd_files_format, 1, HIDDEN_KEYWORD },
 
@@ -2358,8 +2340,7 @@ static const struct keywords_t keywords_main[] = {
 #if WITH_FS
   { "files", cmd_files_if, 0, HELP("% \"files\"\r\n"
                                    "%\r\n"
-                                   "% Enter files & file system operations mode"),
-    "File system access" },
+                                   "% Enter files & file system operations mode"), "File system access" },
 #endif
 
   // System commands
@@ -2370,14 +2351,12 @@ static const struct keywords_t keywords_main[] = {
   { "kill", cmd_kill, 1, HELP("% \"kill TASK_ID\" : Stop and delete task TASK_ID\r\n% CAUTION: wrong id will crash whole system :(\r\n% For use with \"pin&\" and \"count&\" tasks only!"), "Kill tasks" },
   { "kill", cmd_kill, 2, HIDDEN_KEYWORD },  //undocumented "kill TASK_ID terminate"
   { "reload", cmd_reload, 0, HELP("% \"reload\" - Restarts CPU"), "Reset CPU" },
-  { "mem", cmd_mem, 0, HELP("% \"mem\"\r\n"
-                            "% Shows memory usage info & availability, no arguments"),
-    "Memory commands" },
+  { "mem", cmd_mem, 0, HELP("% \"mem\"\r\n% Shows memory usage info & availability, no arguments"),"Memory commands" },
   { "mem", cmd_mem_read, 2, HELP("% \"mem ADDR [LENGTH]\"\r\n"
                                  "% Display LENGTH bytes of memory starting from address ADDR\r\n"
                                  "% Address must be in the form \"1234ABCDE\", (hexadecimal numbers)\r\n%\r\n"
-                                 "% Ex.: mem 40078000 100 : display 100 bytes starting from address 40078000"),
-    NULL },
+                                 "% LENGTH is optional and its default value is 256 bytes\r\n"
+                                 "% Ex.: mem 40078000 100 : display 100 bytes starting from address 40078000"), NULL },
   { "mem", cmd_mem_read, 1, HIDDEN_KEYWORD },
   { "nap", cmd_nap, 1, HELP("% \"nap SEC\"\r\n%\r\n% Put the CPU into light sleep mode for SEC seconds."), "CPU sleep" },
   { "nap", cmd_nap, 0, HELP("% \"nap\"\r\n%\r\n% Put the CPU into light sleep mode, wakeup by console"), NULL },
@@ -2385,20 +2364,17 @@ static const struct keywords_t keywords_main[] = {
   // Interfaces (UART,I2C, RMT..)
   { "iic", cmd_i2c_if, 1, HELP("% \"iic X\" \r\n%\r\n"
                                "% Enter I2C interface X configuration mode \r\n"
-                               "% Ex.: iic 0 - configure/use interface I2C 0"),
-    "I2C commands" },
+                               "% Ex.: iic 0 - configure/use interface I2C 0"), "I2C commands" },
 
   { "uart", cmd_uart_if, 1, HELP("% \"uart X\"\r\n"
                                  "%\r\n"
                                  "% Enter UART interface X configuration mode\r\n"
-                                 "% Ex.: uart 1 - configure/use interface UART 1"),
-    "UART commands" },
+                                 "% Ex.: uart 1 - configure/use interface UART 1"), "UART commands" },
 
   { "sequence", cmd_seq_if, 1, HELP("% \"sequence X\"\r\n"
                                     "%\r\n"
                                     "% Create/configure a sequence\r\n"
-                                    "% Ex.: sequence 0 - configure Sequence0"),
-    "Sequence configuration" },
+                                    "% Ex.: sequence 0 - configure Sequence0"),"Sequence configuration" },
 
   // Show funcions (more will be added)
   { "show", cmd_show, 2, HELP("% \"show seq X\" - display sequence X\r\n"), "Display information" },
@@ -2407,6 +2383,7 @@ static const struct keywords_t keywords_main[] = {
   { "tty", cmd_tty, 1, HELP("% \"tty X\" Use uart X for command line interface"), "IO redirect" },
   { "echo", cmd_echo, 1, HELP("% \"echo on|off|silent\" Echo user input on/off (default is on)"), "Enable/Disable user input echo" },
   { "echo", cmd_echo, 0, HIDDEN_KEYWORD },  //hidden command, displays echo status (on / off)
+
   // Generic pin commands
   { "pin", cmd_pin, 1, HELP("% \"pin X\" - Show pin X configuration.\r\n% Ex.: \"pin 2\" - show GPIO2 information"), "Pins (GPIO) commands" },
   { "pin", cmd_pin, -1, HELP("% \"pin X (hold|release|up|down|out|in|open|high|low|save|load|read|aread|delay|loop|pwm|seq)...\"\r\n"
@@ -2425,8 +2402,7 @@ static const struct keywords_t keywords_main[] = {
                              "% Ex.: pin 1 pwm 0 0            -disable generation\r\n"
                              "% Ex.: pin 1 high delay 500 low delay 500 loop 10 - Blink a led 10 times\r\n%\r\n"
                              "% Use \"pin&\" instead of \"pin\" to execute in background\r\n"
-                             "% (see \"docs/Pin_Commands.txt\" for more details & examples)\r\n"),
-    NULL },
+                             "% (see \"docs/Pin_Commands.txt\" for more details & examples)\r\n"),  NULL },
   // "pin&"" async (background) "pin" command
   { "pin&", cmd_async, -1, HIDDEN_KEYWORD },
 
@@ -2442,8 +2418,7 @@ static const struct keywords_t keywords_main[] = {
                             "%\r\n"
                             "% Ex.: pwm 2 1000     - enable PWM of 1kHz, 50% duty on pin 2\r\n"
                             "% Ex.: pwm 2          - disable PWM on pin 2\r\n"
-                            "% Ex.: pwm 2 6400 0.1 - enable PWM of 6.4kHz, duty cycle of 10% on pin 2\r\n"),
-    "PWM output" },
+                            "% Ex.: pwm 2 6400 0.1 - enable PWM of 6.4kHz, duty cycle of 10% on pin 2\r\n"), "PWM output" },
   { "pwm", cmd_pwm, 2, HIDDEN_KEYWORD },
   { "pwm", cmd_pwm, 1, HIDDEN_KEYWORD },
 
@@ -2456,8 +2431,7 @@ static const struct keywords_t keywords_main[] = {
                                 "% Ex.: \"count 4\"           - count positive edges on pin 4 for 1000ms\r\n"
                                 "% Ex.: \"count 4 2000\"      - count pulses (falling edge) on pin 4 for 2 sec.\r\n"
                                 "% Ex.: \"count 4 2000 both\" - count pulses (falling and rising edge) on pin 4 for 2 sec.\r\n%\r\n"
-                                "% Use \"count&\" instead of \"count\" to execute in background\r\n"),
-    "Pulse counter" },
+                                "% Use \"count&\" instead of \"count\" to execute in background\r\n"), "Pulse counter" },
   { "count", cmd_count, 2, HIDDEN_KEYWORD },   //hidden "count" with 2 args
   { "count", cmd_count, 1, HIDDEN_KEYWORD },   //hidden with 1 arg
   { "count&", cmd_async, 3, HIDDEN_KEYWORD },  //hidden "count&" with 3 args
@@ -2477,14 +2451,12 @@ static const struct keywords_t keywords_main[] = {
                             "% Ex.: \"var 1234\"        - Display a decimal number as hex, float, int etc.\r\n"
                             "% Ex.: \"var 0x1234\"      - -- // hex // --\r\n"
                             "% Ex.: \"var 01234\"       - -- // octal // --\r\n"
-                            "% Use prefix \"0x\" for hex, \"0\" for octal or \"0b\" for binary numbers"),
-    "Sketch variables" },
+                            "% Use prefix \"0x\" for hex, \"0\" for octal or \"0b\" for binary numbers"), "Sketch variables" },
   { "var", cmd_var_show, 1, HIDDEN_KEYWORD },
   { "var", cmd_var_show, 0, HIDDEN_KEYWORD },
 
-
 #ifdef EXTERNAL_KEYWORDS
-#include EXTERNAL_KEYWORDS
+#  include EXTERNAL_KEYWORDS
 #endif
 
   KEYWORDS_END
@@ -5163,14 +5135,8 @@ static int cmd_cpu_freq(int argc, char **argv) {
 
 // external user-defined command handler functions here
 #ifdef EXTERNAL_HANDLERS
-#include EXTERNAL_HANDLERS
+#  include EXTERNAL_HANDLERS
 #endif
-
-//Time counter value (in seconds) right before entering
-//main()/app_main()
-static unsigned int uptime = 0;
-
-
 
 // "uptime"
 //
@@ -5180,7 +5146,7 @@ static int
 cmd_uptime(int argc, char **argv) {
 
   unsigned int sec, min = 0, hr = 0, day = 0;
-  sec = (unsigned int)(esp_timer_get_time() / 1000000) - uptime;
+  sec = (unsigned int)(esp_timer_get_time() / 1000000);
 
   const char *rr;
 
@@ -5294,33 +5260,59 @@ static int cmd_kill(int argc, char **argv) {
 
 static char *Cwd = NULL;  // Current working directory. Must end with "/"
 
+// espshell allows for simultaneous mounting up to MOUNTPOINTS_NUM partitions
+// mountpoints[] holds information about mounted filesystems.
+//
+static struct {
+  char *mp;             // mount point e.g. "/a/b/c/d"
+  char label[16 + 1];   // partition label e.g. "ffat", "spiffs" or "littlefs"
+  unsigned char type;   // partition subtype
+  wl_handle_t wl_handle;// FAT wear-levelling library handle
+} mountpoints[MOUNTPOINTS_NUM] = { 0 };
+
+
+// remove trailing path separators
+static void files_strip_trailing_slash(char *p) {
+  if (p && *p) {
+    int i = strlen(p);
+    if (p[i - 1] == '\\' || p[i - 1] == '/') {
+      p[i - 1] = '\0';
+      files_strip_trailing_slash(p);
+    }
+  }
+}
+
 // set CWD
 // path must include a mountpoint as well: "/ffat/my_dir" if
 // one wishes to read/write files
 //
 static const char *files_set_cwd(const char *cwd) {
 
-  if (Cwd) {
-    free(Cwd);
-    Cwd = NULL;
-  }
+  static char prom[256+16] = { 0 };
 
-  if (cwd) {
-    int len = strlen(cwd);
-    if (len) {
-      Cwd = (char *)malloc(len + 2);
-      if (Cwd) {
-        strcpy(Cwd, cwd);
+  if (Cwd != cwd) {
+    if (Cwd) {
+      free(Cwd);
+      Cwd = NULL;
+    }
+    if (cwd) {
+      int len = strlen(cwd);
+      if (len) {
+        Cwd = (char *)malloc(len + 2);
+        if (Cwd) {
+          strcpy(Cwd, cwd);
 
-        len--;
-        if (Cwd[len] != '/' && cwd[len] != '\\')
-          strcat(Cwd, "/");
+          len--;
+          if (Cwd[len] != '/' && cwd[len] != '\\')
+            strcat(Cwd, "/");
+        }
       }
     }
   }
-#if 0
-  printf("files_set_cwd() : \"%s\"\r\n", Cwd ? Cwd : "(not set)");
-#endif
+
+  sprintf(prom,PROMPT_FILES,Cwd ? Cwd : "?");
+  prompt = prom;
+
   return Cwd;
 }
 
@@ -5352,18 +5344,6 @@ static const char *files_subtype2text(unsigned char subtype) {
   }
 }
 
-// espshell allows for simultaneous mounting up to MOUNTPOINTS_NUM partitions
-// mountpoints[] holds information about mounted filesystems. Only entries with
-// non-null 'mountpoint' member
-//
-static struct {
-  unsigned char flags;  // future extensions
-  char *mp;             // "/ffat" , "/spiffs", etc
-  char label[16 + 1];   // "ffat" strdup?
-  unsigned char type;   // ESP_PARTITION_SUBTYPE_DATA_[FAT|LITTLEFS|SPIFFS]
-  wl_handle_t wl_handle;
-} mountpoints[MOUNTPOINTS_NUM] = { 0 };
-
 // return index in mountpoints[] array ot -1 on failure
 static int files_mountpoint_by_label(const char *label) {
   int i;
@@ -5379,7 +5359,7 @@ static int files_mountpoint_by_label(const char *label) {
 static int files_mountpoint_by_path(const char *path) {
   int i;
   for (i = 0; i < MOUNTPOINTS_NUM; i++) {
-    if (path == mountpoints[i].mp)
+    if (path == mountpoints[i].mp) // TODO: remove
       return i;
     if (path && mountpoints[i].mp && !q_strcmp(path, mountpoints[i].mp))
       return i;
@@ -5387,41 +5367,71 @@ static int files_mountpoint_by_path(const char *path) {
   return -1;
 }
 
-// make full path from path and put result in out
-// return number of bytes in resulting path (0 == failed to make path)
+// make full path from path and return pointer to resulting string.
+// WARNING: function is not reentrant!
 // If path starts from "/" then it is used as is
 //                otherwhise
 // path is appended to cwd and this full path is used
 //
-static int files_make_full_path(const char *path, char *out, size_t out_size) {
+static char *files_full_path(const char *path) {
+
+  static char out[512];
+  int len, cwd_len;
 
   if (Cwd == NULL)
     if (files_set_cwd("/") == NULL)
-      return 0;
+      return NULL;
 
-  int len = strlen(path);
+  len = strlen(path);
 
   if (path[0] == '/' || path[0] == '\\') {
-    if (len >= out_size)
-      return 0;
+    if (len >= sizeof(out))
+      return NULL;
     strcpy(out, path);
-    return len;
+    return out;
   }
 
-  int cwd_len = strlen(Cwd);
-  if ((len + cwd_len) >= out_size)
-    return 0;
+  cwd_len = strlen(Cwd);
+  if ((len + cwd_len) >= sizeof(out))
+    return NULL;
   strcpy(out, Cwd);
   strcat(out, path);
-  return len + cwd_len;
+  return out;
 }
 
 // check if given path (directory or file) exists
 //
-static bool files_path_exist(const char *path) {
+static bool files_path_exist(const char *path, bool directory) {
 
+  // LittleFS & FAT have proper stat() while SPIFFs doesn't
+  // that why we do double check here
   struct stat st;
-  return (0 == stat(path, &st)) ? (S_ISREG(st.st_mode) || S_ISDIR(st.st_mode)) : false;
+  DIR *d;
+
+  if (!(path && *path))
+    return false;
+
+  // report that directory "/" does exist (actually it doesn't)
+  if ((path[0] == '\\' || path[0] == '/') && (path[1] == '\0') && directory)
+    return true;
+
+  int len = strlen(path);
+  char path0[len + 1];
+
+  strcpy(path0,path);
+  files_strip_trailing_slash(path0);
+  
+  // try stat()..
+  if (0 == stat(path0, &st))
+     return directory ? S_ISDIR(st.st_mode) : S_ISREG(st.st_mode);
+
+  // try opendir()..
+  if (directory && (d = opendir(path)) != NULL) {
+    closedir(d);
+    return true;
+  }
+
+  return false;
 }
 
 // return total bytes available on mounted filesystem index i (index in mountpoints[i])
@@ -5446,8 +5456,10 @@ static unsigned int files_space_total(int i) {
         return 0;
       return total;
 
-    //TODO: implement
     case ESP_PARTITION_SUBTYPE_DATA_SPIFFS:
+      if (esp_spiffs_info(mountpoints[i].label, &total, &used))
+        return 0;
+      return total;
     default:
   }
   return 0;
@@ -5470,20 +5482,30 @@ static unsigned int files_space_free(int i) {
       sect_size = CONFIG_WL_SECTOR_SIZE;
       return free_sect * sect_size;
 
-    
     case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS:
       size_t total, used;
       if (esp_littlefs_info(mountpoints[i].label, &total, &used))
         return 0;
       return total - used;
 
-//TODO: implement
     case ESP_PARTITION_SUBTYPE_DATA_SPIFFS:
+      if (esp_spiffs_info(mountpoints[i].label, &total, &used))
+        return 0;
+      return total - used;
     default:
   }
   return 0;
 }
 
+
+// "files"
+// FileManager commands subtree
+//
+static int cmd_files_if(int argc, char **argv) {
+  change_command_directory(0, keywords_files, PROMPT, "filesystem");
+  files_set_cwd(files_get_cwd()); //initialize CWD if not initialized previously. update user prompt.
+  return 0;
+}
 
 // "unmount *"
 // "unmount /Mount_point"
@@ -5498,6 +5520,8 @@ static int cmd_files_unmount(int argc, char **argv) {
   int i;
   esp_err_t err = -1;
 
+  files_strip_trailing_slash(argv[1]);
+
   // find a corresponding mountpoint
   if ((i = files_mountpoint_by_path(argv[1])) < 0) {
     q_errorf("%% Unmount failed: nothing is mounted on \"%s\"\r\n", argv[1]);
@@ -5507,28 +5531,31 @@ static int cmd_files_unmount(int argc, char **argv) {
   switch (mountpoints[i].type) {
 
     case ESP_PARTITION_SUBTYPE_DATA_FAT:
-      if (mountpoints[i].wl_handle != WL_INVALID_HANDLE) {
-        err = esp_vfs_fat_spiflash_unmount_rw_wl(mountpoints[i].mp, mountpoints[i].wl_handle);
-        if (ESP_OK == err) {
-          mountpoints[i].wl_handle = WL_INVALID_HANDLE;
-          free(mountpoints[i].mp);
-          mountpoints[i].mp = NULL;
-          mountpoints[i].label[0] = '\0';
-          break;
-        }
-      }
+      if (mountpoints[i].wl_handle != WL_INVALID_HANDLE)
+        if ((err = esp_vfs_fat_spiflash_unmount_rw_wl(mountpoints[i].mp, mountpoints[i].wl_handle)) == ESP_OK)
+          goto finalize_unmount;
       goto failed_unmount;
 
     case ESP_PARTITION_SUBTYPE_DATA_SPIFFS:
-      // TODO:
+      if (esp_spiffs_mounted(mountpoints[i].label))
+        if ((err = esp_vfs_spiffs_unregister(mountpoints[i].label)) == ESP_OK)
+          goto finalize_unmount;
       goto failed_unmount;
+
     case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS:
-      //TODO:
-      goto failed_unmount;
+      if (esp_littlefs_mounted(mountpoints[i].label))
+        if ((err = esp_vfs_littlefs_unregister(mountpoints[i].label)) == ESP_OK)
+          goto finalize_unmount;
+      // FALLTHRU
     default:
-      //NOTREACHED
-      abort();
+      goto failed_unmount;
   }
+
+finalize_unmount:
+  mountpoints[i].wl_handle = WL_INVALID_HANDLE;
+  free(mountpoints[i].mp);
+  mountpoints[i].mp = NULL;
+  mountpoints[i].label[0] = '\0';
 #if WITH_HELP
   q_printf("%% Unmounted %s partition \"%s\"\r\n", files_subtype2text(mountpoints[i].type), argv[1]);
 #endif
@@ -5540,15 +5567,6 @@ failed_unmount:
 #endif
   return 0;
 }
-
-// "files"
-// FileManager commands subtree
-//
-static int cmd_files_if(int argc, char **argv) {
-  change_command_directory(0, keywords_files, PROMPT_FILES, "filesystem");
-  return 0;
-}
-
 
 // "mount LABEL [/MOUNTPOINT"]
 // mount a filesystem. filesystem type is defined by its label (see partitions.csv file).
@@ -5577,6 +5595,7 @@ static int cmd_files_mount(int argc, char **argv) {
       q_error("% Mount point must start with \"/\"\r\n");
       return 2;
     }
+    files_strip_trailing_slash(mp);
   } else {
     // mountpoint is not specified: use partition label and "/"
     // to make a mountpoint
@@ -5587,6 +5606,7 @@ static int cmd_files_mount(int argc, char **argv) {
     sprintf(mp0, "/%s", argv[1]);
     mp = mp0;
   }
+  
 
   // due to VFS internals there are restrictions on mount point length.
   // longer paths will work for mounting but fail for unmount so we just
@@ -5638,8 +5658,23 @@ static int cmd_files_mount(int argc, char **argv) {
 
           // Mount SPIFFS partition
           case ESP_PARTITION_SUBTYPE_DATA_SPIFFS:
-            q_error("% No support for SPIFFS partitions yet\r\n");
-            goto mount_failed;
+            if (esp_spiffs_mounted(part->label)) {
+              q_errorf("%% Partition \"%s\" is already mounted\r\n", part->label);
+              goto mount_failed;
+            }
+
+            esp_vfs_spiffs_conf_t conf2 = {
+              .base_path = mp,
+              .partition_label = part->label,
+              .max_files = 2,
+              .format_if_mount_failed = true,
+            };
+
+            err = esp_vfs_spiffs_register(&conf2);
+            if (err)
+              goto mount_failed;
+            else
+              goto finalize_mount;
 
           // Mount LittleFS partition
           case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS:
@@ -5676,7 +5711,7 @@ static int cmd_files_mount(int argc, char **argv) {
   q_errorf("%% Partition label \"%s\" is not found\r\n", argv[1]);
 
 mount_failed:
-  q_errorf("%% Mount partition \"%s\" failed (error: %d, slot%d)\r\n", argv[1], err, i);
+  q_errorf("%% Mount partition \"%s\" failed (error: %d)\r\n", argv[1], err);
   mountpoints[i].wl_handle = WL_INVALID_HANDLE;
   if (it)
     esp_partition_iterator_release(it);
@@ -5722,11 +5757,11 @@ static int cmd_files_mount0(int argc, char **argv) {
   esp_partition_iterator_t it = esp_partition_find(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, NULL);
 
   if (!it) {
-    q_print("% Can not read partition table\r\n");
+    q_error("% Can not read partition table\r\n");
     return 0;
   }
 
-  q_print("%  Partition label |   Type    |Size(Kb) |    Mounted on    |Total(Kb)|Free(Kb)\r\n"
+  q_print("%  Partition label |   Type    |   Size  |    Mounted on    |Total(Kb)|Free(Kb)\r\n"
           "% -----------------+-----------+---------+------------------+---------+--------\r\n");
 
 
@@ -5818,31 +5853,31 @@ static int cmd_files_cd(int argc, char **argv) {
   // Paths like "../some/path" will be processed as if it was simply ".."
   // No support of relative paths
   if (argv[1][0] == '.' && argv[1][1] == '.') {
-    i = strlen(Cwd);
-    if (i < 3) {  //  minimal path "/a/"
-      q_print("% Root directory reached\r\n");
+
+    char *p;
+    if ((i = strlen(Cwd)) < 3)  //  minimal path "/a/". root directory reached
       return 0;
-    }
 
-    // remove trailing path separator and recerse search
-    // for another one.aaaaannd....
-    if (Cwd[i - 1] == '/' || Cwd[i - 1] == '\\')
-      Cwd[i - 1] = '\0';
+    // remove trailing path separator and reverse search
+    // for another one
+    files_strip_trailing_slash(Cwd);
 
-    char *p = strrchr(Cwd, '/');
-    if (!p)
-      p = strrchr(Cwd, '\\');
-    if (!p)
-      abort();  //must not happen
+    if (NULL == (p = strrchr(Cwd, '/')))
+      if (NULL == (p = strrchr(Cwd, '\\')))
+        abort(); //must not happen
 
-    // ......strip it
-    *p = '\0';
+    // strip everything after it
+    p[1] = '\0';
     if (Cwd[0] == '\0')
       files_set_cwd("/");
-#if 1      
-    else
-      q_printf("%% cmd_files_cd() : \"%s\"\r\n", Cwd);
-#endif  
+    else {
+      // repeat "cd .."" until we reach path that exists.
+      // partition can be mounted under /a/b/c but /a, /a/b are not exist so
+      // "cd .." from "/a/b/c/" should not end up at "/a/b/"
+      if (!files_path_exist(Cwd, true))
+        return cmd_files_cd(argc,argv);
+    }
+    files_set_cwd(Cwd); //update prompt
     return 0;
   }
 
@@ -5869,7 +5904,7 @@ static int cmd_files_cd(int argc, char **argv) {
   // Path is absolute: check if it exists and
   // store it as current working directory
   if (argv[1][0] == '/') {
-    if (files_path_exist(argv[1])) {
+    if (files_path_exist(argv[1], true)) {
       files_set_cwd(argv[1]);
       return 0;
     }
@@ -5891,8 +5926,8 @@ static int cmd_files_cd(int argc, char **argv) {
   if (i < 1)
     abort();  //must not happen
 
-  if (tmp[i - 1] != '/' && tmp[i - 1] != '\\')
-    tmp[i] = '/';
+  //if (tmp[i - 1] != '/' && tmp[i - 1] != '\\')
+//    tmp[i] = '/';
 
   strcat(tmp, argv[1]);
 
@@ -5901,11 +5936,10 @@ static int cmd_files_cd(int argc, char **argv) {
     tmp[i] = '/';
     tmp[i + 1] = '\0';
   }
-  if (files_path_exist(tmp)) {
-    if (files_set_cwd(tmp)) {
-      q_printf("%% Changed to \"%s\"\r\n",tmp);
+  if (files_path_exist(tmp, true)) {
+    if (files_set_cwd(tmp))
       return 0;
-    } else
+    else
       q_error(Failed);
   } else
 path_does_not_exist:
@@ -5913,6 +5947,9 @@ path_does_not_exist:
   return 1;
 }
 
+// "pwd"
+// Prints current directory set by "cd" command
+//
 static int cmd_files_pwd(int argc, char **argv) {
 
   q_printf("%% %s\r\n", files_get_cwd());
@@ -5928,9 +5965,6 @@ static int cmd_files_pwd(int argc, char **argv) {
 //            Jun-10-2022 10:40:07   [Directory1]
 // 00000177   Jun-10-2022 10:40:07   file1.txt
 static int cmd_files_ls(int argc, char **argv) {
-
-
-
   return 0;
 }
 
@@ -5955,9 +5989,20 @@ static int cmd_files_insert(int argc, char **argv) {
 static int cmd_files_delete(int argc, char **argv) {
   return 0;
 }
+
 static int cmd_files_mkdir(int argc, char **argv) {
+  if (argc < 2)
+    return -1;
+  files_strip_trailing_slash(argv[1]);
+  if (argv[1][0] == '\0')
+    return 1;
+  if ((argv[1] = files_full_path(argv[1])) != NULL)
+    if (mkdir(argv[1],ACCESSPERMS) == 0)
+      return 0;
+  q_errorf("%% Failed to create directory \"%s\", error %d\r\n",argv[1],errno);
   return 0;
 }
+
 static int cmd_files_cat(int argc, char **argv) {
   return 0;
 }
@@ -6315,42 +6360,10 @@ static void __attribute__((constructor)) espshell_start() {
 #else
 void espshell_start() {
 #endif
-  // save the counter value (seconds) on program start
-  // must be 0 but just in case
-  uptime = (uint32_t)(esp_timer_get_time() / 1000000);
-
-  //initialize sequences
-  seq_init();
-
-  //start shell task.
+  seq_init(); 
   espshell_task((const void *)1);
 }
 
-
-
-/* espshell code copyright 2024, vvb333007 <vvb@nym.hush.com> */
-
-/*
- * This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0.
- */
-
-/*
- * Copyright 1992,1993 Simmule Turner and Rich Salz.  All rights reserved.
- *
- * This software is not subject to any license of the American Telephone
- * and Telegraph Company or of the Regents of the University of California.
- *
- * Permission is granted to anyone to use this software for any purpose on
- * any computer system, and to alter it and redistribute it freely, subject
- * to the following restrictions:
- * 1. The authors are not responsible for the consequences of use of this
- *    software, no matter how awful, even if they arise from flaws in it.
- * 2. The origin of this software must not be misrepresented, either by
- *    explicit claim or by omission.  Since few users ever read sources,
- *    credits must appear in the documentation.
- * 3. Altered versions must be plainly marked as such, and must not be
- *    misrepresented as being the original software.  Since few users
- *    ever read sources, credits must appear in the documentation.
- * 4. This notice may not be removed or altered.
- */
+// TAG:copyrights
+// ESPShell copyright 2024, by vvb333007 <vvb@nym.hush.com> https://github/vvb33007/espshell
+// EditLine copyright 1992,1993 Simmule Turner and Rich Salz.  All rights reserved
