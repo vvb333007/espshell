@@ -100,6 +100,7 @@
 #include <stdarg.h>
 #include <ctype.h>
 #include <errno.h>
+#include <time.h>
 
 #include <Arduino.h>
 
@@ -5282,6 +5283,22 @@ static void files_strip_trailing_slash(char *p) {
   }
 }
 
+// is path == "/" ?
+static inline __attribute__((always_inline)) bool files_path_is_root(const char *path) {
+  return (path && (path[0] == '/' || path[0] == '\\') && (path[1] == '\0'));
+}
+
+// convert time_t to "Jun-10-2022 10:40:07"
+// not reentrant
+static char *files_time2text(time_t t) {
+  static char buf[32];
+  struct tm *info;
+  info = localtime( &t );
+  sprintf(buf,"%u-%02u-%02u %02u:%02u:%02u",info->tm_year + 1900, info->tm_mon,info->tm_mday, info->tm_hour,info->tm_min,info->tm_sec);
+  return buf;
+}
+
+
 // set CWD
 // path must include a mountpoint as well: "/ffat/my_dir" if
 // one wishes to read/write files
@@ -5399,6 +5416,8 @@ static char *files_full_path(const char *path) {
   return out;
 }
 
+
+
 // check if given path (directory or file) exists
 //
 static bool files_path_exist(const char *path, bool directory) {
@@ -5412,8 +5431,8 @@ static bool files_path_exist(const char *path, bool directory) {
     return false;
 
   // report that directory "/" does exist (actually it doesn't)
-  if ((path[0] == '\\' || path[0] == '/') && (path[1] == '\0') && directory)
-    return true;
+  if (files_path_is_root(path))
+    return directory;
 
   int len = strlen(path);
   char path0[len + 1];
@@ -5507,11 +5526,9 @@ static int cmd_files_if(int argc, char **argv) {
   return 0;
 }
 
-// "unmount *"
 // "unmount /Mount_point"
-//
 // Unmount a filesystem
-// TODO: sync()/flush()
+//
 static int cmd_files_unmount(int argc, char **argv) {
 
   if (argc < 2)
@@ -5552,13 +5569,14 @@ static int cmd_files_unmount(int argc, char **argv) {
   }
 
 finalize_unmount:
+#if WITH_HELP
+  q_printf("%% Unmounted %s partition \"%s\"\r\n", files_subtype2text(mountpoints[i].type), mountpoints[i].mp);
+#endif
+
   mountpoints[i].wl_handle = WL_INVALID_HANDLE;
   free(mountpoints[i].mp);
   mountpoints[i].mp = NULL;
   mountpoints[i].label[0] = '\0';
-#if WITH_HELP
-  q_printf("%% Unmounted %s partition \"%s\"\r\n", files_subtype2text(mountpoints[i].type), argv[1]);
-#endif
   return 0;
 
 failed_unmount:
@@ -5595,7 +5613,6 @@ static int cmd_files_mount(int argc, char **argv) {
       q_error("% Mount point must start with \"/\"\r\n");
       return 2;
     }
-    files_strip_trailing_slash(mp);
   } else {
     // mountpoint is not specified: use partition label and "/"
     // to make a mountpoint
@@ -5606,8 +5623,13 @@ static int cmd_files_mount(int argc, char **argv) {
     sprintf(mp0, "/%s", argv[1]);
     mp = mp0;
   }
-  
 
+  files_strip_trailing_slash(mp);
+  if (!*mp) {
+    q_error("%% Directory name required. Can't mount to \"/\"\r\n");
+    return 2;
+  }
+  
   // due to VFS internals there are restrictions on mount point length.
   // longer paths will work for mounting but fail for unmount so we just
   // restrict it here
@@ -5956,6 +5978,7 @@ static int cmd_files_pwd(int argc, char **argv) {
   return 0;
 }
 
+
 // "ls"
 // "ls PATH"
 // Directory listing for current working directory or PATH if specified
@@ -5965,6 +5988,81 @@ static int cmd_files_pwd(int argc, char **argv) {
 //            Jun-10-2022 10:40:07   [Directory1]
 // 00000177   Jun-10-2022 10:40:07   file1.txt
 static int cmd_files_ls(int argc, char **argv) {
+  char *path;
+  int plen;
+
+  path = (argc > 1) ? files_full_path(argv[1]) : Cwd;
+  if (!path)
+    return 0;
+  plen = strlen(path);
+  if (!plen)
+    return 0;
+    
+  // if it is Cwd then it MUST end with "/" so we dont touch it
+  // if it is full_path then it MAY or MAY NOT end with "/" but full_path is writeable and expandable
+  if (path[plen - 1] != '\\' && path[plen - 1] != '/') {
+    if (path == Cwd) {
+      q_error("FIXME: report 2\r\n");
+      return 0;
+    }
+    path[plen++] = '/';
+    path[plen] = '\0';
+  }
+
+  q_printf("%% Directory \"%s\" content:\r\n",path);
+  q_print("% Size/Used      Modified          *  Name\r\n");
+  
+
+  // root directory listing:
+  if (files_path_is_root(path)) {
+    for (int i = 0; i < MOUNTPOINTS_NUM; i++)
+      if (mountpoints[i].mp)
+        q_printf("%% % 9u   -- mountpoint --   DIR [%s]\r\n",files_space_total(i) - files_space_free(i), mountpoints[i].mp);
+    return 0;
+  }
+  
+  // real directory listing
+  if (!files_path_exist(path,true))
+    q_errorf("%% Path \"%s\" does not exist\r\n",path);
+  else {
+    int total_f = 0, total_d = 0;
+    
+    DIR *dir = opendir(path);
+    if (dir) {
+      struct dirent *ent;
+      q_print("%               -- level up --    DIR [..]\r\n");
+      while ((ent = readdir(dir)) != NULL) {
+        
+        struct stat st;
+        char path0[512] = { 0 };
+        if (strlen(ent->d_name) + 1 + plen >= sizeof(path0)) {
+          q_error("% Path is too long\r\n");
+          continue;
+        }
+
+        // d_name entries are simply file/directory names without path so
+        // we need to prepend a valid path to d_name before calling stat()
+        // valid path is: current working dir + ls' argument (if any)
+        strcpy(path0,path);
+        strcat(path0,ent->d_name);
+
+        if (0 == stat(path0,&st)) {
+          if (ent->d_type == DT_DIR) {
+            total_d++;
+            q_printf("%%            %s  DIR [%s]\r\n",files_time2text(st.st_mtime), ent->d_name);
+          }
+          else {
+            total_f++;
+            q_printf("%% % 9u  %s      %s\r\n",st.st_size,files_time2text(st.st_mtime), ent->d_name);
+          }
+        } else
+          q_errorf("stat() : failed %d, name %s\r\n",errno,ent->d_name);
+        
+      }
+      closedir(dir);
+    }
+    q_printf("%%\r\n%% %u directories, %u files\r\n",total_d, total_f);
+  }
   return 0;
 }
 
