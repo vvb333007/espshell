@@ -41,6 +41,10 @@ By entering "? keys" command one also can find the key combinations which
 can be used on "dumb" terminals: if for example arrow keys in your terminal
 are not working correctly you can use Ctrl+F or B as an alternative keys.
 
+Pressing <ESC>, then entering 1..3 digit decimal number and pressing <ESC> again
+is the way to enter arbitrary ascii symbol code: ESC, 3, ESC sends <Ctrl+C> for
+example
+
 
 AUTOCOMPLETION
 --------------
@@ -81,7 +85,6 @@ Here is the list of currently supported commands (main command tree):
 % "?"          : Commands list & help
 % "uptime"     : System uptime
 % "show"       : Display information
-% "filesystem" : File system access
 % "pin"        : Pins (GPIO) commands
 % "cpu"        : Set/show CPU parameters
 % "reload"     : Reset CPU
