@@ -63,10 +63,11 @@
 
 
 // COMPILE TIME SETTINGS
-// (User can override these with espshell.h
+// (User can override these with espshell.h, extra/espshell.h or just change default values below)
 //
-//#define SERIAL_IS_USB            // Not yet
-//#define ESPCAM                   // Include ESP32CAM commands (read extra/README.md).
+//TAG:sttings
+//#define SERIAL_IS_USB          // Not yet
+//#define ESPCAM                 // Include ESP32CAM commands (read extra/README.md).
 #define AUTOSTART 1              // Set to 0 for manual shell start via espshell_start().
 #define WITH_COLOR 1             // Enable terminal colors
 #define WITH_HELP 1              // Set to 0 to save some program space by excluding help strings/functions
@@ -87,9 +88,9 @@
 
 //TAG:prompts
 #define PROMPT "esp32#>"
-#define PROMPT_I2C "esp32-i2c#>"
-#define PROMPT_UART "esp32-uart#>"
-#define PROMPT_SEQ "esp32-seq#>"
+#define PROMPT_I2C "esp32-i2c%u>"
+#define PROMPT_UART "esp32-uart%u>"
+#define PROMPT_SEQ "esp32-seq%u>"
 #define PROMPT_FILES "esp32#(%s)>"
 #define PROMPT_SEARCH "Search: "
 
@@ -130,19 +131,20 @@
 
 #if WITH_FS
 // Support files for LittleFS, FAT and SPIFFS filesystems
-#include <sys/unistd.h>
-#include <sys/stat.h>
-#include <dirent.h>
+#  include <sys/unistd.h>
+#  include <sys/stat.h>
+#  include <dirent.h>
+#  include <fcntl.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
-#include <esp_vfs_fat.h>
-#include <diskio.h>
-#include <diskio_wl.h>
-#include <vfs_fat_internal.h>
-#include <wear_levelling.h>
-#include <esp_littlefs.h>
-#include <esp_spiffs.h>
+#  include <esp_vfs_fat.h>
+#  include <diskio.h>
+#  include <diskio_wl.h>
+#  include <vfs_fat_internal.h>
+#  include <wear_levelling.h>
+#  include <esp_littlefs.h>
+#  include <esp_spiffs.h>
 #ifdef __cplusplus
 };
 #endif
@@ -150,35 +152,40 @@ extern "C" {
 #endif
 
 // Pickup compile-time setting overrides if any from "espshell.h" or "extra/espshell.h"
-// "espshell.h" file is optional: compile-time settings can be changed in this file as well
-// espshell.h has priority over extra/espshell.h
 #if __has_include("espshell.h")
-#include "espshell.h"
+#  include "espshell.h"
 #elif __has_include("extra/espshell.h")
-#include "extra/espshell.h"
+#  include "extra/espshell.h"
 #endif
 
 // Compile basic AiThinker ESP32Cam support: ESPCam commands are arranged as "external"
 // commands and their source code is in "extra/" folder. These are used for a side project
 // and are left here for the reference on how to write external commands
 #ifdef ESPCAM
-#if defined(EXTERNAL_PROTOTYPES) || defined(EXTERNAL_KEYWORDS) || defined(EXTERNAL_HANDLERS)
-#error "EXTERNAL_KEYWORDS and ESPCAM are both set"
-#endif
-#if __has_include("esp32cam_prototypes.h")
-#define EXTERNAL_PROTOTYPES "esp32cam_prototypes.h"
-#define EXTERNAL_KEYWORDS "esp32cam_keywords.c"
-#define EXTERNAL_HANDLERS "esp32cam_handlers.c"
-#elif __has_include("extra/esp32cam_prototypes.h")
-#define EXTERNAL_PROTOTYPES "extra/esp32cam_prototypes.h"
-#define EXTERNAL_KEYWORDS "extra/esp32cam_keywords.c"
-#define EXTERNAL_HANDLERS "extra/esp32cam_handlers.c"
-#else
-#warning "ESPCAM is defined, but no ESP32Cam source files were found"
-#warning "Disabling ESPCam support"
-#undef ESPCAM
-#endif  // Have esp32cam_* sources?
+#  if defined(EXTERNAL_PROTOTYPES) || defined(EXTERNAL_KEYWORDS) || defined(EXTERNAL_HANDLERS)
+#    error "EXTERNAL_KEYWORDS and ESPCAM are both set"
+#  endif
+#  if __has_include("esp32cam_prototypes.h")
+#    define EXTERNAL_PROTOTYPES "esp32cam_prototypes.h"
+#    define EXTERNAL_KEYWORDS "esp32cam_keywords.c"
+#    define EXTERNAL_HANDLERS "esp32cam_handlers.c"
+#  elif __has_include("extra/esp32cam_prototypes.h")
+#    define EXTERNAL_PROTOTYPES "extra/esp32cam_prototypes.h"
+#    define EXTERNAL_KEYWORDS "extra/esp32cam_keywords.c"
+#    define EXTERNAL_HANDLERS "extra/esp32cam_handlers.c"
+#  else
+#    warning "ESPCAM is defined, but no ESP32Cam source files were found"
+#    warning "Disabling ESPCam support"
+#    undef ESPCAM
+#  endif  // Have esp32cam_* sources?
 #endif  // ESPCAM?
+
+
+// GCC-specific stuff
+#define UNUSED __attribute__((unused)) 
+#define INLINE inline __attribute__((always_inline))
+#define PRINTF_LIKE __attribute__((format(printf, 1, 2)))
+
 
 // Autostart/start espshell.
 // Called automatically by C runtime startup code if AUTOSTART == 1 (Default)
@@ -192,8 +199,9 @@ void espshell_start();
 // Miscellaneous forwards
 static inline bool uart_isup(int u);                                           // Check if UART u is up and operationg (driver installed)
 static int q_strcmp(const char *, const char *);                               // loose strcmp
-static int __attribute__((format(printf, 1, 2))) q_printf(const char *, ...);  // printf()
-static int __attribute__((format(printf, 1, 2))) q_errorf(const char *, ...);  // printf() in magenta color
+#pragma GCC diagnostic warning "-Wformat"
+static int PRINTF_LIKE q_printf(const char *, ...);  // printf()
+static int PRINTF_LIKE q_errorf(const char *, ...);  // printf() in magenta color
 static int q_print(const char *);                                              // puts()
 static int q_error(const char *);                                              // puts() in magenta color
 
@@ -209,54 +217,34 @@ static uart_port_t uart = STARTUP_PORT;
 // espshell uses console_read../console_write.. and some other functions to print data or read user input.
 // In order to implement support for another type of hardware (say USBCDC) one have to implement functions
 // below
-
 #ifdef SERIAL_IS_USB
-#error "console_...() functions are not implemented"
+#  error "console_write_bytes() is not implemented"
+#  error "console_read_bytes() is not implemented"
+#  error "console_available() is not implemented"
+static INLINE bool console_isup() { return uart == 99 ? true : uart_isup(uart); }
 #else
 // Send characters to user terminal
-static inline __attribute__((always_inline)) int console_write_bytes(const void *buf, size_t len) {
-  return uart_write_bytes(uart, buf, len);
-}
+static INLINE int console_write_bytes(const void *buf, size_t len) { return uart_write_bytes(uart, buf, len); }
 // How many characters are available for read without blocking?
-static inline __attribute__((always_inline)) int console_available() {
-  size_t av;
-  return ESP_OK == uart_get_buffered_data_len(uart, &av) ? (int)av : -1;
-}
+static INLINE int console_available() { size_t av; return ESP_OK == uart_get_buffered_data_len(uart, &av) ? (int)av : -1; }
 // read user input, with timeout
-static inline __attribute__((always_inline)) int console_read_bytes(void *buf, uint32_t len, TickType_t wait) {
-  return uart_read_bytes(uart, buf, len, wait);
-}
+static INLINE int console_read_bytes(void *buf, uint32_t len, TickType_t wait) { return uart_read_bytes(uart, buf, len, wait); }
 // is UART (or USBCDC) driver installed and can be used?
-static inline __attribute__((always_inline)) bool console_isup() {
-  return uart_isup(uart);
-}
+static INLINE bool console_isup() { return uart_isup(uart); }
 #endif  //SERIAL_IS_USB
 
 // Make ESPShell to use specified UART (or USB) for its IO. Default is uart0.
-static inline __attribute__((always_inline)) int console_here(int i) {
-  return i < 0 ? uart : (i > UART_NUM_MAX ? (i == 99 ? (uart = i) : -1) : (uart = i));
-}
+// Code below reads: return current uart number if i < 0. If i is valid uart number or i is 99
+// then set current uart to that number and return the same number as well. If i is not a valid uart number then -1 is returned
+static INLINE int console_here(int i) { return i < 0 ? uart : (i > UART_NUM_MAX ? (i == 99 ? (uart = i) : -1) : (uart = i)); }
 
 
 //========>=========>======= EDITLINE CODE BELOW (modified ancient version) =======>=======>
-//
-// This is modified version: fixed memory access bugs, keybindings, coloring
-// The Editline core function is readline() : returns user input allowing for line editing and history
-// All editline output is buffered: ttyputs etc functions do their output in Screen buffer which eventually
-// printed by TTYflush()
-//
-// readline() is a semi-blocking call: it blocks until <Enter> is pressed, however internally it only blocks for 500
-// milliseconds, then perform some check and blocks again and cycle repeats
-//
-// ESPShell interacts with user via wrapper calls: console_read_bytes() and console_write_bytes()
-
 #define CRLF "\r\n"
 
 #define MEM_INC 64      // "Line" buffer realloc increments
 #define SCREEN_INC 256  // "Screen" buffer realloc increments
 
-
-/* Memory buffer macros */
 #define DISPOSE(p) free((char *)(p))
 #define NEW(T, c) ((T *)malloc((unsigned int)(sizeof(T) * (c))))
 #define RENEW(p, T, c) (p = (T *)realloc((char *)(p), (unsigned int)(sizeof(T) * (c))))
@@ -271,25 +259,14 @@ static inline __attribute__((always_inline)) int console_here(int i) {
 #define ISMETA(x) ((x)&0x80)
 #define UNMETA(x) ((x)&0x7F)
 
-/*
-**  Command status codes.
-*/
-typedef enum _STATUS {
-  CSdone,
-  CSeof,
-  CSmove,
-  CSdispatch,
-  CSstay,
-  CSsignal
-} STATUS;
 
-/*
-**  Key to command mapping.
-*/
+//  Command status codes.
+typedef enum _STATUS { CSdone, CSeof, CSmove, CSdispatch, CSstay, CSsignal } STATUS;
+
+//  Key to command mapping.
 typedef struct _KEYMAP {
   unsigned char Key;
-  STATUS(*Function)
-  ();
+  STATUS(*Function)();
 } KEYMAP;
 
 /*
@@ -300,10 +277,6 @@ typedef struct _HISTORY {
   int Pos;
   unsigned char *Lines[HIST_SIZE];
 } HISTORY;
-
-/*
- *  Globals.
- */
 
 // TTYq command queue locking
 //TODO: replace with semaphore or mutex
@@ -323,7 +296,7 @@ static int OldPoint;
 static int Point;
 static int PushBack;
 static int Pushed;
-static int Signal = 0;
+//static int Signal = 0;
 #if WITH_COLOR
 static bool Color = false;  //enable coloring
 #endif
@@ -366,37 +339,24 @@ static STATUS clear_screen();
 static STATUS meta();
 
 static const KEYMAP Map[] = {
-  //Key       callback           action
-  { CTL('C'), inject_suspend },  // "suspend" commands
-  { CTL('Z'), inject_exit },     // "exit" command
-
-  { CTL('A'), home_pressed },  // <HOME>
-  { CTL('E'), end_pressed },   // <END>
-
-  { CTL('B'), left_pressed },   // Arrow left. Terminal compatibility
-  { CTL('F'), right_pressed },  // Arrow right. Terminal compatibility
-
+  //Key       Callback                 Action
+  { CTL('C'), inject_suspend },     // "suspend" commands
+  { CTL('Z'), inject_exit },        // "exit" command
+  { CTL('A'), home_pressed },       // <HOME>
+  { CTL('E'), end_pressed },        // <END>
+  { CTL('B'), left_pressed },       // Arrow left. Terminal compatibility
+  { CTL('F'), right_pressed },      // Arrow right. Terminal compatibility
   { CTL('D'), del_pressed },        // <DEL>
   { CTL('H'), backspace_pressed },  // <BACKSPACE>
-
-  { CTL('J'), enter_pressed },  // <ENTER>
-  { CTL('M'), enter_pressed },  // <ENTER>
-
-  { CTL('K'), kill_line },  // Erase from cursor till the end
-
-  { CTL('L'), clear_screen },  // Clear (erase) the screen, keep use input
-
-  { CTL('O'), h_prev },  // Previous history entry. Terminal compatibility
-  { CTL('P'), h_next },  // Next history entry. Terminal compatibility
-
-  { CTL('R'), h_search },  // Reverse history search. Type few symbols and press <Enter>
-
-
-  { CTL('['), meta },         // Arrows processed there as well as other ESC sequences
-                              // ESC [ NUMBER CHAR  will print a string of character CHAR
-                              // NUMBER chracters long. It is useful to input long lines of 1 or 0
-                              // in a few button presses (undocumented)
-  { CTL('I'), tab_pressed },  // <TAB>
+  { CTL('J'), enter_pressed },      // <ENTER>
+  { CTL('M'), enter_pressed },      // <ENTER>
+  { CTL('K'), kill_line },          // Erase from cursor till the end
+  { CTL('L'), clear_screen },       // Clear (erase) the screen, keep use input
+  { CTL('O'), h_prev },             // Previous history entry. Terminal compatibility
+  { CTL('P'), h_next },             // Next history entry. Terminal compatibility
+  { CTL('R'), h_search },           // Reverse history search. Type few symbols and press <Enter>
+  { CTL('['), meta },               // Arrows get processed there as well as other ESC sequences
+  { CTL('I'), tab_pressed },        // <TAB>
 
 //currently unused
 #if 0  
@@ -411,9 +371,9 @@ static const KEYMAP Map[] = {
   { CTL('V'), ring_bell },
   { CTL('X'), ring_bell },
   { CTL('Y'), ring_bell },
-  { CTL(']'), ring_bell },
-  { CTL('^'), ring_bell },  // ?
-  { CTL('_'), ring_bell },  // ?
+  { CTL(']'), ring_bell },  // ctrl+5 or ctrl+]
+  { CTL('^'), ring_bell },  // ctrl+6 or ctrl+/
+  { CTL('_'), ring_bell },  // ctrl+7
 #endif
   { 0, NULL }
 };
@@ -443,44 +403,24 @@ static const KEYMAP MetaMap[16] = {
 // <tab>, Ctrl+??? and such will enable syntax coloring
 //
 #if WITH_COLOR
-// these are exclusively for editline library (buffered editline output)
-// "Search:" coloring (bright/bold syan)
-#define START_COLORING_SEARCH \
-  do { \
-    if (Color) TTYputs((const unsigned char *)"\033[1;36m"); \
-  } while (0)
-// Normal coloring
-#define STOP_COLORING \
-  do { \
-    if (Color) TTYputs((const unsigned char *)"\033[0m"); \
-  } while (0)
+// these two are exclusively for editline library (buffered editline output). They have no effect on normal
+// screen output via q_printf() ... etc functions
+#  define START_COLORING_SEARCH do { if (Color) TTYputs((const unsigned char *)"\033[1;36m"); } while (0)
+#  define STOP_COLORING do { if (Color) TTYputs((const unsigned char *)"\033[0m"); } while (0)
 
-// following one is used by espshell parser & command handlers (direct terminal output)
-//
-#define color_important() \
-  do { \
-    if (Color) q_print("\033[1;33m"); \
-  } while (0)  // Bright/bold yellow
-#define color_warning() \
-  do { \
-    if (Color) q_print("\033[1;31m"); \
-  } while (0)  // Warning/caution message colors (bright/bold red)
-#define color_error() \
-  do { \
-    if (Color) q_print("\033[1;35m"); \
-  } while (0)  // Error message colors. (bright/bold magenta)
-#define color_normal() \
-  do { \
-    if (Color) q_print("\033[0m"); \
-  } while (0)  // Disable coloring
+// These three can be used when doing colored screen output
+#  define color_important() do { if (Color) q_print("\033[1;33m"); } while (0) // Bright/bold yellow
+#  define color_warning() do { if (Color) q_print("\033[1;31m"); } while (0)   // Warning/caution message colors (bright/bold red)
+#  define color_error() do { if (Color) q_print("\033[1;35m"); } while (0)     // Error message colors. (bright/bold magenta)
+#  define color_normal() do { if (Color) q_print("\033[0m"); } while (0)       // Disable coloring
 #else
-// Coloring disabled at compile time
-#define START_COLORING_SEARCH
-#define STOP_COLORING
-#define color_important()
-#define color_warning()
-#define color_error()
-#define color_normal()
+// Coloring is disabled
+#  define START_COLORING_SEARCH
+#  define STOP_COLORING
+#  define color_important()
+#  define color_warning()
+#  define color_error()
+#  define color_normal()
 #endif  //WITH_COLOR
 
 // Queue an arbitrary asciiz string to simulate user input.
@@ -764,15 +704,8 @@ redisplay() {
   return CSmove;
 }
 
-static unsigned char *
-next_hist() {
-  return H.Pos >= H.Size - 1 ? NULL : H.Lines[++H.Pos];
-}
-
-static unsigned char *
-prev_hist() {
-  return H.Pos == 0 ? NULL : H.Lines[--H.Pos];
-}
+static unsigned char *next_hist() { return H.Pos >= H.Size - 1 ? NULL : H.Lines[++H.Pos];}
+static unsigned char *prev_hist() {return H.Pos == 0 ? NULL : H.Lines[--H.Pos];}
 
 static STATUS
 do_insert_hist(unsigned char *p) {
@@ -798,15 +731,8 @@ do_hist(unsigned char *(*move)()) {
   return do_insert_hist(p);
 }
 
-static STATUS
-h_next() {
-  return do_hist(next_hist);
-}
-
-static STATUS
-h_prev() {
-  return do_hist(prev_hist);
-}
+static STATUS h_next() { return do_hist(next_hist);}
+static STATUS h_prev() { return do_hist(prev_hist);}
 
 /*
 **  Return zero if pat appears as a substring in text.
@@ -888,13 +814,13 @@ h_search() {
   p = editinput();
   Prompt = old_prompt;
   Searching = 0;
-  //imperfection on CTRL+R: prompt is displayed at the end of the line
-  //TTYputs((const unsigned char *)Prompt);
+#if 0  
   if (p == NULL && Signal > 0) {
     Signal = 0;
     clear_line();
     return redisplay();
   }
+#endif 
   p = search_hist(p, move);
   clear_line();
   if (p == NULL) {
@@ -1110,45 +1036,29 @@ TTYspecial(unsigned int c) {
 static unsigned char *
 editinput() {
   unsigned int c;
-  //char tmp[2] = { 0, 0 };
-
 
   Repeat = NO_ARG;
   OldPoint = Point = Mark = End = 0;
   Line[0] = '\0';
 
-  Signal = -1;
+  //Signal = -1;
   while ((int)(c = TTYget()) != EOF) {
-
-    //printf("%02x ",c);
     switch (TTYspecial(c)) {
-      case CSdone:
-        return Line;
-      case CSeof:
-        return NULL;
-      case CSsignal:
-        return (unsigned char *)"";
-      case CSmove:
-        reposition();
-        break;
+      case CSdone:   return Line;
+      case CSeof:    return NULL;
+      case CSsignal: return (unsigned char *)"";
+      case CSmove:   reposition(); break;
       case CSdispatch:
         switch (emacs(c)) {
-          case CSdone:
-            return Line;
-          case CSeof:
-            return NULL;
-          case CSsignal:
-            return (unsigned char *)"";
-          case CSmove:
-            reposition();
-            break;
+          case CSdone:   return Line;
+          case CSeof:    return NULL;
+          case CSsignal: return (unsigned char *)"";
+          case CSmove:   reposition(); break;
           case CSdispatch:
-          case CSstay:
-            break;
+          case CSstay:   break;
         }
         break;
-      case CSstay:
-        break;
+      case CSstay: break;
     }
   }
   if (strlen((char *)Line))
@@ -1213,11 +1123,9 @@ readline(const char *prompt) {
   DISPOSE(Screen);
   DISPOSE(H.Lines[--H.Size]);  //TODO: ??
   //TODO: remove signal processing
-  if (Signal > 0) {
-    //s = Signal;
-    Signal = 0;
-    //(void)kill(getpid(), s);
-  }
+  //if (Signal > 0)
+  //  Signal = 0;
+
   return (char *)line;
 }
 
@@ -1463,7 +1371,7 @@ static argcargv_t *userinput_tokenize(char *userinput) {
 // check if *this* task (a caller) is executed as separate (background) task
 // or it is executed in context of ESPShell
 //
-static inline __attribute__((always_inline)) int is_foreground_task() {
+static INLINE int is_foreground_task() {
   return shell_task == xTaskGetCurrentTaskHandle();
 }
 
@@ -1751,7 +1659,7 @@ static int __printfv(const char *format, va_list arg) {
 // its output to different uarts
 // NOTE: add -Wall or at least -Wformat to Arduino's c_flags for __attribute__ to have
 //       effect.
-static int __attribute__((format(printf, 1, 2))) q_printf(const char *format, ...) {
+static int PRINTF_LIKE q_printf(const char *format, ...) {
   int len;
   va_list arg;
   va_start(arg, format);
@@ -1760,7 +1668,7 @@ static int __attribute__((format(printf, 1, 2))) q_printf(const char *format, ..
   return len;
 }
 
-static int __attribute__((format(printf, 1, 2))) q_errorf(const char *format, ...) {
+static int PRINTF_LIKE q_errorf(const char *format, ...) {
   int len;
   color_error();
   va_list arg;
@@ -2222,7 +2130,7 @@ static const struct keywords_t keywords_files[] = {
                                       "% LABEL        - SPI FLASH partition label\r\n"
                                       "% /MOUNT_POINT - A path, starting with \"/\" where filesystem will be mounted.\r\n"
                                       "%\r\n"
-                                      "% Ex.: mount ffat /ffat - mount partition \"ffat\" at directory \"/ffat\""),"Mount partition" },
+                                      "% Ex.: mount ffat /ffat - mount partition \"ffat\" at directory \"/ffat\""),"Mount partition/Show partition table" },
   { "mount", cmd_files_mount, 1, HIDDEN_KEYWORD },
   { "mount", cmd_files_mount0, 0, HELP("% \"mount\"\r\n"
                                        "%\r\n"
@@ -2232,7 +2140,7 @@ static const struct keywords_t keywords_files[] = {
 
   { "unmount", cmd_files_unmount, 1, HELP("% \"unmount /MOUNT_POINT\"\r\n"
                                           "%\r\n"
-                                          "% Unmount a file system. If MOUNT_POINT is \"*\" then all filesystems are unmounted\r\n"),"Unmount partition" },
+                                          "% Unmount a file system\r\n"),"Unmount partition" },
 
   { "ls", cmd_files_ls, 1, HELP("% \"ls [PATH]\"\r\n"
                                 "%\r\n"
@@ -2278,7 +2186,7 @@ static const struct keywords_t keywords_files[] = {
                                 "% Ex.: \"cp /ffat/test.txt /ffat/dir/\"            - copy file to directory\r\n"
                                 "% Ex.: \"cp /spiffs/test.txt /ffat/dir/test2.txt\" - copy between filesystems\r\n"), "Copy files" },
 
-  { "write", cmd_files_write, -1, HELP("% \"write FILENAME TEXT1 TEXT2 ... TEXTn\"\r\n"
+  { "write", cmd_files_write, -1, HELP("% \"write FILENAME TEXT\"\r\n"
                                        "%\r\n"
                                        "% Write an ascii/hex string(s) to file\r\n"
                                        "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
@@ -2286,17 +2194,17 @@ static const struct keywords_t keywords_files[] = {
                                        "%\r\n"
                                        "% Ex.: \"write /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""), "Write bytes" },
 
-  { "append", cmd_files_append, -1, HELP("% \"append FILENAME TEXT1 TEXT2 ... TEXTn\"\r\n"
+  { "append", cmd_files_append, -1, HELP("% \"append FILENAME TEXT\"\r\n"
                                          "%\r\n"
                                          "% Append an ascii/hex string(s) to file\r\n"
-                                         "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
-                                         "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n"
+                                         "% Escape sequences & ascii codes are accepted just as in \"write\" command\r\n"
                                          "%\r\n"
                                          "% Ex.: \"append /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""),"Append bytes" },
 
-  { "insert", cmd_files_insert, -1, HELP("% \"insert LINE_NUMBER FILENAME TEXT1 TEXT2 ... TEXTn\"\r\n"
-                                         "% Insert TEX1..TEXTn to file FILENAME before line LINE_NUMBER\r\n"
+  { "insert", cmd_files_insert, -1, HELP("% \"insert FILENAME LINE_NUM TEXT\"\r\n"
+                                         "% Insert TEXT to file FILENAME before line LINE_NUM\r\n"
                                          "% \"\\n\" is appended to the string being inserted, \"\\r\" is not\r\n"
+                                         "% Escape sequences & ascii codes accepted just as in \"write\" command\r\n"
                                          "% Lines are numbered starting from 0. Use \"cat\" command to find out line numbers\r\n"
                                          "%\r\n"
                                          "% Ex.: \"insert 0 /ffat/test.txt Hello World!\""), "Insert bytes" },
@@ -2309,15 +2217,17 @@ static const struct keywords_t keywords_files[] = {
                                         "Ex.: \"delete 10 /ffat/test.txt\" - remove line #10 from \"/ffat/test.txt\""), "Delete lines" },
   { "delete", cmd_files_delete, 1, HIDDEN_KEYWORD },
 
-  { "mkdir", cmd_files_mkdir, 1, HELP("% \"mkdir PATH\"\r\n"
+  { "mkdir", cmd_files_mkdir, -1, HELP("% \"mkdir PATH\"\r\n"
                                       "%\r\n"
                                       "% Create an empty directory PATH\r\n"),"Create directory" },
 
-  { "cat", cmd_files_cat, 1, HELP("% \"cat FILENAME\"\r\n"
+  { "cat", cmd_files_cat, -1, HELP("% \"cat FILENAME [LINE_START [COUNT]]\"\r\n"
                                   "%\r\n"
-                                  "% Display file FILENAME with line numbers\r\n"),"Display text/binary file" },
+                                  "% Display file FILENAME with line numbers\r\n"
+                                  "% If set, LINE_START is the file line number to start with (default is 0)\r\n"
+                                  "% COUNT is the number of lines to display, (default is \"Display all\")"),"Display text/binary file" },
 
-  { "touch", cmd_files_touch, 1, HELP("% \"touch FILENAME\"\r\n"
+  { "touch", cmd_files_touch, -1, HELP("% \"touch FILENAME\"\r\n"
                                       "%\r\n"
                                       "% Ceate a new file or \"touch\" existing\r\n"), "Touch/Create file" },
 
@@ -2468,9 +2378,11 @@ static const struct keywords_t keywords_main[] = {
 //current keywords list to use
 static const struct keywords_t *keywords = keywords_main;
 
-//common Failed message
+//common messages
 static const char *Failed = "% Failed\r\n";
 static const char *Notset = "not set\r\n";
+static const char *SpacesInPath = "% Too many arguments.\r\n% If your path contains spaces, please enter spaces as \"*\":\r\n% Examples: \"cd Path*With*Spaces\",  \"cd /ffat/Program*Files\"\r\n";
+
 
 // prompt
 static const char *prompt = PROMPT;
@@ -2492,7 +2404,7 @@ static void change_command_directory(int context, const struct keywords_t *dir, 
   prompt = prom;
 #if WITH_HELP
   q_printf("%% Entering %s configuration mode. Ctrl+Z or \"exit\" to return\r\n", text);
-  q_print("% Type \"?\" and press <Enter> to get the list of available commands\r\n");
+  q_print("% Main commands are still avaiable (but not visible in \"?\" command list) \r\n");
 #endif
 }
 
@@ -2558,7 +2470,7 @@ static void seq_freemem(int seq) {
 }
 
 
-// initialize sequences to default values
+// initialize/reset sequences to default values
 //
 static void seq_init() {
 
@@ -2630,7 +2542,7 @@ static void seq_dump(int seq) {
   } else
     q_print(Notset);
 
-  q_printf("%% Pull pin %s after transmission is done\r\n", s->eot ? "HIGH" : "LOW");
+  q_printf("%% Hold %s after transmission is done\r\n", s->eot ? "HIGH" : "LOW");
 }
 
 // convert a level string to numerical values:
@@ -2724,14 +2636,17 @@ static int seq_compile(int seq) {
       }
 
       int k, j, i = strlen(s->bits);
+      // add one extra bit is string length is uneven by copying last bit
       if (i & 1) {
         char *r = (char *)realloc(s->bits, i + 2);
         if (!r)
           return -5;
         s->bits = r;
-        s->bits[i + 0] = '0';
+        s->bits[i + 0] = s->bits[i - 1];
         s->bits[i + 1] = '\0';
-        q_print("% Bitstring was padded with one extra \"0\"\r\n");
+#if WITH_HELP        
+        q_printf("%% Bit string was padded with one extra \"%c\" (must be even number bits)\r\n",s->bits[i]);
+#endif        
         i++;
       }
 
@@ -2795,9 +2710,6 @@ static int seq_send(int pin, int seq) {
 }
 
 
-
-
-
 // COMMAND HANDLERS
 // ----------------
 // Hanlers are the functions which get called by the parser
@@ -2812,22 +2724,28 @@ static int seq_send(int pin, int seq) {
 
 
 //"exit"
-// exists from a 2nd level subderictory
+//"exit exit"
+// exists from command subderictory or closes the shell ("exit exit")
+//
 static int cmd_exit(int argc, char **argv) {
 
   if (keywords != keywords_main) {
     // restore prompt & keywords list to use
     keywords = keywords_main;
     prompt = PROMPT;
-  } else  // "exit exit" secret command. kills shell task, does not remove history tho
+  } else
+    // close espshell. mounted filesystems are left mounted, background commands are left running
+    // memory is not freed. It all can/will be reused on espshell restart via espshell_start() call
     if (argc > 1 && !q_strcmp(argv[1], "exit"))
       Exit = true;
+    
 
   return 0;
 }
 
 //TAG:show
-//show KEYWORD ARG1 ARG2 .. ARGN
+//"show seq NUMBER"
+
 static int cmd_show(int argc, char **argv) {
 
   if (argc < 2)
@@ -2847,6 +2765,7 @@ static int cmd_show(int argc, char **argv) {
 static int cmd_seq_if(int argc, char **argv) {
 
   int seq;
+  static char prom[16];
   if (argc < 2)
     return -1;
 
@@ -2859,7 +2778,8 @@ static int cmd_seq_if(int argc, char **argv) {
     return 1;
   }
 
-  change_command_directory(seq, keywords_sequence, PROMPT_SEQ, "sequence");
+  sprintf(prom,PROMPT_SEQ,seq);
+  change_command_directory(seq, keywords_sequence,prom, "sequence");
   return 0;
 }
 
@@ -4469,6 +4389,7 @@ static inline bool i2c_isup(int iic) {
 static int cmd_i2c_if(int argc, char **argv) {
 
   unsigned int iic;
+  static char prom[16];
   if (argc < 2)
     return -1;
 
@@ -4483,7 +4404,8 @@ static int cmd_i2c_if(int argc, char **argv) {
     return 1;
   }
 
-  change_command_directory(iic, keywords_i2c, PROMPT_I2C, "i2c");
+  sprintf(prom,PROMPT_I2C,iic);
+  change_command_directory(iic, keywords_i2c, prom, "i2c");
   return 0;
 }
 
@@ -4690,6 +4612,8 @@ static inline bool uart_isup(int u) {
 static int cmd_uart_if(int argc, char **argv) {
 
   unsigned int u;
+  static char prom[16];
+
   if (argc < 2)
     return -1;
 
@@ -4711,7 +4635,8 @@ static int cmd_uart_if(int argc, char **argv) {
   }
 #endif
 
-  change_command_directory(u, keywords_uart, PROMPT_UART, "uart");
+  sprintf(prom,PROMPT_UART,u);
+  change_command_directory(u, keywords_uart, prom, "uart");
   return 0;
 }
 
@@ -5284,9 +5209,23 @@ static void files_strip_trailing_slash(char *p) {
 }
 
 // is path == "/" ?
-static inline __attribute__((always_inline)) bool files_path_is_root(const char *path) {
+static INLINE bool files_path_is_root(const char *path) {
   return (path && (path[0] == '/' || path[0] == '\\') && (path[1] == '\0'));
 }
+
+// any objects in "/" are impossible except for mountpoint dirs
+// TODO: add more checks here: double dots, bad characters, too long and so on
+//
+static bool files_path_impossible(const char *path) {
+  int separators = 0;
+  while (*path && (separators < 2)) {
+    if (*path == '\\' || *path == '/')
+      separators++;
+    path++;
+  }
+  return *path == '\0';
+}
+
 
 // convert time_t to "Jun-10-2022 10:40:07"
 // not reentrant
@@ -5294,7 +5233,7 @@ static char *files_time2text(time_t t) {
   static char buf[32];
   struct tm *info;
   info = localtime( &t );
-  sprintf(buf,"%u-%02u-%02u %02u:%02u:%02u",info->tm_year + 1900, info->tm_mon,info->tm_mday, info->tm_hour,info->tm_min,info->tm_sec);
+  sprintf(buf,"%u-%02u-%02u %02u:%02u:%02u",info->tm_year + 1900, info->tm_mon + 1,info->tm_mday, info->tm_hour,info->tm_min,info->tm_sec);
   return buf;
 }
 
@@ -5338,6 +5277,20 @@ static const char *files_set_cwd(const char *cwd) {
 //
 static inline const char *files_get_cwd() {
   return Cwd ? Cwd : files_set_cwd("/");
+}
+
+// Convert "*" to spaces in paths. Spaces in paths are entered as asteriks
+// "path" must be writeable memory.
+//"Program*Files*(x64)" gets converted to "Program Files (x64)"
+//
+static void files_asteriks2spaces(char *path) {
+  if (path) {
+    while (*path != '\0') {
+      if (*path == '*')
+        *path = ' ';
+      path++;
+    }
+  }
 }
 
 
@@ -5392,7 +5345,7 @@ static int files_mountpoint_by_path(const char *path) {
 //
 static char *files_full_path(const char *path) {
 
-  static char out[512];
+  static char out[256+16];
   int len, cwd_len;
 
   if (Cwd == NULL)
@@ -5440,12 +5393,12 @@ static bool files_path_exist(const char *path, bool directory) {
   strcpy(path0,path);
   files_strip_trailing_slash(path0);
   
-  // try stat()..
+  // try stat().. (FAT & LittleFS)
   if (0 == stat(path0, &st))
      return directory ? S_ISDIR(st.st_mode) : S_ISREG(st.st_mode);
 
-  // try opendir()..
-  if (directory && (d = opendir(path)) != NULL) {
+  // try opendir()..(SPIFFS workaround: stat(path_to_directory) returns crap on SPIFFS)
+  if (directory && (d = opendir(path0)) != NULL) {
     closedir(d);
     return true;
   }
@@ -5514,6 +5467,89 @@ static unsigned int files_space_free(int i) {
     default:
   }
   return 0;
+}
+
+// remove file/directory recursively
+// returns number of items removed (files+directories)
+//
+static int files_remove(char *path0, int depth) {
+  
+  int len, removed = 0;
+  char path[256+16];
+
+  if (depth < 1) {
+    q_errorf("%% Too many nested directories\r\n");
+    return 0;
+  }
+
+  // make full path if necessary
+  if ((path0 = files_full_path(path0)) == NULL)
+    return 0;
+
+  // make a copy of full path as files_full_path()'s buffer is not reentrant (static)
+  strcpy(path,path0);
+  
+  if ((len = strlen(path)) < 1)
+    return 0;
+
+  // is path to be removed a file?
+  // unlink() and return
+  if (files_path_exist(path,false)) {
+    return unlink(path) == 0 ? 1 : 0;
+  } else 
+  // path to be removed is a directory
+  // 1. remove all the files in the directory
+  // 2. remove recursively all nested directories
+  // 3. finally remove the directory itself
+  if (files_path_exist(path,true)) {
+
+    // append "/"" to the path if it was not there already
+    if (path[len-1] != '\\' && path[len-1] != '/') {
+      path[len++] = '/';
+      path[len] = '\0';
+    }
+
+    // Go through the directory
+    DIR *dir = opendir(path);
+    if (dir) {
+      struct dirent *de;
+      while((de = readdir(dir)) != NULL) {
+
+        // append entry name to our path
+        path[len] = '\0';
+        strcat(path,de->d_name);
+
+        // if its a directory - call recursively
+        if (de->d_type == DT_DIR)
+          removed += files_remove(path, depth - 1);
+        else {
+          // if its file - just remove it
+          if (0 != unlink(path))
+            q_errorf("%% Failed to remove: \"%s\"\r\n",path);
+          else {
+            removed++;
+#if WITH_HELP            
+            q_printf("%% Removed: \"%s\"\r\n",path);
+#endif            
+          }
+        }
+      }
+      closedir(dir);
+      path[len] = '\0';
+      // finally remove the directry
+      if (rmdir(path) == 0) {
+#if WITH_HELP        
+        q_printf("%% Removed: \"%s\"\r\n",path);
+#endif        
+        removed++;
+        return removed;
+      }
+    }
+    q_errorf("%% Failed to remove \"%s\"\r\n",path);
+  } else
+    // path seems to not exist
+    q_printf("%% File/directory \"%s\" does not exist\r\n",path);
+  return removed;
 }
 
 
@@ -5661,6 +5697,12 @@ static int cmd_files_mount(int argc, char **argv) {
         // We found a partition user wants to mount.
         // Mount/Format depending on FS type
         argv[1] = (char *)part->label;  // handle shortened label names. we dont write into argv[1]
+        // if mountpoint is autogenerated (omitted 2nd argument to "mount" command)
+        // then update it to actual label name: it is possible that user will use shortened
+        // label name (e.g. "www" instead of "wwwroot") so we want mountpoint to be "/wwwroot", not "/www"
+        if (mp == mp0)
+          sprintf(mp0, "/%s", argv[1]);
+
         switch (part->subtype) {
 
           // Mount FAT partition
@@ -5856,14 +5898,10 @@ static int cmd_files_cd(int argc, char **argv) {
     files_set_cwd("/");
     return 0;
   }
-
+#if WITH_HELP
   //"cd Path With Spaces"
-  if (argc > 2) {
-    q_error("% Too many arguments.\r\n"
-            "% If your path contains spaces, please enter spaces as \"*\":\r\n"
-            "% Examples: \"cd Path*With*Spaces\",  \"cd /ffat/Program*Files\"\r\n");
-    return 0;
-  }
+  if (argc > 2) { q_error(SpacesInPath); return 0; }
+#endif  
 
   int i;
   // just in case. 
@@ -5916,12 +5954,7 @@ static int cmd_files_cd(int argc, char **argv) {
   }
 
   // Replace all "*" with spaces " "
-  i = 0;
-  while (argv[1][i] != '\0') {
-    if (argv[1][i] == '*')
-      argv[1][i] = ' ';
-    i++;
-  }
+  files_asteriks2spaces(argv[1]);
 
   // Path is absolute: check if it exists and
   // store it as current working directory
@@ -5933,31 +5966,32 @@ static int cmd_files_cd(int argc, char **argv) {
     goto path_does_not_exist;
   }
 
+  char tmp[512] = { 0 };
+
   // Path is relative: append path to the CWD
   // and check if path exists as well
-  if (strlen(Cwd) + strlen(argv[1]) > 254) {
+  if (strlen(Cwd) + strlen(argv[1]) > sizeof(tmp)) {
     q_error("% Path is too long\r\n");
     return 1;
   }
 
-  char tmp[512] = { 0 };
-
+  // tmp = Cwd+arg1
   strcpy(tmp, Cwd);
-  i = strlen(tmp);
-
-  if (i < 1)
-    abort();  //must not happen
-
-  //if (tmp[i - 1] != '/' && tmp[i - 1] != '\\')
-//    tmp[i] = '/';
+  
+  if ((i = strlen(tmp)) < 1) //must not happen
+    abort();  
 
   strcat(tmp, argv[1]);
 
+  // if resulting path does not end with "/" - add it, we have enough space
+  // in our tmp
   i = strlen(tmp);
   if (tmp[i - 1] != '\\' && tmp[i - 1] != '/') {
     tmp[i] = '/';
     tmp[i + 1] = '\0';
   }
+
+  // Set new CWD if path exists
   if (files_path_exist(tmp, true)) {
     if (files_set_cwd(tmp))
       return 0;
@@ -5983,10 +6017,6 @@ static int cmd_files_pwd(int argc, char **argv) {
 // "ls PATH"
 // Directory listing for current working directory or PATH if specified
 //
-//   Size          Modified          Name
-//            Jun-10-2022 10:40:07   [..]
-//            Jun-10-2022 10:40:07   [Directory1]
-// 00000177   Jun-10-2022 10:40:07   file1.txt
 static int cmd_files_ls(int argc, char **argv) {
   char *path;
   int plen;
@@ -6066,9 +6096,23 @@ static int cmd_files_ls(int argc, char **argv) {
   return 0;
 }
 
+// "rm PATH"
+// removes file or directory with its content (recursively)
+//
 static int cmd_files_rm(int argc, char **argv) {
+  
+  if (argc < 2) return -1;
+#if WITH_HELP  
+  if (argc > 2) { q_error(SpacesInPath); return 0; }
+#endif  
+
+  int num;
+  if ((num = files_remove(argv[1],32)) > 0)
+    q_printf("%% %d files/directories were deleted\r\n",num);
   return 0;
 }
+
+
 static int cmd_files_mv(int argc, char **argv) {
   return 0;
 }
@@ -6088,25 +6132,67 @@ static int cmd_files_delete(int argc, char **argv) {
   return 0;
 }
 
+// "mkdir PATH"
+// Create new directory PATH
+//
 static int cmd_files_mkdir(int argc, char **argv) {
-  if (argc < 2)
-    return -1;
+  if (argc < 2) return -1;
+#if WITH_HELP  
+  if (argc > 2) { q_error(SpacesInPath); return 0; }
+#endif  
+
   files_strip_trailing_slash(argv[1]);
   if (argv[1][0] == '\0')
     return 1;
   if ((argv[1] = files_full_path(argv[1])) != NULL)
-    if (mkdir(argv[1],ACCESSPERMS) == 0)
-      return 0;
+    if (!files_path_impossible(argv[1]))
+      if (mkdir(argv[1],0777) == 0)
+        return 0;
   q_errorf("%% Failed to create directory \"%s\", error %d\r\n",argv[1],errno);
   return 0;
 }
 
+// "cat PATH/FILENAME [LINE_START [COUNT]]"
+// Display file content
+//
 static int cmd_files_cat(int argc, char **argv) {
+
+  if (argc < 2) return -1;
+#if WITH_HELP  
+  if (argc > 2) { q_error(SpacesInPath); return 0; }
+#endif  
+
+
+
   return 0;
 }
+
+// "touch PATH/FILENAME"
+// Create new file or update existing's timestamp
+//
 static int cmd_files_touch(int argc, char **argv) {
+  
+  int fd;
+  if (argc < 2) return -1;
+#if WITH_HELP  
+  if (argc > 2) { q_error(SpacesInPath); return 0; }
+#endif  
+
+  // create path from user input (arg1) and current working directory set by "cd"
+  argv[1] = files_full_path(argv[1]);
+
+  // try to open file, creating it if it doesn't exist
+  if ((fd = open(argv[1], O_CREAT | O_WRONLY, 0666)) > 0)
+    close(fd);
+  else
+    q_errorf("%% Failed to create file \"%s\", error code is %d\r\n",argv[1],errno);
+
   return 0;
 }
+
+// "format LABEL"
+// Format partition
+//
 static int cmd_files_format(int argc, char **argv) {
   return 0;
 }
@@ -6116,10 +6202,7 @@ static int cmd_files_format(int argc, char **argv) {
 #if WITH_HELP
 // "? keys"
 // display keyboard usage help page
-static int help_keys(int argc, char **argv) {
-
-  argc = argc;  //unused
-  argv = argv;  //unused
+static int help_keys(UNUSED int argc, UNUSED char **argv) {
 
   // 25 lines maximum to fit in default terminal window without scrolling
   q_print("%             -- ESPShell Keys -- \r\n\r\n"
@@ -6313,15 +6396,15 @@ espshell_command(char *p) {
     // This allows all command from the main tree to be accessible while in sequence, uart or i2c
     // subdirectory
     const struct keywords_t *key = keywords;
+    found = false;
 one_more_try:
     i = 0;
     bad = -1;
-    found = false;
-
     while (key[i].cmd) {
       // command name matches user input?
       if (!q_strcmp(argv[0], key[i].cmd)) {
         found = true;
+
         // command & user input match when both name & number of arguments match.
         // one special case is command with argc < 0 : these are matched always
         // (-1 == "take any number of arguments")
@@ -6331,8 +6414,6 @@ one_more_try:
           // if nonzero value is returned then it is an index of the "failed" argument (value of 3 means argv[3] was bad (for values > 0))
           // value of zero means successful execution, return code <0 means argument number was wrong (missing argument)
           if (key[i].cb) {
-
-
             bad = key[i].cb(argc, argv);
             // keywords[i] is not a valid pointer anymore as cb() can change the keywords pointer
             // keywords[0] is always valid
