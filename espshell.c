@@ -45,54 +45,50 @@
  *
  * 7. Copyright information is at the end of this file
  */
-
-#undef WITH_HELP
-#undef AUTOSTART
-#undef UNIQUE_HISTORY
-#undef HIST_SIZE
-#undef STACKSIZE
-#undef BREAK_KEY
-#undef STARTUP_PORT
-#undef DO_ECHO
-#undef WITH_COLOR
-#undef WITH_FS
-#undef MOUNTPOINTS_NUM
-#undef EXTERNAL_PROTOTYPES
-#undef EXTERNAL_KEYWORDS
-#undef EXTERNAL_HANDLERS
-
+#define COMPILING_ESPSHELL 1  // dont touch this!
 
 // COMPILE TIME SETTINGS
 // (User can override these with espshell.h, extra/espshell.h or just change default values below)
 //
 //TAG:sttings
-//#define SERIAL_IS_USB          // Not yet
-//#define ESPCAM                 // Include ESP32CAM commands (read extra/README.md).
-#define AUTOSTART 1              // Set to 0 for manual shell start via espshell_start().
-#define WITH_COLOR 1             // Enable terminal colors
-#define WITH_HELP 1              // Set to 0 to save some program space by excluding help strings/functions
-#define UNIQUE_HISTORY 1         // Wheither to discard repeating commands from the history or not
-#define HIST_SIZE 20             // History buffer size (number of commands to remember)
-#define STACKSIZE 5000           // Shell task stack size
-#define BREAK_KEY 3              // Keycode of an "Exit" key: CTRL+C to exit uart "tap" mode
-#define SEQUENCES_NUM 10         // Max number of sequences available for command "sequence"
-#define MOUNTPOINTS_NUM 5        // Max number of simultaneously mounted filesystems
-#define DO_ECHO 1                // -1 - espshell is completely silent, commands are executed but all screen output is disabled
-                                 //  0 - espshell does not do echo for user input (just as "ATE0" modem command), commands are executed and their output is displayed
-                                 //  1 - espshell default behaviour (do echo, enable all output)
-#define STARTUP_PORT UART_NUM_0  // Uart number (or 99 for USBCDC) where shell will be deployed at startup
-#define WITH_FS 0                // Filesystems (fat/spiffs/littlefs) support (compilable but not done yet!)
+//#define SERIAL_IS_USB           // Not yet
+//#define ESPCAM                  // Include ESP32CAM commands (read extra/README.md).
+#define AUTOSTART       1          // Set to 0 for manual shell start via espshell_start().
+#define WITH_COLOR      1          // Enable terminal colors
+#define WITH_HELP       1          // Set to 0 to save some program space by excluding help strings/functions
+#define UNIQUE_HISTORY  1          // Wheither to discard repeating commands from the history or not
+#define WITH_FS         0          // Filesystems (fat/spiffs/littlefs) support (compilable but not done yet!)
+#define WITH_SPIFFS     1          // support SPIF filesystem
+#define WITH_LITTLEFS   1          //   --    LittleFS
+#define WITH_FAT        1          //   --    FAT
+#define HIST_SIZE       20         // History buffer size (number of commands to remember)
+#define STARTUP_PORT    UART_NUM_0 // Uart number (or 99 for USBCDC) where shell will be deployed at startup
+#define SEQUENCES_NUM   10         // Max number of sequences available for command "sequence"
+#define MOUNTPOINTS_NUM 5          // Max number of simultaneously mounted filesystems
+#define STACKSIZE       (5*1024)   // Shell task stack size
+#define RECURSION_DEPTH_RM 127        // TODO: make a test with long "/a/a/a/.../a" path 
 
-#define COMPILING_ESPSHELL 1  // dont touch this!
+// -- ECHO --
+// Automated processing (i.e. sending commands and parsing the resulting output by software) is supported by
+// "echo" command: setting echo mode to -1 ("silent") disables all ESPShell output as if there is no shell at all. 
+// This mode is used to stop ESPShell interfering sketch's output.
+//
+// Setting echo mode to 0 ("off") disables user input echo: everything you type is not displayed, but when <Enter> is
+// pressed then command gets executed and its output is displayed. ESPShell prompt is displayed. This mode is an equivalent of
+// a modem command "ATE0".
 
+// Mode 1 ("on") is default mode when everything is displayed end echoed. This is used when you need human-friendly interface
+
+#define DO_ECHO         1          // echo mode at espshell startup.
 
 //TAG:prompts
-#define PROMPT "esp32#>"
-#define PROMPT_I2C "esp32-i2c%u>"
-#define PROMPT_UART "esp32-uart%u>"
-#define PROMPT_SEQ "esp32-seq%u>"
-#define PROMPT_FILES "esp32#(%s)>"
-#define PROMPT_SEARCH "Search: "
+// Prompts used by command subdirectories
+#define PROMPT "esp32#>"                 // Main prompt
+#define PROMPT_I2C "esp32-i2c%u>"        // i2c prompt
+#define PROMPT_UART "esp32-uart%u>"      // uart prompt   
+#define PROMPT_SEQ "esp32-seq%u>"        // Sequence subtree prompt
+#define PROMPT_FILES "esp32#(%s)>"       // File manager prompt
+#define PROMPT_SEARCH "Search: "         // History search prompt
 
 //TAG:includes
 #include <stdio.h>
@@ -102,6 +98,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <time.h>
+#include <assert.h>
 
 #include <Arduino.h>
 
@@ -129,27 +126,34 @@
 #include <esp32-hal-rmt.h>
 #include <esp32-hal-uart.h>
 
-#if WITH_FS
 // Support files for LittleFS, FAT and SPIFFS filesystems
+#if WITH_FS
 #  include <sys/unistd.h>
 #  include <sys/stat.h>
 #  include <dirent.h>
 #  include <fcntl.h>
-#ifdef __cplusplus
-extern "C" {
-#endif
-#  include <esp_vfs_fat.h>
-#  include <diskio.h>
-#  include <diskio_wl.h>
-#  include <vfs_fat_internal.h>
-#  include <wear_levelling.h>
-#  include <esp_littlefs.h>
-#  include <esp_spiffs.h>
-#ifdef __cplusplus
-};
-#endif
-
-#endif
+#  ifdef __cplusplus
+   extern "C" {
+#  endif
+#  include <esp_vfs.h>
+#  include <esp_partition.h>
+#  if WITH_LITTLEFS
+#    include <esp_littlefs.h>
+#  endif
+#  if WITH_SPIFFS
+#    include <esp_spiffs.h>
+#  endif
+#  if WITH_FAT
+#    include <esp_vfs_fat.h>
+#    include <diskio.h>
+#    include <diskio_wl.h>
+#    include <vfs_fat_internal.h>
+#    include <wear_levelling.h>
+#  endif
+#  ifdef __cplusplus
+   };
+#  endif // __cplusplus
+#endif // WITH_FS
 
 // Pickup compile-time setting overrides if any from "espshell.h" or "extra/espshell.h"
 #if __has_include("espshell.h")
@@ -185,25 +189,29 @@ extern "C" {
 #define UNUSED __attribute__((unused)) 
 #define INLINE inline __attribute__((always_inline))
 #define PRINTF_LIKE __attribute__((format(printf, 1, 2)))
+#define STARTUP_HOOK __attribute__((constructor))
+#pragma GCC diagnostic warning "-Wformat"
+#define xstr(s) ystr(s)
+#define ystr(s) #s
+
 
 
 // Autostart/start espshell.
 // Called automatically by C runtime startup code if AUTOSTART == 1 (Default)
 // otherwhise it is up to user sketch to call espshell_start().
 #if AUTOSTART
-static void __attribute__((constructor)) espshell_start();
+void STARTUP_HOOK espshell_start();
 #else
 void espshell_start();
 #endif
 
 // Miscellaneous forwards
-static inline bool uart_isup(int u);                                           // Check if UART u is up and operationg (driver installed)
-static int q_strcmp(const char *, const char *);                               // loose strcmp
-#pragma GCC diagnostic warning "-Wformat"
+static inline bool uart_isup(int u);                 // Check if UART u is up and operationg (driver installed)
+static int q_strcmp(const char *, const char *);     // loose strcmp
 static int PRINTF_LIKE q_printf(const char *, ...);  // printf()
 static int PRINTF_LIKE q_errorf(const char *, ...);  // printf() in magenta color
-static int q_print(const char *);                                              // puts()
-static int q_error(const char *);                                              // puts() in magenta color
+static int q_print(const char *);                    // puts()
+static int q_error(const char *);                    // puts() in magenta color
 
 // Safe version of Arduino's pinMode(). Bypasses Arduino Core's peripherial manager code,
 // thus does not reconfigures pins. Does not change GPIO Matrix or/and IO_MUX function for the pin
@@ -269,9 +277,8 @@ typedef struct _KEYMAP {
   STATUS(*Function)();
 } KEYMAP;
 
-/*
-**  Command history structure.
-*/
+
+// Command history structure.
 typedef struct _HISTORY {
   int Size;
   int Pos;
@@ -296,7 +303,6 @@ static int OldPoint;
 static int Point;
 static int PushBack;
 static int Pushed;
-//static int Signal = 0;
 #if WITH_COLOR
 static bool Color = false;  //enable coloring
 #endif
@@ -814,13 +820,6 @@ h_search() {
   p = editinput();
   Prompt = old_prompt;
   Searching = 0;
-#if 0  
-  if (p == NULL && Signal > 0) {
-    Signal = 0;
-    clear_line();
-    return redisplay();
-  }
-#endif 
   p = search_hist(p, move);
   clear_line();
   if (p == NULL) {
@@ -1041,7 +1040,6 @@ editinput() {
   OldPoint = Point = Mark = End = 0;
   Line[0] = '\0';
 
-  //Signal = -1;
   while ((int)(c = TTYget()) != EOF) {
     switch (TTYspecial(c)) {
       case CSdone:   return Line;
@@ -1099,9 +1097,6 @@ readline(const char *prompt) {
     if ((Line = NEW(unsigned char, Length)) == NULL)
       return NULL;
   }
-
-
-
   hist_add(NIL);  //TODO: ??
 
   ScreenSize = SCREEN_INC;
@@ -1122,10 +1117,6 @@ readline(const char *prompt) {
 
   DISPOSE(Screen);
   DISPOSE(H.Lines[--H.Size]);  //TODO: ??
-  //TODO: remove signal processing
-  //if (Signal > 0)
-  //  Signal = 0;
-
   return (char *)line;
 }
 
@@ -1313,7 +1304,7 @@ static argcargv_t *aa_current = NULL;
 
 // Increase refcounter on argcargv structure.
 //
-static inline void userinput_ref(argcargv_t *a) {
+static void userinput_ref(argcargv_t *a) {
 
   if (xSemaphoreTake(argv_mux, portMAX_DELAY)) {
     if (a)
@@ -1325,7 +1316,7 @@ static inline void userinput_ref(argcargv_t *a) {
 // Decrease refcounter
 // When refcounter hits zero the whole argcargv gets freed
 //
-static inline void userinput_unref(argcargv_t *a) {
+static void userinput_unref(argcargv_t *a) {
 
   if (xSemaphoreTake(argv_mux, portMAX_DELAY)) {
     if (a) {
@@ -1391,13 +1382,6 @@ extern "C" bool esp_gpio_is_pin_reserved(unsigned int gpio);  //TODO: is it unsi
 #else
 extern bool esp_gpio_is_pin_reserved(unsigned int gpio);
 #endif
-
-
-
-
-//GCC stringify magic.
-#define xstr(s) ystr(s)
-#define ystr(s) #s
 
 #define MAGIC_FREQ 312000  // max allowed frequency for the "pwm" command
 
@@ -1519,7 +1503,7 @@ static bool ishex(const char *p) {
 //convert hex ascii byte.
 //input strings are 1 or 2 chars long:  Ex.:  "0A", "A","6E"
 
-static unsigned char ascii2hex(const char *p) {
+static unsigned char hex2uint8(const char *p) {
 
   unsigned char f, l;  //first and last
 
@@ -3942,24 +3926,23 @@ static int pin_show(int argc, char **argv) {
   if (sleep_sel)
     q_print("% Sleep select: YES\r\n");
 
-  // enable INPUT if was not enabled before. This is needed to read the pin digital value
-  // using IDF functions allows for reading UART or I2C (or other periferial) digital values.
+  // enable INPUT if was not enabled before
   //
-  // As of Arduino Core 3.0.5 digitalRead() does not work in many cases: pin is interface pin (uart_tx as example),
-  // pin is not configured through PeriMan as "simple GPIO" etc.
+  // As of Arduino Core 3.0.5 digitalRead() does not work following cases: 
+  // 1. pin is interface pin (uart_tx as example),
+  // 2. pin is not configured through PeriMan as "simple GPIO"
+  // thats why IDF functions are used instead of digitalRead() and pinMode()
   if (!ie)
     gpio_ll_input_enable(&GPIO, pin);
   int val = gpio_ll_get_level(&GPIO, pin);
+  if (!ie)
+    gpio_ll_input_disable(&GPIO, pin);
 
   q_print("% Digital pin value is ");
-
   color_important();
   q_print(val ? "HIGH (1)\r\n" : "LOW (0)\r\n");
   color_normal();
 
-  // disable input if was temporary enabled
-  if (!ie)
-    gpio_ll_input_disable(&GPIO, pin);
 
   return 0;
 }
@@ -3967,7 +3950,7 @@ static int pin_show(int argc, char **argv) {
 // "pin NUM arg1 arg2 .. argn"
 // "pin NUM"
 // Big fat "pin" command. Processes multiple arguments
-//
+// TODO: should I split into bunch of smaller functions?
 static int cmd_pin(int argc, char **argv) {
 
   unsigned int flags = 0;
@@ -4042,7 +4025,6 @@ static int cmd_pin(int argc, char **argv) {
         // frequency must be an integer number and duty must be a float point number
         if (!isnum(argv[i]))
           return i;
-
 
         if ((freq = atol(argv[i++])) > MAGIC_FREQ) {
 #if WITH_HELP
@@ -4297,17 +4279,26 @@ static int cmd_async(int argc, char **argv) {
 // Display memory amount (total/available) for different
 // API functions: malloc() and heap_caps() allocator with different flags
 //
-static int cmd_mem(int argc, char **argv) {
-
-  unsigned int total;
+static int cmd_mem(UNUSED int argc, UNUSED char **argv) {
 
   q_print("% -- Memory information --\r\n%\r\n");
 
-  q_printf("%% For \"malloc()\" and \"heap_caps_malloc(MALLOC_CAP_DEFAULT)\":\r\n%% %u bytes total, %u available, %u max per allocation\r\n%%\r\n", heap_caps_get_total_size(MALLOC_CAP_DEFAULT), heap_caps_get_free_size(MALLOC_CAP_DEFAULT), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
-  q_printf("%% For \"heap_caps_malloc(MALLOC_CAP_INTERNAL)\", internal SRAM:\r\n%% %u bytes total,  %u available, %u max per allocation\r\n%%\r\n", heap_caps_get_total_size(MALLOC_CAP_INTERNAL), heap_caps_get_free_size(MALLOC_CAP_INTERNAL), heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+  q_print("% For \"malloc()\" (default allocator))\":\r\n");
+  color_important();
+  q_printf("%% %u bytes total, %u available, %u max per allocation\r\n%%\r\n", heap_caps_get_total_size(MALLOC_CAP_DEFAULT), heap_caps_get_free_size(MALLOC_CAP_DEFAULT), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+  color_normal();
+  q_print("% For \"heap_caps_malloc(MALLOC_CAP_INTERNAL)\", internal SRAM:\r\n");
+  color_important();
+  q_printf("%% %u bytes total,  %u available, %u max per allocation\r\n%%\r\n", heap_caps_get_total_size(MALLOC_CAP_INTERNAL), heap_caps_get_free_size(MALLOC_CAP_INTERNAL), heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+  color_normal();
 
-  if ((total = heap_caps_get_total_size(MALLOC_CAP_SPIRAM) / 1024) > 0)
-    q_printf("%% External SPIRAM total: %uMbytes, free: %u bytes\r\n", total / 1024, heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+  unsigned int total;
+  if ((total = heap_caps_get_total_size(MALLOC_CAP_SPIRAM) / 1024) > 0) {
+    q_print("% External SPIRAM detected (available to \"malloc()\"):\r\n");
+    color_important();
+    q_printf("%% Total %uMbytes, free: %u bytes\r\n", total / 1024, heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    color_normal();
+  }
 
   return 0;
 }
@@ -4501,7 +4492,7 @@ static int cmd_i2c(int argc, char **argv) {
     if (!ishex(argv[1]))
       return 1;
 
-    addr = ascii2hex(argv[1]);
+    addr = hex2uint8(argv[1]);
     if (addr < 1 || addr > 127)
       return 1;
 
@@ -4509,7 +4500,7 @@ static int cmd_i2c(int argc, char **argv) {
     for (i = 2, size = 0; i < argc; i++) {
       if (!ishex(argv[i]))
         return i;
-      data[size++] = ascii2hex(argv[i]);
+      data[size++] = hex2uint8(argv[i]);
     }
     // send over
     q_printf("%% Sending %d bytes over I2C%d\r\n", size, iic);
@@ -4529,7 +4520,7 @@ static int cmd_i2c(int argc, char **argv) {
     if (!ishex(argv[1]))
       return 1;
 
-    addr = ascii2hex(argv[1]);
+    addr = hex2uint8(argv[1]);
 
     if (addr < 1 || addr > 127)
       return 1;
@@ -4672,6 +4663,9 @@ static int cmd_uart_baud(int argc, char **argv) {
 // vice versa
 //
 // returns  when BREAK_KEY is pressed
+
+#define BREAK_KEY       3              // Keycode of an "Exit" key: CTRL+C to exit uart "tap" mode
+
 static void
 uart_tap(int remote) {
 
@@ -4817,29 +4811,14 @@ static int cmd_uart(int argc, char **argv) {
               p++;
               if (c == '\\') {
                 switch (*p) {
-                  case '\\':
-                    p++;
-                    c = '\\';
-                    break;
-                  case 'n':
-                    p++;
-                    c = '\n';
-                    break;
-                  case 'r':
-                    p++;
-                    c = '\r';
-                    break;
-                  case 't':
-                    p++;
-                    c = '\t';
-                    break;
-                  case 'e':
-                    p++;
-                    c = '\e';
-                    break;
+                  case '\\': p++;  c = '\\';  break;
+                  case 'n':  p++;  c = '\n';  break;
+                  case 'r':  p++;  c = '\r';  break;
+                  case 't':  p++;  c = '\t';  break;
+                  case 'e':  p++;  c = '\e';  break;
                   default:
                     if (ishex(p))
-                      c = ascii2hex(p);
+                      c = hex2uint8(p);
                     else {
                       q_errorf("%% Unknown escape sequence: \"\\%s\"\r\n", *p ? p : "at the end of the line");
                       return i;
@@ -5069,7 +5048,7 @@ static int cmd_cpu_freq(int argc, char **argv) {
 // Displays system uptime as returned by esp_timer_get_time() counter
 // Displays last reboot cause
 static int
-cmd_uptime(int argc, char **argv) {
+cmd_uptime(UNUSED int argc, UNUSED char **argv) {
 
   unsigned int sec, min = 0, hr = 0, day = 0;
   sec = (unsigned int)(esp_timer_get_time() / 1000000);
@@ -5191,9 +5170,11 @@ static char *Cwd = NULL;  // Current working directory. Must end with "/"
 //
 static struct {
   char *mp;             // mount point e.g. "/a/b/c/d"
-  char label[16 + 1];   // partition label e.g. "ffat", "spiffs" or "littlefs"
+  char label[16 + 1];   // partition label e.g. "ffat", "spiffs" or "littlefs"  TODO: use idf macros or sizeof(something) to get rid of "16+1"
   unsigned char type;   // partition subtype
+#if WITH_FAT  
   wl_handle_t wl_handle;// FAT wear-levelling library handle
+#endif  
 } mountpoints[MOUNTPOINTS_NUM] = { 0 };
 
 
@@ -5317,23 +5298,22 @@ static const char *files_subtype2text(unsigned char subtype) {
 // return index in mountpoints[] array ot -1 on failure
 static int files_mountpoint_by_label(const char *label) {
   int i;
-  for (i = 0; i < MOUNTPOINTS_NUM; i++) {
-    if (!label && !mountpoints[i].label[0])
+  for (i = 0; i < MOUNTPOINTS_NUM; i++)
+    if ((!label && !mountpoints[i].label[0]) ||
+        (label && !q_strcmp(label, mountpoints[i].label)))
       return i;
-    if (label && !q_strcmp(label, mountpoints[i].label))
-      return i;
-  }
   return -1;
 }
 
+// find mountpoint index by arbitrary path.
+// path must include mount point (be absolute)
+//
 static int files_mountpoint_by_path(const char *path) {
   int i;
-  for (i = 0; i < MOUNTPOINTS_NUM; i++) {
-    if (path == mountpoints[i].mp) // TODO: remove
+  for (i = 0; i < MOUNTPOINTS_NUM; i++)
+    if ((!path && !mountpoints[i].mp) ||
+        (path && mountpoints[i].mp && !q_strcmp(mountpoints[i].mp,path)))
       return i;
-    if (path && mountpoints[i].mp && !q_strcmp(path, mountpoints[i].mp))
-      return i;
-  }
   return -1;
 }
 
@@ -5371,8 +5351,9 @@ static char *files_full_path(const char *path) {
 
 
 
+
 // check if given path (directory or file) exists
-//
+// FIXME: spiffs allows for a/b/c/d and says its a valid path: it has then many consequences :(
 static bool files_path_exist(const char *path, bool directory) {
 
   // LittleFS & FAT have proper stat() while SPIFFs doesn't
@@ -5411,6 +5392,7 @@ static bool files_path_exist(const char *path, bool directory) {
 static unsigned int files_space_total(int i) {
 
   switch (mountpoints[i].type) {
+#if WITH_FAT    
     case ESP_PARTITION_SUBTYPE_DATA_FAT:
       FATFS *fs;
       DWORD free_clust, tot_sect, sect_size;
@@ -5421,17 +5403,20 @@ static unsigned int files_space_total(int i) {
       tot_sect = (fs->n_fatent - 2) * fs->csize;
       sect_size = CONFIG_WL_SECTOR_SIZE;
       return tot_sect * sect_size;
-
+#endif
+#if WITH_LITTLEFS
     case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS:
       size_t total, used;
       if (esp_littlefs_info(mountpoints[i].label, &total, &used))
         return 0;
       return total;
-
+#endif
+#if WITH_SPIFFS
     case ESP_PARTITION_SUBTYPE_DATA_SPIFFS:
       if (esp_spiffs_info(mountpoints[i].label, &total, &used))
         return 0;
       return total;
+#endif      
     default:
   }
   return 0;
@@ -5441,6 +5426,7 @@ static unsigned int files_space_total(int i) {
 //
 static unsigned int files_space_free(int i) {
   switch (mountpoints[i].type) {
+#if WITH_FAT    
     case ESP_PARTITION_SUBTYPE_DATA_FAT:
       FATFS *fs;
       DWORD free_clust, free_sect, sect_size;
@@ -5453,17 +5439,20 @@ static unsigned int files_space_free(int i) {
       free_sect = free_clust * fs->csize;
       sect_size = CONFIG_WL_SECTOR_SIZE;
       return free_sect * sect_size;
-
+#endif
+#if WITH_LITTLEFS
     case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS:
       size_t total, used;
       if (esp_littlefs_info(mountpoints[i].label, &total, &used))
         return 0;
       return total - used;
-
+#endif
+#if WITH_SPIFFS
     case ESP_PARTITION_SUBTYPE_DATA_SPIFFS:
       if (esp_spiffs_info(mountpoints[i].label, &total, &used))
         return 0;
       return total - used;
+#endif
     default:
   }
   return 0;
@@ -5582,24 +5571,27 @@ static int cmd_files_unmount(int argc, char **argv) {
   }
 
   switch (mountpoints[i].type) {
-
+#if WITH_FAT
     case ESP_PARTITION_SUBTYPE_DATA_FAT:
       if (mountpoints[i].wl_handle != WL_INVALID_HANDLE)
         if ((err = esp_vfs_fat_spiflash_unmount_rw_wl(mountpoints[i].mp, mountpoints[i].wl_handle)) == ESP_OK)
           goto finalize_unmount;
       goto failed_unmount;
-
+#endif
+#if WITH_SPIFFS
     case ESP_PARTITION_SUBTYPE_DATA_SPIFFS:
       if (esp_spiffs_mounted(mountpoints[i].label))
         if ((err = esp_vfs_spiffs_unregister(mountpoints[i].label)) == ESP_OK)
           goto finalize_unmount;
       goto failed_unmount;
-
+#endif
+#if WITH_LITTLEFS
     case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS:
       if (esp_littlefs_mounted(mountpoints[i].label))
         if ((err = esp_vfs_littlefs_unregister(mountpoints[i].label)) == ESP_OK)
           goto finalize_unmount;
       // FALLTHRU
+#endif      
     default:
       goto failed_unmount;
   }
@@ -5608,8 +5600,9 @@ finalize_unmount:
 #if WITH_HELP
   q_printf("%% Unmounted %s partition \"%s\"\r\n", files_subtype2text(mountpoints[i].type), mountpoints[i].mp);
 #endif
-
+#if WITH_FAT
   mountpoints[i].wl_handle = WL_INVALID_HANDLE;
+#endif  
   free(mountpoints[i].mp);
   mountpoints[i].mp = NULL;
   mountpoints[i].label[0] = '\0';
@@ -5626,12 +5619,12 @@ failed_unmount:
 // mount a filesystem. filesystem type is defined by its label (see partitions.csv file).
 // supported filesystems: fat, littlefs, spiffs
 //
-#define ESP_VFS_PATH_MAX 18  //TODO: #include corresponding idf file
+
 static int cmd_files_mount(int argc, char **argv) {
 
   int i;
   esp_partition_iterator_t it;
-  char mp0[ESP_VFS_PATH_MAX + 1];
+  char mp0[ESP_VFS_PATH_MAX * 2]; // just in case
   const esp_partition_t *part = NULL;
   char *mp = NULL;
 
@@ -5646,37 +5639,45 @@ static int cmd_files_mount(int argc, char **argv) {
   if (argc > 2) {
     mp = argv[2];
     if (mp[0] != '/') {
+#if WITH_HELP      
       q_error("% Mount point must start with \"/\"\r\n");
+#endif      
       return 2;
     }
   } else {
     // mountpoint is not specified: use partition label and "/"
     // to make a mountpoint
     if (strlen(argv[1]) >= sizeof(mp0)) {
+#if WITH_HELP      
       q_error("% Invalid partition name (too long)\r\n");
+#endif      
       return 1;
     }
     sprintf(mp0, "/%s", argv[1]);
     mp = mp0;
   }
 
-  files_strip_trailing_slash(mp);
+  files_strip_trailing_slash(mp); // or mount fails :-/
   if (!*mp) {
-    q_error("%% Directory name required. Can't mount to \"/\"\r\n");
+#if WITH_HELP    
+    q_error("%% Directory name required: can't mount to \"/\"\r\n");
+#endif    
     return 2;
   }
   
   // due to VFS internals there are restrictions on mount point length.
   // longer paths will work for mounting but fail for unmount so we just
   // restrict it here
-  if (strlen(mp) >= ESP_VFS_PATH_MAX) {
-    q_errorf("%% Mount point path max length is %u characters\r\n", ESP_VFS_PATH_MAX - 1);
+  if (strlen(mp) >= ESP_VFS_PATH_MAX*2) {
+    q_errorf("%% Mount point path max length is %u characters\r\n", ESP_VFS_PATH_MAX*2 - 1);
     return 0;
   }
 
   // check if given mountpoint is already used
   if ((i = files_mountpoint_by_path(mp)) >= 0) {
-    q_errorf("%% Mount point \"%s\" is already used to mount partition \"%s\"\r\n", mp, mountpoints[i].label);
+#if WITH_HELP  
+    q_errorf("%% Mount point \"%s\" is already used by partition \"%s\"\r\n", mp, mountpoints[i].label);
+#endif    
     return 0;
   }
 
@@ -5705,6 +5706,7 @@ static int cmd_files_mount(int argc, char **argv) {
 
         switch (part->subtype) {
 
+#if WITH_FAT
           // Mount FAT partition
           case ESP_PARTITION_SUBTYPE_DATA_FAT:
 
@@ -5719,7 +5721,8 @@ static int cmd_files_mount(int argc, char **argv) {
               goto mount_failed;
             else
               goto finalize_mount;
-
+#endif
+#if WITH_SPIFFS
           // Mount SPIFFS partition
           case ESP_PARTITION_SUBTYPE_DATA_SPIFFS:
             if (esp_spiffs_mounted(part->label)) {
@@ -5739,7 +5742,8 @@ static int cmd_files_mount(int argc, char **argv) {
               goto mount_failed;
             else
               goto finalize_mount;
-
+#endif
+#if WITH_LITTLEFS
           // Mount LittleFS partition
           case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS:
 
@@ -5763,9 +5767,9 @@ static int cmd_files_mount(int argc, char **argv) {
               goto mount_failed;
             else
               goto finalize_mount;
-
+#endif
           default:
-            q_error("% Only FAT, LittleFS and SPIFFS file systems are supported\r\n");
+            q_error("% Unsupported file system\r\n");
             goto mount_failed;
         }
       }
@@ -5776,7 +5780,9 @@ static int cmd_files_mount(int argc, char **argv) {
 
 mount_failed:
   q_errorf("%% Mount partition \"%s\" failed (error: %d)\r\n", argv[1], err);
+#if WITH_FAT  
   mountpoints[i].wl_handle = WL_INVALID_HANDLE;
+#endif  
   if (it)
     esp_partition_iterator_release(it);
 
@@ -5791,7 +5797,8 @@ finalize_mount:
     q_error("% Out of memory\r\n");
   else {
     mountpoints[i].type = part->subtype;
-    strcpy(mountpoints[i].label, part->label);  //TODO: strncpy or compile time check for sizeof(part->label) <= sizeof(mountpoints[0].label)
+    static_assert(sizeof(mountpoints[0].label) >= sizeof(part->label), "Increase mountpoints[].label array size");
+    strcpy(mountpoints[i].label, part->label);
     q_printf("%% %s on partition \"%s\" is mounted under \"%s\"\r\n", files_subtype2text(part->subtype), part->label, mp);
   }
   return 0;
@@ -6083,15 +6090,14 @@ static int cmd_files_ls(int argc, char **argv) {
           }
           else {
             total_f++;
-            q_printf("%% % 9u  %s      %s\r\n",st.st_size,files_time2text(st.st_mtime), ent->d_name);
+            q_printf("%% % 9u  %s      %s\r\n",(unsigned int)st.st_size,files_time2text(st.st_mtime), ent->d_name);
           }
         } else
           q_errorf("stat() : failed %d, name %s\r\n",errno,ent->d_name);
-        
       }
       closedir(dir);
     }
-    q_printf("%%\r\n%% %u directories, %u files\r\n",total_d, total_f);
+    q_printf("%%\r\n%% %u director%s, %u file%s\r\n",total_d, total_d == 1 ? "y" : "ies", total_f, total_f == 1 ? "" : "s");
   }
   return 0;
 }
@@ -6107,7 +6113,7 @@ static int cmd_files_rm(int argc, char **argv) {
 #endif  
 
   int num;
-  if ((num = files_remove(argv[1],32)) > 0)
+  if ((num = files_remove(argv[1],RECURSION_DEPTH_RM)) > 0)
     q_printf("%% %d files/directories were deleted\r\n",num);
   return 0;
 }
@@ -6530,12 +6536,8 @@ static void espshell_task(const void *arg) {
 }
 
 // Start ESPShell
-//
-// If AUTOSTART == 1 then this /static/ function is called atomatically by GCC code.
-// if AUTOSTART == 0 then it is up to user to start the shell by calling /global/ espshell_start()
-//
 #if AUTOSTART
-static void __attribute__((constructor)) espshell_start() {
+void STARTUP_HOOK espshell_start() {
 #else
 void espshell_start() {
 #endif
