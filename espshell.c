@@ -1,4 +1,3 @@
-
 /* 
  * ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
  *
@@ -1749,6 +1748,56 @@ static void q_printhex(const unsigned char *p, unsigned int len) {
   }
 }
 
+// convert arguments for uart/write and files/write commands
+static int text2buf(int argc, char **argv, int i /* START */, char **out) {
+
+    int size = 0;
+    char *b;
+
+  if (i >= argc)
+    return -1;
+
+  //instead of estimating buffer size just allocate 512 bytes buffer: espshell
+  // input strings are limited to 500 bytes. TODO: implement input line length limiting
+  if ((*out = b = (char *)malloc(512)) != NULL) {
+  // go thru all the arguments and send them. the space is inserted between arguments
+    do {
+      char *p = argv[i];
+      while (*p) {
+        char c = *p;
+        p++;
+        if (c == '\\') {
+          switch (*p) {
+            case '\\': p++;  c = '\\';  break;
+            case 'n':  p++;  c = '\n';  break;
+            case 'r':  p++;  c = '\r';  break;
+            case 't':  p++;  c = '\t';  break;
+            case 'e':  p++;  c = '\e';  break;
+            default:
+              if (ishex(p))
+                c = hex2uint8(p);
+              else {
+                q_errorf("%% Unknown escape sequence: \"\\%s\"\r\n", *p ? p : "at the end of the line");
+                return i;
+              }
+              p++;
+              if (*p) p++;
+          }
+        }
+        *b++ = c;
+        size++;
+      }
+      i++;
+      //if there are more arguments - insert a space
+      if (i < argc) {
+        *b++ = ' ';
+        size++;
+      }
+    } while (i < argc);
+  }
+  return size;
+}
+
 
 // Console Variables.
 //
@@ -2215,11 +2264,12 @@ static const struct keywords_t keywords_files[] = {
                                       "%\r\n"
                                       "% Ceate a new file or \"touch\" existing\r\n"), "Touch/Create file" },
 
-  { "format", cmd_files_format, 2, HELP("% \"format LABEL [quick]]\"\r\n"
+  { "format", cmd_files_format, 1, HELP("% \"format [LABEL]\"\r\n"
                                         "%\r\n"
-                                        "% Format partition LABEL. Use \"quick\" option for FAT quick-format\r\n"), "Erase old & create new filesystem" },
+                                        "% Format partition LABEL. If LABEL is omitted then current working\r\n"
+                                        "% directory is used to determine partition label"), "Erase old & create new filesystem" },
 
-  { "format", cmd_files_format, 1, HIDDEN_KEYWORD },
+  { "format", cmd_files_format, 0, HIDDEN_KEYWORD },
 
   KEYWORDS_END
 };
@@ -4763,14 +4813,11 @@ static int cmd_uart(int argc, char **argv) {
       // uart number, rx/tx pins and speed must be numbers
       // sanity checks for arguments
       unsigned int rx, tx, speed;
-      if (!isnum(argv[1])) return 1;
-      else rx = atol(argv[1]);
+      if (!isnum(argv[1])) return 1; else rx = atol(argv[1]);
       if (!pin_exist(rx)) return 1;
-      if (!isnum(argv[2])) return 2;
-      else tx = atol(argv[2]);
+      if (!isnum(argv[2])) return 2; else tx = atol(argv[2]);
       if (!pin_exist(tx)) return 2;
-      if (!isnum(argv[3])) return 3;
-      else speed = atol(argv[3]);
+      if (!isnum(argv[3])) return 3; else speed = atol(argv[3]);
 
       if (NULL == uartBegin(u, speed, SERIAL_8N1, rx, tx, 256, 0, false, 112))
         q_error(Failed);
@@ -4788,58 +4835,23 @@ static int cmd_uart(int argc, char **argv) {
         // "write TEXT1 TEXT2 ... TEXTn" command
         //
         if (!q_strcmp(argv[0], "write")) {
+
+          int size;
+          char *out = NULL;          
+
           if (argc < 2)
             return -1;
-
-          int i = 1;
 
           if (!uart_isup(u))
             goto noinit;
 
-          // go thru all the arguments and send them. the space is inserted between arguments
-          do {
-            char *p = argv[i];
-
-            // char by char. parse c-style escape sequences if any
-            // XY are hexadecimal characters
-            // hexadecimals at the end of every token allowed to be in a short form as well: \X
-            // valid: "write Hello\20World!\9"
-            // valid: "write Hello\9 World"
-            // invalid: "write Hello\9World" (Must be \09)
-            while (*p) {
-              char c = *p;
-              p++;
-              if (c == '\\') {
-                switch (*p) {
-                  case '\\': p++;  c = '\\';  break;
-                  case 'n':  p++;  c = '\n';  break;
-                  case 'r':  p++;  c = '\r';  break;
-                  case 't':  p++;  c = '\t';  break;
-                  case 'e':  p++;  c = '\e';  break;
-                  default:
-                    if (ishex(p))
-                      c = hex2uint8(p);
-                    else {
-                      q_errorf("%% Unknown escape sequence: \"\\%s\"\r\n", *p ? p : "at the end of the line");
-                      return i;
-                    }
-                    p++;
-                    if (*p) p++;
-                }
-              }
-              if (uart_write_bytes(u, &c, 1) == 1)
-                sent++;
-            }
-
-            i++;
-            //if there are more arguments - insert a space
-            if (i < argc) {
-              char space = ' ';
-
-              if (uart_write_bytes(u, &space, 1) == 1)
-                sent++;
-            }
-          } while (i < argc);
+          size = text2buf(argc,argv,1,&out);
+          
+          if (size > 0)
+            if ((size = uart_write_bytes(u, out, size)) > 0)
+              sent+=size;
+          if (out)
+            free(out);
 
           q_printf("%% %u bytes sent\r\n", sent);
         } else
@@ -5280,6 +5292,12 @@ static const char *files_subtype2text(unsigned char subtype) {
 
   switch (subtype) {
 
+    // Supported filesystems:
+    case ESP_PARTITION_SUBTYPE_DATA_FAT: return " FAT/exFAT ";
+    case ESP_PARTITION_SUBTYPE_DATA_SPIFFS: return "    SPIFFS ";
+    case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS: return "  LittleFS ";
+
+    // Not supported file systems:
     case ESP_PARTITION_SUBTYPE_DATA_OTA: return "  OTA data ";
     case ESP_PARTITION_SUBTYPE_DATA_PHY: return "  PHY data ";
     case ESP_PARTITION_SUBTYPE_DATA_NVS: return " NVStorage ";
@@ -5288,14 +5306,23 @@ static const char *files_subtype2text(unsigned char subtype) {
     case ESP_PARTITION_SUBTYPE_DATA_EFUSE_EM: return " eFuse emu ";
     case ESP_PARTITION_SUBTYPE_DATA_UNDEFINED: return " Undefined ";
     case ESP_PARTITION_SUBTYPE_DATA_ESPHTTPD: return " ESP HTTPD ";
-    case ESP_PARTITION_SUBTYPE_DATA_FAT: return " FAT/exFAT ";
-    case ESP_PARTITION_SUBTYPE_DATA_SPIFFS: return "    SPIFFS ";
-    case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS: return "  LittleFS ";
+
     default: return " *Unknown* ";
   }
 }
+// -- Mountpoints: allocation & query --
+// These are represented by mountpoints[MOUNTPOINTS_NUM] global array which contains mount point path,
+// partition label name and some other information
+//
+// Mountpoints are referenced by their index rather than pointers.
 
-// return index in mountpoints[] array ot -1 on failure
+
+
+// Find a mountpoint (index) by partition label (accepts shortened label names)
+// If /label/ is NULL, then this function returns first unused entry in mountpoints[] array
+// If there is no mountpoint which serves partition /label/ then -1 is returned
+// On success the mountpoint index returned
+//
 static int files_mountpoint_by_label(const char *label) {
   int i;
   for (i = 0; i < MOUNTPOINTS_NUM; i++)
@@ -5305,8 +5332,9 @@ static int files_mountpoint_by_label(const char *label) {
   return -1;
 }
 
-// find mountpoint index by arbitrary path.
-// path must include mount point (be absolute)
+// Find mountpoint index by arbitrary path.
+// Path must include mount point (be absolute)
+// Similar to files_mountpoint_by_label()
 //
 static int files_mountpoint_by_path(const char *path) {
   int i;
@@ -5316,6 +5344,25 @@ static int files_mountpoint_by_path(const char *path) {
       return i;
   return -1;
 }
+
+// All this code is just to make esp_partition_find() be able to
+// find a partition by incomplete (shortened) label name
+// TODO: rewrite partition lookup code to use this function
+const esp_partition_t *files_partition_by_label(const char *label) {
+
+  esp_partition_iterator_t it;
+
+  if ((it = esp_partition_find(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, NULL)) != NULL)
+    do {
+      const esp_partition_t *part = esp_partition_get(it);
+      if (part && (part->type == ESP_PARTITION_TYPE_DATA) && !q_strcmp(label, part->label)) {
+        esp_partition_iterator_release(it);
+        return part;
+      }
+  } while ((it = esp_partition_next(it)) != NULL);
+  return NULL;
+}
+
 
 // make full path from path and return pointer to resulting string.
 // WARNING: function is not reentrant!
@@ -5328,8 +5375,7 @@ static char *files_full_path(const char *path) {
   static char out[256+16];
   int len, cwd_len;
 
-  if (Cwd == NULL)
-    if (files_set_cwd("/") == NULL)
+  if ((Cwd == NULL) && (files_set_cwd("/") == NULL))
       return NULL;
 
   len = strlen(path);
@@ -5348,9 +5394,6 @@ static char *files_full_path(const char *path) {
   strcat(out, path);
   return out;
 }
-
-
-
 
 // check if given path (directory or file) exists
 // FIXME: spiffs allows for a/b/c/d and says its a valid path: it has then many consequences :(
@@ -5460,14 +5503,16 @@ static unsigned int files_space_free(int i) {
 
 // remove file/directory recursively
 // returns number of items removed (files+directories)
+// depth - is maxumum recursion depth, i.e. max number of nested directories.
+// considering max_path is 256 characters it can be up to 127 directories: "/a/a/a/a..../a"
 //
-static int files_remove(char *path0, int depth) {
+static int files_remove(const char *path0, int depth) {
   
   int len, removed = 0;
-  char path[256+16];
+  char path[256+16];    // TODO: use some MAX_PATH idf macro
 
   if (depth < 1) {
-    q_errorf("%% Too many nested directories\r\n");
+    q_errorf("%% Too many nested directories (adjust RECURSION_DEPTH_RM constant)\r\n");
     return 0;
   }
 
@@ -5518,7 +5563,7 @@ static int files_remove(char *path0, int depth) {
           else {
             removed++;
 #if WITH_HELP            
-            q_printf("%% Removed: \"%s\"\r\n",path);
+            q_printf("%% File removed: \"%s\"\r\n",path);
 #endif            
           }
         }
@@ -5528,7 +5573,7 @@ static int files_remove(char *path0, int depth) {
       // finally remove the directry
       if (rmdir(path) == 0) {
 #if WITH_HELP        
-        q_printf("%% Removed: \"%s\"\r\n",path);
+        q_printf("%% Directory removed: \"%s\"\r\n",path);
 #endif        
         removed++;
         return removed;
@@ -5546,8 +5591,12 @@ static int files_remove(char *path0, int depth) {
 // FileManager commands subtree
 //
 static int cmd_files_if(int argc, char **argv) {
+
+  // file manager actual prompt is set by files_set_cwd()
   change_command_directory(0, keywords_files, PROMPT, "filesystem");
-  files_set_cwd(files_get_cwd()); //initialize CWD if not initialized previously. update user prompt.
+
+  //initialize CWD if not initialized previously. update user prompt.
+  files_set_cwd(files_get_cwd()); 
   return 0;
 }
 
@@ -5556,12 +5605,14 @@ static int cmd_files_if(int argc, char **argv) {
 //
 static int cmd_files_unmount(int argc, char **argv) {
 
-  if (argc < 2)
-    return -1;
-
   int i;
   esp_err_t err = -1;
 
+  // not enough arguments?
+  if (argc < 2)
+    return -1;
+
+  // mount/unmount fails if path ends with slash
   files_strip_trailing_slash(argv[1]);
 
   // find a corresponding mountpoint
@@ -5570,6 +5621,7 @@ static int cmd_files_unmount(int argc, char **argv) {
     return 0;
   }
 
+  // Process "unmount" depending on filesystem type
   switch (mountpoints[i].type) {
 #if WITH_FAT
     case ESP_PARTITION_SUBTYPE_DATA_FAT:
@@ -5623,11 +5675,10 @@ failed_unmount:
 static int cmd_files_mount(int argc, char **argv) {
 
   int i;
-  esp_partition_iterator_t it;
   char mp0[ESP_VFS_PATH_MAX * 2]; // just in case
-  const esp_partition_t *part = NULL;
   char *mp = NULL;
-
+  const esp_partition_t *part = NULL;
+  esp_partition_iterator_t it;
   esp_err_t err = 0;
 
   // enough arguments?
@@ -5653,6 +5704,9 @@ static int cmd_files_mount(int argc, char **argv) {
 #endif      
       return 1;
     }
+
+    // following is wrong for cases when user enters incomplete label name. it is
+    // fixed later
     sprintf(mp0, "/%s", argv[1]);
     mp = mp0;
   }
@@ -5668,8 +5722,8 @@ static int cmd_files_mount(int argc, char **argv) {
   // due to VFS internals there are restrictions on mount point length.
   // longer paths will work for mounting but fail for unmount so we just
   // restrict it here
-  if (strlen(mp) >= ESP_VFS_PATH_MAX*2) {
-    q_errorf("%% Mount point path max length is %u characters\r\n", ESP_VFS_PATH_MAX*2 - 1);
+  if (strlen(mp) >= sizeof(mp0)) {
+    q_errorf("%% Mount point path max length is %u characters\r\n", sizeof(mp0) - 1);
     return 0;
   }
 
@@ -5681,46 +5735,44 @@ static int cmd_files_mount(int argc, char **argv) {
     return 0;
   }
 
-  // find free slot in mountpoints[]
+  // find free slot in mountpoints[] to mount new partition
   if ((i = files_mountpoint_by_path(NULL)) < 0) {
     q_error("% Too many mounted filesystems, increase MOUNTPOINTS_NUM\r\n");
     return 0;
   }
 
-  // find requested partition
+  // find requested partition on flash and mount it:
+  // run through all partitions
   it = esp_partition_find(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, NULL);
   while (it) {
+
     part = esp_partition_get(it);
 
+    // skip everything except for DATA-type partitions
     if (part && (part->type == ESP_PARTITION_TYPE_DATA))
+      // label name match?
       if (!q_strcmp(argv[1], part->label)) {
 
-        // We found a partition user wants to mount.
-        // Mount/Format depending on FS type
-        argv[1] = (char *)part->label;  // handle shortened label names. we dont write into argv[1]
-        // if mountpoint is autogenerated (omitted 2nd argument to "mount" command)
-        // then update it to actual label name: it is possible that user will use shortened
-        // label name (e.g. "www" instead of "wwwroot") so we want mountpoint to be "/wwwroot", not "/www"
+        // We have found the partition user wants to mount.
+        // reassign 1st arg to real partition name (the case when user enters shortened label name)
+        argv[1] = (char *)part->label;  
         if (mp == mp0)
           sprintf(mp0, "/%s", argv[1]);
 
+        // Mount/Format depending on FS type
         switch (part->subtype) {
-
 #if WITH_FAT
           // Mount FAT partition
           case ESP_PARTITION_SUBTYPE_DATA_FAT:
+            esp_vfs_fat_mount_config_t conf = { 0 };
 
-            esp_vfs_fat_mount_config_t conf = {
-              .format_if_mount_failed = true,
-              .max_files = 2,
-              .allocation_unit_size = CONFIG_WL_SECTOR_SIZE,
-              .disk_status_check_enable = false
-            };
-            err = esp_vfs_fat_spiflash_mount_rw_wl(mp, part->label, &conf, &mountpoints[i].wl_handle);
-            if (err)
+            conf.format_if_mount_failed = true;
+            conf.max_files = 2;
+            conf.allocation_unit_size = CONFIG_WL_SECTOR_SIZE;
+            
+            if ((err = esp_vfs_fat_spiflash_mount_rw_wl(mp, part->label, &conf, &mountpoints[i].wl_handle)) != ESP_OK)
               goto mount_failed;
-            else
-              goto finalize_mount;
+            goto finalize_mount;
 #endif
 #if WITH_SPIFFS
           // Mount SPIFFS partition
@@ -5729,19 +5781,17 @@ static int cmd_files_mount(int argc, char **argv) {
               q_errorf("%% Partition \"%s\" is already mounted\r\n", part->label);
               goto mount_failed;
             }
+            esp_vfs_spiffs_conf_t conf2 = { 0 };
 
-            esp_vfs_spiffs_conf_t conf2 = {
-              .base_path = mp,
-              .partition_label = part->label,
-              .max_files = 2,
-              .format_if_mount_failed = true,
-            };
+            conf2.base_path = mp;
+            conf2.partition_label = part->label;
+            conf2.max_files = 2;
+            conf2.format_if_mount_failed = true;
 
-            err = esp_vfs_spiffs_register(&conf2);
-            if (err)
+            
+            if ( (err = esp_vfs_spiffs_register(&conf2)) != ESP_OK )
               goto mount_failed;
-            else
-              goto finalize_mount;
+            goto finalize_mount;
 #endif
 #if WITH_LITTLEFS
           // Mount LittleFS partition
@@ -5751,22 +5801,16 @@ static int cmd_files_mount(int argc, char **argv) {
               q_errorf("%% Partition \"%s\" is already mounted\r\n", part->label);
               goto mount_failed;
             }
+            esp_vfs_littlefs_conf_t conf1 = { 0 };
 
-            esp_vfs_littlefs_conf_t conf1 = {
-              .base_path = mp,
-              .partition_label = part->label,  // strdup?
-              .partition = NULL,
-              .format_if_mount_failed = true,
-              .read_only = false,
-              .dont_mount = false,
-              .grow_on_mount = true
-            };
-
-            err = esp_vfs_littlefs_register(&conf1);
-            if (err)
+            conf1.base_path = mp;
+            conf1.partition_label = part->label;
+            conf1.format_if_mount_failed = true;
+            conf1.grow_on_mount = true;
+            
+            if ((err = esp_vfs_littlefs_register(&conf1)) != ESP_OK)
               goto mount_failed;
-            else
-              goto finalize_mount;
+            goto finalize_mount;
 #endif
           default:
             q_error("% Unsupported file system\r\n");
@@ -5776,6 +5820,7 @@ static int cmd_files_mount(int argc, char **argv) {
     it = esp_partition_next(it);
   }
 
+  // Matching partition was not found
   q_errorf("%% Partition label \"%s\" is not found\r\n", argv[1]);
 
 mount_failed:
@@ -5785,7 +5830,6 @@ mount_failed:
 #endif  
   if (it)
     esp_partition_iterator_release(it);
-
   return 0;
 
 finalize_mount:
@@ -5794,11 +5838,12 @@ finalize_mount:
     esp_partition_iterator_release(it);
 
   if ((mountpoints[i].mp = strdup(mp)) == NULL)
-    q_error("% Out of memory\r\n");
+    q_error(Failed);
   else {
     mountpoints[i].type = part->subtype;
     static_assert(sizeof(mountpoints[0].label) >= sizeof(part->label), "Increase mountpoints[].label array size");
     strcpy(mountpoints[i].label, part->label);
+
     q_printf("%% %s on partition \"%s\" is mounted under \"%s\"\r\n", files_subtype2text(part->subtype), part->label, mp);
   }
   return 0;
@@ -5809,22 +5854,7 @@ finalize_mount:
 //
 static int cmd_files_mount0(int argc, char **argv) {
 
-  char buf[18];  // ESP-IDF says partition name length is 16 bytes maximum
-
-  int found = 0, usable = 0, i;
-
-  //utility
-  char *indent(char *dst, const char *src, size_t dst_len) {
-    int len;
-    if ((len = strlen(src)) >= dst_len)
-      len = dst_len - 1;
-    memset(dst, ' ', dst_len);
-    dst[dst_len - 1] = '\0';
-    memcpy(dst, src, len);
-    return dst;
-  }
-
-
+  int usable = 0, i;
   esp_partition_iterator_t it = esp_partition_find(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, NULL);
 
   if (!it) {
@@ -5834,34 +5864,25 @@ static int cmd_files_mount0(int argc, char **argv) {
 
   q_print("%  Partition label |   Type    |   Size  |    Mounted on    |Total(Kb)|Free(Kb)\r\n"
           "% -----------------+-----------+---------+------------------+---------+--------\r\n");
-
-
   while (it) {
     const esp_partition_t *part = esp_partition_get(it);
-
-    found++;
     if (part && (part->type == ESP_PARTITION_TYPE_DATA)) {
 
-      if (part->subtype == ESP_PARTITION_SUBTYPE_DATA_FAT || part->subtype == ESP_PARTITION_SUBTYPE_DATA_SPIFFS || part->subtype == ESP_PARTITION_SUBTYPE_DATA_LITTLEFS) {
+      if (part->subtype == ESP_PARTITION_SUBTYPE_DATA_FAT || 
+          part->subtype == ESP_PARTITION_SUBTYPE_DATA_SPIFFS || 
+          part->subtype == ESP_PARTITION_SUBTYPE_DATA_LITTLEFS) {
         usable++;
         color_important();
       } else
         color_normal();
-
-      q_print("% ");
-      q_print(indent(buf, part->label, sizeof(buf)));
-      q_print("|");
-      q_print(files_subtype2text(part->subtype));
-      q_print("|");
-      q_printf("% 6uKb", (unsigned int)part->size / 1024);
-      q_print(" | ");
-      if ((i = files_mountpoint_by_label(part->label)) >= 0) {
-        q_print(indent(buf, mountpoints[i].mp, sizeof(buf)));
-        q_printf("|  % 6u | % 6u\r\n", files_space_total(i)/1024, files_space_free(i)/1024);
-      } else {
-        q_print(indent(buf, " ", sizeof(buf)));
-        q_print("|         |\r\n");
-      }
+        //"label" "fs type" "partition size"
+      q_printf("%%% 17s |%s|% 6uKb | ",part->label, files_subtype2text(part->subtype),(unsigned int)part->size / 1024);
+      
+      if ((i = files_mountpoint_by_label(part->label)) >= 0)
+        // "mountpoint" "total fs size" "available fs size"
+        q_printf("% 17s|  % 6u | % 6u\r\n",mountpoints[i].mp, files_space_total(i)/1024, files_space_free(i)/1024);
+      else
+        q_print("                 |         |\r\n");
     }
     it = esp_partition_next(it);
   }
@@ -6027,34 +6048,38 @@ static int cmd_files_pwd(int argc, char **argv) {
 static int cmd_files_ls(int argc, char **argv) {
   char *path;
   int plen;
-
-  path = (argc > 1) ? files_full_path(argv[1]) : Cwd;
-  if (!path)
+  
+  if ((path = (argc > 1) ? files_full_path(argv[1]) : Cwd) == NULL)
     return 0;
-  plen = strlen(path);
-  if (!plen)
+
+  if ((plen = strlen(path)) == 0)
     return 0;
     
   // if it is Cwd then it MUST end with "/" so we dont touch it
   // if it is full_path then it MAY or MAY NOT end with "/" but full_path is writeable and expandable
   if (path[plen - 1] != '\\' && path[plen - 1] != '/') {
     if (path == Cwd) {
-      q_error("FIXME: report 2\r\n");
+      q_error("FIXME: Cwd without trailing slash\r\n");
       return 0;
     }
     path[plen++] = '/';
     path[plen] = '\0';
   }
 
-  q_printf("%% Directory \"%s\" content:\r\n",path);
-  q_print("% Size/Used      Modified          *  Name\r\n");
-  
-
-  // root directory listing:
+  // "ls /" -  root directory listing,
   if (files_path_is_root(path)) {
+    bool found = false;
     for (int i = 0; i < MOUNTPOINTS_NUM; i++)
-      if (mountpoints[i].mp)
-        q_printf("%% % 9u   -- mountpoint --   DIR [%s]\r\n",files_space_total(i) - files_space_free(i), mountpoints[i].mp);
+      if (mountpoints[i].mp) {
+        if (!found) {
+          q_print("%-- USED --        *  Mounted on\r\n");
+          found = true;
+        }
+        q_printf("%% % 9u       MP  %s\r\n",files_space_total(i) - files_space_free(i), mountpoints[i].mp);
+      }
+    if (!found) {
+      q_printf("%% Root (\"%s\") directory is empty: no fileystems mounted\r\n%% Use command \"mount\" to list & mount available partitions\r\n",path);
+    }
     return 0;
   }
   
@@ -6062,24 +6087,26 @@ static int cmd_files_ls(int argc, char **argv) {
   if (!files_path_exist(path,true))
     q_errorf("%% Path \"%s\" does not exist\r\n",path);
   else {
-    int total_f = 0, total_d = 0;
-    
-    DIR *dir = opendir(path);
-    if (dir) {
+    unsigned int total_f = 0, total_d = 0, total_fsize = 0;
+    DIR *dir;
+
+    if ((dir = opendir(path)) != NULL) {
       struct dirent *ent;
-      q_print("%               -- level up --    DIR [..]\r\n");
+
+      q_print("% Size/Used      Modified          *  Name\r\n"
+              "%               -- level up --    DIR [..]\r\n");
       while ((ent = readdir(dir)) != NULL) {
         
         struct stat st;
         char path0[512] = { 0 };
+
         if (strlen(ent->d_name) + 1 + plen >= sizeof(path0)) {
           q_error("% Path is too long\r\n");
           continue;
         }
 
         // d_name entries are simply file/directory names without path so
-        // we need to prepend a valid path to d_name before calling stat()
-        // valid path is: current working dir + ls' argument (if any)
+        // we need to prepend a valid path to d_name 
         strcpy(path0,path);
         strcat(path0,ent->d_name);
 
@@ -6090,6 +6117,7 @@ static int cmd_files_ls(int argc, char **argv) {
           }
           else {
             total_f++;
+            total_fsize += st.st_size;
             q_printf("%% % 9u  %s      %s\r\n",(unsigned int)st.st_size,files_time2text(st.st_mtime), ent->d_name);
           }
         } else
@@ -6097,7 +6125,10 @@ static int cmd_files_ls(int argc, char **argv) {
       }
       closedir(dir);
     }
-    q_printf("%%\r\n%% %u director%s, %u file%s\r\n",total_d, total_d == 1 ? "y" : "ies", total_f, total_f == 1 ? "" : "s");
+    q_printf("%%\r\n%% %u director%s, %u file%s, %u byte%s\r\n",
+             total_d, total_d == 1 ? "y" : "ies", 
+             total_f, total_f == 1 ? "" : "s",
+             total_fsize,total_fsize == 1 ? "" : "s");
   }
   return 0;
 }
@@ -6125,9 +6156,39 @@ static int cmd_files_mv(int argc, char **argv) {
 static int cmd_files_cp(int argc, char **argv) {
   return 0;
 }
+
+// "write FILENAME TEXT"
+// Write TEXT to file FILENAME. File is created if does not exist
+//
 static int cmd_files_write(int argc, char **argv) {
+
+  int fd,size;
+  char *path, *out = NULL;          
+
+  if (argc < 3) return -1;
+  if ((path = files_full_path(argv[1])) == NULL)
+    return 1;
+#if MUST_TOUCH
+  if (!files_path_exist(path,false)) {
+    q_errorf("%% File \"%s\" does not exist, \"touch\" it first\r\n",path);
+    return 0;
+  }
+#endif
+
+  size = text2buf(argc,argv,2,&out);
+  if (size > 0) {
+    if ((fd = open(path,O_CREAT|O_WRONLY)) > 0) {
+      size = write(fd,out,size);
+      if (size < 0)
+        q_errorf("%% Write to file \"%s\" failed\r\n",path);
+      else
+        q_printf("%% %u bytes written\r\n",size);
+    }
+    close(fd);
+  }
   return 0;
 }
+
 static int cmd_files_append(int argc, char **argv) {
   return 0;
 }
@@ -6196,13 +6257,85 @@ static int cmd_files_touch(int argc, char **argv) {
   return 0;
 }
 
-// "format LABEL"
-// Format partition
+// "format [LABEL]"
+// Format partition (current partition or LABEL partition if specified)
+// If LABEL is not given (argc < 2) then espshell attempts to derive
+// label name from current working directory
 //
+#define disableCore0WDT()
+#define enableCore0WDT()
+
 static int cmd_files_format(int argc, char **argv) {
+
+  int i;
+  esp_err_t err = ESP_OK;
+  char *label;
+  const esp_partition_t *part;
+  char path0[32] = { 0 };
+
+  // this will be eliminated at compile time if verything is ok
+  if (sizeof(path0) < sizeof(part[0].label))
+    abort();
+
+  // find out partition name (label): it is either set as 1st argument of "format"
+  // command, or must be derived from current working directory
+  if (argc > 1)
+    label = argv[1];
+  else {
+    const char *path;
+
+    if ((path = files_get_cwd()) == NULL)
+      return 0;
+
+    if (files_path_is_root(path)) {
+      q_error("%% Root partition can not be formatted, \"cd\" first\r\n");
+      return 0;
+    }
+    
+    if ((i = files_mountpoint_by_path(path)) < 0) {
+      // normally happen when currently used partition is unmounted: reset CWD to root directory
+      files_set_cwd("/");
+      return 0;
+    }
+    label = mountpoints[i].label;
+  }
+  
+  // find partition user wants to format
+  if ((part = files_partition_by_label(label)) == NULL) {
+    q_errorf("%% Partition \"%s\" does not exist\r\n",label);
+    return argc > 1 ? 1 : 0;
+  }
+
+  // handle shortened label names
+  label = part->label;
+
+#if WITH_HELP
+  q_printf("%% Formatting partition \"%s\", file system type is \"%s\"\r\n",label,files_subtype2text(part->subtype));
+#endif
+  switch (part->subtype) {
+#if WITH_FAT    
+    case ESP_PARTITION_SUBTYPE_DATA_FAT: sprintf(path0,"/%s",label); err = esp_vfs_fat_spiflash_format_rw_wl(path0,label); break;
+#endif
+#if WITH_LITTLEFS      
+    case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS: disableCore0WDT(); err = esp_littlefs_format(label); enableCore0WDT(); break;
+#endif
+#if WITH_SPIFFS    
+    case ESP_PARTITION_SUBTYPE_DATA_SPIFFS: disableCore0WDT(); err = esp_spiffs_format(label); enableCore0WDT(); break;
+#endif    
+    default:
+      q_errorf("%% Unsupported filesystem type 0x%02x\r\n",part->subtype);
+  }
+  if (err != ESP_OK)
+    q_errorf("%% There were errors during formatting (code: %u)\r\n",err);
+  else {
+    q_print("% done\r\n");
+
+    // no arguments == formatted current partition == path is not valid anymore
+    if (argc < 2)
+      files_set_cwd("/");
+  }
   return 0;
 }
-
 #endif  //WITH_FS
 
 #if WITH_HELP
