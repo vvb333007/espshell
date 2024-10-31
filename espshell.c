@@ -55,7 +55,7 @@
 #define AUTOSTART       1          // Set to 0 for manual shell start via espshell_start().
 #define WITH_COLOR      1          // Enable terminal colors
 #define WITH_HELP       1          // Set to 0 to save some program space by excluding help strings/functions
-#define UNIQUE_HISTORY  1          // Wheither to discard repeating commands from the history or not
+#define WITH_HISTORY    1          // Set to 0 to when looking for memory leaks
 #define WITH_FS         1          // Filesystems (fat/spiffs/littlefs) support (cp,mv,insert and delete are not implemented yet)
 #define WITH_SPIFFS     1          // support SPIF filesystem
 #define WITH_LITTLEFS   1          //   --    LittleFS
@@ -1119,18 +1119,19 @@ readline(const char *prompt) {
   return (char *)line;
 }
 
+#if WITH_HISTORY
 // Add an arbitrary string p to the command history.
-// Duplicates are added only if UNIQUE_HISTORY == 0
 //
 static void rl_add_history(char *p) {
   if (p && *p) {
-#if UNIQUE_HISTORY
+
     if (H.Size && strcmp(p, (char *)H.Lines[H.Size - 1]) == 0)
       return;
-#endif
+
     hist_add((unsigned char *)p);
   }
 }
+#endif
 
 
 static STATUS
@@ -5615,6 +5616,9 @@ static int cmd_files_unmount(int argc, char **argv) {
   // mount/unmount fails if path ends with slash
   files_strip_trailing_slash(argv[1]);
 
+  if ((argv[1] = files_full_path(argv[1])) == NULL)
+    return 1;
+
   // find a corresponding mountpoint
   if ((i = files_mountpoint_by_path(argv[1])) < 0) {
     q_errorf("%% Unmount failed: nothing is mounted on \"%s\"\r\n", argv[1]);
@@ -5727,14 +5731,6 @@ static int cmd_files_mount(int argc, char **argv) {
     return 0;
   }
 
-  // check if given mountpoint is already used
-  if ((i = files_mountpoint_by_path(mp)) >= 0) {
-#if WITH_HELP  
-    q_errorf("%% Mount point \"%s\" is already used by partition \"%s\"\r\n", mp, mountpoints[i].label);
-#endif    
-    return 0;
-  }
-
   // find free slot in mountpoints[] to mount new partition
   if ((i = files_mountpoint_by_path(NULL)) < 0) {
     q_error("% Too many mounted filesystems, increase MOUNTPOINTS_NUM\r\n");
@@ -5753,11 +5749,23 @@ static int cmd_files_mount(int argc, char **argv) {
       // label name match?
       if (!q_strcmp(argv[1], part->label)) {
 
+        int tmp;
+
         // We have found the partition user wants to mount.
         // reassign 1st arg to real partition name (the case when user enters shortened label name)
         argv[1] = (char *)part->label;  
         if (mp == mp0)
           sprintf(mp0, "/%s", argv[1]);
+
+        // check if selected mount point is not used
+        if ((tmp = files_mountpoint_by_path(mp)) >= 0) {
+#if WITH_HELP  
+          q_errorf("%% Mount point \"%s\" is already used by partition \"%s\"\r\n", mp, mountpoints[tmp].label);
+#endif    
+          goto mount_failed;
+        }
+
+
 
         // Mount/Format depending on FS type
         switch (part->subtype) {
@@ -6268,6 +6276,7 @@ static int cmd_files_format(int argc, char **argv) {
   const char *label;
   const esp_partition_t *part;
   char path0[32] = { 0 };
+  const char *reset_dir = "/";
 
   // this will be eliminated at compile time if verything is ok
   if (sizeof(path0) < sizeof(part[0].label))
@@ -6294,6 +6303,7 @@ static int cmd_files_format(int argc, char **argv) {
       return 0;
     }
     label = mountpoints[i].label;
+    reset_dir = mountpoints[i].mp;
   }
   
   // find partition user wants to format
@@ -6323,13 +6333,13 @@ static int cmd_files_format(int argc, char **argv) {
   }
   if (err != ESP_OK)
     q_errorf("%% There were errors during formatting (code: %u)\r\n",err);
-  else {
+  else
     q_print("% done\r\n");
-
-    // no arguments == formatted current partition == path is not valid anymore
-    if (argc < 2)
-      files_set_cwd("/");
-  }
+  
+  // update CWD if we were formatting current filesystem
+  if (!files_path_exist(files_get_cwd(), true))
+    files_set_cwd(reset_dir);
+  
   return 0;
 }
 
@@ -6545,8 +6555,10 @@ espshell_command(char *p) {
   if (!p) return -1;
   if (!p[0]) return -1;
 
+#if WITH_HISTORY
   //make a history entry
   rl_add_history(p);
+#endif  
 
   //tokenize user input
   if ((aa = userinput_tokenize(p)) == NULL)
