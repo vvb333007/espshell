@@ -2175,6 +2175,9 @@ static const struct keywords_t keywords_files[] = {
   { "unmount", cmd_files_unmount, 1, HELP("% \"unmount /MOUNT_POINT\"\r\n"
                                           "%\r\n"
                                           "% Unmount a file system\r\n"),"Unmount partition" },
+  { "unmount", cmd_files_unmount, 0, HIDDEN_KEYWORD },
+  { "umount", cmd_files_unmount, 1, HIDDEN_KEYWORD }, // for unix folks
+  { "umount", cmd_files_unmount, 0, HIDDEN_KEYWORD }, // for unix folks
 
   { "ls", cmd_files_ls, 1, HELP("% \"ls [PATH]\"\r\n"
                                 "%\r\n"
@@ -5608,20 +5611,31 @@ static int cmd_files_unmount(int argc, char **argv) {
 
   int i;
   esp_err_t err = -1;
+  char *path;
+  char path0[512];
 
-  // not enough arguments?
-  if (argc < 2)
-    return -1;
+  // no mountpoint provided:
+  // use CWD to find out mountpoint
+  if (argc < 2) {
+    if ((path = files_get_cwd()) == NULL)
+      return 0;
+    strcpy(path0,path);
+    path = path0;
+  } else
+    path = argv[1];
+
+ //TODO: "cd" changes to mountpoint
 
   // mount/unmount fails if path ends with slash
-  files_strip_trailing_slash(argv[1]);
+  files_strip_trailing_slash(path);
 
-  if ((argv[1] = files_full_path(argv[1])) == NULL)
+  // expand name if needed
+  if ((path = files_full_path(path)) == NULL)
     return 1;
 
   // find a corresponding mountpoint
-  if ((i = files_mountpoint_by_path(argv[1])) < 0) {
-    q_errorf("%% Unmount failed: nothing is mounted on \"%s\"\r\n", argv[1]);
+  if ((i = files_mountpoint_by_path(path)) < 0) {
+    q_errorf("%% Unmount failed: nothing is mounted on \"%s\"\r\n", path);
     return 0;
   }
 
@@ -5662,6 +5676,9 @@ finalize_unmount:
   free(mountpoints[i].mp);
   mountpoints[i].mp = NULL;
   mountpoints[i].label[0] = '\0';
+
+  if (!files_path_exist(files_get_cwd(),true))
+    files_set_cwd("/");
   return 0;
 
 failed_unmount:
@@ -5929,11 +5946,16 @@ static int cmd_files_cd(int argc, char **argv) {
   if (files_get_cwd() == NULL)
     return 0;
 
-  //"cd" no args
+  //"cd" no args, go to the mountpoint
   if (argc < 2) {
-    files_set_cwd("/");
+    int i;
+    if ((i = files_mountpoint_by_path(files_get_cwd())) < 0)
+      files_set_cwd("/");
+    else
+      files_set_cwd(mountpoints[i].mp);
     return 0;
   }
+
 #if WITH_HELP
   //"cd Path With Spaces"
   if (argc > 2) { q_error(SpacesInPath); return 0; }
