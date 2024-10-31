@@ -56,7 +56,7 @@
 #define WITH_COLOR      1          // Enable terminal colors
 #define WITH_HELP       1          // Set to 0 to save some program space by excluding help strings/functions
 #define UNIQUE_HISTORY  1          // Wheither to discard repeating commands from the history or not
-#define WITH_FS         0          // Filesystems (fat/spiffs/littlefs) support (compilable but not done yet!)
+#define WITH_FS         1          // Filesystems (fat/spiffs/littlefs) support (cp,mv,insert and delete are not implemented yet)
 #define WITH_SPIFFS     1          // support SPIF filesystem
 #define WITH_LITTLEFS   1          //   --    LittleFS
 #define WITH_FAT        1          //   --    FAT
@@ -6149,14 +6149,6 @@ static int cmd_files_rm(int argc, char **argv) {
   return 0;
 }
 
-
-static int cmd_files_mv(int argc, char **argv) {
-  return 0;
-}
-static int cmd_files_cp(int argc, char **argv) {
-  return 0;
-}
-
 // "write FILENAME TEXT"
 // Write TEXT to file FILENAME. File is created if does not exist
 //
@@ -6176,8 +6168,14 @@ static int cmd_files_write(int argc, char **argv) {
 #endif
 
   size = text2buf(argc,argv,2,&out);
+  unsigned flags = O_CREAT|O_WRONLY;
+
+  // are we running as "write" or as "append" command?
+  if (!q_strcmp(argv[0],"append"))
+    flags |= O_APPEND;
+
   if (size > 0) {
-    if ((fd = open(path,O_CREAT|O_WRONLY)) > 0) {
+    if ((fd = open(path,flags)) > 0) {
       size = write(fd,out,size);
       if (size < 0)
         q_errorf("%% Write to file \"%s\" failed\r\n",path);
@@ -6189,13 +6187,26 @@ static int cmd_files_write(int argc, char **argv) {
   return 0;
 }
 
+// "append FILENAME TEXT"
+// same as "write" but appends text to the end of the file
+//
 static int cmd_files_append(int argc, char **argv) {
-  return 0;
+  return cmd_files_write(argc,argv);
 }
+
+// "insert FILENAME LINE_NUMBER TEXT"
+// insert TEXT before line number LINE_NUMBER
+//
 static int cmd_files_insert(int argc, char **argv) {
+  q_error("%% Not implemented yet\r\n");
   return 0;
 }
+
+// "delete FILENAME LINE_NUMBER [COUNT]"
+// remove lines LINE_NUMBER .. LINE_NUMBER+COUNT lines from file
+//
 static int cmd_files_delete(int argc, char **argv) {
+  q_error("%% Not implemented yet\r\n");
   return 0;
 }
 
@@ -6216,21 +6227,6 @@ static int cmd_files_mkdir(int argc, char **argv) {
       if (mkdir(argv[1],0777) == 0)
         return 0;
   q_errorf("%% Failed to create directory \"%s\", error %d\r\n",argv[1],errno);
-  return 0;
-}
-
-// "cat PATH/FILENAME [LINE_START [COUNT]]"
-// Display file content
-//
-static int cmd_files_cat(int argc, char **argv) {
-
-  if (argc < 2) return -1;
-#if WITH_HELP  
-  if (argc > 2) { q_error(SpacesInPath); return 0; }
-#endif  
-
-
-
   return 0;
 }
 
@@ -6269,7 +6265,7 @@ static int cmd_files_format(int argc, char **argv) {
 
   int i;
   esp_err_t err = ESP_OK;
-  char *label;
+  const char *label;
   const esp_partition_t *part;
   char path0[32] = { 0 };
 
@@ -6336,6 +6332,43 @@ static int cmd_files_format(int argc, char **argv) {
   }
   return 0;
 }
+
+// "mv FILENAME1 FILENAME2"
+// "mv DIRNAME1 DIRNAME2"
+// "mv FILENAME DIRNAME"
+// Move/rename files or directories
+//
+static int cmd_files_mv(int argc, char **argv) {
+  q_error("%% Not implemented yet\r\n");
+  return 0;
+}
+
+// "cp FILENAME1 FILENAME2"
+// "cp FILENAME DIRNAME"
+// "cp DIRNAME1 DIRNAME2"
+//
+// Copy files/directories
+static int cmd_files_cp(int argc, char **argv) {
+  q_error("%% Not implemented yet\r\n");
+  return 0;
+}
+
+// "cat PATH/FILENAME [LINE_START [COUNT]]"
+// Display file content
+//
+static int cmd_files_cat(int argc, char **argv) {
+
+  if (argc < 2) return -1;
+#if WITH_HELP  
+  if (argc > 2) { q_error(SpacesInPath); return 0; }
+#endif  
+
+
+
+  return 0;
+}
+
+
 #endif  //WITH_FS
 
 #if WITH_HELP
