@@ -65,7 +65,7 @@
 #define SEQUENCES_NUM   10         // Max number of sequences available for command "sequence"
 #define MOUNTPOINTS_NUM 5          // Max number of simultaneously mounted filesystems
 #define STACKSIZE       (5*1024)   // Shell task stack size
-#define RECURSION_DEPTH_RM 127        // TODO: make a test with long "/a/a/a/.../a" path 
+#define RECURSION_DEPTH_RM 127     // Max directory depth TODO: make a test with long "/a/a/a/.../a" path 
 
 // -- ECHO --
 // Automated processing (i.e. sending commands and parsing the resulting output by software) is supported by
@@ -86,7 +86,7 @@
 #define PROMPT_I2C "esp32-i2c%u>"        // i2c prompt
 #define PROMPT_UART "esp32-uart%u>"      // uart prompt   
 #define PROMPT_SEQ "esp32-seq%u>"        // Sequence subtree prompt
-#define PROMPT_FILES "esp32#(%s)>"       // File manager prompt
+#define PROMPT_FILES "esp32#(%s%s%s)>"   // File manager prompt
 #define PROMPT_SEARCH "Search: "         // History search prompt
 
 //TAG:includes
@@ -185,6 +185,7 @@
 
 
 // GCC-specific stuff
+//TAG:gcc
 #define UNUSED __attribute__((unused)) 
 #define INLINE inline __attribute__((always_inline))
 #define PRINTF_LIKE __attribute__((format(printf, 1, 2)))
@@ -205,21 +206,15 @@ void espshell_start();
 #endif
 
 // Miscellaneous forwards
+// TAG:forwards
 static inline bool uart_isup(int u);                 // Check if UART u is up and operationg (driver installed)
 static int q_strcmp(const char *, const char *);     // loose strcmp
 static int PRINTF_LIKE q_printf(const char *, ...);  // printf()
-static int PRINTF_LIKE q_errorf(const char *, ...);  // printf() in magenta color
 static int q_print(const char *);                    // puts()
-static int q_error(const char *);                    // puts() in magenta color
+static bool pin_is_input_only_pin(int pin);
+static uart_port_t uart = STARTUP_PORT;              // espshell runs on this port:
 
-// Safe version of Arduino's pinMode(). Bypasses Arduino Core's peripherial manager code,
-// thus does not reconfigures pins. Does not change GPIO Matrix or/and IO_MUX function for the pin
-// Safe to call on ESP32's pins 6..11 (internal SPI FLASH)
-void pinMode2(unsigned int pin, unsigned int flags);
-
-// espshell runs on this port:
-static uart_port_t uart = STARTUP_PORT;
-
+// TAG:console
 // --   SHELL TO CONSOLE HARDWARE GLUE --
 // espshell uses console_read../console_write.. and some other functions to print data or read user input.
 // In order to implement support for another type of hardware (say USBCDC) one have to implement functions
@@ -247,6 +242,7 @@ static INLINE int console_here(int i) { return i < 0 ? uart : (i > UART_NUM_MAX 
 
 
 //========>=========>======= EDITLINE CODE BELOW (modified ancient version) =======>=======>
+// TAG:editline
 #define CRLF "\r\n"
 
 #define MEM_INC 64      // "Line" buffer realloc increments
@@ -268,32 +264,28 @@ static INLINE int console_here(int i) { return i < 0 ? uart : (i > UART_NUM_MAX 
 
 
 //  Command status codes.
-typedef enum _STATUS { CSdone, CSeof, CSmove, CSdispatch, CSstay, CSsignal } STATUS;
+typedef enum { CSdone, CSeof, CSmove, CSdispatch, CSstay, CSsignal } STATUS;
 
 //  Key to command mapping.
-typedef struct _KEYMAP {
+typedef struct {
   unsigned char Key;
-  STATUS(*Function)();
+  STATUS (*Function)();
 } KEYMAP;
 
 
 // Command history structure.
-typedef struct _HISTORY {
+typedef struct {
   int Size;
   int Pos;
   unsigned char *Lines[HIST_SIZE];
 } HISTORY;
 
-// TTYq command queue locking
-//TODO: replace with semaphore or mutex
-static portMUX_TYPE ttyq_mux = portMUX_INITIALIZER_UNLOCKED;
+static portMUX_TYPE Input_mux = portMUX_INITIALIZER_UNLOCKED;
 
-static unsigned rl_eof = 0;         //TODO: remove
 static unsigned char NIL[] = "";    // Empty string
 static unsigned char *Line = NULL;  // Raw user input
 static const char *Prompt = NULL;   // Current prompt to use
 static char *Screen = NULL;
-static const char NEWLINE[] = CRLF;
 static HISTORY H;
 static int Repeat;
 static int End;
@@ -302,22 +294,16 @@ static int OldPoint;
 static int Point;
 static int PushBack;
 static int Pushed;
-#if WITH_COLOR
-static bool Color = false;  //enable coloring
-#endif
-static bool Exit = false;  // True == close the shell and kill its FreeRTOS task.
-
-static const char *TTYq = "";  //"artificial input queue". if non empty then symbols are
+static bool Color = false;     // Enable coloring
+static bool Exit = false;      // True == close the shell and kill its FreeRTOS task.
+static const char *Input = "";  // "Artificial input queue". if non empty then symbols are
                                // fed to TTYget as if it was user input. used by espshell_exec()
 static unsigned int Length;
 static unsigned int ScreenCount;
 static unsigned int ScreenSize;
-static char *backspace = NULL;
+
 
 static int Echo = DO_ECHO;  // Runtime echo flag: -1=silent,0=off,1=on
-
-/* Display print 8-bit chars as `M-x' or as the actual 8-bit char? */
-static int rl_meta_chars = 0;
 
 static unsigned char *editinput();
 
@@ -383,7 +369,7 @@ static const KEYMAP Map[] = {
   { 0, NULL }
 };
 
-static const KEYMAP MetaMap[16] = {
+static const KEYMAP MetaMap[] = {
   { CTL('H'), bk_kill_word },  // <ESC>, <BACKSPACE> - deletes a word (undocumented)
 #if 0  
   { DEL, ring_bell },
@@ -407,35 +393,24 @@ static const KEYMAP MetaMap[16] = {
 // coloring is auto-enabled upon reception of certain symbols from user: arrow keys,
 // <tab>, Ctrl+??? and such will enable syntax coloring
 //
-#if WITH_COLOR
-// these two are exclusively for editline library (buffered editline output). They have no effect on normal
-// screen output via q_printf() ... etc functions
-#  define START_COLORING_SEARCH do { if (Color) TTYputs((const unsigned char *)"\033[1;36m"); } while (0)
-#  define STOP_COLORING do { if (Color) TTYputs((const unsigned char *)"\033[0m"); } while (0)
-
-// These three can be used when doing colored screen output
-#  define color_important() do { if (Color) q_print("\033[1;33m"); } while (0) // Bright/bold yellow
-#  define color_warning() do { if (Color) q_print("\033[1;31m"); } while (0)   // Warning/caution message colors (bright/bold red)
-#  define color_error() do { if (Color) q_print("\033[1;35m"); } while (0)     // Error message colors. (bright/bold magenta)
-#  define color_normal() do { if (Color) q_print("\033[0m"); } while (0)       // Disable coloring
-#else
-// Coloring is disabled
-#  define START_COLORING_SEARCH
-#  define STOP_COLORING
-#  define color_important()
-#  define color_warning()
-#  define color_error()
-#  define color_normal()
-#endif  //WITH_COLOR
+#define esc_i "\033[33;93m"
+#define esc_1 "\033[33m"
+#define esc_2 "\033[36m"
+#define esc_3 "\033[36;96m"
+#define esc_r "\033[38;5;0;48;5;255m"
+#define esc_w "\033[31;91m"
+#define esc_e "\033[35;95m"
+#define esc_b "\033[1m"
+#define esc_n "\033[0m"
 
 // Queue an arbitrary asciiz string to simulate user input.
 // String queued has higher priority than user input so console_read() would
 // "read" from this string first.
 static inline void
 TTYqueue(const char *input) {
-  portENTER_CRITICAL(&ttyq_mux);
-  TTYq = input;
-  portEXIT_CRITICAL(&ttyq_mux);
+  portENTER_CRITICAL(&Input_mux);
+  Input = input;
+  portEXIT_CRITICAL(&Input_mux);
 }
 
 // Print buffered (by TTYputc/TTYputs) data. editline uses buffered IO
@@ -481,10 +456,6 @@ TTYshow(unsigned char c) {
   } else if (ISCTL(c)) {
     TTYput('^');
     TTYput(UNCTL(c));
-  } else if (rl_meta_chars && ISMETA(c)) {
-    TTYput('M');
-    TTYput('-');
-    TTYput(UNMETA(c));
   } else
     TTYput(c);
 }
@@ -510,15 +481,15 @@ TTYget() {
   }
 try_again:
   // read byte from a priority queue if any.
-  portENTER_CRITICAL(&ttyq_mux);
-  if (*TTYq)
-    c = *TTYq++;
-  portEXIT_CRITICAL(&ttyq_mux);
+  portENTER_CRITICAL(&Input_mux);
+  if (*Input)
+    c = *Input++;
+  portEXIT_CRITICAL(&Input_mux);
   if (c)
     return c;
 
-  // read 1 byte from user. we use timeout to enable TTYq processing if it was set
-  // mid console_read_bytes() call: i.e. TTYq polling happens every 500ms
+  // read 1 byte from user. we use timeout to enable Input processing if it was set
+  // mid console_read_bytes() call: i.e. Input polling happens every 500ms
   if (console_read_bytes(&c, 1, pdMS_TO_TICKS(500)) < 1)
     goto try_again;
 
@@ -534,7 +505,7 @@ try_again:
   return c;
 }
 
-#define TTYback() (backspace ? TTYputs((unsigned char *)backspace) : TTYput('\b'))
+#define TTYback() TTYput('\b')
 
 static void
 TTYbackn(int n) {
@@ -562,10 +533,6 @@ left(STATUS Change) {
   if (Point) {
     if (ISCTL(Line[Point - 1]))
       TTYback();
-    else if (rl_meta_chars && ISMETA(Line[Point - 1])) {
-      TTYback();
-      TTYback();
-    }
   }
   if (Change == CSmove)
     Point--;
@@ -649,10 +616,6 @@ ceol() {
     if (ISCTL(*p)) {
       TTYput(' ');
       extras++;
-    } else if (rl_meta_chars && ISMETA(*p)) {
-      TTYput(' ');
-      TTYput(' ');
-      extras += 2;
     }
   }
 
@@ -702,7 +665,8 @@ insert_string(unsigned char *p) {
 
 static STATUS
 redisplay() {
-  TTYputs((const unsigned char *)NEWLINE);
+  const unsigned char *nl = (const unsigned char *)"\r\n";
+  TTYputs(nl);
   TTYputs((const unsigned char *)Prompt);
 
   TTYstring(Line);
@@ -807,8 +771,9 @@ h_search() {
   clear_line();
   old_prompt = Prompt;
   Prompt = PROMPT_SEARCH;
-
-  START_COLORING_SEARCH;
+#if WITH_COLOR
+  if (Color) TTYputs((const unsigned char *)"\033[1;36m");
+#endif
 #if WITH_HELP
   const char *Hint = "% Command history search: start typing and press <Enter> to\r\n% find a matching command executed previously\r\n";
   TTYputs((const unsigned char *)Hint);
@@ -830,9 +795,7 @@ h_search() {
 
 static STATUS
 right_pressed() {
-  int i;
-
-  i = 0;
+  int i = 0;
   do {
     if (Point >= End)
       break;
@@ -858,10 +821,6 @@ delete_string(int count) {
     TTYput(' ');
     if (ISCTL(*p)) {
       i = 2;
-      TTYput(' ');
-    } else if (rl_meta_chars && ISMETA(*p)) {
-      i = 3;
-      TTYput(' ');
       TTYput(' ');
     }
     TTYbackn(i);
@@ -917,7 +876,6 @@ kill_line() {
     return CSmove;
   }
 
-  //save_yank(Point, End - Point);
   Line[Point] = '\0';
   ceol();
   End = Point;
@@ -1002,11 +960,6 @@ emacs(unsigned int c) {
   STATUS s;
   const KEYMAP *kp;
 
-  if (rl_meta_chars && ISMETA(c)) {
-    Pushed = 1;
-    PushBack = UNMETA(c);
-    return meta();
-  }
   for (kp = Map; kp->Function; kp++)
     if (kp->Key == c)
       break;
@@ -1025,7 +978,7 @@ TTYspecial(unsigned int c) {
   if (c == DEL)
     return del_pressed();
 
-  if (c == rl_eof && Point == 0 && End == 0)
+  if (c == 0 && Point == 0 && End == 0) //TODO: investigate CSeof and CSsignal
     return CSeof;
 
   return CSdispatch;
@@ -1096,26 +1049,23 @@ readline(const char *prompt) {
     if ((Line = NEW(unsigned char, Length)) == NULL)
       return NULL;
   }
-  hist_add(NIL);  //TODO: ??
+  hist_add(NIL);
 
   ScreenSize = SCREEN_INC;
   Screen = NEW(char, ScreenSize);  // TODO: allocate once, never DISPOSE()
 
-  Prompt = prompt ? prompt : (char *)NIL;
-
-  TTYputs((const unsigned char *)Prompt);
-
+  TTYputs((const unsigned char *)(Prompt = prompt));
   TTYflush();
 
   if ((line = editinput()) != NULL) {
+    const unsigned char *nl = (const unsigned char *)"\r\n";
     line = (unsigned char *)strdup((char *)line);
-    TTYputs((const unsigned char *)NEWLINE);
+    TTYputs(nl);
     TTYflush();
   }
 
-
   DISPOSE(Screen);
-  DISPOSE(H.Lines[--H.Size]);  //TODO: ??
+  DISPOSE(H.Lines[--H.Size]);
   return (char *)line;
 }
 
@@ -1174,9 +1124,11 @@ end_pressed() {
 static STATUS
 enter_pressed() {
   Line[End] = '\0';
-  //
+  
+#if WITH_COLOR  
   // user has pressed <Enter>: set colors to default
-  STOP_COLORING;
+  if (Color) TTYputs((const unsigned char *)"\033[0m");
+#endif  
   return CSdone;
 }
 
@@ -1427,6 +1379,7 @@ static int cmd_files_mkdir(int, char **);
 static int cmd_files_cat(int, char **);
 static int cmd_files_touch(int, char **);
 static int cmd_files_format(int, char **);
+static int cmd_files_transmit(int, char **);
 #endif  //WITH_FS
 static int cmd_tty(int, char **);
 static int cmd_echo(int, char **);
@@ -1489,9 +1442,15 @@ static bool isfloat(const char *p) {
 
 
 
-// check if given ascii string is a hex BYTE.
-// first 1 or 2 characters are checked
+// Check if given ascii string is a hex BYTE.
+// String may or may not start with "0x"
+// Strings "a" , "5a", "0x5" and "0x5A" are valid input
+// TODO: check all bytes, not just 2
 static bool ishex(const char *p) {
+
+  if (p[0] == '0' && p[1] == 'x')
+    p += 2;
+
   if ((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F')) {
     p++;
     if ((*p == 0) || (*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F'))
@@ -1501,11 +1460,14 @@ static bool ishex(const char *p) {
 }
 
 //convert hex ascii byte.
-//input strings are 1 or 2 chars long:  Ex.:  "0A", "A","6E"
-
+//strings "A", "5a" "0x5a" are valid input
+//
 static unsigned char hex2uint8(const char *p) {
 
   unsigned char f, l;  //first and last
+
+  if (p[0] == '0' && p[1] == 'x')
+    p += 2;
 
   f = *p++;
 
@@ -1520,14 +1482,12 @@ static unsigned char hex2uint8(const char *p) {
   if (l >= 'A' && l <= 'F') l = l + 'a' - 'A';
 
   //convert first hex character to decimal
-  if (f >= '0' && f <= '9') f = f - '0';
-  else if (f >= 'a' && f <= 'f') f = f - 'a' + 10;
-  else return 0;
+  if (f >= '0' && f <= '9') f = f - '0'; else 
+  if (f >= 'a' && f <= 'f') f = f - 'a' + 10; else return 0;
 
   //convert second hex character to decimal
-  if (l >= '0' && l <= '9') l = l - '0';
-  else if (l >= 'a' && l <= 'f') l = l - 'a' + 10;
-  else return 0;
+  if (l >= '0' && l <= '9') l = l - '0'; else 
+  if (l >= 'a' && l <= 'f') l = l - 'a' + 10; else return 0;
 
   return (f << 4) | l;
 }
@@ -1539,6 +1499,10 @@ static unsigned int hex2uint32(const char *p) {
 
   unsigned int value = 0;
   unsigned int four = 0;
+
+  if (p[0] == '0' && p[1] == 'x')
+    p += 2;
+
   while (*p) {
     if (*p >= '0' && *p <= '9') four = *p - '0';
     else if (*p >= 'a' && *p <= 'f') four = *p - 'a' + 10;
@@ -1567,6 +1531,10 @@ static unsigned int octal2uint32(const char *p) {
 static unsigned int binary2uint32(const char *p) {
   unsigned int value = 0;
   unsigned int one = 0;
+
+  if (p[0] == '0' && p[1] == 'b')
+    p += 2;
+
   while (*p) {
     if (*p == '0' || *p == '1') one = *p - '0';
     else return 0;
@@ -1577,6 +1545,23 @@ static unsigned int binary2uint32(const char *p) {
   return value;
 }
 
+// replacements for standart atoi() and atol(): 
+// make them accept hex numbers like 0x1234
+//
+// if there were errors during conversion (i.e. number format errors) then
+// the 'def'ault value  is returned
+//
+static unsigned int q_atol(const char *p, unsigned int def) {
+  if (p && *p) {
+    if (isnum(p))
+      def = atol(p);
+    else 
+    if (p[0] == '0' && p[1] == 'x')
+      if (ishex(p))
+        def = hex2uint32(p);
+  }
+  return def;
+}
 
 
 
@@ -1597,15 +1582,18 @@ static int q_strcmp(const char *partial, const char *full) {
   return strncmp(partial, full, plen);
 }
 
-static inline char *q_findchar(char *str, char sym) {
-  while (*str && sym != *str++)
-    ;
-  return *str ? str : NULL;
+static inline const char *q_findchar(const char *str, char sym) {
+  if (str) {
+    while (*str && sym != *str) 
+      str++;
+    if (sym == *str)
+      return str;
+  }
+  return NULL;
 }
 
 
 // adopted from esp32-hal-uart.c Arduino Core
-// Modified to support multiple uarts via uart_write_bytes()
 //
 static int __printfv(const char *format, va_list arg) {
 
@@ -1615,27 +1603,22 @@ static int __printfv(const char *format, va_list arg) {
   int ret;
   va_list copy;
 
-  if (Echo < 0)  // "echo silent" mode
-    return 0;
-
+  // make fake vsnprintf to find out required buffer length
   va_copy(copy, arg);
   len = vsnprintf(NULL, 0, format, copy);
   va_end(copy);
 
+  // if required buffer is lanrger than built-in pne then allocate
+  // new buffer
   if (len >= sizeof(buf))
     if ((temp = (char *)malloc(len + 1)) == NULL)
       return 0;
 
+  // actual printf()
   vsnprintf(temp, len + 1, format, arg);
-
-  ret = console_write_bytes(temp, len);
-
-  if (len >= sizeof(buf))
+  ret = q_print(temp);
+  if (temp != buf)
     free(temp);
-
-  //  while (!uart_ll_is_tx_idle(UART_LL_GET_HW(uart)));   // flushes TX - make sure that the log message is completely sent.
-
-
   return ret;
 }
 
@@ -1652,32 +1635,47 @@ static int PRINTF_LIKE q_printf(const char *format, ...) {
   return len;
 }
 
-static int PRINTF_LIKE q_errorf(const char *format, ...) {
-  int len;
-  color_error();
-  va_list arg;
-  va_start(arg, format);
-  len = __printfv(format, arg);
-  va_end(arg);
-  color_normal();
-  return len;  //does not count for coloring escape sequences
-}
-
 
 //Faster than q_printf() but only does non-formatted output
 static int q_print(const char *str) {
-  size_t len;
+
+  size_t len = 0;
+
   if (Echo < 0)  //"echo silent"
     return 0;
-  if ((len = strlen(str)) > 0)
-    len = console_write_bytes(str, len);
-  return len;
-}
 
-static int q_error(const char *str) {
-  color_error();
-  int len = q_print(str);
-  color_normal();
+  if (str && *str) {
+
+    const char *p, *pp = str;
+    const char *ins;
+    
+    while(*pp) {
+      if ((p = q_findchar(pp,'<')) == NULL)
+        return console_write_bytes(pp,strlen(pp));
+      if (p[1] && p[2] == '>') {
+        ins = NULL;
+        if (Color)
+          switch(p[1]) {
+            case 'i': ins = esc_i; break;
+            case 'w': ins = esc_w; break;
+            case 'e': ins = esc_e; break;
+            case 'r': ins = esc_r; break;
+            case '1': ins = esc_1; break;
+            case '2': ins = esc_2; break;
+            case '3': ins = esc_3; break;
+            case 'b': ins = esc_b; break;
+            case '/': ins = esc_n; break;
+          }
+        len += console_write_bytes(pp,p - pp);
+        if (ins)
+          len += console_write_bytes(ins,strlen(ins));
+        pp = p + 3;
+      } else {
+        len += console_write_bytes(pp,p - pp + 1);
+        pp = p + 1;
+      }
+    }
+  }
   return len;
 }
 
@@ -1759,7 +1757,7 @@ static int text2buf(int argc, char **argv, int i /* START */, char **out) {
     return -1;
 
   //instead of estimating buffer size just allocate 512 bytes buffer: espshell
-  // input strings are limited to 500 bytes. TODO: implement input line length limiting
+  // input strings are limited to 500 bytes.
   if ((*out = b = (char *)malloc(512)) != NULL) {
   // go thru all the arguments and send them. the space is inserted between arguments
     do {
@@ -1778,7 +1776,7 @@ static int text2buf(int argc, char **argv, int i /* START */, char **out) {
               if (ishex(p))
                 c = hex2uint8(p);
               else {
-                q_errorf("%% Unknown escape sequence: \"\\%s\"\r\n", *p ? p : "at the end of the line");
+                q_printf("%% <e>Unknown escape sequence: \"\\%s\"</>\r\n", *p ? p : "at the end of the line");
                 return i;
               }
               p++;
@@ -1794,6 +1792,9 @@ static int text2buf(int argc, char **argv, int i /* START */, char **out) {
         *b++ = ' ';
         size++;
       }
+      // input line length limiting
+      if (size > 500)
+        break;
     } while (i < argc);
   }
   return size;
@@ -2187,32 +2188,32 @@ static const struct keywords_t keywords_files[] = {
   { "ls", cmd_files_ls, 0, HIDDEN_KEYWORD },
 
 
-  { "pwd", cmd_files_pwd, 0, HELP("% \"pwd\"\r\n"
-                                  "%\r\n"
-                                  "% Print working directory. Includes a mount point"),"Working directory" },
+  { "pwd", cmd_files_pwd, 0, HIDDEN_KEYWORD }, //undocumented
+                             
+                             
 
   { "cd", cmd_files_cd, -1, HELP("% \"cd [PATH|..]\"\r\n"
                                 "%\r\n"
                                 "% Change current directory. Paths having .. (i.e \"../dir/\") are not supported\r\n"
                                 "%\r\n"
-                                "% Ex.: \"cd\"            - change current directory to \"/\"\r\n"
+                                "% Ex.: \"cd\"            - change current directory to filesystem's root\r\n"
                                 "% Ex.: \"cd ..\"         - go one directory up\r\n"
                                 "% Ex.: \"cd /ffat/test/  - change to \"/ffat/test/\"\r\n"
                                 "% Ex.: \"cd test2/test3/ - change to \"/ffat/test/test2/test3\"\r\n"),"Change directory" },
   
-  { "rm", cmd_files_rm, 1, HELP("% \"rm PATH\"\r\n"
+  { "rm", cmd_files_rm, -1, HELP("% \"rm PATH1 [PATH2 PATH3 ... PATHn]\"\r\n"
                                 "%\r\n"
-                                "% Remove a file or a directory with files.\r\n"
+                                "% Remove files or a directories with files.\r\n"
                                 "% When removing directories: removed with files and subdirs"), "Delete files" },
 
   { "mv", cmd_files_mv, 2, HELP("% \"mv SOURCE DESTINATION\\r\n"
                                 "%\r\n"
-                                "% Move or Rename file or dicetory SOURCE to DESTINATION\r\n"
+                                "% Move or Rename file or directory SOURCE to DESTINATION\r\n"
                                 "%\r\n"
                                 "% Ex.: \"mv /ffat/dir1 /ffat/dir2\"             - rename directory \"dir1\" to \"dir2\"\r\n"
                                 "% Ex.: \"mv /ffat/fileA.txt /ffat/fileB.txt\"   - rename file \"fileA.txt\" to \"fileB.txt\"\r\n"
                                 "% Ex.: \"mv /ffat/dir1/file1 /ffat/dir2\"       - move file to directory\r\n"
-                                "% Ex.: \"mv /ffat/fileA.txt /spiffs/fileB.txt\" - move file between filesystems\r\n"), "Move/Rename files" },
+                                "% Ex.: \"mv /ffat/fileA.txt /spiffs/fileB.txt\" - move file between filesystems\r\n"), "Move/Rename files/dirs" },
 
   { "cp", cmd_files_cp, 2, HELP("% \"cp SOURCE DESTINATION\\r\n"
                                 "%\r\n"
@@ -2221,7 +2222,8 @@ static const struct keywords_t keywords_files[] = {
                                 "%\r\n"
                                 "% Ex.: \"cp /ffat/test.txt /ffat/test2.txt\"       - copy file to file\r\n"
                                 "% Ex.: \"cp /ffat/test.txt /ffat/dir/\"            - copy file to directory\r\n"
-                                "% Ex.: \"cp /spiffs/test.txt /ffat/dir/test2.txt\" - copy between filesystems\r\n"), "Copy files" },
+                                "% Ex.: \"cp /ffat/dir_src /ffat/dir/\"             - copy directory to directory\r\n"
+                                "% Ex.: \"cp /spiffs/test.txt /ffat/dir/test2.txt\" - copy between filesystems\r\n"), "Copy files/dirs" },
 
   { "write", cmd_files_write, -1, HELP("% \"write FILENAME TEXT\"\r\n"
                                        "%\r\n"
@@ -2254,19 +2256,33 @@ static const struct keywords_t keywords_files[] = {
                                         "Ex.: \"delete 10 /ffat/test.txt\" - remove line #10 from \"/ffat/test.txt\""), "Delete lines" },
   { "delete", cmd_files_delete, 1, HIDDEN_KEYWORD },
 
-  { "mkdir", cmd_files_mkdir, -1, HELP("% \"mkdir PATH\"\r\n"
+  { "mkdir", cmd_files_mkdir, -1, HELP("% \"mkdir PATH1 [PATH2 PATH3 ... PATHn]\"\r\n"
                                       "%\r\n"
-                                      "% Create an empty directory PATH\r\n"),"Create directory" },
+                                      "% Create empty directories PATH1 ... PATHn\r\n"),"Create directory" },
 
-  { "cat", cmd_files_cat, -1, HELP("% \"cat FILENAME [LINE_START [COUNT]]\"\r\n"
+  { "cat", cmd_files_cat, -1, HELP("% \"cat [-n|-b] PATH [START [COUNT]] [uart NUM]\"\r\n"
                                   "%\r\n"
-                                  "% Display file FILENAME with line numbers\r\n"
-                                  "% If set, LINE_START is the file line number to start with (default is 0)\r\n"
-                                  "% COUNT is the number of lines to display, (default is \"Display all\")"),"Display text/binary file" },
+                                  "% Display (or send by UART) file FILENAME\r\n"
+                                  "% -n : display line numbers\r\n"
+                                  "% -b : file is binary\r\n"
+                                  "% PATH  : path to the file\r\n"
+                                  "% START : text file line number OR binary file offset\r\n"
+                                  "% COUNT : number of lines to display (OR bytes for \"-b\" option)\r\n"
+                                  "% NUM   : UART interface number to transmit file to\r\n"
+                                  "%\r\n"
+                                  "% Examples:\r\n"
+                                  "% cat file         - display file \"file\"\r\n"
+                                  "% cat -n file      - display file \"file\" + line numbers\r\n"
+                                  "% cat file 34      - display text file starting from line 34 \r\n"
+                                  "% cat file 900 10  - 10 lines, starting from line 900 \r\n"
+                                  "% cat -b file      - display binary file\r\n"
+                                  "% cat -b file 0x12 - display binary file starting from offset 0x12\r\n"
+                                  "% cat -b file 9 55 - 50 bytes starting from offset 9 of binary file\r\n"
+                                  "% cat file uart 1  - transmit file over UART1 \"as-is\" byte by byte"),"Display text/binary file" },
 
-  { "touch", cmd_files_touch, -1, HELP("% \"touch FILENAME\"\r\n"
+  { "touch", cmd_files_touch, -1, HELP("% \"touch PATH1 [PATH2 PATH3 ... PATHn]\"\r\n"
                                       "%\r\n"
-                                      "% Ceate a new file or \"touch\" existing\r\n"), "Touch/Create file" },
+                                      "% Ceate new files or \"touch\" existing\r\n"), "Touch/Create file" },
 
   { "format", cmd_files_format, 1, HELP("% \"format [LABEL]\"\r\n"
                                         "%\r\n"
@@ -2274,6 +2290,12 @@ static const struct keywords_t keywords_files[] = {
                                         "% directory is used to determine partition label"), "Erase old & create new filesystem" },
 
   { "format", cmd_files_format, 0, HIDDEN_KEYWORD },
+
+  { "transmit", cmd_files_transmit, 1, HELP("% \"transmit PATH (console|uart0|uart1|uart2|usbcdc|)\"\r\n"
+                                        "%\r\n"
+                                        "% Send file as raw bytes stream via one of uarts or usbcdc port\r\n"
+                                        "% Disable software flow control on the receiving side or some bytes may be corrupted"), "Dump file to interface" },
+
 
   KEYWORDS_END
 };
@@ -2417,9 +2439,10 @@ static const struct keywords_t keywords_main[] = {
 static const struct keywords_t *keywords = keywords_main;
 
 //common messages
-static const char *Failed = "% Failed\r\n";
+static const char *Failed = "% <e>Failed</>\r\n";
 static const char *Notset = "not set\r\n";
-static const char *SpacesInPath = "% Too many arguments.\r\n% If your path contains spaces, please enter spaces as \"*\":\r\n% Examples: \"cd Path*With*Spaces\",  \"cd /ffat/Program*Files\"\r\n";
+static const char *SpacesInPath = "<e>% Too many arguments.\r\n% If your path contains spaces, please enter spaces as \"*\":\r\n% Examples: \"cd Path*With*Spaces\",  \"rm /ffat/Program*Files\"</>\r\n";
+static const char *MultipleEntries = "<2>% Processing multiple paths.\r\n% Not what you want? Use asteriks (*) instead of spaces in the path</>\r\n";
 
 
 // prompt
@@ -2441,10 +2464,56 @@ static void change_command_directory(int context, const struct keywords_t *dir, 
   keywords = dir;
   prompt = prom;
 #if WITH_HELP
-  q_printf("%% Entering %s configuration mode. Ctrl+Z or \"exit\" to return\r\n", text);
-  q_print("% Main commands are still avaiable (but not visible in \"?\" command list) \r\n");
+  q_printf("%% Entering %s mode. Ctrl+Z or \"exit\" to return\r\n", text);
+  q_print("% Main commands are still avaiable (but not visible in \"?\" command list)\r\n");
 #endif
 }
+
+// same as digitalRead() but reads all pins no matter what
+// exported (not static) to enable its use in user sketch
+//
+int digitalForceRead(int pin) {
+  gpio_ll_input_enable(&GPIO, pin);
+  return gpio_ll_get_level(&GPIO, pin) ? HIGH : LOW;
+}
+
+// same as digitalWrite() but bypasses periman so no init/deinit
+// callbacks are called. pin bus type remain unchanged
+//
+void digitalForceWrite(int pin, unsigned char level) {
+  gpio_ll_output_enable(&GPIO, pin);
+  gpio_set_level((gpio_num_t)pin, level == HIGH ? 1 : 0);
+}
+
+
+
+// same as pinMode() but calls IDF directly bypassing
+// PeriMan's pin deinit/init. As a result it allows flags manipulation on
+// reserved pins without crashing & rebooting
+//
+// exported (non-static) to allow use in a sketch (by including "extra/espshell.h" in
+// user sketch .ino file)
+//
+void pinMode2(unsigned int pin, unsigned int flags) {
+
+  // set ARDUINO flags to the pin using ESP-IDF functions
+  if ((flags & PULLUP) == PULLUP) gpio_ll_pullup_en(&GPIO, pin);
+  else gpio_ll_pullup_dis(&GPIO, pin);
+  if ((flags & PULLDOWN) == PULLDOWN) gpio_ll_pulldown_en(&GPIO, pin);
+  else gpio_ll_pulldown_dis(&GPIO, pin);
+  if ((flags & OPEN_DRAIN) == OPEN_DRAIN) gpio_ll_od_enable(&GPIO, pin);
+  else gpio_ll_od_disable(&GPIO, pin);
+  if ((flags & INPUT) == INPUT) gpio_ll_input_enable(&GPIO, pin);
+  else gpio_ll_input_disable(&GPIO, pin);
+
+  // not every esp32 gpio is capable of OUTPUT
+  if ((flags & OUTPUT) == OUTPUT) {
+    if (!pin_is_input_only_pin(pin))
+      gpio_ll_output_enable(&GPIO, pin);
+  } else
+    gpio_ll_output_disable(&GPIO, pin);
+}
+
 
 // checks if pin (GPIO) number is in valid range.
 // display a message if pin is out of range
@@ -2464,7 +2533,7 @@ static bool pin_exist(int pin) {
           informed = 1;
           q_print(", except pins: ");
         }
-        q_printf("%d,", pin);
+        q_printf("<e>%d</>,", pin);
       }
     }
 
@@ -2475,7 +2544,7 @@ static bool pin_exist(int pin) {
     for (pin = informed = 0; pin < SOC_GPIO_PIN_COUNT; pin++)
       if (esp_gpio_is_pin_reserved(pin)) {
         informed++;
-        q_printf("%d, ", pin);
+        q_printf("<w>%d</>, ", pin);
       }
 
     if (!informed)
@@ -2528,7 +2597,7 @@ static void seq_dump(int seq) {
   struct sequence *s;
 
   if (seq < 0 || seq >= SEQUENCES_NUM) {
-    q_errorf("%% Sequence %d does not exist\r\n", seq);
+    q_printf("%% <e>Sequence %d does not exist</>\r\n", seq);
     return;
   }
 
@@ -2642,7 +2711,7 @@ static int seq_compile(int seq) {
     if (s->alph[0].duration1) {
       //long form
       if (!s->alph[1].duration1) {
-        q_error("% \"One\" defined as a level, but \"Zero\" is a pulse\r\n");
+        q_print("% <e>\"One\" defined as a level, but \"Zero\" is a pulse</>\r\n");
         return -1;
       }
 
@@ -2669,7 +2738,7 @@ static int seq_compile(int seq) {
       // report it to user
 
       if (s->alph[1].duration1) {
-        q_error("% \"One\" defined as a pulse, but \"Zero\" is a level\r\n");
+        q_print("% <e>\"One\" defined as a pulse, but \"Zero\" is a level</>\r\n");
         return -4;
       }
 
@@ -2812,7 +2881,7 @@ static int cmd_seq_if(int argc, char **argv) {
 
   seq = atoi(argv[1]);
   if (seq < 0 || seq >= SEQUENCES_NUM) {
-    q_errorf("%% Sequence numbers are 0..%d\r\n", SEQUENCES_NUM - 1);
+    q_printf("%% <e>Sequence numbers are 0..%d</>\r\n", SEQUENCES_NUM - 1);
     return 1;
   }
 
@@ -2874,7 +2943,7 @@ static int cmd_seq_modulation(int argc, char **argv) {
 
     if (duty < 0.0f || duty > 1.0f) {
 #if WITH_HELP
-      q_error("% Duty cycle is a number in range [0..1] (0.01 means 1% duty)\r\n");
+      q_print("% <e>Duty cycle is a number in range [0..1] (0.01 means 1% duty)</>\r\n");
 #endif
       return 2;
     }
@@ -2981,7 +3050,7 @@ static int cmd_seq_tick(int argc, char **argv) {
 
   if (sequences[Context].tick < 0.0125 || sequences[Context].tick > 3.2f) {
 #if WITH_HELP
-    q_error("% Tick must be in range 0.0125..3.2 microseconds\r\n");
+    q_print("% <e>Tick must be in range 0.0125..3.2 microseconds</>\r\n");
 #endif
     return 1;
   }
@@ -3056,7 +3125,7 @@ static int cmd_seq_levels(int argc, char **argv) {
   i = argc - 1;
 
   if (i & 1) {
-    q_error("% Uneven number of levels. Please add 1 more\r\n");
+    q_print("% <e>Uneven number of levels. Please add 1 more</>\r\n");
     return 0;
   }
 
@@ -3241,7 +3310,7 @@ static void count_async_task(void *arg) {
     int ret = cmd_count(aa->argc, aa->argv);
     userinput_unref(aa);
     if (ret != 0)
-      q_error(Failed);
+      q_print(Failed);
   }
   vTaskDelete(NULL);
 }
@@ -3366,13 +3435,13 @@ static int cmd_var(int argc, char **argv) {
   // give them a hint
 #if WITH_HELP
   if (var_head == NULL) {
-    color_important();
-    q_print("% Oops.\r\n"
+    
+    q_print("<i>% Oops.\r\n"
             "% Looks like no variables were registered in your sketch\r\n"
             "% #include \"extra/espshell.h\" and use \"convar_add()\" to register them:\r\n"
             "% once registered, variables can be manipulated by the \"var\" command\r\n"
-            "% while your sketch is running\r\n");
-    color_normal();
+            "% while your sketch is running</>\r\n");
+    
     return 0;
   }
 #endif  //WITH_HELP
@@ -3386,18 +3455,17 @@ static int cmd_var(int argc, char **argv) {
   if ((len = convar_get(argv[1], &u)) == 0)
     return 1;
 
-  // value is a decimal number?
-  if (isnum(argv[2])) {
-    // negative integer number
-    if (argv[2][0] == '-') {
-      u.ival = atoi(argv[2]);
+  // value is a decimal or hexadecimal number?
+  if (isnum(argv[2]) || ishex(argv[2])) {
+    bool sign = argv[2][0] == '-';
+    if (sign) {
+      u.ival = -q_atol(&(argv[2][1]),0);
       if (len == sizeof(char)) u.ichar = u.ival;
       else if (len == sizeof(short)) u.ish = u.ival;
     } else {
-      // positive integer number
-      u.uval = atol(argv[2]);
-      if (len == sizeof(char)) u.uchar = u.uval & 0xff;
-      else if (len == sizeof(short)) u.ush = u.uval & 0xffff;
+      u.uval = q_atol(argv[2],0);
+      if (len == sizeof(char)) u.uchar = u.uval;
+      else if (len == sizeof(short)) u.ush = u.uval;
     }
   } else if (isfloat(argv[2]))
     // floating point number
@@ -3429,7 +3497,6 @@ static int pwm_enable(unsigned int pin, unsigned int freq, float duty) {
     resolution = 10;
 
   pinMode(pin, OUTPUT);
-  //ledcWriteTone(pin, 0);  //disable ledc at pin.
   ledcDetach(pin);
 
   if (freq) {
@@ -3472,7 +3539,7 @@ static int cmd_pwm(int argc, char **argv) {
     duty = atof(argv[3]);
     if (duty < 0 || duty > 1) {
 #if WITH_HELP
-      q_error("% Duty cycle is a number in range [0..1] (0.01 means 1% duty)\r\n");
+      q_print("% <e>Duty cycle is a number in range [0..1] (0.01 means 1% duty)</>\r\n");
 #endif
       return 3;
     }
@@ -3480,7 +3547,7 @@ static int cmd_pwm(int argc, char **argv) {
 
   if (pwm_enable(pin, freq, duty) < 0) {
 #if WITH_HELP
-    q_error(Failed);
+    q_print(Failed);
 #endif
   }
   return 0;
@@ -3556,7 +3623,7 @@ static void pin_load(int pin) {
 // ESP32 has these while newer models have all GPIO capable
 // of Input & Output
 //
-static inline bool pin_is_input_only_pin(int pin) {
+static bool pin_is_input_only_pin(int pin) {
   return !GPIO_IS_VALID_OUTPUT_GPIO(pin);
 }
 
@@ -3604,50 +3671,6 @@ static bool pin_is_strapping_pin(int pin) {
   }
 }
 
-// same as digitalRead() but reads all pins no matter what
-// exported (not static) to enable its use in user sketch
-//
-int digitalForceRead(int pin) {
-  gpio_ll_input_enable(&GPIO, pin);
-  return gpio_ll_get_level(&GPIO, pin) ? HIGH : LOW;
-}
-
-// same as digitalWrite() but bypasses periman so no init/deinit
-// callbacks are called. pin bus type remain unchanged
-//
-void digitalForceWrite(int pin, unsigned char level) {
-  gpio_ll_output_enable(&GPIO, pin);
-  gpio_set_level((gpio_num_t)pin, level == HIGH ? 1 : 0);
-}
-
-
-
-// same as pinMode() but calls IDF directly bypassing
-// PeriMan's pin deinit/init. As a result it allows flags manipulation on
-// reserved pins without crashing & rebooting
-//
-// exported (non-static) to allow use in a sketch (by including "extra/espshell.h" in
-// user sketch .ino file)
-//
-void pinMode2(unsigned int pin, unsigned int flags) {
-
-  // set ARDUINO flags to the pin using ESP-IDF functions
-  if ((flags & PULLUP) == PULLUP) gpio_ll_pullup_en(&GPIO, pin);
-  else gpio_ll_pullup_dis(&GPIO, pin);
-  if ((flags & PULLDOWN) == PULLDOWN) gpio_ll_pulldown_en(&GPIO, pin);
-  else gpio_ll_pulldown_dis(&GPIO, pin);
-  if ((flags & OPEN_DRAIN) == OPEN_DRAIN) gpio_ll_od_enable(&GPIO, pin);
-  else gpio_ll_od_disable(&GPIO, pin);
-  if ((flags & INPUT) == INPUT) gpio_ll_input_enable(&GPIO, pin);
-  else gpio_ll_input_disable(&GPIO, pin);
-
-  // not every esp32 gpio is capable of OUTPUT
-  if ((flags & OUTPUT) == OUTPUT) {
-    if (!pin_is_input_only_pin(pin))
-      gpio_ll_output_enable(&GPIO, pin);
-  } else
-    gpio_ll_output_disable(&GPIO, pin);
-}
 
 
 // IO_MUX function code --> human readable text mapping
@@ -3883,20 +3906,14 @@ static int pin_show(int argc, char **argv) {
   res = esp_gpio_is_pin_reserved(pin);
   q_printf("%% Pin %d is ", pin);
 
-  if (res) {
-    color_warning();
-    q_print("**RESERVED**, ");
-    color_normal();
-  }
+  if (res)
+    q_print("<w>**RESERVED**</>, ");
 
   if (pin_is_strapping_pin(pin))
     q_print("strapping pin, ");
 
-  if (pin_is_input_only_pin(pin)) {
-    color_important();
-    q_print("**INPUT-ONLY**, ");
-    color_normal();
-  }
+  if (pin_is_input_only_pin(pin))
+    q_print("<i>**INPUT-ONLY**</>, ");
 
   if (!res)
     q_print("available, ");
@@ -3905,20 +3922,20 @@ static int pin_show(int argc, char **argv) {
   if ((type = perimanGetPinBusType(pin)) == ESP32_BUS_TYPE_INIT)
     q_print("not used by Arduino Core\r\n");
   else {
-    color_important();
+    
     if (type == ESP32_BUS_TYPE_GPIO)
-      q_print("configured as GPIO\r\n");
+      q_print("<i>configured as GPIO</>\r\n");
     else
-      q_printf("used as \"%s\"\r\n", perimanGetTypeName(type));
-    color_normal();
+      q_printf("used as \"<i>%s</>\"\r\n", perimanGetTypeName(type));
+    
   }
 
 
   gpio_ll_get_io_config(&GPIO, pin, &pu, &pd, &ie, &oe, &od, &drv, &fun_sel, &sig_out, &sleep_sel);
 
   if (ie || oe || od || pu || pd || sleep_sel) {
-    q_print("% Mode: ");
-    color_important();
+    q_print("% Mode:<i> ");
+    
     if (ie) q_print("INPUT, ");
     if (oe) q_print("OUTPUT, ");
     if (pu) q_print("PULL_UP, ");
@@ -3926,8 +3943,8 @@ static int pin_show(int argc, char **argv) {
     if (od) q_print("OPEN_DRAIN, ");
     if (sleep_sel) q_print("sleep mode selected,");
     if (!pu && !pd && ie) q_print(" input is floating!");
-    color_normal();
-    q_print(CRLF);
+    
+    q_print("</>\r\n");
 
     if (oe && fun_sel == PIN_FUNC_GPIO) {
       q_print("% Output via GPIO matrix, ");
@@ -3935,13 +3952,8 @@ static int pin_show(int argc, char **argv) {
         q_print("simple GPIO output\r\n");
       else
         q_printf("provides path for signal ID: %lu\r\n", sig_out);
-    } else if (oe && fun_sel != PIN_FUNC_GPIO) {
-      q_print("% Output is done via IO MUX, (function: ");
-      color_important();
-      q_print(io_mux_func_name[pin][fun_sel]);
-      color_normal();
-      q_print(")\n\r");
-    }
+    } else if (oe && fun_sel != PIN_FUNC_GPIO)
+      q_printf("%% Output is done via IO MUX, (function: <i>%s</>)\r\n",io_mux_func_name[pin][fun_sel]);
 
     if (ie && fun_sel == PIN_FUNC_GPIO) {
       q_print("% Input via GPIO matrix, ");
@@ -3958,13 +3970,8 @@ static int pin_show(int argc, char **argv) {
         q_print("simple GPIO input");
       q_print(CRLF);
 
-    } else if (ie) {
-      q_print("% Input is done via IO MUX, (function: ");
-      color_important();
-      q_print(io_mux_func_name[pin][fun_sel]);
-      color_normal();
-      q_print(")\n\r");
-    }
+    } else if (ie)
+      q_printf("%% Input is done via IO MUX, (function: <i>%s</>)\r\n",io_mux_func_name[pin][fun_sel]);
   }
 
 
@@ -3992,12 +3999,7 @@ static int pin_show(int argc, char **argv) {
   if (!ie)
     gpio_ll_input_disable(&GPIO, pin);
 
-  q_print("% Digital pin value is ");
-  color_important();
-  q_print(val ? "HIGH (1)\r\n" : "LOW (0)\r\n");
-  color_normal();
-
-
+  q_printf("%% Digital pin value is <i>%s</>\r\n",val ? "HIGH (1)" : "LOW (0)");
   return 0;
 }
 
@@ -4036,7 +4038,7 @@ static int cmd_pin(int argc, char **argv) {
       if (!q_strcmp(argv[i], "seq")) {
         if ((i + 1) >= argc) {
 #if WITH_HELP
-          q_error("% Sequence number expected after \"seq\"\r\n");
+          q_print("% <e>Sequence number expected after \"seq\"</>\r\n");
 #endif
           return i;
         }
@@ -4054,10 +4056,10 @@ static int cmd_pin(int argc, char **argv) {
           q_printf("%% Sending sequence %d over GPIO %d\r\n", seq, pin);
 #endif
           if ((j = seq_send(pin, seq)) < 0)
-            q_errorf("%% Failed. Error code is: %d\r\n", j);
+            q_printf("%% <e>Failed. Error code is: %d</>\r\n", j);
 
         } else
-          q_errorf("%% Sequence %d is not configured\r\n", seq);
+          q_printf("%% <e>Sequence %d is not configured</>\r\n", seq);
       }
       //2. "pwm FREQ DUTY" keyword.
       // unlike global "pwm" command the duty and frequency are not an optional
@@ -4069,7 +4071,7 @@ static int cmd_pin(int argc, char **argv) {
         // make sure that there are 2 extra arguments after "pwm" keyword
         if ((i + 2) >= argc) {
 #if WITH_HELP
-          q_error("% Frequency and duty cycle are both expected\r\n");
+          q_print("% <e>Frequency and duty cycle are both expected</>\r\n");
 #endif
           return i;
         }
@@ -4082,7 +4084,7 @@ static int cmd_pin(int argc, char **argv) {
 
         if ((freq = atol(argv[i++])) > MAGIC_FREQ) {
 #if WITH_HELP
-          q_error("% Frequency must be in range [1.." xstr(MAGIC_FREQ) "] Hz\r\n");
+          q_print("% <e>Frequency must be in range [1.." xstr(MAGIC_FREQ) "] Hz</>\r\n");
 #endif
           return i - 1;
         }
@@ -4093,7 +4095,7 @@ static int cmd_pin(int argc, char **argv) {
         duty = atof(argv[i]);
         if (duty < 0 || duty > 1) {
 #if WITH_HELP
-          q_error("% Duty cycle is a number in range [0..1] (0.01 means 1% duty)\r\n");
+          q_print("% <e>Duty cycle is a number in range [0..1] (0.01 means 1% duty)</>\r\n");
 #endif
           return i;
         }
@@ -4102,7 +4104,7 @@ static int cmd_pin(int argc, char **argv) {
         // disabled
         if (pwm_enable(pin, freq, duty) < 0) {
 #if WITH_HELP
-          q_error(Failed);
+          q_print(Failed);
 #endif
           return 0;
         }
@@ -4113,7 +4115,7 @@ static int cmd_pin(int argc, char **argv) {
         unsigned int duration;
         if ((i + 1) >= argc) {
 #if WITH_HELP
-          q_error("% Delay value expected after keyword \"delay\"\r\n");
+          q_print("% <e>Delay value expected after keyword \"delay\"</>\r\n");
 #endif
           return i;
         }
@@ -4167,7 +4169,7 @@ static int cmd_pin(int argc, char **argv) {
         if (!q_strcmp(argv[i], "low")) {
           if (pin_is_input_only_pin(pin)) {
 abort_if_input_only:
-            q_errorf("%% Pin %u is **INPUT-ONLY**, can not be set \"%s\"\r\n", pin, argv[i]);
+            q_printf("%% <e>Pin %u is **INPUT-ONLY**, can not be set \"%s</>\"\r\n", pin, argv[i]);
             return i;
           }
           // use pinMode2/digitalForceWrite to not let the pin to be reconfigured
@@ -4209,7 +4211,7 @@ abort_if_input_only:
                         //must have an extra argument (loop count)
                         if ((i + 1) >= argc) {
 #if WITH_HELP
-                          q_error("% Loop count expected after keyword \"loop\"\r\n");
+                          q_print("% <e>Loop count expected after keyword \"loop\"</>\r\n");
 #endif
                           return i;
                         }
@@ -4221,7 +4223,7 @@ abort_if_input_only:
                         // loop must be the last keyword, so we can strip it later
                         if ((i + 1) < argc) {
 #if WITH_HELP
-                          q_error("% \"loop\" must be the last keyword\r\n");
+                          q_print("% <e>\"loop\" must be the last keyword</>\r\n");
 #endif
                           return i + 1;
                         }
@@ -4282,7 +4284,7 @@ static void pin_async_task(void *arg) {
     int ret = cmd_pin(aa->argc, aa->argv);
     userinput_unref(aa);
     if (ret != 0)
-      q_error(Failed);
+      q_print(Failed);
   }
   vTaskDelete(NULL);
 }
@@ -4306,9 +4308,9 @@ static int cmd_async(int argc, char **argv) {
   else if (!q_strcmp(argv[0], "count&"))
     cmd = (TaskFunction_t)count_async_task;
   else {
-    color_error();
-    q_printf("%% Don't know how to run \"%s\" in background\r\n", argv[0]);
-    color_normal();
+    
+    q_printf("%% <e>Don't know how to run \"%s\" in background</>\r\n", argv[0]);
+    
     return 0;
   }
 
@@ -4318,7 +4320,7 @@ static int cmd_async(int argc, char **argv) {
 
   // Start async task
   if (pdPASS != xTaskCreatePinnedToCore(cmd, "Pin Async", STACKSIZE, aa_current, tskIDLE_PRIORITY, &ignored, shell_core)) {
-    q_error("% Can not start a new task. Resources low?\r\n");
+    q_print("% <e>Can not start a new task. Resources low?</>\r\n");
     userinput_unref(aa_current);
   }
 
@@ -4335,25 +4337,21 @@ static int cmd_async(int argc, char **argv) {
 //
 static int cmd_mem(UNUSED int argc, UNUSED char **argv) {
 
-  q_print("% -- Memory information --\r\n%\r\n");
-
-  q_print("% For \"malloc()\" (default allocator))\":\r\n");
-  color_important();
-  q_printf("%% %u bytes total, %u available, %u max per allocation\r\n%%\r\n", heap_caps_get_total_size(MALLOC_CAP_DEFAULT), heap_caps_get_free_size(MALLOC_CAP_DEFAULT), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
-  color_normal();
+  q_print("% -- Memory information --\r\n%\r\n"
+          "% For \"malloc()\" (default allocator))\":\r\n");
+  
+  q_printf("%% <i>%u</> bytes total, <i>%u</> available, %u max per allocation\r\n%%\r\n", heap_caps_get_total_size(MALLOC_CAP_DEFAULT), heap_caps_get_free_size(MALLOC_CAP_DEFAULT), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
+  
   q_print("% For \"heap_caps_malloc(MALLOC_CAP_INTERNAL)\", internal SRAM:\r\n");
-  color_important();
-  q_printf("%% %u bytes total,  %u available, %u max per allocation\r\n%%\r\n", heap_caps_get_total_size(MALLOC_CAP_INTERNAL), heap_caps_get_free_size(MALLOC_CAP_INTERNAL), heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
-  color_normal();
+  
+  q_printf("%% <i>%u</> bytes total,  <i>%u</> available, %u max per allocation\r\n%%\r\n", heap_caps_get_total_size(MALLOC_CAP_INTERNAL), heap_caps_get_free_size(MALLOC_CAP_INTERNAL), heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+  
 
   unsigned int total;
-  if ((total = heap_caps_get_total_size(MALLOC_CAP_SPIRAM) / 1024) > 0) {
-    q_print("% External SPIRAM detected (available to \"malloc()\"):\r\n");
-    color_important();
-    q_printf("%% Total %uMbytes, free: %u bytes\r\n", total / 1024, heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-    color_normal();
-  }
-
+  if ((total = heap_caps_get_total_size(MALLOC_CAP_SPIRAM) / 1024) > 0)
+    q_printf("%% External SPIRAM detected (available to \"malloc()\"):\r\n"
+             "%% Total <i>%u</>Mbytes, free: <i>%u</> bytes\r\n", total / 1024, heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+  
   return 0;
 }
 //"mem ADDR LENGTH"
@@ -4444,7 +4442,7 @@ static int cmd_i2c_if(int argc, char **argv) {
   iic = atol(argv[1]);
   if (iic >= SOC_I2C_NUM) {
 #if WITH_HELP
-    q_errorf("%% Valid I2C interface numbers are 0..%d\r\n", SOC_I2C_NUM - 1);
+    q_printf("%% <e>Valid I2C interface numbers are 0..%d</>\r\n", SOC_I2C_NUM - 1);
 #endif
     return 1;
   }
@@ -4471,13 +4469,13 @@ static int cmd_i2c_clock(int argc, char **argv) {
 
   if (!i2c_isup(iic)) {
 #if WITH_HELP
-    q_errorf("%% I2C %d is not initialized. use command \"up\" to initialize\r\n", iic);
+    q_printf("%% <e>I2C %d is not initialized. use command \"up\" to initialize</>\r\n", iic);
 #endif
     return 0;
   }
 
   if (ESP_OK != i2cSetClock(iic, atol(argv[1])))
-    q_error(Failed);
+    q_print(Failed);
 
   return 0;
 }
@@ -4510,7 +4508,7 @@ static int cmd_i2c(int argc, char **argv) {
 
     if (i2c_isup(iic)) {
 #if WITH_HELP
-      q_errorf("%% I2C%d is already initialized\r\n", iic);
+      q_printf("%% <e>I2C%d is already initialized</>\r\n", iic);
 #endif
       return 0;
     }
@@ -4523,7 +4521,7 @@ static int cmd_i2c(int argc, char **argv) {
     clock = atol(argv[3]);
 
     if (ESP_OK != i2cInit(iic, sda, scl, clock))
-      q_error(Failed);
+      q_print(Failed);
   } else if (!q_strcmp(argv[0], "down")) {
     if (!i2c_isup(iic))
       goto noinit;
@@ -4559,7 +4557,7 @@ static int cmd_i2c(int argc, char **argv) {
     // send over
     q_printf("%% Sending %d bytes over I2C%d\r\n", size, iic);
     if (ESP_OK != i2cWrite(iic, addr, data, size, 2000))
-      q_error(Failed);
+      q_print(Failed);
   }
   // "read ADDR LENGTH" keyword:
   // read data from i2c device on address ADDR, request LENGTH
@@ -4596,10 +4594,10 @@ static int cmd_i2c(int argc, char **argv) {
     unsigned char data[size];
 
     if (i2cRead(iic, addr, data, size, 2000, &got) != ESP_OK)
-      q_error(Failed);
+      q_print(Failed);
     else {
       if (got != size) {
-        q_errorf("%% Requested %d bytes but read %d\r\n", size, got);
+        q_printf("%% <e>Requested %d bytes but read %d</>\r\n", size, got);
         got = size;
       }
       q_printf("%% I2C%d received %d bytes:\r\n", iic, got);
@@ -4611,7 +4609,7 @@ static int cmd_i2c(int argc, char **argv) {
   else if (!q_strcmp(argv[0], "scan")) {
     if (!i2c_isup(iic)) {
 #if WITH_HELP
-      q_errorf("%% I2C %d is not initialized\r\n", iic);
+      q_printf("%% <e>I2C %d is not initialized</>\r\n", iic);
 #endif
       return 0;
     }
@@ -4622,21 +4620,21 @@ static int cmd_i2c(int argc, char **argv) {
       unsigned char b;
       if (ESP_OK == i2cWrite(iic, addr, &b, 0, 500)) {
         i++;
-        q_printf("%% Device found at address %02X\r\n", addr);
+        q_printf("%% Device found at <i>address %02X</>\r\n", addr);
       }
     }
 
     if (!i)
       q_print("% Nothing found\r\n");
     else
-      q_printf("%% %d devices found\r\n", i);
+      q_printf("%% <i>%d</> devices found\r\n", i);
   } else return 0;
 
   return 0;
 noinit:
   // love gotos
 #if WITH_HELP
-  q_errorf("%% I2C %d is not initialized\r\n", iic);
+  q_printf("%% <e>I2C %d is not initialized</>\r\n", iic);
 #endif
   return 0;
 }
@@ -4649,7 +4647,7 @@ noinit:
 //check if UART has its driver installed
 static inline bool uart_isup(int u) {
 
-  return (u < 0 || u >= SOC_UART_NUM) ? 0 : uart_is_driver_installed(u);
+  return (u < 0 || u >= SOC_UART_NUM) ? false : uart_is_driver_installed(u);
 }
 
 // Change to uart command tree
@@ -4668,16 +4666,13 @@ static int cmd_uart_if(int argc, char **argv) {
   u = atol(argv[1]);
   if (u >= SOC_UART_NUM) {
 #if WITH_HELP
-    q_errorf("%% Valid UART interface numbers are 0..%d\r\n", SOC_UART_NUM - 1);
+    q_printf("%% <e>Valid UART interface numbers are 0..%d</>\r\n", SOC_UART_NUM - 1);
 #endif
     return 1;
   }
 #if WITH_HELP
-  if (uart == u) {
-    color_warning();
-    q_print("% You are configuring Serial interface shell is running on! BE CAREFUL :)\r\n");
-    color_normal();
-  }
+  if (uart == u)
+    q_print("% <w>You are configuring Serial interface shell is running on!</> BE CAREFUL :)\r\n");
 #endif
 
   sprintf(prom,PROMPT_UART,u);
@@ -4699,13 +4694,13 @@ static int cmd_uart_baud(int argc, char **argv) {
 
   if (!uart_isup(u)) {
 #if WITH_HELP
-    q_errorf("%% uart %d is not initialized. use command \"up\" to initialize\r\n", u);
+    q_printf("%% <e>uart %d is not initialized. use command \"up\" to initialize</>\r\n", u);
 #endif
     return 0;
   }
 
   if (ESP_OK != uart_set_baudrate(u, atol(argv[1])))
-    q_error(Failed);
+    q_print(Failed);
 
   return 0;
 }
@@ -4756,7 +4751,7 @@ uart_tap(int remote) {
       // return here or we get flooded by driver messages
       if (ESP_OK != uart_get_buffered_data_len(remote, &av)) {
 #if WITH_HELP
-        q_errorf("%% UART%d is not initialized\r\n", remote);
+        q_printf("%% <e>UART%d is not initialized</>\r\n", remote);
 #endif
         return;
       }
@@ -4795,7 +4790,7 @@ static int cmd_uart(int argc, char **argv) {
   if (!q_strcmp(argv[0], "tap")) {
     if (uart == u) {
       //do not tap to the same uart we are running on
-      q_error("% Can not bridge to itself\r\n");
+      q_print("% <e>Can not bridge to itself</>\r\n");
       return 0;
     }
 
@@ -4824,7 +4819,7 @@ static int cmd_uart(int argc, char **argv) {
       if (!isnum(argv[3])) return 3; else speed = atol(argv[3]);
 
       if (NULL == uartBegin(u, speed, SERIAL_8N1, rx, tx, 256, 0, false, 112))
-        q_error(Failed);
+        q_print(Failed);
     } else
       //
       // "down" command
@@ -4882,7 +4877,7 @@ static int cmd_uart(int argc, char **argv) {
   // command executed or was not understood
   return 0;
 noinit:
-  q_errorf("%% UART%d is not initialized\r\n", u);
+  q_printf("%% <e>UART%d is not initialized</>\r\n", u);
   return 0;
 }
 
@@ -4899,7 +4894,7 @@ static int cmd_tty(int argc, char **argv) {
   // if not USB then check if requested UART is up & running
   if ((u = atoi(argv[1])) != 99)
     if (!uart_isup(u)) {
-      q_errorf("%% UART%d is not initialized\r\n", u);
+      q_printf("%% <e>UART%d is not initialized</>\r\n", u);
       return 0;
     }
 #if WITH_HELP
@@ -5049,7 +5044,7 @@ static int cmd_cpu_freq(int argc, char **argv) {
   }
 
   if (!setCpuFrequencyMhz(freq))
-    q_error(Failed);
+    q_print(Failed);
 
   return 0;
 }
@@ -5176,9 +5171,14 @@ static int cmd_kill(int argc, char **argv) {
   return 0;
 }
 
+//            -- Filesystem --
+// Filesystems support. So far ESPShell supports FAT, LittleFS and SPIFFS file systems
+// Code below (within #if WITH_FS .. #endif) is all about that.
+//  Command handlers names start with "cmd_files_...", utility & helper functions are
+// all have names which start with "files_"
+//
 
 #if WITH_FS
-
 static char *Cwd = NULL;  // Current working directory. Must end with "/"
 
 // espshell allows for simultaneous mounting up to MOUNTPOINTS_NUM partitions
@@ -5192,7 +5192,6 @@ static struct {
   wl_handle_t wl_handle;// FAT wear-levelling library handle
 #endif  
 } mountpoints[MOUNTPOINTS_NUM] = { 0 };
-
 
 // remove trailing path separators
 static void files_strip_trailing_slash(char *p) {
@@ -5210,7 +5209,8 @@ static INLINE bool files_path_is_root(const char *path) {
   return (path && (path[0] == '/' || path[0] == '\\') && (path[1] == '\0'));
 }
 
-// any objects in "/" are impossible except for mountpoint dirs
+// Check if path is ok for file/directory creation
+// Any objects in "/" are impossible except for mountpoint dirs
 // TODO: add more checks here: double dots, bad characters, too long and so on
 //
 static bool files_path_impossible(const char *path) {
@@ -5223,6 +5223,59 @@ static bool files_path_impossible(const char *path) {
   return *path == '\0';
 }
 
+// read lines from a text file
+// \n is the line separator, \r's are silently discarded
+//
+// returns number of bytes read (0 means end of file is reached)
+//
+// on the first call set buf = NULL, don't change buf & size on subsequent
+// calls to getline(). free() buf if it is non-zero after you done with file
+//
+static int files_getline(char **buf, unsigned int *size, FILE *fp) {
+
+  int c;
+  char *wp, *end;
+
+  // no buffer provided? allocate our own
+  if (*buf == NULL)
+    if ((*buf = (char *)malloc((*size = 128))) == NULL)
+      return 0;
+
+  wp  = *buf;          // buffer write pointer
+  end = *buf + *size;  // buffer end pointer
+
+  while ( true ) {
+    
+    c = fgetc(fp);
+
+    // end of line or end of file? return what was read so far
+    if ((c < 0) || (c == '\n')) {
+      *wp ='\0';
+      return (wp - *buf);
+    }
+
+    //skip Microsoft-style line endings and save byte to the buffer
+    if (c == '\r')
+      continue;
+    *wp++ = c;
+
+    // do we still have space to store 1 character + '\0'?
+    // if not - increase buffer size two times
+    if (wp + sizeof(char) + sizeof(char) >= end) {
+
+      char   *tmp;
+      int     written_so_far = wp - *buf;
+
+      if ((tmp = (char *)realloc(*buf, (*size *= 2))) == NULL)
+        return -1;
+
+      // update pointers
+      *buf = tmp;
+      end  = tmp + *size;
+      wp   = tmp + written_so_far;
+    }
+  }
+}
 
 // convert time_t to "Jun-10-2022 10:40:07"
 // not reentrant
@@ -5233,7 +5286,6 @@ static char *files_time2text(time_t t) {
   sprintf(buf,"%u-%02u-%02u %02u:%02u:%02u",info->tm_year + 1900, info->tm_mon + 1,info->tm_mday, info->tm_hour,info->tm_min,info->tm_sec);
   return buf;
 }
-
 
 // set CWD
 // path must include a mountpoint as well: "/ffat/my_dir" if
@@ -5263,7 +5315,11 @@ static const char *files_set_cwd(const char *cwd) {
     }
   }
 
-  sprintf(prom,PROMPT_FILES,Cwd ? Cwd : "?");
+  sprintf(prom,PROMPT_FILES,
+    Color ? "\033[33;93m" : "",  // enable standart ANSI yellow and then bright color. One of them is supported for sure :)
+    Cwd ? Cwd : "?",
+    Color ? "\033[0m" : "");
+
   prompt = prom;
 
   return Cwd;
@@ -5340,11 +5396,12 @@ static int files_mountpoint_by_label(const char *label) {
 // Path must include mount point (be absolute)
 // Similar to files_mountpoint_by_label()
 //
-static int files_mountpoint_by_path(const char *path) {
+static int files_mountpoint_by_path(const char *path, bool reverse) {
   int i;
   for (i = 0; i < MOUNTPOINTS_NUM; i++)
     if ((!path && !mountpoints[i].mp) ||
-        (path && mountpoints[i].mp && !q_strcmp(mountpoints[i].mp,path)))
+        (path && mountpoints[i].mp && !q_strcmp(mountpoints[i].mp,path)) ||
+        (reverse && path && mountpoints[i].mp && !q_strcmp(path,mountpoints[i].mp)))
       return i;
   return -1;
 }
@@ -5516,7 +5573,7 @@ static int files_remove(const char *path0, int depth) {
   char path[256+16];    // TODO: use some MAX_PATH idf macro
 
   if (depth < 1) {
-    q_errorf("%% Too many nested directories (adjust RECURSION_DEPTH_RM constant)\r\n");
+    q_printf("%% <e>Too many nested directories (adjust RECURSION_DEPTH_RM constant)</>\r\n");
     return 0;
   }
 
@@ -5563,7 +5620,7 @@ static int files_remove(const char *path0, int depth) {
         else {
           // if its file - just remove it
           if (0 != unlink(path))
-            q_errorf("%% Failed to remove: \"%s\"\r\n",path);
+            q_printf("%% <e>Failed to remove: \"%s\"</>\r\n",path);
           else {
             removed++;
 #if WITH_HELP            
@@ -5583,12 +5640,22 @@ static int files_remove(const char *path0, int depth) {
         return removed;
       }
     }
-    q_errorf("%% Failed to remove \"%s\"\r\n",path);
+    q_printf("%% <e>Failed to remove \"%s\"</>\r\n",path);
   } else
     // path seems to not exist
-    q_printf("%% File/directory \"%s\" does not exist\r\n",path);
+    q_printf("%% <e>File/directory \"%s\" does not exist</>\r\n",path);
   return removed;
 }
+
+#if 0
+static int files_read(int *ctx, const char *path, unsigned char **) {
+  if (!path) {
+    if (ctx > 0)
+      close(ctx);
+    return 0;
+  }
+}
+#endif
 
 
 // "files"
@@ -5601,6 +5668,12 @@ static int cmd_files_if(int argc, char **argv) {
 
   //initialize CWD if not initialized previously. update user prompt.
   files_set_cwd(files_get_cwd()); 
+  return 0;
+}
+
+// "transmit PATH uart0|uart1|uart2|serial|usb0"
+static int cmd_files_transmit(int argc, char **argv) {
+
   return 0;
 }
 
@@ -5617,14 +5690,12 @@ static int cmd_files_unmount(int argc, char **argv) {
   // no mountpoint provided:
   // use CWD to find out mountpoint
   if (argc < 2) {
-    if ((path = files_get_cwd()) == NULL)
+    if ((path = (char *)files_get_cwd()) == NULL)
       return 0;
     strcpy(path0,path);
     path = path0;
   } else
     path = argv[1];
-
- //TODO: "cd" changes to mountpoint
 
   // mount/unmount fails if path ends with slash
   files_strip_trailing_slash(path);
@@ -5634,8 +5705,8 @@ static int cmd_files_unmount(int argc, char **argv) {
     return 1;
 
   // find a corresponding mountpoint
-  if ((i = files_mountpoint_by_path(path)) < 0) {
-    q_errorf("%% Unmount failed: nothing is mounted on \"%s\"\r\n", path);
+  if ((i = files_mountpoint_by_path(path,true)) < 0) {
+    q_printf("%% <e>Unmount failed: nothing is mounted on \"%s\"</>\r\n", path);
     return 0;
   }
 
@@ -5677,13 +5748,14 @@ finalize_unmount:
   mountpoints[i].mp = NULL;
   mountpoints[i].label[0] = '\0';
 
+  // adjust our CWD after unmount: our working directory may be not existent anymore
   if (!files_path_exist(files_get_cwd(),true))
     files_set_cwd("/");
   return 0;
 
 failed_unmount:
 #if WITH_HELP
-  q_errorf("%% Unmount failed, error code is \"0x%x\"\r\n", err);
+  q_printf("%% <e>Unmount failed, error code is \"0x%x\"</>\r\n", err);
 #endif
   return 0;
 }
@@ -5712,7 +5784,7 @@ static int cmd_files_mount(int argc, char **argv) {
     mp = argv[2];
     if (mp[0] != '/') {
 #if WITH_HELP      
-      q_error("% Mount point must start with \"/\"\r\n");
+      q_print("% <e>Mount point must start with \"/\"</>\r\n");
 #endif      
       return 2;
     }
@@ -5721,7 +5793,7 @@ static int cmd_files_mount(int argc, char **argv) {
     // to make a mountpoint
     if (strlen(argv[1]) >= sizeof(mp0)) {
 #if WITH_HELP      
-      q_error("% Invalid partition name (too long)\r\n");
+      q_print("% <e>Invalid partition name (too long)</>\r\n");
 #endif      
       return 1;
     }
@@ -5735,7 +5807,7 @@ static int cmd_files_mount(int argc, char **argv) {
   files_strip_trailing_slash(mp); // or mount fails :-/
   if (!*mp) {
 #if WITH_HELP    
-    q_error("%% Directory name required: can't mount to \"/\"\r\n");
+    q_print("% <e>Directory name required: can't mount to \"/\"</>\r\n");
 #endif    
     return 2;
   }
@@ -5744,13 +5816,13 @@ static int cmd_files_mount(int argc, char **argv) {
   // longer paths will work for mounting but fail for unmount so we just
   // restrict it here
   if (strlen(mp) >= sizeof(mp0)) {
-    q_errorf("%% Mount point path max length is %u characters\r\n", sizeof(mp0) - 1);
+    q_printf("%% <e>Mount point path max length is %u characters</>\r\n", sizeof(mp0) - 1);
     return 0;
   }
 
   // find free slot in mountpoints[] to mount new partition
-  if ((i = files_mountpoint_by_path(NULL)) < 0) {
-    q_error("% Too many mounted filesystems, increase MOUNTPOINTS_NUM\r\n");
+  if ((i = files_mountpoint_by_path(NULL,false)) < 0) {
+    q_print("% <e>Too many mounted filesystems, increase MOUNTPOINTS_NUM</>\r\n");
     return 0;
   }
 
@@ -5775,9 +5847,9 @@ static int cmd_files_mount(int argc, char **argv) {
           sprintf(mp0, "/%s", argv[1]);
 
         // check if selected mount point is not used
-        if ((tmp = files_mountpoint_by_path(mp)) >= 0) {
+        if ((tmp = files_mountpoint_by_path(mp,false)) >= 0) {
 #if WITH_HELP  
-          q_errorf("%% Mount point \"%s\" is already used by partition \"%s\"\r\n", mp, mountpoints[tmp].label);
+          q_printf("%% <e>Mount point \"%s\" is already used by partition \"%s\"</>\r\n", mp, mountpoints[tmp].label);
 #endif    
           goto mount_failed;
         }
@@ -5803,7 +5875,7 @@ static int cmd_files_mount(int argc, char **argv) {
           // Mount SPIFFS partition
           case ESP_PARTITION_SUBTYPE_DATA_SPIFFS:
             if (esp_spiffs_mounted(part->label)) {
-              q_errorf("%% Partition \"%s\" is already mounted\r\n", part->label);
+              q_printf("%% <e>Partition \"%s\" is already mounted</>\r\n", part->label);
               goto mount_failed;
             }
             esp_vfs_spiffs_conf_t conf2 = { 0 };
@@ -5823,7 +5895,7 @@ static int cmd_files_mount(int argc, char **argv) {
           case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS:
 
             if (esp_littlefs_mounted(part->label)) {
-              q_errorf("%% Partition \"%s\" is already mounted\r\n", part->label);
+              q_printf("%% <e>Partition \"%s\" is already mounted</>\r\n", part->label);
               goto mount_failed;
             }
             esp_vfs_littlefs_conf_t conf1 = { 0 };
@@ -5838,7 +5910,7 @@ static int cmd_files_mount(int argc, char **argv) {
             goto finalize_mount;
 #endif
           default:
-            q_error("% Unsupported file system\r\n");
+            q_print("% <e>Unsupported file system</>\r\n");
             goto mount_failed;
         }
       }
@@ -5846,10 +5918,10 @@ static int cmd_files_mount(int argc, char **argv) {
   }
 
   // Matching partition was not found
-  q_errorf("%% Partition label \"%s\" is not found\r\n", argv[1]);
+  q_printf("%% <e>Partition label \"%s\" is not found</>\r\n", argv[1]);
 
 mount_failed:
-  q_errorf("%% Mount partition \"%s\" failed (error: %d)\r\n", argv[1], err);
+  q_printf("%% <e>Mount partition \"%s\" failed (error: %d)</>\r\n", argv[1], err);
 #if WITH_FAT  
   mountpoints[i].wl_handle = WL_INVALID_HANDLE;
 #endif  
@@ -5863,7 +5935,7 @@ finalize_mount:
     esp_partition_iterator_release(it);
 
   if ((mountpoints[i].mp = strdup(mp)) == NULL)
-    q_error(Failed);
+    q_print(Failed);
   else {
     mountpoints[i].type = part->subtype;
     static_assert(sizeof(mountpoints[0].label) >= sizeof(part->label), "Increase mountpoints[].label array size");
@@ -5880,15 +5952,17 @@ finalize_mount:
 static int cmd_files_mount0(int argc, char **argv) {
 
   int usable = 0, i;
+  bool mountable;
   esp_partition_iterator_t it = esp_partition_find(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, NULL);
 
   if (!it) {
-    q_error("% Can not read partition table\r\n");
+    q_print("% <e>Can not read partition table</>\r\n");
     return 0;
   }
 
-  q_print("%  Partition label |   Type    |   Size  |    Mounted on    |Total(Kb)|Free(Kb)\r\n"
-          "% -----------------+-----------+---------+------------------+---------+--------\r\n");
+  q_print("<r>% Disk partition |M|File system| Size on |    Mounted on    |Capacity |  Free   \r\n"
+          "%    label       |?|   type    |  flash  |                  |  total  |  space  </>\r\n");
+  q_print("% ---------------+-+-----------+---------+------------------+---------+---------\r\n");
   while (it) {
     const esp_partition_t *part = esp_partition_get(it);
     if (part && (part->type == ESP_PARTITION_TYPE_DATA)) {
@@ -5897,31 +5971,40 @@ static int cmd_files_mount0(int argc, char **argv) {
           part->subtype == ESP_PARTITION_SUBTYPE_DATA_SPIFFS || 
           part->subtype == ESP_PARTITION_SUBTYPE_DATA_LITTLEFS) {
         usable++;
-        color_important();
+        mountable = true;
       } else
-        color_normal();
+        mountable = false;
+
+#if WITH_COLOR
+      if (mountable)
+        q_print("<i>");
+#endif
         //"label" "fs type" "partition size"
-      q_printf("%%% 17s |%s|% 6uKb | ",part->label, files_subtype2text(part->subtype),(unsigned int)part->size / 1024);
+      q_printf("%%% 16s|%s|%s| % 6uK | ",part->label,mountable ? "+" : " ", files_subtype2text(part->subtype),(unsigned int)part->size / 1024);
       
       if ((i = files_mountpoint_by_label(part->label)) >= 0)
         // "mountpoint" "total fs size" "available fs size"
-        q_printf("% 17s|  % 6u | % 6u\r\n",mountpoints[i].mp, files_space_total(i)/1024, files_space_free(i)/1024);
+        q_printf("% 16s | % 6uK | % 6uK\r\n",mountpoints[i].mp, files_space_total(i)/1024, files_space_free(i)/1024);
       else
         q_print("                 |         |\r\n");
+#if WITH_COLOR
+      if (mountable)
+        q_print("</>");
+#endif
     }
     it = esp_partition_next(it);
   }
 #if WITH_HELP
-  color_normal();
   q_print("%\r\n");
   if (!usable)
-    q_print("% No usable partitions were found. Use (Tools->Partition Scheme) in Arduino IDE\r\n");
+    q_print("% <2>No usable partitions were found. Use (Tools->Partition Scheme) in Arduino IDE</>\r\n");
   else
-    q_printf("%% %u mountable partition%s found\r\n", usable, usable == 1 ? "" : "s");
+    q_printf("%% <i>%u</> mountable partition%s found. (+) - mountable partition\r\n", usable, usable == 1 ? "" : "s");
+  
 #endif  //WITH_HELP
 
   if (it)
-    esp_partition_iterator_release(it);  //FIXME:
+    esp_partition_iterator_release(it);
 
   return 0;
 }
@@ -5949,7 +6032,7 @@ static int cmd_files_cd(int argc, char **argv) {
   //"cd" no args, go to the mountpoint
   if (argc < 2) {
     int i;
-    if ((i = files_mountpoint_by_path(files_get_cwd())) < 0)
+    if ((i = files_mountpoint_by_path(files_get_cwd(), false)) < 0)
       files_set_cwd("/");
     else
       files_set_cwd(mountpoints[i].mp);
@@ -5958,7 +6041,7 @@ static int cmd_files_cd(int argc, char **argv) {
 
 #if WITH_HELP
   //"cd Path With Spaces"
-  if (argc > 2) { q_error(SpacesInPath); return 0; }
+  if (argc > 2) { q_print(SpacesInPath); return 0; }
 #endif  
 
   int i;
@@ -6005,7 +6088,7 @@ static int cmd_files_cd(int argc, char **argv) {
   // Sanity check: must be no double dots in path
   while (argv[1][i]) {
     if (argv[1][i] == '.' && argv[1][i + 1] == '.') {
-      printf("%% Two dots (..) are not supported in path\r\n");
+      q_printf("%% <e>Two dots (..) are not supported in path</>\r\n");
       return 1;
     }
     i++;
@@ -6029,7 +6112,7 @@ static int cmd_files_cd(int argc, char **argv) {
   // Path is relative: append path to the CWD
   // and check if path exists as well
   if (strlen(Cwd) + strlen(argv[1]) > sizeof(tmp)) {
-    q_error("% Path is too long\r\n");
+    q_print("% <e>Path is too long</>\r\n");
     return 1;
   }
 
@@ -6054,10 +6137,10 @@ static int cmd_files_cd(int argc, char **argv) {
     if (files_set_cwd(tmp))
       return 0;
     else
-      q_error(Failed);
+      q_print(Failed);
   } else
 path_does_not_exist:
-    q_error("% Path does not exist\r\n");
+    q_print("% <e>Path does not exist</>\r\n");
   return 1;
 }
 
@@ -6071,8 +6154,7 @@ static int cmd_files_pwd(int argc, char **argv) {
 }
 
 
-// "ls"
-// "ls PATH"
+// "ls [PATH]"
 // Directory listing for current working directory or PATH if specified
 //
 static int cmd_files_ls(int argc, char **argv) {
@@ -6089,7 +6171,7 @@ static int cmd_files_ls(int argc, char **argv) {
   // if it is full_path then it MAY or MAY NOT end with "/" but full_path is writeable and expandable
   if (path[plen - 1] != '\\' && path[plen - 1] != '/') {
     if (path == Cwd) {
-      q_error("FIXME: Cwd without trailing slash\r\n");
+      q_print("FIXME: Cwd without trailing slash\r\n");
       return 0;
     }
     path[plen++] = '/';
@@ -6105,17 +6187,16 @@ static int cmd_files_ls(int argc, char **argv) {
           q_print("%-- USED --        *  Mounted on\r\n");
           found = true;
         }
-        q_printf("%% % 9u       MP  %s\r\n",files_space_total(i) - files_space_free(i), mountpoints[i].mp);
+        q_printf("%% <b>% 9u</>       MP  [<3>%s</>]\r\n",files_space_total(i) - files_space_free(i), mountpoints[i].mp);
       }
-    if (!found) {
-      q_printf("%% Root (\"%s\") directory is empty: no fileystems mounted\r\n%% Use command \"mount\" to list & mount available partitions\r\n",path);
-    }
+    if (!found)
+      q_printf("%% <i>Root (\"%s\") directory is empty</>: no fileystems mounted\r\n%% Use command \"mount\" to list & mount available partitions\r\n",path);
     return 0;
   }
   
   // real directory listing
   if (!files_path_exist(path,true))
-    q_errorf("%% Path \"%s\" does not exist\r\n",path);
+    q_printf("%% <e>Path \"%s\" does not exist</>\r\n",path);
   else {
     unsigned int total_f = 0, total_d = 0, total_fsize = 0;
     DIR *dir;
@@ -6124,14 +6205,14 @@ static int cmd_files_ls(int argc, char **argv) {
       struct dirent *ent;
 
       q_print("% Size/Used      Modified          *  Name\r\n"
-              "%               -- level up --    DIR [..]\r\n");
+              "%               -- level up --    DIR [<i>..</>]\r\n");
       while ((ent = readdir(dir)) != NULL) {
         
         struct stat st;
         char path0[512] = { 0 };
 
         if (strlen(ent->d_name) + 1 + plen >= sizeof(path0)) {
-          q_error("% Path is too long\r\n");
+          q_print("% <e>Path is too long</>\r\n");
           continue;
         }
 
@@ -6143,19 +6224,19 @@ static int cmd_files_ls(int argc, char **argv) {
         if (0 == stat(path0,&st)) {
           if (ent->d_type == DT_DIR) {
             total_d++;
-            q_printf("%%            %s  DIR [%s]\r\n",files_time2text(st.st_mtime), ent->d_name);
+            q_printf("%%            %s  DIR [<i>%s</>]\r\n",files_time2text(st.st_mtime), ent->d_name);
           }
           else {
             total_f++;
             total_fsize += st.st_size;
-            q_printf("%% % 9u  %s      %s\r\n",(unsigned int)st.st_size,files_time2text(st.st_mtime), ent->d_name);
+            q_printf("%% % 9u  %s      <3>%s</>\r\n",(unsigned int)st.st_size,files_time2text(st.st_mtime), ent->d_name);
           }
         } else
-          q_errorf("stat() : failed %d, name %s\r\n",errno,ent->d_name);
+          q_printf("<e>stat() : failed %d, name %s</>\r\n",errno,ent->d_name);
       }
       closedir(dir);
     }
-    q_printf("%%\r\n%% %u director%s, %u file%s, %u byte%s\r\n",
+    q_printf("%%\r\n%% <i>%u</> director%s, <i>%u</> file%s, <i>%u</> byte%s\r\n",
              total_d, total_d == 1 ? "y" : "ies", 
              total_f, total_f == 1 ? "" : "s",
              total_fsize,total_fsize == 1 ? "" : "s");
@@ -6163,19 +6244,26 @@ static int cmd_files_ls(int argc, char **argv) {
   return 0;
 }
 
-// "rm PATH"
+// "rm PATH1 [PATH2 ... PATHn]"
 // removes file or directory with its content (recursively)
 //
 static int cmd_files_rm(int argc, char **argv) {
   
   if (argc < 2) return -1;
 #if WITH_HELP  
-  if (argc > 2) { q_error(SpacesInPath); return 0; }
+  if (argc > 2)
+    q_print(MultipleEntries);
 #endif  
+  
+  int i, num;
+  for (i = 1, num = 0; i < argc; i++) {
+    files_asteriks2spaces(argv[i]);
+    num += files_remove(argv[i],RECURSION_DEPTH_RM);
+  }
 
-  int num;
-  if ((num = files_remove(argv[1],RECURSION_DEPTH_RM)) > 0)
-    q_printf("%% %d files/directories were deleted\r\n",num);
+  if (num)
+    q_printf("%% <i>%d</> files/directories were deleted\r\n",num);
+
   return 0;
 }
 
@@ -6192,7 +6280,7 @@ static int cmd_files_write(int argc, char **argv) {
     return 1;
 #if MUST_TOUCH
   if (!files_path_exist(path,false)) {
-    q_errorf("%% File \"%s\" does not exist, \"touch\" it first\r\n",path);
+    q_printf("%% <e>File \"%s\" does not exist, \"touch\" it first</>\r\n",path);
     return 0;
   }
 #endif
@@ -6203,14 +6291,16 @@ static int cmd_files_write(int argc, char **argv) {
   // are we running as "write" or as "append" command?
   if (!q_strcmp(argv[0],"append"))
     flags |= O_APPEND;
+  else
+    flags |= O_TRUNC;
 
   if (size > 0) {
     if ((fd = open(path,flags)) > 0) {
       size = write(fd,out,size);
       if (size < 0)
-        q_errorf("%% Write to file \"%s\" failed\r\n",path);
+        q_printf("%% <e>Write to file \"%s\" failed</>\r\n",path);
       else
-        q_printf("%% %u bytes written\r\n",size);
+        q_printf("%% <i>%u</> bytes written to <2>%s</>\r\n",size,path);
     }
     close(fd);
   }
@@ -6228,7 +6318,7 @@ static int cmd_files_append(int argc, char **argv) {
 // insert TEXT before line number LINE_NUMBER
 //
 static int cmd_files_insert(int argc, char **argv) {
-  q_error("%% Not implemented yet\r\n");
+  q_print("% Not implemented yet\r\n");
   return 0;
 }
 
@@ -6236,50 +6326,60 @@ static int cmd_files_insert(int argc, char **argv) {
 // remove lines LINE_NUMBER .. LINE_NUMBER+COUNT lines from file
 //
 static int cmd_files_delete(int argc, char **argv) {
-  q_error("%% Not implemented yet\r\n");
+  q_print("% Not implemented yet\r\n");
   return 0;
 }
 
-// "mkdir PATH"
+// "mkdir PATH1 [PATH2 ... PATHn]"
 // Create new directory PATH
 //
 static int cmd_files_mkdir(int argc, char **argv) {
+
+  int i;
   if (argc < 2) return -1;
 #if WITH_HELP  
-  if (argc > 2) { q_error(SpacesInPath); return 0; }
+  if (argc > 2)
+    q_print(MultipleEntries);
 #endif  
 
-  files_strip_trailing_slash(argv[1]);
-  if (argv[1][0] == '\0')
-    return 1;
-  if ((argv[1] = files_full_path(argv[1])) != NULL)
-    if (!files_path_impossible(argv[1]))
-      if (mkdir(argv[1],0777) == 0)
-        return 0;
-  q_errorf("%% Failed to create directory \"%s\", error %d\r\n",argv[1],errno);
+  for (i = 1; i < argc; i++) {
+    files_strip_trailing_slash(argv[i]);
+    if (argv[i][0] == '\0')
+      return i;
+    files_asteriks2spaces(argv[i]);
+    if ((argv[i] = files_full_path(argv[i])) != NULL)
+      if (!files_path_impossible(argv[i]))
+        if (mkdir(argv[i],0777) != 0)
+          q_printf("%% <e>Failed to create directory \"%s\", error %d</>\r\n",argv[i],errno);
+  }
   return 0;
 }
 
-// "touch PATH/FILENAME"
-// Create new file or update existing's timestamp
+// "touch PATH1 [PATH2 ... PATHn]"
+// Create new files or update existing's timestamp
 //
 static int cmd_files_touch(int argc, char **argv) {
   
-  int fd;
+  int fd,i;
+
   if (argc < 2) return -1;
 #if WITH_HELP  
-  if (argc > 2) { q_error(SpacesInPath); return 0; }
+  if (argc > 2)
+    q_print(MultipleEntries);
 #endif  
 
-  // create path from user input (arg1) and current working directory set by "cd"
-  argv[1] = files_full_path(argv[1]);
+  for (i = 1; i < argc; i++) {
 
-  // try to open file, creating it if it doesn't exist
-  if ((fd = open(argv[1], O_CREAT | O_WRONLY, 0666)) > 0)
-    close(fd);
-  else
-    q_errorf("%% Failed to create file \"%s\", error code is %d\r\n",argv[1],errno);
+    // create path from user input (arg1..argN) and current working directory set by "cd"
+    files_asteriks2spaces(argv[i]);
+    argv[i] = files_full_path(argv[i]);
 
+    // try to open file, creating it if it doesn't exist
+    if ((fd = open(argv[i], O_CREAT | O_WRONLY, 0666)) > 0)
+      close(fd);
+    else
+      q_printf("%% <e>Failed to create file \"%s\", error code is %d</>\r\n",argv[i],errno);
+  }
   return 0;
 }
 
@@ -6315,11 +6415,12 @@ static int cmd_files_format(int argc, char **argv) {
       return 0;
 
     if (files_path_is_root(path)) {
-      q_error("%% Root partition can not be formatted, \"cd\" first\r\n");
+      q_print("% <e>Root partition can not be formatted, \"cd\" first</>\r\n");
       return 0;
     }
     
-    if ((i = files_mountpoint_by_path(path)) < 0) {
+    // disable reverse lookup on this: we don't want wrong partition to be formatted
+    if ((i = files_mountpoint_by_path(path, false)) < 0) { 
       // normally happen when currently used partition is unmounted: reset CWD to root directory
       files_set_cwd("/");
       return 0;
@@ -6330,7 +6431,7 @@ static int cmd_files_format(int argc, char **argv) {
   
   // find partition user wants to format
   if ((part = files_partition_by_label(label)) == NULL) {
-    q_errorf("%% Partition \"%s\" does not exist\r\n",label);
+    q_printf("%% <e>Partition \"%s\" does not exist</>\r\n",label);
     return argc > 1 ? 1 : 0;
   }
 
@@ -6351,10 +6452,10 @@ static int cmd_files_format(int argc, char **argv) {
     case ESP_PARTITION_SUBTYPE_DATA_SPIFFS: disableCore0WDT(); err = esp_spiffs_format(label); enableCore0WDT(); break;
 #endif    
     default:
-      q_errorf("%% Unsupported filesystem type 0x%02x\r\n",part->subtype);
+      q_printf("%% <e>Unsupported filesystem type 0x%02x</>\r\n",part->subtype);
   }
   if (err != ESP_OK)
-    q_errorf("%% There were errors during formatting (code: %u)\r\n",err);
+    q_printf("%% <e>There were errors during formatting (code: %u)</>\r\n",err);
   else
     q_print("% done\r\n");
   
@@ -6371,7 +6472,7 @@ static int cmd_files_format(int argc, char **argv) {
 // Move/rename files or directories
 //
 static int cmd_files_mv(int argc, char **argv) {
-  q_error("%% Not implemented yet\r\n");
+  q_print("% Not implemented yet\r\n");
   return 0;
 }
 
@@ -6381,19 +6482,95 @@ static int cmd_files_mv(int argc, char **argv) {
 //
 // Copy files/directories
 static int cmd_files_cp(int argc, char **argv) {
-  q_error("%% Not implemented yet\r\n");
+  q_print("% Not implemented yet\r\n");
   return 0;
 }
 
-// "cat PATH/FILENAME [LINE_START [COUNT]]"
-// Display file content
+// "cat [-n|-b] PATH [START [COUNT]] [uart NUM]
+// cat /wwwroot/text_file.txt
+// cat /wwwroot/text_file.txt 10
+// cat /wwwroot/text_file.txt 10 10
+// cat /wwwroot/text_file.txt uart1
+// cat /wwwroot/text_file.txt 10 10 usb0
+//
+// Display a text file content
 //
 static int cmd_files_cat(int argc, char **argv) {
 
+  bool binary = false, numbers = false;
+  char *path;
+  int device = -1, i =1;
+  unsigned int line = (unsigned int)(-1), count = (unsigned int)(-1);
+
   if (argc < 2) return -1;
-#if WITH_HELP  
-  if (argc > 2) { q_error(SpacesInPath); return 0; }
-#endif  
+  
+  // -b & -n options
+  if (!strcmp("-b",argv[i])) {
+    binary = true;
+    i++;
+  } else if (!strcmp("-n",argv[i])) {
+    numbers = true;
+    i++;
+  }
+
+  if (i >= argc)
+    return -1;
+    
+  if (!files_path_exist((path = files_full_path(argv[i])), false)) {
+#if WITH_HELP
+    q_printf("%% File not found: \"%s\"\r\n",path);
+    return 0;
+#else
+    return 1;
+#endif
+  }
+  i++;
+
+  // pickup other arguments.
+  // these are: one or two numbers (start & count) and possibly an uart interface number (a number as well)
+  while (i < argc) {
+    if (isnum(argv[i]) || ishex(argv[i])) {
+      if (line == (unsigned int)(-1))
+        line = q_atol(argv[i],0);
+      else if (count == (unsigned int)(-1))
+        count = q_atol(argv[i],0xffffffff);
+      else {
+#if WITH_HELP        
+        q_print("% Unexpected 3rd numeric argument\r\n");
+#endif        
+        return i;
+      }
+    } else 
+    // "uart" keyword? must be a valid uart interface number in the next argument then
+    if (!q_strcmp(argv[i],"uart")) {
+      if (i + 1 >= argc) {
+#if WITH_HELP        
+        q_print("% <e>UART number is missing</>\r\n");
+#endif        
+        return i;
+      }
+      i++;
+      if (!isnum(argv[i])) {
+#if WITH_HELP        
+        q_print("% <e>Numeric value (UART number) is expected</>\r\n");
+#endif        
+        return i;
+      }
+      
+      if (!uart_isup((device = atol(argv[i])))) {
+        q_printf("%% <e>UART%d is not initialized. Configure it by command \"uart %d\"</>\r\n",device,device);
+        return 0;
+      }
+    } else
+    // unexpected keyword
+      return i;
+
+    // to the next keyword
+    i++;
+  }
+
+  //q_printf("path=\"%s\", device=%x, LINE_NUM=%u, COUNT=%u, binary=%d, numbers=%d\r\n",path,device,line,count,binary,numbers);
+      q_print("% Not implemented yet\r\n");
 
 
 
@@ -6435,9 +6612,7 @@ static int help_keys(UNUSED int argc, UNUSED char **argv) {
 
 // "? pinout"
 // display some known interfaces pin numbers
-static int help_pinout(int argc, char **argv) {
-  argc = argc;
-  argv = argv;
+static int help_pinout(UNUSED int argc, UNUSED char **argv) {
   //TODO: basic pin numvers are in pins_arduino.h.
   //      problems with pins_arduino.h: it is a bunch of static const unsigned chars, not #defines;
   //      there are only basic pins, no pins for 2nd UART or I2C or SPI.
@@ -6623,14 +6798,12 @@ one_more_try:
             bad = key[i].cb(argc, argv);
             // keywords[i] is not a valid pointer anymore as cb() can change the keywords pointer
             // keywords[0] is always valid
-            color_error();
             if (bad > 0)
-              q_printf("%% Invalid argument \"%s\" (\"? %s\" for help)\r\n", argv[bad], argv[0]);
+              q_printf("%% <e>Invalid argument \"%s\" (\"? %s\" for help)</>\r\n", argv[bad], argv[0]);
             else if (bad < 0)
-              q_printf("%% Missing argument (\"? %s\" for help)\r\n", argv[0]);
+              q_printf("%% <e>Missing argument (\"? %s\" for help)</>\r\n", argv[0]);
             else
               i = 0;  // make sure keywords[i] is a valid pointer
-            color_normal();
             break;
           }  // if callback is provided
         }    // if argc matched
@@ -6648,19 +6821,16 @@ one_more_try:
         goto one_more_try;
       }
 
-      color_error();
+      
       if (found)  //we had a name match but number of arguments was wrong
-        q_printf("%% \"%s\": wrong number of arguments (\"? %s\" for help)\r\n", argv[0], argv[0]);
+        q_printf("%% <e>\"%s\": wrong number of arguments</> (\"? %s\" for help)\r\n", argv[0], argv[0]);
       else
-        q_printf("%% \"%s\": command not found\r\n", argv[0]);
-      color_normal();
+        q_printf("%% <e>\"%s\": command not found</>\r\n", argv[0]);
+      
     }
 #if WITH_HELP
-    if (!found) {
-      color_error();
-      q_print("% Type \"?\" to show the list of commands available\r\n");
-      color_normal();
-    }
+    if (!found)
+      q_print("% <e>Type \"?\" to show the list of commands available</>\r\n");
 #endif
   }
 
@@ -6681,9 +6851,9 @@ void espshell_exec(const char *p) {
 // execution
 bool espshell_exec_finished() {
   bool ret;
-  portENTER_CRITICAL(&ttyq_mux);
-  ret = (*TTYq == '\0');
-  portEXIT_CRITICAL(&ttyq_mux);
+  portENTER_CRITICAL(&Input_mux);
+  ret = (*Input == '\0');
+  portEXIT_CRITICAL(&Input_mux);
   return ret;
 }
 
