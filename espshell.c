@@ -1419,25 +1419,28 @@ static int cmd_exit(int, char **);
 // "minus" sign is only accepted if first in the string
 //
 static bool isnum(const char *p) {
-  if (*p == '-')
-    p++;
-  while (*p >= '0' && *p <= '9')
-    p++;
-  return !(*p);  //if *p is 0 then all the chars were digits (end of line reached).
+  if (p && *p) {
+    if (*p == '-') p++;
+    while (*p >= '0' && *p <= '9') p++;
+    return !(*p);  //if *p is 0 then all the chars were digits (end of line reached).
+  }
+  return false;
 }
 
 // check if ascii string is a float number
 // NOTE: "0.5" and ".5" are both valid inputs
 static bool isfloat(const char *p) {
-  bool dot = false;
-  if (*p == '-')
-    p++;
-  while ((*p >= '0' && *p <= '9') || (*p == '.' && !dot)) {
-    if (*p == '.')
-      dot = true;
-    p++;
+  if (p && *p) {
+    bool dot = false;
+    if (*p == '-') p++;
+    while ((*p >= '0' && *p <= '9') || (*p == '.' && !dot)) {
+      if (*p == '.')
+        dot = true;
+      p++;
+    }
+    return !(*p);  //if *p is 0 then all the chars were ok. (end of line reached).
   }
-  return !(*p);  //if *p is 0 then all the chars were ok. (end of line reached).
+  return false;
 }
 
 
@@ -1448,13 +1451,15 @@ static bool isfloat(const char *p) {
 // TODO: check all bytes, not just 2
 static bool ishex(const char *p) {
 
-  if (p[0] == '0' && p[1] == 'x')
-    p += 2;
+  if (p && *p) {
+    if (p[0] == '0' && p[1] == 'x')
+      p += 2;
 
-  if ((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F')) {
-    p++;
-    if ((*p == 0) || (*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F'))
-      return true;
+    if ((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F')) {
+      p++;
+      if ((*p == 0) || (*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F'))
+        return true;
+    }
   }
   return false;
 }
@@ -1528,6 +1533,10 @@ static unsigned int octal2uint32(const char *p) {
   return value;
 }
 
+// convert strings
+// 0b10010101 and 10100101 (with or without leading "0b") to
+// unsigned int values
+//
 static unsigned int binary2uint32(const char *p) {
   unsigned int value = 0;
   unsigned int one = 0;
@@ -1536,8 +1545,7 @@ static unsigned int binary2uint32(const char *p) {
     p += 2;
 
   while (*p) {
-    if (*p == '0' || *p == '1') one = *p - '0';
-    else return 0;
+    if (*p == '0' || *p == '1') one = *p - '0';  else return 0;
     value <<= 1;
     value |= one;
     p++;
@@ -1545,21 +1553,36 @@ static unsigned int binary2uint32(const char *p) {
   return value;
 }
 
-// replacements for standart atoi() and atol(): 
-// make them accept hex numbers like 0x1234
+// q_atol() : better version of atol()
+// 1. Accepts decimal, hex or binary numbers
+// 2. If conversion fails (bad symbols in string, empty string etc) the
+//    "def" value is returned
 //
-// if there were errors during conversion (i.e. number format errors) then
-// the 'def'ault value  is returned
-//
+// TAG:atol
 static unsigned int q_atol(const char *p, unsigned int def) {
   if (p && *p) {
-    if (isnum(p))
+    if (isnum(p))                // decimal number?
       def = atol(p);
-    else 
-    if (p[0] == '0' && p[1] == 'x')
-      if (ishex(p))
-        def = hex2uint32(p);
+    else
+    if (p[0] == '0') {         // leading "0" : either hexadecimal, binary or octal number
+      if (p[1] == 'x') {       // hexadecimal
+        if (ishex(p))
+          def = hex2uint32(p);
+      } else
+      if (p[1] == 'b')          // binary (TODO: isbin())
+        def = binary2uint32(p);
+      else
+        def = octal2uint32(p);  // octal  (TODO: isoct())
+    }
   }
+  return def;
+}
+
+// same for the atof():
+static inline float q_atof(const char *p, float def) {
+  if (p && *p)
+    if (isfloat(p))
+      def = atof(p);
   return def;
 }
 
@@ -1946,6 +1969,19 @@ struct sequence {
 };
 
 
+// TAG:pins
+// Structure used to save/load pin states by "pin X save"/"pin X load".
+//
+static struct {
+  uint8_t flags;    // INPUT,PULLUP,...
+  bool value;       // digital value
+  uint16_t sig_out; 
+  uint16_t fun_sel;
+  int bus_type;  //periman bus type.
+} Pins[SOC_GPIO_PIN_COUNT];
+
+
+
 // TAG:keywords
 //
 // Shell command.
@@ -2262,23 +2298,24 @@ static const struct keywords_t keywords_files[] = {
 
   { "cat", cmd_files_cat, -1, HELP("% \"cat [-n|-b] PATH [START [COUNT]] [uart NUM]\"\r\n"
                                   "%\r\n"
-                                  "% Display (or send by UART) file FILENAME\r\n"
+                                  "% Display (or send by UART) a binary or text file PATH\r\n"
                                   "% -n : display line numbers\r\n"
-                                  "% -b : file is binary\r\n"
+                                  "% -b : file is binary (mutually exclusive with \"-n\")\r\n"
                                   "% PATH  : path to the file\r\n"
-                                  "% START : text file line number OR binary file offset\r\n"
+                                  "% START : text file line number OR binary file offset for \"-b\" option\r\n"
                                   "% COUNT : number of lines to display (OR bytes for \"-b\" option)\r\n"
                                   "% NUM   : UART interface number to transmit file to\r\n"
                                   "%\r\n"
                                   "% Examples:\r\n"
-                                  "% cat file         - display file \"file\"\r\n"
-                                  "% cat -n file      - display file \"file\" + line numbers\r\n"
-                                  "% cat file 34      - display text file starting from line 34 \r\n"
-                                  "% cat file 900 10  - 10 lines, starting from line 900 \r\n"
-                                  "% cat -b file      - display binary file\r\n"
-                                  "% cat -b file 0x12 - display binary file starting from offset 0x12\r\n"
-                                  "% cat -b file 9 55 - 50 bytes starting from offset 9 of binary file\r\n"
-                                  "% cat file uart 1  - transmit file over UART1 \"as-is\" byte by byte"),"Display text/binary file" },
+                                  "% cat file              - display file \"file\"\r\n"
+                                  "% cat -n file           - display file \"file\" + line numbers\r\n"
+                                  "% cat file 34           - display text file starting from line 34 \r\n"
+                                  "% cat file 900 10       - 10 lines, starting from line 900 \r\n"
+                                  "% cat -b file           - display binary file (formatted output)\r\n"
+                                  "% cat -b file 0x1234    - display binary file starting from offset 0x12\r\n"
+                                  "% cat -b file 999 0x400 - 999 bytes starting from offset 1024 of binary file\r\n"
+                                  "% cat file uart 1       - transmit a text file over UART1, strip \"\\r\" if any\r\n"
+                                  "% cat -b file uart 1    - transmit file over UART1 \"as-is\" byte by byte"),"Display/transmit text/binary file" },
 
   { "touch", cmd_files_touch, -1, HELP("% \"touch PATH1 [PATH2 PATH3 ... PATHn]\"\r\n"
                                       "%\r\n"
@@ -2348,7 +2385,7 @@ static const struct keywords_t keywords_main[] = {
                                     "% Ex.: sequence 0 - configure Sequence0"),"Sequence configuration" },
 
   // Show funcions (more will be added)
-  { "show", cmd_show, 2, HELP("% \"show seq X\" - display sequence X\r\n"), "Display information" },
+  { "show", cmd_show, 2, HELP("% \"show sequence X\" - display sequence X\r\n"), "Display information" },
 
   // Shell input/output settings
   { "tty", cmd_tty, 1, HELP("% \"tty X\" Use uart X for command line interface"), "IO redirect" },
@@ -2441,8 +2478,18 @@ static const struct keywords_t *keywords = keywords_main;
 //common messages
 static const char *Failed = "% <e>Failed</>\r\n";
 static const char *Notset = "not set\r\n";
+#if WITH_HELP
 static const char *SpacesInPath = "<e>% Too many arguments.\r\n% If your path contains spaces, please enter spaces as \"*\":\r\n% Examples: \"cd Path*With*Spaces\",  \"rm /ffat/Program*Files\"</>\r\n";
 static const char *MultipleEntries = "<2>% Processing multiple paths.\r\n% Not what you want? Use asteriks (*) instead of spaces in the path</>\r\n";
+static const char *VarOops = "<e>% Oops :-(\r\n"
+            "% No registered variables to play with</>\r\n"
+            "% <2>Try this:\r\n"
+            "%  <i>1. Add include \"extra/espshell.h\" to your sketch</>\r\n"
+            "%  <i>2. Use \"convar_add()\" macro to register your variables</>\r\n"
+            "%\r\n"
+            "% <2>Once registered, variables can be manipulated by the \"var\" command\r\n"
+            "% while your sketch is running. More is in \"docs/Commands.txt\"</>\r\n";
+#endif
 
 
 // prompt
@@ -2678,9 +2725,9 @@ static int seq_atol(int *level, int *duration, char *p) {
 // to generate pulses. The criteria is:
 // ->seq must be initialized
 // ->tick must be set
-static bool seq_isready(int seq) {
+static bool seq_isready(unsigned int seq) {
 
-  if (seq < 0 || seq >= SEQUENCES_NUM)
+  if (seq >= SEQUENCES_NUM)
     return false;
 
   return (sequences[seq].seq != NULL) && (sequences[seq].tick != 0.0f);
@@ -2756,15 +2803,11 @@ static int seq_compile(int seq) {
 #endif        
         i++;
       }
-
-
-
       s->seq_len = i / 2;
       s->seq = (rmt_data_t *)malloc(sizeof(rmt_data_t) * s->seq_len);
 
       if (!s->seq)
         return -6;
-
 
       j = 0;
       k = 0;
@@ -2800,7 +2843,7 @@ static int seq_compile(int seq) {
 
 //Send sequence 'seq' using GPIO 'pin'
 //Sequence is fully configured
-static int seq_send(int pin, int seq) {
+static int seq_send(unsigned int pin, unsigned int seq) {
 
   struct sequence *s = &sequences[seq];
 
@@ -2857,12 +2900,8 @@ static int cmd_show(int argc, char **argv) {
 
   if (argc < 2)
     return -1;
-  if (!q_strcmp(argv[1], "seq"))
+  if (!q_strcmp(argv[1], "sequence"))
     return cmd_seq_show(argc, argv);
-  else
-    return 1;
-
-  //NOTREACHED
   return 1;
 }
 
@@ -2871,22 +2910,21 @@ static int cmd_show(int argc, char **argv) {
 // save context, switch command list, change the prompt
 static int cmd_seq_if(int argc, char **argv) {
 
-  int seq;
+  unsigned char seq;
   static char prom[16];
   if (argc < 2)
     return -1;
 
-  if (!isnum(argv[1]))
-    return 1;
-
-  seq = atoi(argv[1]);
-  if (seq < 0 || seq >= SEQUENCES_NUM) {
+  if ((seq = q_atol(argv[1], SEQUENCES_NUM)) >= SEQUENCES_NUM) {
+#if WITH_HELP    
     q_printf("%% <e>Sequence numbers are 0..%d</>\r\n", SEQUENCES_NUM - 1);
+#endif    
     return 1;
   }
 
+  // embed sequence number into prompt
   sprintf(prom,PROMPT_SEQ,seq);
-  change_command_directory(seq, keywords_sequence,prom, "sequence");
+  change_command_directory(seq, keywords_sequence,prom, "pulse sequence");
   return 0;
 }
 
@@ -2919,27 +2957,26 @@ static int cmd_seq_modulation(int argc, char **argv) {
 
   int high = 1;
   float duty = 0.5;
-  int freq;
+  unsigned int freq;
 
   // at least FREQ must be provided
   if (argc < 2)
     return -1;
 
-  // must be a number
-  if (!isnum(argv[1]))
+  freq = q_atol(argv[1],0);
+  if (!freq || freq > 40000000) {
+#if WITH_HELP
+    q_print("% Frequency must be between 1 and 40 000 000 Hz\r\n"); //TODO: find out real boundaries
+#endif
     return 1;
+  }
 
-  freq = atoi(argv[1]);
-
-  // More arguments are available
+  // More arguments are available?
   if (argc > 2) {
 
     // read DUTY.
-    // Duty cycle is a float number on range (0..1]
-    if (!isfloat(argv[2]))
-      return 2;
-
-    duty = atof(argv[2]);
+    // Duty cycle is a float number on range [0..1]
+    duty = q_atof(argv[2],2.0f);
 
     if (duty < 0.0f || duty > 1.0f) {
 #if WITH_HELP
@@ -2948,9 +2985,7 @@ static int cmd_seq_modulation(int argc, char **argv) {
       return 2;
     }
   }
-
-
-  //third argument: "high" or "1" means moduleate when line is HIGH (modulate 1's)
+  //third argument: "high" or "1" means modulate when line is HIGH (modulate 1's)
   // "low" or "0" - modulate when line is LOW (modulate zeros)
   if (argc > 3) {
     if (!q_strcmp(argv[3], "low") || argv[3][0] == '1')
@@ -3176,7 +3211,7 @@ static int cmd_seq_levels(int argc, char **argv) {
 //
 static int cmd_seq_show(int argc, char **argv) {
 
-  int seq;
+  unsigned int seq;
 
   // command executed as "show" within sequence
   // command tree (no arguments)
@@ -3190,14 +3225,7 @@ static int cmd_seq_show(int argc, char **argv) {
   if (argc != 3)
     return -1;
 
-  if (q_strcmp(argv[1], "seq"))
-    return 1;
-
-  if (!isnum(argv[2]))
-    return 2;
-
-  seq = atoi(argv[2]);
-  if (seq < 0 || seq >= SEQUENCES_NUM)
+  if ((seq = q_atol(argv[2],SEQUENCES_NUM)) >= SEQUENCES_NUM)
     return 2;
 
   seq_dump(seq);
@@ -3226,19 +3254,11 @@ static void IRAM_ATTR pcnt_interrupt(void *arg) {
 //
 static int cmd_count(int argc, char **argv) {
 
-  pcnt_config_t cfg;
+  pcnt_config_t cfg = { 0 }; 
   unsigned int pin, wait = PULSE_WAIT;
   int16_t count;
 
-  //pin number
-  if (!isnum(argv[1]))
-    return 1;
-
-  memset(&cfg, 0, sizeof(cfg));
-
-  cfg.pulse_gpio_num = pin = atol(argv[1]);
-
-  if (!pin_exist(pin))
+  if (!pin_exist((cfg.pulse_gpio_num = pin = q_atol(argv[1],999))))
     return 1;
 
   cfg.ctrl_gpio_num = -1;  // don't use "control pin" feature
@@ -3248,24 +3268,24 @@ static int cmd_count(int argc, char **argv) {
   cfg.neg_mode = PCNT_COUNT_DIS;
   cfg.counter_h_lim = PCNT_OVERFLOW;
 
-
   // user has provided second argument?
   if (argc > 2) {
-    // delay must be a number
-    if (!isnum(argv[2]))
+    if ((wait = q_atol(argv[2], 0xffffffff)) == 0xffffffff)
       return 2;
-    wait = atol(argv[2]);
 
     //user has provided 3rd argument?
     if (argc > 3) {
       if (!q_strcmp(argv[3], "pos")) { /* default*/
-      } else if (!q_strcmp(argv[3], "neg")) {
+      } else 
+      if (!q_strcmp(argv[3], "neg")) {
         cfg.pos_mode = PCNT_COUNT_DIS;
         cfg.neg_mode = PCNT_COUNT_INC;
-      } else if (!q_strcmp(argv[3], "both")) {
+      } else 
+      if (!q_strcmp(argv[3], "both")) {
         cfg.pos_mode = PCNT_COUNT_INC;
         cfg.neg_mode = PCNT_COUNT_INC;
-      } else return 3;
+      } else 
+      return 3;
     }
   }
 
@@ -3339,16 +3359,23 @@ static int cmd_var_show(int argc, char **argv) {
   // "var": display variables list if no arguments were given
   if (argc < 2) {
     struct convar *var = var_head;
-    q_print("% Registered variables:\r\n");
+
+#if WITH_HELP    
+    if (!var)
+      q_print(VarOops);
+    else
+#endif
+      q_print("% Registered variables:\r\n");
+
     while (var) {
-      q_printf("%% \"%s\", %d bytes long (%s)\r\n", var->name, var->size, var->size == 4 ? "float, int or unsigned int" : (var->size == 2 ? "short int" : "char"));
+      q_printf("%% \"<i>% 16s</>\", %d bytes long (likely of <i>%s</> type)\r\n", var->name, var->size, var->size == 4 ? "float or int" : (var->size == 2 ? "short int" : "char"));
       var = var->next;
     }
     return 0;
   }
 
   //"var X": display variable value OR
-  //"var NUMBER" different representaton of a number
+  //"var NUMBER" display different representaton of a number
   //
   if (argc < 3) {
     unsigned int unumber;
@@ -3387,8 +3414,16 @@ static int cmd_var_show(int argc, char **argv) {
     }
 
     // display a number in hex, octal, binary, integer or float representation
+    q_printf("%% \"%s\" is a number, which can be written as\r\n"
+             "%% unsigned : %u\r\n"
+             "%%   signed : %i\r\n"
+             "%% FP number: %f\r\n"
+             "%% hex      : 0x%x\r\n"
+             "%% oct      : 0%o\r\n"
+             "%% bin      : \"0b", argv[1], unumber, inumber, fnumber, unumber, unumber);
 
-    q_printf("%% Hex: 0x%x, Octal: 0%o, Unsigned: %u, Signed: %i\r\n%% Floating point:%f\r\n%% Binary: 0b", unumber, unumber, unumber, inumber, fnumber);
+    // display binary form with leading zeros omitted
+    // TODO: use gcc's __builtin_ function to count leading zeros
     for (inumber = 0; inumber < 32; inumber++) {
       if (unumber & 0x80000000) {
         q_print("1");
@@ -3402,13 +3437,34 @@ static int cmd_var_show(int argc, char **argv) {
     return 0;
 
 process_as_variable_name:
-    if ((len = convar_get(argv[1], &u)) == 0)
+
+    if ((len = convar_get(argv[1], &u)) == 0) {
+#if WITH_HELP
+      q_printf("%% \"%s\" : No such variable\r\n",argv[1]);
+      return 0;
+#else
       return 1;
+#endif      
+    }
     switch (len) {
-      case 1: q_printf("%% \"%s\" == Unsigned: %u, or Signed: %d (hex: %02x)\r\n", argv[1], u.uchar, u.ichar, u.uchar); break;
-      case 2: q_printf("%% \"%s\" == Unsigned: %u, or Signed: %d (hex: %04x)\r\n", argv[1], u.ush, u.ish, u.ush); break;
-      case 4: q_printf("%% \"%s\" == Unsigned: %u, or Signed: %d, or Float: %f (hex: %x)\r\n", argv[1], u.uval, u.ival, u.fval, u.uval); break;
-      default: q_printf("%% Variable \"%s\" has unsupported size of %d bytes\r\n", argv[1], len); return 1;
+      case 1: 
+        q_printf("%% // 0x%x in hex\r\n",u.uchar);
+        q_printf("%% unsigned char %s = %u;\r\n"
+                 "%%   signed char %s = %d;\r\n", argv[1], u.uchar, argv[1], u.ichar); 
+        break;
+      case 2: 
+        q_printf("%% // 0x%x in hex\r\n",u.ush);
+        q_printf("%% unsigned short %s = %u;\r\n"
+                 "%%   signed short %s = %d;\r\n", argv[1], u.ush, argv[1], u.ish); 
+        break;
+      case 4: 
+        q_printf("%% // 0x%x in hex\r\n",u.uval);
+        q_printf("%% unsigned int %s = %u;\r\n"
+                 "%%   signed int %s = %d;\r\n", argv[1], u.uval, argv[1], u.ival); 
+        break;
+      default: 
+        q_printf("%% FIXME: Variable \"%s\" has unsupported size of %d bytes\r\n", argv[1], len);
+        return 1;
     };
     return 0;
   }
@@ -3433,18 +3489,13 @@ static int cmd_var(int argc, char **argv) {
 
   // no variables were registered but user invoked "var" command:
   // give them a hint
-#if WITH_HELP
+
   if (var_head == NULL) {
-    
-    q_print("<i>% Oops.\r\n"
-            "% Looks like no variables were registered in your sketch\r\n"
-            "% #include \"extra/espshell.h\" and use \"convar_add()\" to register them:\r\n"
-            "% once registered, variables can be manipulated by the \"var\" command\r\n"
-            "% while your sketch is running</>\r\n");
-    
+#if WITH_HELP    
+    q_print(VarOops);
+#endif  //WITH_HELP    
     return 0;
   }
-#endif  //WITH_HELP
 
   // "var": display variables list if no arguments were given
   if (argc < 3)
@@ -3484,6 +3535,10 @@ static int cmd_var(int argc, char **argv) {
 // enable or disable (freq==0) tone generation on
 // pin. freq is in (0..312kHz), duty is [0..1]
 //
+// TODO: there is a bug somewhere in this function. Sometimes, on a first use after
+//       reboot it enables PWM but there is no output (as indicated by attached led).
+//       calling this function again resolves the glitch.
+//
 static int pwm_enable(unsigned int pin, unsigned int freq, float duty) {
 
   int resolution = 8;
@@ -3492,16 +3547,15 @@ static int pwm_enable(unsigned int pin, unsigned int freq, float duty) {
     return -1;
 
   if (freq > MAGIC_FREQ) freq = MAGIC_FREQ;
-  if (duty > 1.0f) duty = 1.0f;
-  if (freq < 78722)
-    resolution = 10;
+  if (duty > 1.0f)       duty = 1.0f;
+  if (freq < 78722)      resolution = 10;   //higher duty parameter resolution on frequencies below 78 kHz
 
-  pinMode(pin, OUTPUT);
+  pinMode2(pin, OUTPUT);
   ledcDetach(pin);
 
   if (freq) {
-    if (ledcAttach(pin, freq, resolution) == 0)
-      return -1;
+    ledcAttach(pin, freq, resolution);
+    delay(100);
     ledcWrite(pin, (unsigned int)(duty * ((1 << resolution) - 1)));
   }
 
@@ -3514,29 +3568,24 @@ static int cmd_pwm(int argc, char **argv) {
 
   unsigned int freq = 0;
   float duty = 0.5f;
-  unsigned char pin;
+  unsigned pin;
 
-  if (argc < 2) return -1;        // missing arg
-  if (!isnum(argv[1])) return 1;  // arg 1 is bad
-
-  // first parameter is pin number
-  pin = (unsigned char)(atol(argv[1]));
+  if (argc < 2) return -1;   // missing arg
+  pin = q_atol(argv[1],999); // first parameter is pin number
 
   //frequency is the second one (optional)
   if (argc > 2) {
-    if (!isnum(argv[2])) return 2;
-    freq = atol(argv[2]);
+    if ((freq = q_atol(argv[2],0)) == 0)
+      return 2;    
 #if WITH_HELP
     if (freq > MAGIC_FREQ)
-      q_print("% Frequency will be adjusted to maximum which is " xstr(MAGIC_FREQ) "] Hz\r\n");
+      q_print("% Frequency will be adjusted to its maximum which is " xstr(MAGIC_FREQ) "] Hz\r\n");
 #endif
   }
 
   // duty is the third argument (optional)
   if (argc > 3) {
-    if (!isfloat(argv[3]))
-      return 3;
-    duty = atof(argv[3]);
+    duty = q_atof(argv[3],-1);
     if (duty < 0 || duty > 1) {
 #if WITH_HELP
       q_print("% <e>Duty cycle is a number in range [0..1] (0.01 means 1% duty)</>\r\n");
@@ -3545,6 +3594,9 @@ static int cmd_pwm(int argc, char **argv) {
     }
   }
 
+  // FIXME: TODO: evil hack. for unknown reason sometimes on fresh boot the first call to pwm_enable()
+  //              has no effect. No errors reported also even at Verbose level. So we just call this function twice every time
+  pwm_enable(pin, freq, duty);
   if (pwm_enable(pin, freq, duty) < 0) {
 #if WITH_HELP
     q_print(Failed);
@@ -3553,15 +3605,10 @@ static int cmd_pwm(int argc, char **argv) {
   return 0;
 }
 
-
-static struct {
-  uint8_t flags;
-  bool value;
-  uint16_t sig_out;
-  uint16_t fun_sel;
-  int bus_type;  //periman bus type.
-} Pins[SOC_GPIO_PIN_COUNT];
-
+// save pin state.
+// there is an array Pins[] which is used for that. Subsequent saves rewrite previous save.
+// pin_load() is used to load pin state from Pins[]
+//
 static void pin_save(int pin) {
 
   bool pd, pu, ie, oe, od, slp_sel;
@@ -3589,7 +3636,9 @@ static void pin_save(int pin) {
   if (od) Pins[pin].flags |= OPEN_DRAIN;
 }
 
-
+// Load pin state from Pins[] array
+// Attempt is made to restore GPIO Matrix connections however it is not working as intended
+//
 static void pin_load(int pin) {
 
   // 1. restore pin mode
@@ -3629,48 +3678,31 @@ static bool pin_is_input_only_pin(int pin) {
 
 
 // strapping pins as per Technical Reference
+// TODO: add more targets
 //
 static bool pin_is_strapping_pin(int pin) {
   switch (pin) {
 #ifdef CONFIG_IDF_TARGET_ESP32
-    case 0:
-    case 2:
-    case 5:
-    case 12:
-    case 15: return true;
+    case 0: case 2: case 5: case 12: case 15: return true;
 #endif
 #ifdef CONFIG_IDF_TARGET_ESP32S2
-    case 0:
-    case 45:
-    case 46: return true;
+    case 0: case 45: case 46: return true;
 #endif
 #ifdef CONFIG_IDF_TARGET_ESP32S3
-    case 0:
-    case 3:
-    case 45:
-    case 46: return true;
+    case 0: case 3: case 45: case 46: return true;
 #endif
 #ifdef CONFIG_IDF_TARGET_ESP32C3
-    case 2:
-    case 8:
-    case 9: return true;
+    case 2: case 8: case 9: return true;
 #endif
 #ifdef CONFIG_IDF_TARGET_ESP32C6
-    case 8:
-    case 9:
-    case 12:
-    case 14:
-    case 15: return true;
+    case 8: case 9: case 12: case 14: case 15: return true;
 #endif
 #ifdef CONFIG_IDF_TARGET_ESP32H2
-    case 8:
-    case 9:
-    case 25: return true;
+    case 8: case 9: case 25: return true;
 #endif
     default: return false;
   }
 }
-
 
 
 // IO_MUX function code --> human readable text mapping
@@ -3896,8 +3928,7 @@ static int pin_show(int argc, char **argv) {
   unsigned int pin, informed = 0;
 
   if (argc < 2) return -1;
-  if (!isnum(argv[1])) return 1;
-  if (!pin_exist((pin = atol(argv[1])))) return 1;
+  if (!pin_exist((pin = q_atol(argv[1],999)))) return 1;
 
   bool pu, pd, ie, oe, od, sleep_sel, res;
   uint32_t drv, fun_sel, sig_out;
@@ -4010,7 +4041,7 @@ static int pin_show(int argc, char **argv) {
 static int cmd_pin(int argc, char **argv) {
 
   unsigned int flags = 0;
-  int i = 2, pin;
+  unsigned int i = 2, pin;
 
   // repeat whole "pin ..." command "count" times.
   // this number can be changed by "loop" keyword
@@ -4022,7 +4053,8 @@ static int cmd_pin(int argc, char **argv) {
   if (argc < 2) return -1;  //missing argument
 
   //first argument must be a decimal number: a GPIO number
-  if (!isnum(argv[1]) || !pin_exist((pin = atoi(argv[1])))) return 1;
+  if (!pin_exist((pin = q_atol(argv[1], 999))))
+    return 1;
 
   //"pin X" command is executed here
   if (argc == 2) return pin_show(argc, argv);
@@ -4044,27 +4076,23 @@ static int cmd_pin(int argc, char **argv) {
         }
         i++;
 
-        //sequence number
-        if (!isnum(argv[i]))
-          return i;
-
         int seq, j;
 
         // enable RMT sequence 'seq' on pin 'pin'
-        if (seq_isready((seq = atol(argv[i])))) {
+        if (seq_isready((seq = q_atol(argv[i],999)))) {
 #if WITH_HELP
-          q_printf("%% Sending sequence %d over GPIO %d\r\n", seq, pin);
+          q_printf("%% Sending sequence %u over GPIO %u\r\n", seq, pin);
 #endif
           if ((j = seq_send(pin, seq)) < 0)
             q_printf("%% <e>Failed. Error code is: %d</>\r\n", j);
 
         } else
-          q_printf("%% <e>Sequence %d is not configured</>\r\n", seq);
-      }
+          q_printf("%% <e>Sequence %u is not configured</>\r\n", seq);
+      } else 
       //2. "pwm FREQ DUTY" keyword.
       // unlike global "pwm" command the duty and frequency are not an optional
       // parameter anymore. Both can be 0 which used to disable previous "pwm"
-      else if (!q_strcmp(argv[i], "pwm")) {
+      if (!q_strcmp(argv[i], "pwm")) {
 
         unsigned int freq;
         float duty;
@@ -4079,20 +4107,14 @@ static int cmd_pin(int argc, char **argv) {
         i++;
 
         // frequency must be an integer number and duty must be a float point number
-        if (!isnum(argv[i]))
-          return i;
-
-        if ((freq = atol(argv[i++])) > MAGIC_FREQ) {
+        if ((freq = q_atol(argv[i++], MAGIC_FREQ+1)) > MAGIC_FREQ) {
 #if WITH_HELP
           q_print("% <e>Frequency must be in range [1.." xstr(MAGIC_FREQ) "] Hz</>\r\n");
 #endif
           return i - 1;
         }
 
-        if (!isfloat(argv[i]))
-          return i;
-
-        duty = atof(argv[i]);
+        duty = q_atof(argv[i], -1.0f);
         if (duty < 0 || duty > 1) {
 #if WITH_HELP
           q_print("% <e>Duty cycle is a number in range [0..1] (0.01 means 1% duty)</>\r\n");
@@ -4108,11 +4130,11 @@ static int cmd_pin(int argc, char **argv) {
 #endif
           return 0;
         }
-      }
+      } else 
       //3. "delay X" keyword
       //creates delay for X milliseconds.
-      else if (!q_strcmp(argv[i], "delay")) {
-        unsigned int duration;
+      if (!q_strcmp(argv[i], "delay")) {
+        int duration;
         if ((i + 1) >= argc) {
 #if WITH_HELP
           q_print("% <e>Delay value expected after keyword \"delay\"</>\r\n");
@@ -4120,9 +4142,8 @@ static int cmd_pin(int argc, char **argv) {
           return i;
         }
         i++;
-        if (!isnum(argv[i]))
+        if ((duration = q_atol(argv[i],-1)) < 0)
           return i;
-        duration = atol(argv[i]);
 #if WITH_HELP
         if (!informed && (duration > 4999)) {
           informed = true;
@@ -4135,122 +4156,96 @@ static int cmd_pin(int argc, char **argv) {
           q_print("% Aborted\r\n");
           return 0;
         }
-      }
+      } else 
       //Now all the single-line keywords:
       // 5. "pin X save"
-      else if (!q_strcmp(argv[i], "save"))
-        pin_save(pin);
-      // 9. "pin X up"
-      else if (!q_strcmp(argv[i], "up")) {
-        flags |= PULLUP;
-        pinMode2(pin, flags);
-      }  // set flags immediately as we read them
+      if (!q_strcmp(argv[i], "save")) pin_save(pin); else 
+      // 9. "pin X up" 
+      if (!q_strcmp(argv[i], "up")) { flags |= PULLUP; pinMode2(pin, flags); } else  // set flags immediately as we read them 
       // 10. "pin X down"
-      else if (!q_strcmp(argv[i], "down")) {
-        flags |= PULLDOWN;
-        pinMode2(pin, flags);
-      }
+      if (!q_strcmp(argv[i], "down")) {flags |= PULLDOWN; pinMode2(pin, flags); } else 
       // 12. "pin X in"
-      else if (!q_strcmp(argv[i], "in")) {
-        flags |= INPUT;
-        pinMode2(pin, flags);
-      }
+      if (!q_strcmp(argv[i], "in")) { flags |= INPUT; pinMode2(pin, flags);} else 
       // 13. "pin X out"
-      else if (!q_strcmp(argv[i], "out")) {
+      if (!q_strcmp(argv[i], "out")) {flags |= OUTPUT; pinMode2(pin, flags); } else 
+      // 11. "pin X open"
+      if (!q_strcmp(argv[i], "open")) {flags |= OPEN_DRAIN;pinMode2(pin, flags); } else 
+        // 14. "pin X low" keyword. only applies to I/O pins, fails for input-only pins
+      if (!q_strcmp(argv[i], "low")) {
+        if (pin_is_input_only_pin(pin)) {
+abort_if_input_only:
+          q_printf("%% <e>Pin %u is **INPUT-ONLY**, can not be set \"%s</>\"\r\n", pin, argv[i]);
+          return i;
+        }
+        // use pinMode2/digitalForceWrite to not let the pin to be reconfigured
+        // to GPIO Matrix pin. By default many GPIO pins are handled by IOMUX. However if
+        // one starts to use that pin it gets configured as "GPIO Matrix simple GPIO". Code below
+        // keeps the pin at IOMUX, not switching to GPIO Matrix
         flags |= OUTPUT;
         pinMode2(pin, flags);
-      }
-      // 11. "pin X open"
-      else if (!q_strcmp(argv[i], "open")) {
-        flags |= OPEN_DRAIN;
-        pinMode2(pin, flags);
+        digitalForceWrite(pin, LOW);
       } else
-        // 14. "pin X low" keyword. only applies to I/O pins, fails for input-only pins
-        if (!q_strcmp(argv[i], "low")) {
-          if (pin_is_input_only_pin(pin)) {
-abort_if_input_only:
-            q_printf("%% <e>Pin %u is **INPUT-ONLY**, can not be set \"%s</>\"\r\n", pin, argv[i]);
-            return i;
-          }
-          // use pinMode2/digitalForceWrite to not let the pin to be reconfigured
-          // to GPIO Matrix pin. By default many GPIO pins are handled by IOMUX. However if
-          // one starts to use that pin it gets configured as "GPIO Matrix simple GPIO". Code below
-          // keeps the pin at IOMUX, not switching to GPIO Matrix
-          flags |= OUTPUT;
-          pinMode2(pin, flags);
-          digitalForceWrite(pin, LOW);
-        } else
-          // 15. "pin X high" keyword. I/O pins only
-          if (!q_strcmp(argv[i], "high")) {
+      // 15. "pin X high" keyword. I/O pins only
+      if (!q_strcmp(argv[i], "high")) {
 
-            if (pin_is_input_only_pin(pin))
-              goto abort_if_input_only;
+        if (pin_is_input_only_pin(pin))
+          goto abort_if_input_only;
 
-            flags |= OUTPUT;
-            pinMode2(pin, flags);
-            digitalForceWrite(pin, HIGH);
-
-          } else
-            // 16. "pin X read"
-            if (!q_strcmp(argv[i], "read")) q_printf("%% GPIO%d : logic %d\r\n", pin, digitalForceRead(pin));
-            else
-              // 17. "pin X read"
-              if (!q_strcmp(argv[i], "aread")) q_printf("%% GPIO%d : analog %d\r\n", pin, analogRead(pin));
-              else
-                // 7. "pin X hold"
-                if (!q_strcmp(argv[i], "hold")) gpio_hold_en((gpio_num_t)pin);
-                else
-                  // 8. "pin X release"
-                  if (!q_strcmp(argv[i], "release")) gpio_hold_dis((gpio_num_t)pin);
-                  else
-                    // 6. "pin X load"
-                    if (!q_strcmp(argv[i], "load")) pin_load(pin);
-                    else
-                      //4. "loop" keyword
-                      if (!q_strcmp(argv[i], "loop")) {
-                        //must have an extra argument (loop count)
-                        if ((i + 1) >= argc) {
+        flags |= OUTPUT;
+        pinMode2(pin, flags);
+        digitalForceWrite(pin, HIGH);
+       } else
+       // 16. "pin X read"
+       if (!q_strcmp(argv[i], "read")) q_printf("%% GPIO%d : logic %d\r\n", pin, digitalForceRead(pin)); else
+       // 17. "pin X read"
+       if (!q_strcmp(argv[i], "aread")) q_printf("%% GPIO%d : analog %d\r\n", pin, analogRead(pin)); else
+       // 7. "pin X hold"
+       if (!q_strcmp(argv[i], "hold")) gpio_hold_en((gpio_num_t)pin); else
+       // 8. "pin X release"
+       if (!q_strcmp(argv[i], "release")) gpio_hold_dis((gpio_num_t)pin); else
+       // 6. "pin X load"
+       if (!q_strcmp(argv[i], "load")) pin_load(pin); else
+       //4. "loop" keyword
+       if (!q_strcmp(argv[i], "loop")) {
+        //must have an extra argument (loop count)
+        if ((i + 1) >= argc) {
 #if WITH_HELP
-                          q_print("% <e>Loop count expected after keyword \"loop\"</>\r\n");
+          q_print("% <e>Loop count expected after keyword \"loop\"</>\r\n");
 #endif
-                          return i;
-                        }
-                        i++;
-                        // loop count must be a number
-                        if (!isnum(argv[i]))
-                          return i;
+          return i;
+        }
+        i++;
 
-                        // loop must be the last keyword, so we can strip it later
-                        if ((i + 1) < argc) {
+        // loop must be the last keyword, so we can strip it later
+        if ((i + 1) < argc) {
 #if WITH_HELP
-                          q_print("% <e>\"loop\" must be the last keyword</>\r\n");
+          q_print("% <e>\"loop\" must be the last keyword</>\r\n");
 #endif
-                          return i + 1;
-                        }
-                        count = atol(argv[i]);
-                        argc -= 2;  //strip "loop NUMBER" keyword
+          return i + 1;
+        }
+        if ((count = q_atol(argv[i],0)) == 0)
+          return i;
+        argc -= 2;  //strip "loop NUMBER" keyword
 #if WITH_HELP
-                        if (!informed) {
-                          informed = true;
-                          q_printf("%% Repeating %u times", count);
-                          if (is_foreground_task())
-                            q_print(", press <Enter> to abort");
-                          q_print(CRLF);
-                        }
+        if (!informed) {
+          informed = true;
+          q_printf("%% Repeating %u times", count);
+          if (is_foreground_task())
+            q_print(", press <Enter> to abort");
+            q_print(CRLF);
+        }
 #endif
-                      }
-
-                      //
-                      //"X" keyword. when we see a number we use it as a pin number
-                      //for subsequent keywords. must be valid GPIO number.
-                      else if (isnum(argv[i])) {
-                        pin = atoi(argv[i]);
-                        if (!pin_exist(pin))
-                          return i;
-                      } else
-                        return i;  // argument i was not recognized
+      } else
+      //"X" keyword. when we see a number we use it as a pin number
+      //for subsequent keywords. must be valid GPIO number.
+      if (isnum(argv[i])) {
+        if (!pin_exist((pin = q_atol(argv[i],9999))))
+          return i;
+      } else
+      // argument i was not recognized
+        return i;  
       i++;
-    }
+    } //big fat "while (i < argc)" 
     i = 1;  // start over again
 
     //give a chance to cancel whole command
@@ -4262,7 +4257,6 @@ abort_if_input_only:
       break;
     }
   } while (--count > 0);  // repeat if "loop X" command was found
-
   return 0;
 }
 
@@ -4370,12 +4364,9 @@ static int cmd_mem_read(int argc, char **argv) {
   if (address == NULL)
     return 1;
 
-  if (argc > 2) {
-    if (!isnum(argv[2]))
-      return 2;
-    length = atol(argv[2]);
-  }
-
+  if (argc > 2)
+    length = q_atol(argv[2],length);
+  
   q_printhex(address, length);
 
   return 0;
@@ -4396,14 +4387,18 @@ static int cmd_nap(int argc, char **argv) {
   } else
     // "nap NUM" command: sleep NUM seconds. Wakeup by a timer
     if (argc == 2) {
-
-      if (!isnum(argv[1]))  //arg1 must be a number
-        return 1;
+      unsigned long sleep;
       if (isen) {
         esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_UART);  //disable wakeup by uart
         isen = false;
       }
-      esp_sleep_enable_timer_wakeup(1000000UL * (unsigned long)atol(argv[1]));
+      if ((sleep = q_atol(argv[1],0xffffffff)) == 0xffffffff) {
+#if WITH_HELP
+        q_printf("%% <e>Sleep time in seconds expected, instead of \"%s\"</>\r\n",argv[1]);
+#endif        
+        return 1;
+      }
+      esp_sleep_enable_timer_wakeup(1000000UL * (unsigned long)sleep);
     }
 #if WITH_HELP
   q_print("% Light sleep..");
@@ -4416,16 +4411,20 @@ static int cmd_nap(int argc, char **argv) {
 }
 
 
+// unfortunately this one is not in header files
+#ifdef __cplusplus
+extern "C" bool i2cIsInit(uint8_t i2c_num);
+#else
+extern bool i2cIsInit(uint8_t i2c_num);
+#endif
+
+
 //TAG:iic
 //check if I2C has its driver installed
 // TODO: this is bad. need more low level call. esp32cams i2c is not detected as "up"
-static inline bool i2c_isup(int iic) {
-
-  extern bool i2cIsInit(uint8_t i2c_num);  //not a public API, no .h file
-  return (iic < 0 || iic >= SOC_I2C_NUM) ? false : i2cIsInit(iic);
+static inline bool i2c_isup(unsigned char iic) {
+  return (iic >= SOC_I2C_NUM) ? false : i2cIsInit(iic);
 }
-
-
 
 //"iic X"
 // save context, switch command list, change the prompt
@@ -4433,14 +4432,11 @@ static int cmd_i2c_if(int argc, char **argv) {
 
   unsigned int iic;
   static char prom[16];
+
   if (argc < 2)
     return -1;
 
-  if (!isnum(argv[1]))
-    return 1;
-
-  iic = atol(argv[1]);
-  if (iic >= SOC_I2C_NUM) {
+  if ((iic = q_atol(argv[1],SOC_I2C_NUM)) >= SOC_I2C_NUM) {
 #if WITH_HELP
     q_printf("%% <e>Valid I2C interface numbers are 0..%d</>\r\n", SOC_I2C_NUM - 1);
 #endif
@@ -4448,7 +4444,7 @@ static int cmd_i2c_if(int argc, char **argv) {
   }
 
   sprintf(prom,PROMPT_I2C,iic);
-  change_command_directory(iic, keywords_i2c, prom, "i2c");
+  change_command_directory(iic, keywords_i2c, prom, "I2C configuration");
   return 0;
 }
 
@@ -4459,22 +4455,21 @@ static int cmd_i2c_if(int argc, char **argv) {
 //
 static int cmd_i2c_clock(int argc, char **argv) {
 
-  int iic = Context;
+  unsigned char iic = (unsigned char)Context;
 
   if (argc < 2)
     return -1;
 
-  if (!isnum(argv[1]))
-    return 1;
-
   if (!i2c_isup(iic)) {
+    q_printf("%% <e>I2C%u is not initialized</>\r\n", iic);
 #if WITH_HELP
-    q_printf("%% <e>I2C %d is not initialized. use command \"up\" to initialize</>\r\n", iic);
+    q_printf("%% Use command \"up\" to initialize</>\r\n");
 #endif
     return 0;
   }
 
-  if (ESP_OK != i2cSetClock(iic, atol(argv[1])))
+  // set clock to 100kHz if atol() fails
+  if (ESP_OK != i2cSetClock(iic, q_atol(argv[1], 100000)))
     q_print(Failed);
 
   return 0;
@@ -4490,16 +4485,11 @@ static int cmd_i2c_clock(int argc, char **argv) {
 
 static int cmd_i2c(int argc, char **argv) {
 
-  unsigned char iic, sda, scl;
+  unsigned char iic = (unsigned char)Context, sda, scl, addr;
   unsigned int clock = 0;
-  int i;
-  unsigned char addr;
+  int i,size;
 
-  int size;
-
-  iic = Context;
-
-  //"up" kaeyword: initialize i2c driver
+  //"up" keyword: initialize i2c driver
   // on given pins with givent clockrate
   if (!q_strcmp(argv[0], "up")) {
 
@@ -4513,12 +4503,10 @@ static int cmd_i2c(int argc, char **argv) {
       return 0;
     }
 
-    if (!isnum(argv[1])) return 1;                    // sda must be a number
-    if (!pin_exist((sda = atoi(argv[1])))) return 1;  // and be a valid pin
-    if (!isnum(argv[2])) return 2;                    // same for scl
-    if (!pin_exist((scl = atoi(argv[2])))) return 2;
-    if (!isnum(argv[3])) return 3;  // clock must be a number
-    clock = atol(argv[3]);
+    
+    if (!pin_exist((sda = q_atol(argv[1],999)))) return 1;  // SDA
+    if (!pin_exist((scl = q_atol(argv[2],999)))) return 2;  // SCL
+    if ((clock = q_atol(argv[3],0)) == 0)         return 3;  // CLOCK
 
     if (ESP_OK != i2cInit(iic, sda, scl, clock))
       q_print(Failed);
@@ -4578,15 +4566,12 @@ static int cmd_i2c(int argc, char **argv) {
       return 1;
 
     // second parameter: requested size
-    if (!isnum(argv[2]))
-      return 2;
+    
 
-    size = atol(argv[2]);
-
-    if (size > I2C_RXTX_BUF) {
+    if ((size = q_atol(argv[2],I2C_RXTX_BUF+1)) > I2C_RXTX_BUF) {
       size = I2C_RXTX_BUF;
 #if WITH_HELP
-      q_printf("%% Max read size buffer is %d bytes\r\n", size);
+      q_printf("%% Size adjusted to the maxumum: %u bytes\r\n", size);
 #endif
     }
 
@@ -4660,11 +4645,7 @@ static int cmd_uart_if(int argc, char **argv) {
   if (argc < 2)
     return -1;
 
-  if (!isnum(argv[1]))
-    return 1;
-
-  u = atol(argv[1]);
-  if (u >= SOC_UART_NUM) {
+  if ((u = q_atol(argv[1],SOC_UART_NUM)) >= SOC_UART_NUM) {
 #if WITH_HELP
     q_printf("%% <e>Valid UART interface numbers are 0..%d</>\r\n", SOC_UART_NUM - 1);
 #endif
@@ -4676,7 +4657,7 @@ static int cmd_uart_if(int argc, char **argv) {
 #endif
 
   sprintf(prom,PROMPT_UART,u);
-  change_command_directory(u, keywords_uart, prom, "uart");
+  change_command_directory(u, keywords_uart, prom, "UART configuration");
   return 0;
 }
 
@@ -4689,17 +4670,15 @@ static int cmd_uart_baud(int argc, char **argv) {
   if (argc < 2)
     return -1;
 
-  if (!isnum(argv[1]))
-    return 1;
-
   if (!uart_isup(u)) {
+    q_printf("%% <e>uart%d is not initialized</>\r\n", u);
 #if WITH_HELP
-    q_printf("%% <e>uart %d is not initialized. use command \"up\" to initialize</>\r\n", u);
+    q_print("%% Use command \"up\" to initialize</>\r\n");
 #endif
     return 0;
   }
-
-  if (ESP_OK != uart_set_baudrate(u, atol(argv[1])))
+  // set baud rate to 115200 if atol() fails
+  if (ESP_OK != uart_set_baudrate(u, q_atol(argv[1],115200)))
     q_print(Failed);
 
   return 0;
@@ -4784,9 +4763,8 @@ static int cmd_uart(int argc, char **argv) {
 
   u = Context;
 
-  //
-  // "tap" command
-  //
+
+  // 1. "tap" command
   if (!q_strcmp(argv[0], "tap")) {
     if (uart == u) {
       //do not tap to the same uart we are running on
@@ -4802,79 +4780,70 @@ static int cmd_uart(int argc, char **argv) {
     q_print("\r\n% Ctrl+C, exiting\r\n");
     return 0;
   } else
-    //
-    // "up" command
-    //
-    if (!q_strcmp(argv[0], "up")) {  //up RX TX SPEED
-      if (argc < 4)
-        return -1;
+  // 2. "up" command
+  if (!q_strcmp(argv[0], "up")) {  //up RX TX SPEED
 
-      // uart number, rx/tx pins and speed must be numbers
-      // sanity checks for arguments
-      unsigned int rx, tx, speed;
-      if (!isnum(argv[1])) return 1; else rx = atol(argv[1]);
-      if (!pin_exist(rx)) return 1;
-      if (!isnum(argv[2])) return 2; else tx = atol(argv[2]);
-      if (!pin_exist(tx)) return 2;
-      if (!isnum(argv[3])) return 3; else speed = atol(argv[3]);
+    unsigned int rx, tx, speed;
+    if (argc < 4)
+      return -1;
 
-      if (NULL == uartBegin(u, speed, SERIAL_8N1, rx, tx, 256, 0, false, 112))
-        q_print(Failed);
-    } else
-      //
-      // "down" command
-      //
-      if (!q_strcmp(argv[0], "down")) {  // down
-        if (!uart_isup(u))
-          goto noinit;
-        else
-          uartEnd(u);
-      } else
-        //
-        // "write TEXT1 TEXT2 ... TEXTn" command
-        //
-        if (!q_strcmp(argv[0], "write")) {
+    // sanity checks for arguments
+    if (!pin_exist((rx = q_atol(argv[1],999)))) return 1;
+    if (!pin_exist((tx = q_atol(argv[2],999)))) return 2;
+    if ((speed = q_atol(argv[3],0)) == 0)    return 3;
 
-          int size;
-          char *out = NULL;          
+    if (NULL == uartBegin(u, speed, SERIAL_8N1, rx, tx, 256, 0, false, 112))
+      q_print(Failed);
+#if WITH_HELP
+    else
+      q_printf("%% UART%u is initialized (RX=pin%u, TX=pin%u, speed=%u, bits: 8N1)\r\n",u,rx,tx,speed);
+#endif      
+  } else
+    // "down" command
+  if (!q_strcmp(argv[0], "down")) {  // down
+    if (!uart_isup(u))
+      goto noinit;
+    else
+      uartEnd(u);
+  } else
+    // "write TEXT" command
+  if (!q_strcmp(argv[0], "write")) {
+    int size;
+    char *out = NULL;          
 
-          if (argc < 2)
-            return -1;
+    if (argc < 2)
+      return -1;
 
-          if (!uart_isup(u))
-            goto noinit;
+    if (!uart_isup(u))
+      goto noinit;
 
-          size = text2buf(argc,argv,1,&out);
+    size = text2buf(argc,argv,1,&out);
           
-          if (size > 0)
-            if ((size = uart_write_bytes(u, out, size)) > 0)
-              sent+=size;
-          if (out)
-            free(out);
+    if (size > 0)
+      if ((size = uart_write_bytes(u, out, size)) > 0)
+        sent+=size;
+    if (out)
+      free(out);
 
-          q_printf("%% %u bytes sent\r\n", sent);
-        } else
-          //
-          // "read" command
-          //
-          if (!q_strcmp(argv[0], "read")) {
-            size_t available = 0, tmp;
-            if (ESP_OK != uart_get_buffered_data_len(u, &available))
-              goto noinit;
-            tmp = available;
-            while (available--) {
-              unsigned char c;
-              if (uart_read_bytes(u, &c, 1, portMAX_DELAY /* TODO: make short delay! */) == 1) {
-                if (c >= ' ' || c == '\r' || c == '\n' || c == '\t')
-                  q_printf("%c", c);
-                else
-                  q_printf("\\x%02x", c);
-              }
-            }
-            q_printf("\r\n%% %d bytes read\r\n", tmp);
-          }
-
-  // command executed or was not understood
+    q_printf("%% %u bytes sent\r\n", sent);
+  } else
+  // "read" command
+  if (!q_strcmp(argv[0], "read")) {
+    size_t available = 0, tmp;
+    if (ESP_OK != uart_get_buffered_data_len(u, &available))
+      goto noinit;
+    tmp = available;
+    while (available--) {
+      unsigned char c;
+      if (uart_read_bytes(u, &c, 1, portMAX_DELAY /* TODO: make short delay! */) == 1) {
+        if (c >= ' ' || c == '\r' || c == '\n' || c == '\t')
+          q_printf("%c", c);
+        else
+          q_printf("\\x%02x", c);
+      }
+    }
+    q_printf("\r\n%% %d bytes read\r\n", tmp);
+  }
   return 0;
 noinit:
   q_printf("%% <e>UART%d is not initialized</>\r\n", u);
@@ -4887,20 +4856,26 @@ noinit:
 // Set UART (or USBCDC) to use by this shell.
 static int cmd_tty(int argc, char **argv) {
 
-  int u;
-  if (!isnum(argv[1]))
-    return 1;
+  unsigned int tty;
 
-  // if not USB then check if requested UART is up & running
-  if ((u = atoi(argv[1])) != 99)
-    if (!uart_isup(u)) {
-      q_printf("%% <e>UART%d is not initialized</>\r\n", u);
+  if (argc < 2)
+    return -1;
+
+  if ((tty = q_atol(argv[1],999)) < 999) {
+    // if not USB then check if requested UART is up & running
+    if ((tty == 99) || ((tty < 99) && uart_isup(tty))) {
+#if WITH_HELP
+      q_print("% See you there\r\n");
+#endif
+      console_here(tty);
       return 0;
     }
-#if WITH_HELP
-  q_print("% See you there\r\n");
-#endif
-  console_here(u);
+  } else
+    q_print("%% <e>Uart number expected. (use 99 for USB CDC)</>\r\n");
+
+  if (tty < 99)
+    q_printf("%% <e>UART%d is not initialized</>\r\n", tty);
+
   return 0;
 }
 
@@ -5021,10 +4996,14 @@ static int cmd_cpu_freq(int argc, char **argv) {
   if (argc < 2)
     return -1;  // not enough arguments
 
-  if (!isnum(argv[1]))
+  unsigned int freq;
+  
+  if ((freq = q_atol(argv[1],0)) == 0) {
+#if WITH_HELP
+    q_print("% Numeric value is expected (e.g. 240): frequency in MHz\r\n");
+#endif
     return 1;
-
-  unsigned int freq = atol(argv[1]);
+  }
 
   while (freq != 240 && freq != 160 && freq != 120 && freq != 80) {
 
@@ -5430,12 +5409,14 @@ const esp_partition_t *files_partition_by_label(const char *label) {
 // If path starts from "/" then it is used as is
 //                otherwhise
 // path is appended to cwd and this full path is used
+// Asteriks (*), if present, are converted to spaces ( )
 //
 static char *files_full_path(const char *path) {
 
   static char out[256+16];
   int len, cwd_len;
 
+  // is cwd ok?
   if ((Cwd == NULL) && (files_set_cwd("/") == NULL))
       return NULL;
 
@@ -5445,7 +5426,7 @@ static char *files_full_path(const char *path) {
     if (len >= sizeof(out))
       return NULL;
     strcpy(out, path);
-    return out;
+    goto done;
   }
 
   cwd_len = strlen(Cwd);
@@ -5453,6 +5434,8 @@ static char *files_full_path(const char *path) {
     return NULL;
   strcpy(out, Cwd);
   strcat(out, path);
+done:
+  files_asteriks2spaces(out);
   return out;
 }
 
@@ -5647,16 +5630,122 @@ static int files_remove(const char *path0, int depth) {
   return removed;
 }
 
-#if 0
-static int files_read(int *ctx, const char *path, unsigned char **) {
-  if (!path) {
-    if (ctx > 0)
-      close(ctx);
+static unsigned int files_size(const char *path) {
+
+  char *p = files_full_path(path);
+
+  // size of file requested
+  if (files_path_exist(p, false)) {
+    struct stat st;
+    if (stat(p,&st) == 0)
+      return st.st_size;
+    q_printf("files_size() : stat() failed on an existing file \"%s\"\r\n",p);
     return 0;
   }
-}
-#endif
 
+  // size of a directory requested
+  if (files_path_exist(p, true)) {
+    //TODO: implement
+    return 0;
+  }
+
+#if WITH_HELP
+  q_printf("%% <e>Path \"%s\" does not exist\r\n",p);
+#endif
+  return 0;
+}
+
+// display (or send over uart interface) binary file content starting from byte offset "line"
+// "count" is either 0xffffffff (means "whole file") or data length
+//
+// When displayed the file content is formatted as a table so it is easy to read. When file is
+// transferred to another UART raw content is sent instead so file can be saved on the remote side
+//
+// /device/ is either uart nunmber (to send raw data) or -1 to do fancy human readable output
+// /path/ is the full path
+//
+static int files_cat_binary(const char *path, unsigned int line, unsigned int count, int device) {
+
+  unsigned int size, sent = 0, plen = 5*1024; //TODO: use 64k blocks if we have SPI RAM
+  unsigned char *p;
+  FILE *f;
+  size_t r;
+
+  if ((size = files_size(path)) > 0) {
+    if (line < size) {
+      if (size < plen)
+        plen = size;
+      if ((p = (unsigned char *)malloc(plen + 1)) != NULL) {  // +1 is for trailing \0 that we add later
+        if ((f = fopen(path,"rb")) != NULL) {
+          if (line) {
+            if (fseek(f, line, SEEK_SET) != 0) {
+              q_printf("%% <e>Can't position to offset %u (0x%x)\r\n",line,line);
+              goto fail;
+            }
+          }
+          while (!feof(f) && (count > 0)) {
+            if ((r = fread(p,1,count < plen ? count : plen,f)) > 0) {
+              count -= r;
+              if (device < 0)
+                  q_printhex(p,r);
+              else
+                uart_write_bytes(device,p,r);
+              sent += r;
+            }
+          }
+#if WITH_HELP          
+          q_printf("%% EOF (%u bytes)\r\n",sent);
+#endif          
+fail:          
+          fclose(f);
+        } else q_printf("%% <e>Failed to open \"%s\" for reading</>\r\n");
+        free(p);
+      } else q_print("%% Out of memory\r\n");
+    } else q_printf("%% <e>Offset %u (0x%x) is beyound the file end. File size is %u</>\r\n",line,line,size);
+  } else q_print("%% Empty file\r\n");
+  return 0;
+}
+
+// read file 'path' line by line and display it as that
+// /line/ & /count/ here stand for starting line and line count to display
+// if /numbers/ is true then line numbers are added to output stream
+//
+static int files_cat_text(const char *path,unsigned int line,unsigned int count,int device, bool numbers) {
+
+  FILE *f;
+  char *p = NULL;
+  unsigned int plen = 0, cline = 0, r;
+
+  if ((f = fopen(path,"rb")) != NULL) {
+    while (count && (r = files_getline(&p,&plen,f)) > 0) {
+      cline++;
+      if (line <= cline) {
+        count--;
+        if (device < 0) {
+          if (numbers)
+            q_printf("% 4u: ",cline);
+          q_print(p);
+          q_print(CRLF);
+        }
+        else {
+          char tmp[16];
+          if (numbers) {
+            sprintf(tmp,"% 4u: ",cline);
+            uart_write_bytes(device,tmp,strlen(tmp));
+          }
+          uart_write_bytes(device,p,r);
+          tmp[0] = '\n';
+          uart_write_bytes(device,tmp,1);
+        }
+      }
+    }
+    if (p)
+      free(p);
+    fclose(f);
+  } else
+    q_printf("%% <e>Can not open file \"%s\" for reading</>\r\n",path);
+  return 0;
+}
 
 // "files"
 // FileManager commands subtree
@@ -6518,7 +6607,7 @@ static int cmd_files_cat(int argc, char **argv) {
     
   if (!files_path_exist((path = files_full_path(argv[i])), false)) {
 #if WITH_HELP
-    q_printf("%% File not found: \"%s\"\r\n",path);
+    q_printf("%% File not found:\"<e>%s</>\"\r\n",path);
     return 0;
 #else
     return 1;
@@ -6558,7 +6647,10 @@ static int cmd_files_cat(int argc, char **argv) {
       }
       
       if (!uart_isup((device = atol(argv[i])))) {
-        q_printf("%% <e>UART%d is not initialized. Configure it by command \"uart %d\"</>\r\n",device,device);
+        q_printf("%% <e>UART%d is not initialized</>\r\n",device);
+#if WITH_HELP
+        q_printf("%% Configure it by command \"uart %d\"</>\r\n",device);
+#endif        
         return 0;
       }
     } else
@@ -6569,10 +6661,13 @@ static int cmd_files_cat(int argc, char **argv) {
     i++;
   }
 
-  //q_printf("path=\"%s\", device=%x, LINE_NUM=%u, COUNT=%u, binary=%d, numbers=%d\r\n",path,device,line,count,binary,numbers);
-      q_print("% Not implemented yet\r\n");
+  if (line == (unsigned int)(-1))
+    line = 0;
 
-
+  if (binary)
+    files_cat_binary(path,line,count,device);
+  else
+    files_cat_text(path,line,count,device,numbers);
 
   return 0;
 }
