@@ -393,15 +393,15 @@ static const KEYMAP MetaMap[] = {
 // coloring is auto-enabled upon reception of certain symbols from user: arrow keys,
 // <tab>, Ctrl+??? and such will enable syntax coloring
 //
-#define esc_i "\033[33;93m"
-#define esc_1 "\033[33m"
-#define esc_2 "\033[36m"
-#define esc_3 "\033[36;96m"
-#define esc_r "\033[38;5;0;48;5;255m"
-#define esc_w "\033[31;91m"
-#define esc_e "\033[35;95m"
-#define esc_b "\033[1m"
-#define esc_n "\033[0m"
+#define esc_i "\033[33;93m"             // [I]important information (eye-catching bright yellow)
+#define esc_r "\033[38;5;0;48;5;255m"   // [R]eversed monochrome (black on white)
+#define esc_w "\033[31;91m"             // [W]arning message ( failsafe red )
+#define esc_e "\033[35;95m"             // [E]rror message (bright magenta)
+#define esc_b "\033[1m"                 // [B]old
+#define esc_n "\033[0m"                 // [N]ormal colors
+#define esc_1 "\033[33m"                // Hint[1] dark yellow
+#define esc_2 "\033[36m"                // Hint[2] dark cyan
+#define esc_3 "\033[92m"                // Hint[3] dark cyan
 
 // Queue an arbitrary asciiz string to simulate user input.
 // String queued has higher priority than user input so console_read() would
@@ -590,20 +590,7 @@ do_forward(STATUS move) {
   return CSstay;
 }
 
-// <TAB> (Ctrl+I) handler. Jump to next argument
-// until end of line is reached. start to jump back
-static STATUS tab_pressed() {
-
-  if (Point < End)
-    return do_forward(CSmove);
-  else {
-    if (Point) {
-      Point = 0;
-      return CSmove;
-    }
-    return CSstay;
-  }
-}
+//tab_pressed() was moved down 
 
 static void
 ceol() {
@@ -1682,12 +1669,13 @@ static int q_print(const char *str) {
             case 'i': ins = esc_i; break;
             case 'w': ins = esc_w; break;
             case 'e': ins = esc_e; break;
+            case '/': ins = esc_n; break;
             case 'r': ins = esc_r; break;
-            case '1': ins = esc_1; break;
             case '2': ins = esc_2; break;
+            case '1': ins = esc_1; break;
             case '3': ins = esc_3; break;
             case 'b': ins = esc_b; break;
-            case '/': ins = esc_n; break;
+            
           }
         len += console_write_bytes(pp,p - pp);
         if (ins)
@@ -5405,8 +5393,10 @@ const esp_partition_t *files_partition_by_label(const char *label) {
 
 
 // make full path from path and return pointer to resulting string.
-// WARNING: function is not reentrant!
-// If path starts from "/" then it is used as is
+// function uses static buffer to store result so it is cannot be called in recursive function
+// without copying the result to stack
+//
+// If /path/ starts from "/" then it is used as is
 //                otherwhise
 // path is appended to cwd and this full path is used
 // Asteriks (*), if present, are converted to spaces ( )
@@ -5545,27 +5535,89 @@ static unsigned int files_space_free(int i) {
   return 0;
 }
 
-// remove file/directory recursively
-// returns number of items removed (files+directories)
-// depth - is maxumum recursion depth, i.e. max number of nested directories.
-// considering max_path is 256 characters it can be up to 127 directories: "/a/a/a/a..../a"
+// handy macro
+#define files_space_used(I) (files_space_total(I) - files_space_free(I))
+
+
+typedef bool (* files_walker_t)(const char *);
+
+// Walk thru the directory tree starting at /path/ (i.e. /path/ itself and all its subdirs)
+// on every file entry file_cb() is called, on every directory entry dir_cb() is called
 //
+static int files_dirwalk(const char *path0, files_walker_t files_cb, files_walker_t dirs_cb, int depth) {
+
+  char path[256+16], *p;
+  int len;
+  DIR *dir;
+  unsigned int processed = 0;
+
+  if (depth < 1)
+    return 0;
+
+  // figure out full path, if needed
+  if ((p = files_full_path(path0)) == NULL)
+    return 0;
+  
+  // save a copy, files_full_path's buffer is not reentrat 
+  len = strlen(p);
+  if (len < 1 || len > (sizeof(path) - 8)) // 8 - reserve some space "/" appending
+    return 0;
+  strcpy(path,p);
+
+  // directory exists?
+  if (files_path_exist(path,true)) {
+
+    // append "/"" to the path if it was not there already
+    if (path[len-1] != '\\' && path[len-1] != '/') {
+      path[len++] = '/';
+      path[len] = '\0';
+    }
+
+    // Walk through the directory, entering all subdirs in recursive way
+    if ((dir = opendir(path)) != NULL) {
+      struct dirent *de;
+      while((de = readdir(dir)) != NULL) {
+
+        path[len] = '\0';        // cut off previous addition
+        strcat(path,de->d_name); // add entry name to our path
+
+        // if its a directory - call recursively
+        if (de->d_type == DT_DIR)
+          processed += files_dirwalk(path,files_cb,dirs_cb, depth - 1);
+        else 
+          if (files_cb)
+            processed += files_cb(path);
+      }
+      closedir(dir);
+      path[len] = '\0';
+      if (dirs_cb)
+        processed += dirs_cb(path);
+    }
+  }
+  return processed;
+}
+
+// Remove file/directory recursively
+// Returns number of items removed (files+directories)
+// /depth/ - is maxumum recursion depth, i.e. max number of nested directories.
+//           considering max_path is 256 characters it can be up to 127 directories: "/a/a/a/a..../a"
+// /path0/ is the path to file or directory
+// TODO: rewrite using files_dirwalk()
 static int files_remove(const char *path0, int depth) {
   
   int len, removed = 0;
-  char path[256+16];    // TODO: use some MAX_PATH idf macro
+  char path[256+16], *p;    // TODO: use some MAX_PATH idf macro
 
-  if (depth < 1) {
-    q_printf("%% <e>Too many nested directories (adjust RECURSION_DEPTH_RM constant)</>\r\n");
+  if (depth < 1)
     return 0;
-  }
+  
 
   // make full path if necessary
-  if ((path0 = files_full_path(path0)) == NULL)
+  if ((p = files_full_path(path0)) == NULL)
     return 0;
 
   // make a copy of full path as files_full_path()'s buffer is not reentrant (static)
-  strcpy(path,path0);
+  strcpy(path,p);
   
   if ((len = strlen(path)) < 1)
     return 0;
@@ -5630,13 +5682,31 @@ static int files_remove(const char *path0, int depth) {
   return removed;
 }
 
+static   int files_callback(const char *p1) {
+  struct stat st;
+  if (stat(p1,&st) == 0)
+    return st.st_size;
+  return 0;
+}
+
+static int dirs_callback(UNUSED const char *p2) {
+      return 0;
+}
+
+// get file/directory size in bytes
+// /path/ is the path to the file or to the directory
+//
 static unsigned int files_size(const char *path) {
 
-  char *p = files_full_path(path);
+  struct stat st;
+  char p[256+16];
+  char *path0 = files_full_path(path);
+  if (!path0)
+    return 0;
+  strcpy(p,path0);
 
   // size of file requested
   if (files_path_exist(p, false)) {
-    struct stat st;
     if (stat(p,&st) == 0)
       return st.st_size;
     q_printf("files_size() : stat() failed on an existing file \"%s\"\r\n",p);
@@ -5644,10 +5714,8 @@ static unsigned int files_size(const char *path) {
   }
 
   // size of a directory requested
-  if (files_path_exist(p, true)) {
-    //TODO: implement
-    return 0;
-  }
+  if (files_path_exist(p, true))
+    return files_dirwalk(path,files_callback, dirs_callback,32);
 
 #if WITH_HELP
   q_printf("%% <e>Path \"%s\" does not exist\r\n",p);
@@ -5698,7 +5766,7 @@ static int files_cat_binary(const char *path, unsigned int line, unsigned int co
 #endif          
 fail:          
           fclose(f);
-        } else q_printf("%% <e>Failed to open \"%s\" for reading</>\r\n");
+        } else q_printf("%% <e>Failed to open \"%s\" for reading</>\r\n",path);
         free(p);
       } else q_print("%% Out of memory\r\n");
     } else q_printf("%% <e>Offset %u (0x%x) is beyound the file end. File size is %u</>\r\n",line,line,size);
@@ -5745,6 +5813,24 @@ static int files_cat_text(const char *path,unsigned int line,unsigned int count,
   } else
     q_printf("%% <e>Can not open file \"%s\" for reading</>\r\n",path);
   return 0;
+}
+
+// <TAB> (Ctrl+I) handler. Jump to next argument
+// until end of line is reached. start to jump back
+//
+// In file manager mode try to perform basic autocomplete (TODO: not implemented yet)
+//
+static STATUS tab_pressed() {
+
+  if (Point < End)
+    return do_forward(CSmove);
+  else {
+    if (Point) {
+      Point = 0;
+      return CSmove;
+    }
+    return CSstay;
+  }
 }
 
 // "files"
@@ -6247,22 +6333,23 @@ static int cmd_files_pwd(int argc, char **argv) {
 // Directory listing for current working directory or PATH if specified
 //
 static int cmd_files_ls(int argc, char **argv) {
-  char *path;
+  char path[256+16],*p;
   int plen;
   
-  if ((path = (argc > 1) ? files_full_path(argv[1]) : Cwd) == NULL)
+  if ((p = (argc > 1) ? files_full_path(argv[1]) : files_full_path(Cwd)) == NULL)
     return 0;
 
-  if ((plen = strlen(path)) == 0)
+  if ((plen = strlen(p)) == 0)
     return 0;
+
+  if (plen > (256+8))
+    return 0;
+
+  strcpy(path,p);
     
   // if it is Cwd then it MUST end with "/" so we dont touch it
   // if it is full_path then it MAY or MAY NOT end with "/" but full_path is writeable and expandable
   if (path[plen - 1] != '\\' && path[plen - 1] != '/') {
-    if (path == Cwd) {
-      q_print("FIXME: Cwd without trailing slash\r\n");
-      return 0;
-    }
     path[plen++] = '/';
     path[plen] = '\0';
   }
@@ -6276,7 +6363,7 @@ static int cmd_files_ls(int argc, char **argv) {
           q_print("%-- USED --        *  Mounted on\r\n");
           found = true;
         }
-        q_printf("%% <b>% 9u</>       MP  [<3>%s</>]\r\n",files_space_total(i) - files_space_free(i), mountpoints[i].mp);
+        q_printf("%% <b>% 9u</>       MP  [<3>%s</>]\r\n",files_space_used(i), mountpoints[i].mp);
       }
     if (!found)
       q_printf("%% <i>Root (\"%s\") directory is empty</>: no fileystems mounted\r\n%% Use command \"mount\" to list & mount available partitions\r\n",path);
@@ -6293,14 +6380,14 @@ static int cmd_files_ls(int argc, char **argv) {
     if ((dir = opendir(path)) != NULL) {
       struct dirent *ent;
 
-      q_print("% Size/Used      Modified          *  Name\r\n"
+      q_print("%    Size        Modified          *  Name\r\n"
               "%               -- level up --    DIR [<i>..</>]\r\n");
       while ((ent = readdir(dir)) != NULL) {
         
         struct stat st;
-        char path0[512] = { 0 };
+        char path0[256+16] = { 0 };
 
-        if (strlen(ent->d_name) + 1 + plen >= sizeof(path0)) {
+        if (strlen(ent->d_name) + 1 + plen > (sizeof(path0) - 8)) {
           q_print("% <e>Path is too long</>\r\n");
           continue;
         }
@@ -6312,8 +6399,10 @@ static int cmd_files_ls(int argc, char **argv) {
 
         if (0 == stat(path0,&st)) {
           if (ent->d_type == DT_DIR) {
+            unsigned int dir_size = files_size(path0);
             total_d++;
-            q_printf("%%            %s  DIR [<i>%s</>]\r\n",files_time2text(st.st_mtime), ent->d_name);
+            total_fsize += dir_size;
+            q_printf("%% % 9u  %s  DIR [<i>%s</>]\r\n", dir_size , files_time2text(st.st_mtime), ent->d_name);
           }
           else {
             total_f++;
@@ -6321,7 +6410,7 @@ static int cmd_files_ls(int argc, char **argv) {
             q_printf("%% % 9u  %s      <3>%s</>\r\n",(unsigned int)st.st_size,files_time2text(st.st_mtime), ent->d_name);
           }
         } else
-          q_printf("<e>stat() : failed %d, name %s</>\r\n",errno,ent->d_name);
+          q_printf("<e>stat() : failed %d, name %s</>\r\n",errno,path0);
       }
       closedir(dir);
     }
