@@ -2228,7 +2228,7 @@ static const struct keywords_t keywords_files[] = {
   { "rm", cmd_files_rm, -1, HELP("% \"rm PATH1 [PATH2 PATH3 ... PATHn]\"\r\n"
                                 "%\r\n"
                                 "% Remove files or a directories with files.\r\n"
-                                "% When removing directories: removed with files and subdirs"), "Delete files" },
+                                "% When removing directories: removed with files and subdirs"), "Delete files/dirs" },
 
   { "mv", cmd_files_mv, 2, HELP("% \"mv SOURCE DESTINATION\\r\n"
                                 "%\r\n"
