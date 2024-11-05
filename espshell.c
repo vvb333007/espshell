@@ -188,9 +188,10 @@
 //TAG:gcc
 #define UNUSED __attribute__((unused)) 
 #define INLINE inline __attribute__((always_inline))
+#define NORETURN __attribute__((noreturn))
 #define PRINTF_LIKE __attribute__((format(printf, 1, 2)))
 #define STARTUP_HOOK __attribute__((constructor))
-#pragma GCC diagnostic warning "-Wformat"
+#pragma GCC diagnostic warning "-Wformat"                   // enable -Wformat warnings. Turned off by Arduino IDE by default
 #define xstr(s) ystr(s)
 #define ystr(s) #s
 
@@ -207,7 +208,7 @@ void espshell_start();
 
 // Miscellaneous forwards
 // TAG:forwards
-static inline bool uart_isup(int u);                 // Check if UART u is up and operationg (driver installed)
+static inline bool uart_isup(unsigned char u);                 // Check if UART u is up and operationg (driver installed)
 static int q_strcmp(const char *, const char *);     // loose strcmp
 static int PRINTF_LIKE q_printf(const char *, ...);  // printf()
 static int q_print(const char *);                    // puts()
@@ -1337,7 +1338,7 @@ static int cmd_cpu_freq(int, char **);
 static int cmd_uptime(int, char **);
 static int cmd_mem(int, char **);
 static int cmd_mem_read(int, char **);
-static int cmd_reload(int, char **);
+static int NORETURN cmd_reload(int, char **);
 static int cmd_nap(int, char **);
 
 static int cmd_i2c_if(int, char **);
@@ -1353,7 +1354,6 @@ static int cmd_files_mount0(int, char **);
 static int cmd_files_mount(int, char **);
 static int cmd_files_unmount(int, char **);
 static int cmd_files_cd(int, char **);
-static int cmd_files_pwd(int, char **);
 static int cmd_files_ls(int, char **);
 static int cmd_files_rm(int, char **);
 static int cmd_files_mv(int, char **);
@@ -1366,7 +1366,6 @@ static int cmd_files_mkdir(int, char **);
 static int cmd_files_cat(int, char **);
 static int cmd_files_touch(int, char **);
 static int cmd_files_format(int, char **);
-static int cmd_files_transmit(int, char **);
 #endif  //WITH_FS
 static int cmd_tty(int, char **);
 static int cmd_echo(int, char **);
@@ -1984,22 +1983,22 @@ struct keywords_t {
 // KEYWORDS_BEGIN - common commands inserted in every command tree at the beginning
 #if WITH_HELP
 #define HELP(X) X
-#define KEYWORDS_BEGIN { "?", cmd_question, -1, "% \"?\" - Show the list of available commands\r\n% \"? comm\" - Get help on command \"comm\"\r\n% \"? keys\" - Get information on terminal keys used by ESPShell", "Commands list & help" },
+#define KEYWORDS_BEGIN { "?", cmd_question, -1, "% \"?\" - Show the list of available commands\r\n% \"<2>? comm</>\" - Get help on command \"<2>comm</>\"\r\n% \"<2>? keys</>\" - Get information on terminal keys used by ESPShell", "Commands list & help" },
 #else
 #define HELP(X) ""
 #define KEYWORDS_BEGIN
 #endif
 
-
 // KEYWORDS_END - common commands inserted at the end of every command tree
-#define KEYWORDS_END \
-  { "exit", cmd_exit, -1, "Exit", NULL }, { \
-    NULL, NULL, 0, NULL, NULL \
-  }
+#define KEYWORDS_END { "exit", cmd_exit, -1, "Exit", NULL }, { NULL, NULL, 0, NULL, NULL }
 
 // Command flag to mark any keyword as "hidden" i.e. not displayable by "?"
-// command
+// command.
 #define HIDDEN_KEYWORD NULL, NULL
+
+// Number of arguments accepted by command:
+#define MANY_ARGS -1
+#define NO_ARGS    0
 
 
 // Custom uart commands (uart subderictory or uart command tree)
@@ -2010,44 +2009,43 @@ static const struct keywords_t keywords_uart[] = {
 
   KEYWORDS_BEGIN
 
-  { "up", cmd_uart, 3, HELP("% \"up RX TX BAUD\"\r\n"
-                            "%\r\n"
-                            "% Initialize uart interface X on pins RX/TX,baudrate BAUD, 8N1 mode\r\n"
-                            "% Ex.: up 18 19 115200 - Setup uart on pins rx=18, tx=19, at speed 115200"),
-    "Initialize uart (pins/speed)" },
+  { "up", cmd_uart, 3, 
+  HELP("% \"up RX TX BAUD\"\r\n"
+       "%\r\n"
+       "% Initialize uart interface X on pins RX/TX,baudrate BAUD, 8N1 mode\r\n"
+       "% Ex.: up 18 19 115200 - Setup uart on pins rx=18, tx=19, at speed 115200"),"Initialize uart (pins/speed)" },
 
-  { "baud", cmd_uart_baud, 1, HELP("% \"baud SPEED\"\r\n"
-                                   "%\r\n"
-                                   "% Set speed for the uart (uart must be initialized)\r\n"
-                                   "% Ex.: baud 115200 - Set uart baud rate to 115200"),
-    "Set baudrate" },
+  { "baud", cmd_uart_baud, 1, 
+  HELP("% \"baud SPEED\"\r\n"
+       "%\r\n"
+       "% Set speed for the uart (uart must be initialized)\r\n"
+       "% Ex.: baud 115200 - Set uart baud rate to 115200"), "Set baudrate" },
 
-  { "down", cmd_uart, 0, HELP("% \"down\"\r\n"
-                              "%\r\n"
-                              "% Shutdown interface, detach pins"),
-    "Shutdown" },
+  { "down", cmd_uart, NO_ARGS, 
+  HELP("% \"down\"\r\n"
+       "%\r\n"
+       "% Shutdown interface, detach pins"), "Shutdown" },
 
-  // overlaps with "uart X down", never called, here is for the help text only
-  { "read", cmd_uart, 0, HELP("% \"read\"\r\n"
-                              "%\r\n"
-                              "% Read bytes (available) from uart interface X"),
-    "Read data from UART" },
+  { "read", cmd_uart, NO_ARGS,
+  HELP("% \"read\"\r\n"
+       "%\r\n"
+       "% Read bytes (available) from uart interface X"), "Read data from UART" },
 
-  { "tap", cmd_uart, 0, HELP("% \"tap\\r\n"
-                             "%\r\n"
-                             "% Bridge the UART IO directly to/from shell\r\n"
-                             "% User input will be forwarded to uart X;\r\n"
-                             "% Anything UART X sends back will be forwarded to the user"),
-    "Talk to device connected" },
+  { "tap", cmd_uart, NO_ARGS, 
+  HELP("% \"tap\\r\n"
+       "%\r\n"
+       "% Bridge the UART IO directly to/from shell\r\n"
+       "% User input will be forwarded to uart X;\r\n"
+       "% Anything UART X sends back will be forwarded to the user"), "Talk to device connected" },
 
-  { "write", cmd_uart, -1, HELP("% \"write TEXT\"\r\n"
-                                "%\r\n"
-                                "% Send an ascii/hex string(s) to UART X\r\n"
-                                "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
-                                "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n"
-                                "%\r\n"
-                                "% Ex.: \"write ATI\\n\\rMixed\\20Text and \\20\\21\\ff\""),
-    "Send bytes over this UART" },
+  { "write", cmd_uart, MANY_ARGS, 
+  HELP("% \"write TEXT\"\r\n"
+       "%\r\n"
+       "% Send an ascii/hex string(s) to UART X\r\n"
+       "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
+       "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n"
+       "%\r\n"
+       "% Ex.: \"write ATI\\n\\rMixed\\20Text and \\20\\21\\ff\""), "Send bytes over this UART" },
 
   KEYWORDS_END
 };
@@ -2061,40 +2059,40 @@ static const struct keywords_t keywords_i2c[] = {
 
   KEYWORDS_BEGIN
 
-  { "up", cmd_i2c, 3, HELP("% \"up SDA SCL CLOCK\"\r\n"
-                           "%\r\n"
-                           "% Initialize I2C interface X, use pins SDA/SCL, clock rate CLOCK\r\n"
-                           "% Ex.: up 21 22 100000 - enable i2c at pins sda=21, scl=22, 100kHz clock"),
-    "initialize interface (pins and speed)" },
+  { "up", cmd_i2c, 3, 
+  HELP("% \"up SDA SCL CLOCK\"\r\n"
+       "%\r\n"
+       "% Initialize I2C interface X, use pins SDA/SCL, clock rate CLOCK\r\n"
+       "% Ex.: up 21 22 100000 - enable i2c at pins sda=21, scl=22, 100kHz clock"), "initialize interface (pins and speed)" },
 
-  { "clock", cmd_i2c_clock, 1, HELP("% \"clock SPEED\"\r\n"
-                                    "%\r\n"
-                                    "% Set I2C master clock (i2c must be initialized)\r\n"
-                                    "% Ex.: clock 100000 - Set i2c clock to 100kHz"),
-    "Set clock" },
+  { "clock", cmd_i2c_clock, 1, 
+  HELP("% \"clock SPEED\"\r\n"
+       "%\r\n"
+       "% Set I2C master clock (i2c must be initialized)\r\n"
+       "% Ex.: clock 100000 - Set i2c clock to 100kHz"), "Set clock" },
 
 
-  { "read", cmd_i2c, 2, HELP("% \"read ADDR SIZE\"\r\n"
-                             "%\r\n"
-                             "% I2C bus X : read SIZE bytes from a device at address ADDR (hex)\r\n"
-                             "% Ex.: read 68 7 - read 7 bytes from device address 0x68"),
-    "Read data from a device" },
+  { "read", cmd_i2c, 2, 
+  HELP("% \"read ADDR SIZE\"\r\n"
+       "%\r\n"
+       "% Read SIZE bytes from a device at address ADDR (hex)\r\n"
+       "% Ex.: read 68 7 - read 7 bytes from device address 0x68"), "Read data from an I2C device" },
 
-  { "down", cmd_i2c, 0, HELP("% \"down\"\r\n"
-                             "%\r\n"
-                             "% Shutdown I2C interface X"),
-    "Shutdown i2c interface" },
+  { "down", cmd_i2c, NO_ARGS, 
+  HELP("% \"down\"\r\n"
+       "%\r\n"
+       "% Shutdown I2C interface X"), "Shutdown i2c interface" },
 
-  { "scan", cmd_i2c, 0, HELP("% \"scan\"\r\n"
-                             "%\r\n"
-                             "% Scan I2C bus X for devices. Interface must be initialized!"),
-    "Scan i2c bus" },
+  { "scan", cmd_i2c, NO_ARGS,
+  HELP("% \"scan\"\r\n"
+       "%\r\n"
+       "% Scan I2C bus X for devices. Interface must be initialized!"), "Scan i2c bus for devices" },
 
-  { "write", cmd_i2c, -1, HELP("% \"write ADDR D1 [D2 ... Dn]\"\r\n"
-                               "%\r\n"
-                               "% Write bytes D1..Dn (hex values) to address ADDR (hex) on I2C bus X\r\n"
-                               "% Ex.: write 78 0 1 FF - write 3 bytes to address 0x78: 0,1 and 255"),
-    "Send bytes to the device" },
+  { "write", cmd_i2c, MANY_ARGS,
+  HELP("% \"write ADDR D1 [D2 ... Dn]\"\r\n"
+       "%\r\n"
+       "% Write bytes D1..Dn (hex values) to address ADDR (hex) on I2C bus X\r\n"
+       "% Ex.: write 78 0 1 FF - write 3 bytes to address 0x78: 0,1 and 255"), "Send bytes to the device" },
 
   KEYWORDS_END
 };
@@ -2105,65 +2103,66 @@ static const struct keywords_t keywords_sequence[] = {
 
   KEYWORDS_BEGIN
 
-  { "eot", cmd_seq_eot, 1, HELP("% \"eot high|low\"\r\n"
-                                "%\r\n"
-                                "% End of transmission: pull the line high or low at the\r\n"
-                                "% end of a sequence. Default is \"low\""),
-    "End-of-Transmission pin state" },
+  { "eot", cmd_seq_eot, 1, 
+  HELP("% \"eot high|low\"\r\n"
+       "%\r\n"
+       "% End of transmission: pull the line high or low at the\r\n"
+       "% end of a sequence. Default is \"low\""), "End-of-Transmission pin state" },
 
-  { "tick", cmd_seq_tick, 1, HELP("% \"tick TIME\"\r\n"
-                                  "%\r\n"
-                                  "% Set the sequence tick time: defines a resolution of a pulse sequence.\r\n"
-                                  "% Expressed in microseconds, can be anything between 0.0125 and 3.2\r\n"
-                                  "% Ex.: tick 0.1 - set resolution to 0.1 microsecond"),
-    "Set resolution" },
+  { "tick", cmd_seq_tick, 1,
+  HELP("% \"tick TIME\"\r\n"
+       "%\r\n"
+       "% Set the sequence tick time: defines a resolution of a pulse sequence.\r\n"
+       "% Expressed in microseconds, can be anything between 0.0125 and 3.2\r\n"
+       "% Ex.: tick 0.1 - set resolution to 0.1 microsecond"),  "Set resolution" },
 
-  { "zero", cmd_seq_zeroone, 2, HELP("% \"zero LEVEL/DURATION [LEVEL2/DURATION2]\"\r\n"
-                                     "%\r\n"
-                                     "% Define a logic \"0\"\r\n"
-                                     "% Ex.: zero 0/50      - 0 is a level: LOW for 50 ticks\r\n"
-                                     "% Ex.: zero 1/50 0/20 - 0 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"),
-    "Define a zero" },
+  { "zero", cmd_seq_zeroone, 2,
+  HELP("% \"zero LEVEL/DURATION [LEVEL2/DURATION2]\"\r\n"
+       "%\r\n"
+       "% Define a logic \"0\"\r\n"
+       "% Ex.: zero 0/50      - 0 is a level: LOW for 50 ticks\r\n"
+       "% Ex.: zero 1/50 0/20 - 0 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"), "Define a zero" },
 
   { "zero", cmd_seq_zeroone, 1, HIDDEN_KEYWORD },  //1 arg command
 
-  { "one", cmd_seq_zeroone, 2, HELP("% \"one LEVEL/DURATION [LEVEL2/DURATION2]\"\r\n"
-                                    "%\r\n"
-                                    "% Define a logic \"1\"\r\n"
-                                    "% Ex.: one 1/50       - 1 is a level: HIGH for 50 ticks\r\n"
-                                    "% Ex.: one 1/50 0/20  - 1 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"),
-    "Define an one" },
+  { "one", cmd_seq_zeroone, 2, 
+  HELP("% \"one LEVEL/DURATION [LEVEL2/DURATION2]\"\r\n"
+       "%\r\n"
+       "% Define a logic \"1\"\r\n"
+       "% Ex.: one 1/50       - 1 is a level: HIGH for 50 ticks\r\n"
+       "% Ex.: one 1/50 0/20  - 1 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"), "Define an one" },
 
   { "one", cmd_seq_zeroone, 1, HIDDEN_KEYWORD },  //1 arg command
 
-  { "bits", cmd_seq_bits, 1, HELP("% \"bits STRING\"\r\n"
-                                  "%\r\n"
-                                  "% A bit pattern to be used as a sequence. STRING must contain only 0s and 1s\r\n"
-                                  "% Overrides previously set \"levels\" command\r\n"
-                                  "% See commands \"one\" and \"zero\" to define \"1\" and \"0\"\r\n"
-                                  "%\r\n"
-                                  "% Ex.: bits 11101000010111100  - 17 bit sequence"),
+  { "bits", cmd_seq_bits, 1, 
+  HELP("% \"bits STRING\"\r\n"
+       "%\r\n"
+       "% A bit pattern to be used as a sequence. STRING must contain only 0s and 1s\r\n"
+       "% Overrides previously set \"levels\" command\r\n"
+       "% See commands \"one\" and \"zero\" to define \"1\" and \"0\"\r\n"
+       "%\r\n"
+       "% Ex.: bits 11101000010111100  - 17 bit sequence"),
     "Set pattern to transmit" },
 
-  { "levels", cmd_seq_levels, -1, HELP("% \"levels L/D L/D ... L/D\"\r\n"
-                                       "%\r\n"
-                                       "% A bit pattern to be used as a sequnce. L is either 1 or 0 and \r\n"
-                                       "% D is the duration measured in ticks [0..32767] \r\n"
-                                       "% Overrides previously set \"bits\" command\r\n"
-                                       "%\r\n"
-                                       "% Ex.: levels 1/50 0/20 1/100 0/500  - HIGH 50 ticks, LOW 20, HIGH 100 and 0 for 500 ticks\r\n"
-                                       "% Ex.: levels 1/32767 1/17233 0/32767 0/7233 - HIGH for 50000 ticks, LOW for 40000 ticks"),
-    "Set levels to transmit" },
+  { "levels", cmd_seq_levels, MANY_ARGS, 
+  HELP("% \"levels L/D L/D ... L/D\"\r\n"
+       "%\r\n"
+       "% A bit pattern to be used as a sequnce. L is either 1 or 0 and \r\n"
+       "% D is the duration measured in ticks [0..32767] \r\n"
+       "% Overrides previously set \"bits\" command\r\n"
+       "%\r\n"
+       "% Ex.: levels 1/50 0/20 1/100 0/500  - HIGH 50 ticks, LOW 20, HIGH 100 and 0 for 500 ticks\r\n"
+       "% Ex.: levels 1/32767 1/17233 0/32767 0/7233 - HIGH for 50000 ticks, LOW for 40000 ticks"),  "Set levels to transmit" },
 
-  { "modulation", cmd_seq_modulation, 3, HELP("% \"modulation FREQ [DUTY [low|high]]\"\r\n"
-                                              "%\r\n"
-                                              "% Enables/disables an output signal modulation with frequency FREQ\r\n"
-                                              "% Optional parameters are: DUTY (from 0 to 1) and LEVEL (either high or low)\r\n"
-                                              "%\r\n"
-                                              "% Ex.: modulation 100         - modulate all 1s with 100Hz, 50% duty cycle\r\n"
-                                              "% Ex.: modulation 100 0.3 low - modulate all 0s with 100Hz, 30% duty cycle\r\n"
-                                              "% Ex.: modulation 0           - disable modulation\r\n"),
-    "Enable/disable modulation" },
+  { "modulation", cmd_seq_modulation, 3,
+  HELP("% \"modulation FREQ [DUTY [low|high]]\"\r\n"
+       "%\r\n"
+       "% Enables/disables an output signal modulation with frequency FREQ\r\n"
+       "% Optional parameters are: DUTY (from 0 to 1) and LEVEL (either high or low)\r\n"
+       "%\r\n"
+       "% Ex.: modulation 100         - modulate all 1s with 100Hz, 50% duty cycle\r\n"
+       "% Ex.: modulation 100 0.3 low - modulate all 0s with 100Hz, 30% duty cycle\r\n"
+       "% Ex.: modulation 0           - disable modulation\r\n"),  "Enable/disable modulation" },
 
   { "modulation", cmd_seq_modulation, 2, HIDDEN_KEYWORD },
   { "modulation", cmd_seq_modulation, 1, HIDDEN_KEYWORD },
@@ -2182,145 +2181,154 @@ static const struct keywords_t keywords_files[] = {
 
   KEYWORDS_BEGIN
 
-  { "mount", cmd_files_mount, 2, HELP("% \"mount LABEL [/MOUNT_POINT]\"\r\n"
-                                      "%\r\n"
-                                      "% Mount a filesystem located on built-in SPI FLASH\r\n"
-                                      "%\r\n"
-                                      "% LABEL        - SPI FLASH partition label\r\n"
-                                      "% /MOUNT_POINT - A path, starting with \"/\" where filesystem will be mounted.\r\n"
-                                      "%\r\n"
-                                      "% Ex.: mount ffat /ffat - mount partition \"ffat\" at directory \"/ffat\""),"Mount partition/Show partition table" },
+  { "mount", cmd_files_mount, 2, 
+  HELP("% \"mount LABEL [/MOUNT_POINT]\"\r\n"
+       "%\r\n"
+       "% Mount a filesystem located on built-in SPI FLASH\r\n"
+       "%\r\n"
+       "% LABEL        - SPI FLASH partition label\r\n"
+       "% /MOUNT_POINT - A path, starting with \"/\" where filesystem will be mounted.\r\n"
+       "%\r\n"
+       "% Ex.: mount ffat /ffat - mount partition \"ffat\" at directory \"/ffat\""),"Mount partition/Show partition table" },
+  
+  { "mount", cmd_files_mount0, NO_ARGS, 
+  HELP("% \"mount\"\r\n"
+       "%\r\n"
+       "% Command \"mount\" **without arguments** displays information about partitions\r\n"
+       "% and mounted file systems (mount point, FS type, total/used counters)"), NULL },
+
   { "mount", cmd_files_mount, 1, HIDDEN_KEYWORD },
-  { "mount", cmd_files_mount0, 0, HELP("% \"mount\"\r\n"
-                                       "%\r\n"
-                                       "% Command \"mount\" **without arguments** displays information about partitions\r\n"
-                                       "% and mounted file systems (mount point, FS type, total/used counters)"), NULL },
 
 
-  { "unmount", cmd_files_unmount, 1, HELP("% \"unmount /MOUNT_POINT\"\r\n"
-                                          "%\r\n"
-                                          "% Unmount a file system\r\n"),"Unmount partition" },
-  { "unmount", cmd_files_unmount, 0, HIDDEN_KEYWORD },
+  { "unmount", cmd_files_unmount, 1, 
+  HELP("% \"unmount /MOUNT_POINT\"\r\n"
+       "%\r\n"
+       "% Unmount a file system\r\n"),"Unmount partition" },
+
+  { "unmount", cmd_files_unmount, NO_ARGS, HIDDEN_KEYWORD },
   { "umount", cmd_files_unmount, 1, HIDDEN_KEYWORD }, // for unix folks
-  { "umount", cmd_files_unmount, 0, HIDDEN_KEYWORD }, // for unix folks
+  { "umount", cmd_files_unmount, NO_ARGS, HIDDEN_KEYWORD }, // for unix folks
 
-  { "ls", cmd_files_ls, 1, HELP("% \"ls [PATH]\"\r\n"
-                                "%\r\n"
-                                "% Show directory listing at PATH given\r\n"
-                                "% If PATH is omitted then current directory list is shown"),"List directory" },
+  { "ls", cmd_files_ls, 1, 
+  HELP("% \"ls [PATH]\"\r\n"
+       "%\r\n"
+       "% Show directory listing at PATH given\r\n"
+       "% If PATH is omitted then current directory list is shown"),"List directory" },
 
   { "ls", cmd_files_ls, 0, HIDDEN_KEYWORD },
 
-
-  { "pwd", cmd_files_pwd, 0, HIDDEN_KEYWORD }, //undocumented
-                             
-                             
-
-  { "cd", cmd_files_cd, -1, HELP("% \"cd [PATH|..]\"\r\n"
-                                "%\r\n"
-                                "% Change current directory. Paths having .. (i.e \"../dir/\") are not supported\r\n"
-                                "%\r\n"
-                                "% Ex.: \"cd\"            - change current directory to filesystem's root\r\n"
-                                "% Ex.: \"cd ..\"         - go one directory up\r\n"
-                                "% Ex.: \"cd /ffat/test/  - change to \"/ffat/test/\"\r\n"
-                                "% Ex.: \"cd test2/test3/ - change to \"/ffat/test/test2/test3\"\r\n"),"Change directory" },
+  { "cd", cmd_files_cd, MANY_ARGS, 
+  HELP("% \"cd [PATH|..]\"\r\n"
+       "%\r\n"
+       "% Change current directory. Paths having .. (i.e \"../dir/\") are not supported\r\n"
+       "%\r\n"
+       "% Ex.: \"cd\"            - change current directory to filesystem's root\r\n"
+       "% Ex.: \"cd ..\"         - go one directory up\r\n"
+       "% Ex.: \"cd /ffat/test/  - change to \"/ffat/test/\"\r\n"
+       "% Ex.: \"cd test2/test3/ - change to \"/ffat/test/test2/test3\"\r\n"),"Change directory" },
   
-  { "rm", cmd_files_rm, -1, HELP("% \"rm PATH1 [PATH2 PATH3 ... PATHn]\"\r\n"
-                                "%\r\n"
-                                "% Remove files or a directories with files.\r\n"
-                                "% When removing directories: removed with files and subdirs"), "Delete files/dirs" },
+  { "rm", cmd_files_rm, MANY_ARGS, 
+  HELP("% \"rm PATH1 [PATH2 PATH3 ... PATHn]\"\r\n"
+       "%\r\n"
+       "% Remove files or a directories with files.\r\n"
+       "% When removing directories: removed with files and subdirs"), "Delete files/dirs" },
 
-  { "mv", cmd_files_mv, 2, HELP("% \"mv SOURCE DESTINATION\\r\n"
-                                "%\r\n"
-                                "% Move or Rename file or directory SOURCE to DESTINATION\r\n"
-                                "%\r\n"
-                                "% Ex.: \"mv /ffat/dir1 /ffat/dir2\"             - rename directory \"dir1\" to \"dir2\"\r\n"
-                                "% Ex.: \"mv /ffat/fileA.txt /ffat/fileB.txt\"   - rename file \"fileA.txt\" to \"fileB.txt\"\r\n"
-                                "% Ex.: \"mv /ffat/dir1/file1 /ffat/dir2\"       - move file to directory\r\n"
-                                "% Ex.: \"mv /ffat/fileA.txt /spiffs/fileB.txt\" - move file between filesystems\r\n"), "Move/Rename files/dirs" },
+  { "mv", cmd_files_mv, 2, 
+  HELP("% \"mv SOURCE DESTINATION\\r\n"
+       "%\r\n"
+       "% Move or Rename file or directory SOURCE to DESTINATION\r\n"
+       "%\r\n"
+       "% Ex.: \"mv /ffat/dir1 /ffat/dir2\"             - rename directory \"dir1\" to \"dir2\"\r\n"
+       "% Ex.: \"mv /ffat/fileA.txt /ffat/fileB.txt\"   - rename file \"fileA.txt\" to \"fileB.txt\"\r\n"
+       "% Ex.: \"mv /ffat/dir1/file1 /ffat/dir2\"       - move file to directory\r\n"
+       "% Ex.: \"mv /ffat/fileA.txt /spiffs/fileB.txt\" - move file between filesystems\r\n"), "Move/Rename files/dirs" },
 
-  { "cp", cmd_files_cp, 2, HELP("% \"cp SOURCE DESTINATION\\r\n"
-                                "%\r\n"
-                                "% Copy file SOURCE to file DESTINATION.\r\n"
-                                "% Files SOURCE and DESTINATION can be on different filesystems\r\n"
-                                "%\r\n"
-                                "% Ex.: \"cp /ffat/test.txt /ffat/test2.txt\"       - copy file to file\r\n"
-                                "% Ex.: \"cp /ffat/test.txt /ffat/dir/\"            - copy file to directory\r\n"
-                                "% Ex.: \"cp /ffat/dir_src /ffat/dir/\"             - copy directory to directory\r\n"
-                                "% Ex.: \"cp /spiffs/test.txt /ffat/dir/test2.txt\" - copy between filesystems\r\n"), "Copy files/dirs" },
+  { "cp", cmd_files_cp, 2, 
+  HELP("% \"cp SOURCE DESTINATION\\r\n"
+       "%\r\n"
+       "% Copy file SOURCE to file DESTINATION.\r\n"
+       "% Files SOURCE and DESTINATION can be on different filesystems\r\n"
+       "%\r\n"
+       "% Ex.: \"cp /ffat/test.txt /ffat/test2.txt\"       - copy file to file\r\n"
+       "% Ex.: \"cp /ffat/test.txt /ffat/dir/\"            - copy file to directory\r\n"
+       "% Ex.: \"cp /ffat/dir_src /ffat/dir/\"             - copy directory to directory\r\n"
+       "% Ex.: \"cp /spiffs/test.txt /ffat/dir/test2.txt\" - copy between filesystems\r\n"), "Copy files/dirs" },
 
-  { "write", cmd_files_write, -1, HELP("% \"write FILENAME TEXT\"\r\n"
-                                       "%\r\n"
-                                       "% Write an ascii/hex string(s) to file\r\n"
-                                       "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
-                                       "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n"
-                                       "%\r\n"
-                                       "% Ex.: \"write /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""), "Write bytes" },
+  { "write", cmd_files_write, MANY_ARGS, 
+  HELP("% \"write FILENAME TEXT\"\r\n"
+       "%\r\n"
+       "% Write an ascii/hex string(s) to file\r\n"
+       "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
+       "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n"
+       "%\r\n"
+       "% Ex.: \"write /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""), "Write bytes" },
 
-  { "append", cmd_files_append, -1, HELP("% \"append FILENAME TEXT\"\r\n"
-                                         "%\r\n"
-                                         "% Append an ascii/hex string(s) to file\r\n"
-                                         "% Escape sequences & ascii codes are accepted just as in \"write\" command\r\n"
-                                         "%\r\n"
-                                         "% Ex.: \"append /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""),"Append bytes" },
+  { "append", cmd_files_append, MANY_ARGS, 
+  HELP("% \"append FILENAME TEXT\"\r\n"
+       "%\r\n"
+       "% Append an ascii/hex string(s) to file\r\n"
+       "% Escape sequences & ascii codes are accepted just as in \"write\" command\r\n"
+       "%\r\n"
+       "% Ex.: \"append /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""),"Append bytes" },
 
-  { "insert", cmd_files_insert, -1, HELP("% \"insert FILENAME LINE_NUM TEXT\"\r\n"
-                                         "% Insert TEXT to file FILENAME before line LINE_NUM\r\n"
-                                         "% \"\\n\" is appended to the string being inserted, \"\\r\" is not\r\n"
-                                         "% Escape sequences & ascii codes accepted just as in \"write\" command\r\n"
-                                         "% Lines are numbered starting from 0. Use \"cat\" command to find out line numbers\r\n"
-                                         "%\r\n"
-                                         "% Ex.: \"insert 0 /ffat/test.txt Hello World!\""), "Insert bytes" },
+  { "insert", cmd_files_insert, MANY_ARGS, 
+  HELP("% \"insert FILENAME LINE_NUM TEXT\"\r\n"
+       "% Insert TEXT to file FILENAME before line LINE_NUM\r\n"
+       "% \"\\n\" is appended to the string being inserted, \"\\r\" is not\r\n"
+       "% Escape sequences & ascii codes accepted just as in \"write\" command\r\n"
+       "% Lines are numbered starting from 0. Use \"cat\" command to find out line numbers\r\n"
+       "%\r\n"
+       "% Ex.: \"insert 0 /ffat/test.txt Hello World!\""), "Insert bytes" },
 
-  { "delete", cmd_files_delete, 2, HELP("% \"delete FILENAME LINE_NUM [COUNT]\"\r\n"
-                                        "% Delete line LINE_NUM from a text file FILENAME\r\n"
-                                        "% Optionsl COUNT argument is the number of lines to remove (default is 1)"
-                                        "% Lines are numbered starting from 0. Use \"cat\" command to find out line numbers\r\n"
-                                        "%\r\n"
-                                        "Ex.: \"delete 10 /ffat/test.txt\" - remove line #10 from \"/ffat/test.txt\""), "Delete lines" },
+  { "delete", cmd_files_delete, 2, 
+  HELP("% \"delete FILENAME LINE_NUM [COUNT]\"\r\n"
+       "% Delete line LINE_NUM from a text file FILENAME\r\n"
+       "% Optionsl COUNT argument is the number of lines to remove (default is 1)"
+       "% Lines are numbered starting from 0. Use \"cat\" command to find out line numbers\r\n"
+       "%\r\n"
+       "% Ex.: \"delete 10 /ffat/test.txt\" - remove line #10 from \"/ffat/test.txt\""), "Delete lines" },
+
   { "delete", cmd_files_delete, 1, HIDDEN_KEYWORD },
 
-  { "mkdir", cmd_files_mkdir, -1, HELP("% \"mkdir PATH1 [PATH2 PATH3 ... PATHn]\"\r\n"
-                                      "%\r\n"
-                                      "% Create empty directories PATH1 ... PATHn\r\n"),"Create directory" },
+  { "mkdir", cmd_files_mkdir, MANY_ARGS,
+  HELP("% \"mkdir PATH1 [PATH2 PATH3 ... PATHn]\"\r\n"
+       "%\r\n"
+       "% Create empty directories PATH1 ... PATHn\r\n"),"Create directory" },
 
-  { "cat", cmd_files_cat, -1, HELP("% \"cat [-n|-b] PATH [START [COUNT]] [uart NUM]\"\r\n"
-                                  "%\r\n"
-                                  "% Display (or send by UART) a binary or text file PATH\r\n"
-                                  "% -n : display line numbers\r\n"
-                                  "% -b : file is binary (mutually exclusive with \"-n\")\r\n"
-                                  "% PATH  : path to the file\r\n"
-                                  "% START : text file line number OR binary file offset for \"-b\" option\r\n"
-                                  "% COUNT : number of lines to display (OR bytes for \"-b\" option)\r\n"
-                                  "% NUM   : UART interface number to transmit file to\r\n"
-                                  "%\r\n"
-                                  "% Examples:\r\n"
-                                  "% cat file              - display file \"file\"\r\n"
-                                  "% cat -n file           - display file \"file\" + line numbers\r\n"
-                                  "% cat file 34           - display text file starting from line 34 \r\n"
-                                  "% cat file 900 10       - 10 lines, starting from line 900 \r\n"
-                                  "% cat -b file           - display binary file (formatted output)\r\n"
-                                  "% cat -b file 0x1234    - display binary file starting from offset 0x12\r\n"
-                                  "% cat -b file 999 0x400 - 999 bytes starting from offset 1024 of binary file\r\n"
-                                  "% cat file uart 1       - transmit a text file over UART1, strip \"\\r\" if any\r\n"
-                                  "% cat -b file uart 1    - transmit file over UART1 \"as-is\" byte by byte"),"Display/transmit text/binary file" },
+  { "cat", cmd_files_cat, MANY_ARGS, 
+  HELP("% \"cat [-n|-b] PATH [START [COUNT]] [uart NUM]\"\r\n"
+       "%\r\n"
+       "% Display (or send by UART) a binary or text file PATH\r\n"
+       "% -n : display line numbers\r\n"
+       "% -b : file is binary (mutually exclusive with \"-n\")\r\n"
+       "% PATH  : path to the file\r\n"
+       "% START : text file line number OR binary file offset for \"-b\" option\r\n"
+       "% COUNT : number of lines to display (OR bytes for \"-b\" option)\r\n"
+       "% NUM   : UART interface number to transmit file to\r\n"
+       "%\r\n"
+       "% Examples:\r\n"
+       "% cat file              - display file \"file\"\r\n"
+       "% cat -n file           - display file \"file\" + line numbers\r\n"
+       "% cat file 34           - display text file starting from line 34 \r\n"
+       "% cat file 900 10       - 10 lines, starting from line 900 \r\n"
+       "% cat -b file           - display binary file (formatted output)\r\n"
+       "% cat -b file 0x1234    - display binary file starting from offset 0x12\r\n"
+       "% cat -b file 999 0x400 - 999 bytes starting from offset 1024 of binary file\r\n"
+       "% cat file uart 1       - transmit a text file over UART1, strip \"\\r\" if any\r\n"
+       "% cat -b file uart 1    - transmit file over UART1 \"as-is\" byte by byte"),"Display/transmit text/binary file" },
 
-  { "touch", cmd_files_touch, -1, HELP("% \"touch PATH1 [PATH2 PATH3 ... PATHn]\"\r\n"
-                                      "%\r\n"
-                                      "% Ceate new files or \"touch\" existing\r\n"), "Touch/Create file" },
+  { "touch", cmd_files_touch, MANY_ARGS, 
+  HELP("% \"touch PATH1 [PATH2 PATH3 ... PATHn]\"\r\n"
+       "%\r\n"
+       "% Ceate new files or \"touch\" existing\r\n"), "Create/touch files" },
 
-  { "format", cmd_files_format, 1, HELP("% \"format [LABEL]\"\r\n"
-                                        "%\r\n"
-                                        "% Format partition LABEL. If LABEL is omitted then current working\r\n"
-                                        "% directory is used to determine partition label"), "Erase old & create new filesystem" },
+  { "format", cmd_files_format, 1, 
+  HELP("% \"format [LABEL]\"\r\n"
+       "%\r\n"
+       "% Format partition LABEL. If LABEL is omitted then current working\r\n"
+       "% directory is used to determine partition label"), "Erase old & create new filesystem" },
 
   { "format", cmd_files_format, 0, HIDDEN_KEYWORD },
-#if 0
-  { "transmit", cmd_files_transmit, 1, HELP("% \"transmit PATH (console|uart0|uart1|uart2|usbcdc|)\"\r\n"
-                                        "%\r\n"
-                                        "% Send file as raw bytes stream via one of uarts or usbcdc port\r\n"
-                                        "% Disable software flow control on the receiving side or some bytes may be corrupted"), "Dump file to interface" },
-#endif
 
   KEYWORDS_END
 };
@@ -2332,102 +2340,141 @@ static const struct keywords_t keywords_main[] = {
 
   KEYWORDS_BEGIN
 
-  { "uptime", cmd_uptime, 0, HELP("% \"uptime\" - Shows time passed since last boot"), "System uptime" },
+  { "uptime", cmd_uptime, NO_ARGS, 
+  HELP("% \"uptime\" - Shows time passed since last boot"), "System uptime" },
 #if WITH_FS
-  { "files", cmd_files_if, 0, HELP("% \"files\"\r\n"
-                                   "%\r\n"
-                                   "% Enter files & file system operations mode"), "File system access" },
+  { "files", cmd_files_if, NO_ARGS, 
+  HELP("% \"files\"\r\n"
+       "%\r\n"
+       "% Enter files & file system operations mode"), "File system access" },
 #endif
 
   // System commands
-  { "cpu", cmd_cpu_freq, 1, HELP("% \"cpu FREQ\" : Set CPU frequency to FREQ Mhz"), "Set/show CPU parameters" },
-  { "cpu", cmd_cpu, 0, HELP("% \"cpu\" : Show CPUID and CPU/XTAL/APB frequencies"), NULL },
-  { "suspend", cmd_suspend, 0, HELP("% \"suspend\" : Suspend main loop()\r\n"), "Suspend sketch execution" },
-  { "resume", cmd_resume, 0, HELP("% \"resume\" : Resume main loop()\r\n"), "Resume sketch execution" },
-  { "kill", cmd_kill, 1, HELP("% \"kill TASK_ID\" : Stop and delete task TASK_ID\r\n% CAUTION: wrong id will crash whole system :(\r\n% For use with \"pin&\" and \"count&\" tasks only!"), "Kill tasks" },
+  { "cpu", cmd_cpu_freq, 1, 
+  HELP("% \"cpu FREQ\" : Set CPU frequency to FREQ Mhz"), "Set/show CPU parameters" },
+
+  { "cpu", cmd_cpu, NO_ARGS, 
+  HELP("% \"cpu\" : Show CPUID and CPU/XTAL/APB frequencies"), NULL },
+
+  { "suspend", cmd_suspend, NO_ARGS, 
+  HELP("% \"suspend\" : Suspend main loop()\r\n"), "Suspend sketch execution" },
+
+  { "resume", cmd_resume, NO_ARGS, 
+  HELP("% \"resume\" : Resume main loop()\r\n"), "Resume sketch execution" },
+
+  { "kill", cmd_kill, 1, 
+  HELP("% \"kill TASK_ID\" : Stop and delete task TASK_ID\r\n% CAUTION: wrong id will crash whole system :(\r\n% For use with \"pin&\" and \"count&\" tasks only!"), "Kill tasks" },
+
   { "kill", cmd_kill, 2, HIDDEN_KEYWORD },  //undocumented "kill TASK_ID terminate"
-  { "reload", cmd_reload, 0, HELP("% \"reload\" - Restarts CPU"), "Reset CPU" },
-  { "mem", cmd_mem, 0, HELP("% \"mem\"\r\n% Shows memory usage info & availability, no arguments"),"Memory commands" },
-  { "mem", cmd_mem_read, 2, HELP("% \"mem ADDR [LENGTH]\"\r\n"
-                                 "% Display LENGTH bytes of memory starting from address ADDR\r\n"
-                                 "% Address must be in the form \"1234ABCDE\", (hexadecimal numbers)\r\n%\r\n"
-                                 "% LENGTH is optional and its default value is 256 bytes\r\n"
-                                 "% Ex.: mem 40078000 100 : display 100 bytes starting from address 40078000"), NULL },
+
+  { "reload", cmd_reload, NO_ARGS, 
+  HELP("% \"reload\" - Restarts CPU"), "Reset CPU" },
+
+  { "mem", cmd_mem, NO_ARGS, 
+  HELP("% \"mem\"\r\n% Shows memory usage info & availability, no arguments"),"Memory commands" },
+
+  { "mem", cmd_mem_read, 2, 
+  HELP("% \"mem ADDR [LENGTH]\"\r\n"
+       "% Display LENGTH bytes of memory starting from address ADDR\r\n"
+       "% Address must be in the form \"1234ABCDE\", (hexadecimal numbers)\r\n%\r\n"
+       "% LENGTH is optional and its default value is 256 bytes\r\n"
+       "% Ex.: mem 40078000 100 : display 100 bytes starting from address 40078000"), NULL },
+
   { "mem", cmd_mem_read, 1, HIDDEN_KEYWORD },
-  { "nap", cmd_nap, 1, HELP("% \"nap SEC\"\r\n%\r\n% Put the CPU into light sleep mode for SEC seconds."), "CPU sleep" },
-  { "nap", cmd_nap, 0, HELP("% \"nap\"\r\n%\r\n% Put the CPU into light sleep mode, wakeup by console"), NULL },
+
+  { "nap", cmd_nap, 1, 
+  HELP("% \"nap SEC\"\r\n%\r\n% Put the CPU into light sleep mode for SEC seconds."), "CPU sleep" },
+
+  { "nap", cmd_nap, NO_ARGS, 
+  HELP("% \"nap\"\r\n%\r\n% Put the CPU into light sleep mode, wakeup by console"), NULL },
 
   // Interfaces (UART,I2C, RMT..)
-  { "iic", cmd_i2c_if, 1, HELP("% \"iic X\" \r\n%\r\n"
-                               "% Enter I2C interface X configuration mode \r\n"
-                               "% Ex.: iic 0 - configure/use interface I2C 0"), "I2C commands" },
+  { "iic", cmd_i2c_if, 1, 
+  HELP("% \"iic X\" \r\n%\r\n"
+       "% Enter I2C interface X configuration mode \r\n"
+       "% Ex.: iic 0 - configure/use interface I2C 0"), "I2C commands" },
 
-  { "uart", cmd_uart_if, 1, HELP("% \"uart X\"\r\n"
-                                 "%\r\n"
-                                 "% Enter UART interface X configuration mode\r\n"
-                                 "% Ex.: uart 1 - configure/use interface UART 1"), "UART commands" },
+  { "uart", cmd_uart_if, 1,
+  HELP("% \"uart X\"\r\n"
+       "%\r\n"
+       "% Enter UART interface X configuration mode\r\n"
+       "% Ex.: uart 1 - configure/use interface UART 1"), "UART commands" },
 
-  { "sequence", cmd_seq_if, 1, HELP("% \"sequence X\"\r\n"
-                                    "%\r\n"
-                                    "% Create/configure a sequence\r\n"
-                                    "% Ex.: sequence 0 - configure Sequence0"),"Sequence configuration" },
+  { "sequence", cmd_seq_if, 1, 
+  HELP("% \"sequence X\"\r\n"
+       "%\r\n"
+       "% Create/configure a sequence\r\n"
+       "% Ex.: sequence 0 - configure Sequence0"),"Sequence configuration" },
 
   // Show funcions (more will be added)
-  { "show", cmd_show, 2, HELP("% \"show sequence X\" - display sequence X\r\n"), "Display information" },
+  { "show", cmd_show, 2, 
+  HELP("% \"show sequence X\" - display sequence X\r\n"), "Display information" },
 
   // Shell input/output settings
-  { "tty", cmd_tty, 1, HELP("% \"tty X\" Use uart X for command line interface"), "IO redirect" },
-  { "echo", cmd_echo, 1, HELP("% \"echo on|off|silent\" Echo user input on/off (default is on)"), "Enable/Disable user input echo" },
-  { "echo", cmd_echo, 0, HIDDEN_KEYWORD },  //hidden command, displays echo status (on / off)
+  { "tty", cmd_tty, 1,
+  HELP("% \"tty X\" Use uart X for command line interface"), "IO redirect" },
+
+  { "echo", cmd_echo, 1,
+  HELP("% \"echo on|off|silent\" Echo user input on/off (default is on)"), "Enable/Disable user input echo" },
+
+  { "echo", cmd_echo, NO_ARGS, HIDDEN_KEYWORD },  //hidden command, displays echo status
 
   // Generic pin commands
-  { "pin", cmd_pin, 1, HELP("% \"pin X\" - Show pin X configuration.\r\n% Ex.: \"pin 2\" - show GPIO2 information"), "Pins (GPIO) commands" },
-  { "pin", cmd_pin, -1, HELP("% \"pin X (hold|release|up|down|out|in|open|high|low|save|load|read|aread|delay|loop|pwm|seq)...\"\r\n"
-                             "% Various functions:\r\n"
-                             "% 1. Set/Save/Load pin configuration and settings\r\n"
-                             "% 2. Enable/disable PWM and pattern generation on pin\r\n"
-                             "% 3. Set/read digital and/or analog pin values\r\n"
-                             "%\r\n"
-                             "% Multiple arguments must be separated with spaces, see examples below:\r\n%\r\n"
-                             "% Ex.: pin 1 read aread         -pin1: read digital and then analog values\r\n"
-                             "% Ex.: pin 1 out up             -pin1 is OUTPUT with PULLUP\r\n"
-                             "% Ex.: pin 1 save               -save pin state\r\n"
-                             "% Ex.: pin 1 high               -pin1 set to logic \"1\"\r\n"
-                             "% Ex.: pin 1 high delay 100 low -set pin1 to logic \"1\", after 100ms to \"0\"\r\n"
-                             "% Ex.: pin 1 pwm 2000 0.3       -set 5kHz, 30% duty square wave output\r\n"
-                             "% Ex.: pin 1 pwm 0 0            -disable generation\r\n"
-                             "% Ex.: pin 1 high delay 500 low delay 500 loop 10 - Blink a led 10 times\r\n%\r\n"
-                             "% Use \"pin&\" instead of \"pin\" to execute in background\r\n"
-                             "% (see \"docs/Pin_Commands.txt\" for more details & examples)\r\n"),  NULL },
+  { "pin", cmd_pin, 1, 
+  HELP("% \"pin X\" - Show pin X configuration.\r\n% Ex.: \"pin 2\" - show GPIO2 information"), "Pins (GPIO) commands" },
+
+  { "pin", cmd_pin, MANY_ARGS,
+  HELP("% \"pin X (hold|release|up|down|out|in|open|high|low|save|load|read|aread|delay|loop|pwm|seq)...\"\r\n"
+       "% Multifunction command which can:\r\n"
+       "%  1. Set/Save/Load pin configuration and settings\r\n"
+       "%  2. Enable/disable PWM and pattern generation on pin\r\n"
+       "%  3. Set/read digital and/or analog pin values\r\n"
+       "%\r\n"
+       "% Multiple arguments must be separated with spaces, see examples below:\r\n%\r\n"
+       "% Ex.: pin 1 read aread         -pin1: read digital and then analog values\r\n"
+       "% Ex.: pin 1 out up             -pin1 is OUTPUT with PULLUP\r\n"
+       "% Ex.: pin 1 save               -save pin state\r\n"
+       "% Ex.: pin 1 high               -pin1 set to logic \"1\"\r\n"
+       "% Ex.: pin 1 high delay 100 low -set pin1 to logic \"1\", after 100ms to \"0\"\r\n"
+       "% Ex.: pin 1 pwm 2000 0.3       -set 5kHz, 30% duty square wave output\r\n"
+       "% Ex.: pin 1 pwm 0 0            -disable generation\r\n"
+       "% Ex.: pin 1 high delay 500 low delay 500 loop 10 - Blink a led 10 times\r\n%\r\n"
+       "% Use \"<i>pin&</>\" instead of \"<i>pin</i>\" to execute in background\r\n"
+       "% (see \"docs/Pin_Commands.txt\" for more details & examples)\r\n"),  NULL },
+
   // "pin&"" async (background) "pin" command
-  { "pin&", cmd_async, -1, HIDDEN_KEYWORD },
+  { "pin&", cmd_async, MANY_ARGS, HIDDEN_KEYWORD },
 
   // PWM generation
-  { "pwm", cmd_pwm, 3, HELP("% \"pwm X [FREQ [DUTY]]\"\r\n"
-                            "%\r\n"
-                            "% Start PWM generator on pin X, frequency FREQ Hz and duty cycle of DUTY\r\n"
-                            "% Maximum frequency is 312 kHz, and DUTY is in range [0..1] with 0.123 being\r\n"
-                            "% a 12.3% duty cycle\r\n"
-                            "%\r\n"
-                            "% DUTY is optional and its default value is 50% (if not specified) and\r\n"
-                            "% its resolution is 0.005 (0.5%)"
-                            "%\r\n"
-                            "% Ex.: pwm 2 1000     - enable PWM of 1kHz, 50% duty on pin 2\r\n"
-                            "% Ex.: pwm 2          - disable PWM on pin 2\r\n"
-                            "% Ex.: pwm 2 6400 0.1 - enable PWM of 6.4kHz, duty cycle of 10% on pin 2\r\n"), "PWM output" },
+  { "pwm", cmd_pwm, 3,
+  HELP("% \"pwm X [FREQ [DUTY]]\"\r\n"
+       "%\r\n"
+       "% Start PWM generator on pin X, frequency FREQ Hz and duty cycle of DUTY\r\n"
+       "% Maximum frequency is 312000Hz, and DUTY is in range [0..1] with 0.123 being\r\n"
+       "% a 12.3% duty cycle\r\n"
+       "%\r\n"
+       "% DUTY is optional and its default value is 50% (if not specified) and\r\n"
+       "% its resolution is 0.005 (0.5%)"
+       "%\r\n"
+       "% Ex.: pwm 2 1000     - enable PWM of 1kHz, 50% duty on pin 2\r\n"
+       "% Ex.: pwm 2          - disable PWM on pin 2\r\n"
+       "% Ex.: pwm 2 6400 0.1 - enable PWM of 6.4kHz, duty cycle of 10% on pin 2\r\n"), "PWM output" },
+
   { "pwm", cmd_pwm, 2, HIDDEN_KEYWORD },
   { "pwm", cmd_pwm, 1, HIDDEN_KEYWORD },
 
   // Pulse counting
-  { "count", cmd_count, 3, HELP("% \"count PIN [DURATION [neg|pos|both]]\"\r\n%\r\n"
-                                "% Count pulses (negative/positive edge or both) on pin PIN within DURATION time\r\n"
-                                "% Time is measured in milliseconds, optional. Default is 1000\r\n"
-                                "% Pulse edge type is optional. Default is \"pos\"\r\n"
-                                "%\r\n"
-                                "% Ex.: \"count 4\"           - count positive edges on pin 4 for 1000ms\r\n"
-                                "% Ex.: \"count 4 2000\"      - count pulses (falling edge) on pin 4 for 2 sec.\r\n"
-                                "% Ex.: \"count 4 2000 both\" - count pulses (falling and rising edge) on pin 4 for 2 sec.\r\n%\r\n"
-                                "% Use \"count&\" instead of \"count\" to execute in background\r\n"), "Pulse counter" },
+  { "count", cmd_count, 3,
+  HELP("% \"count PIN [DURATION [neg|pos|both]]\"\r\n%\r\n"
+       "% Count pulses (negative/positive edge or both) on pin PIN within DURATION time\r\n"
+       "% Time is measured in milliseconds, optional. Default is 1000\r\n"
+       "% Pulse edge type is optional. Default is \"pos\"\r\n"
+       "%\r\n"
+       "% Ex.: \"count 4\"           - count positive edges on pin 4 for 1000ms\r\n"
+       "% Ex.: \"count 4 2000\"      - count pulses (falling edge) on pin 4 for 2 sec.\r\n"
+       "% Ex.: \"count 4 2000 both\" - count pulses (falling and rising edge) on pin 4 for 2 sec.\r\n%\r\n"
+       "% Use \"<i>count&</>\" instead of \"<i>count</>\" to execute in background\r\n"), "Pulse counter" },
+
   { "count", cmd_count, 2, HIDDEN_KEYWORD },   //hidden "count" with 2 args
   { "count", cmd_count, 1, HIDDEN_KEYWORD },   //hidden with 1 arg
   { "count&", cmd_async, 3, HIDDEN_KEYWORD },  //hidden "count&" with 3 args
@@ -2436,20 +2483,22 @@ static const struct keywords_t keywords_main[] = {
 
 
 
-  { "var", cmd_var, 2, HELP("% \"var [VARIABLE_NAME] [NUMBER]\"\r\n%\r\n"
-                            "% Set/display sketch variable \r\n"
-                            "% VARIABLE_NAME is the variable name, optional argument\r\n"
-                            "% NUMBER can be integer or float point values, positive or negative, optional argument\r\n"
-                            "%\r\n"
-                            "% Ex.: \"var\"             - List all registered sketch variables\r\n"
-                            "% Ex.: \"var button1\"     - Display current value of \"button1\" sketch variable\r\n"
-                            "% Ex.: \"var angle -12.3\" - Set sketch variable \"angle\" to \"-12.3\"\r\n"
-                            "% Ex.: \"var 1234\"        - Display a decimal number as hex, float, int etc.\r\n"
-                            "% Ex.: \"var 0x1234\"      - -- // hex // --\r\n"
-                            "% Ex.: \"var 01234\"       - -- // octal // --\r\n"
-                            "% Use prefix \"0x\" for hex, \"0\" for octal or \"0b\" for binary numbers"), "Sketch variables" },
+  { "var", cmd_var, 2,
+  HELP("% \"var [VARIABLE_NAME] [NUMBER]\"\r\n%\r\n"
+       "% Set/display sketch variable \r\n"
+       "% VARIABLE_NAME is the variable name, optional argument\r\n"
+       "% NUMBER can be integer or float point values, positive or negative, optional argument\r\n"
+       "%\r\n"
+       "% Ex.: \"var\"             - List all registered sketch variables\r\n"
+       "% Ex.: \"var button1\"     - Display current value of \"button1\" sketch variable\r\n"
+       "% Ex.: \"var angle -12.3\" - Set sketch variable \"angle\" to \"-12.3\"\r\n"
+       "% Ex.: \"var 1234\"        - Display a decimal number as hex, float, int etc.\r\n"
+       "% Ex.: \"var 0x1234\"      - -- // hex // --\r\n"
+       "% Ex.: \"var 01234\"       - -- // octal // --\r\n"
+       "% Use prefix \"0x\" for hex, \"0\" for octal or \"0b\" for binary numbers"), "Sketch variables" },
+
   { "var", cmd_var_show, 1, HIDDEN_KEYWORD },
-  { "var", cmd_var_show, 0, HIDDEN_KEYWORD },
+  { "var", cmd_var_show, NO_ARGS, HIDDEN_KEYWORD },
 
 #ifdef EXTERNAL_KEYWORDS
 #  include EXTERNAL_KEYWORDS
@@ -2486,21 +2535,29 @@ static const char *prompt = PROMPT;
 // sequences
 static struct sequence sequences[SEQUENCES_NUM] = { 0 };
 
-// interface unit number when entering a subderictory.
-// also sequence number when entering "sequence" subdir
-static int Context = 0;
+// User-defined value which is set by change_command_directory():
+// When entering uart or i2c mode the Context is UART or I2C interface number
+// When entering sequence configuration mode the Context hold sequence number
+// File manager mode does not use Context
+//
+static unsigned int Context = 0;
 
 
-// called by cmd_uart_if, cmd_i2c_if and cmd_seq_if to
-// set new command list and displays text
-static void change_command_directory(int context, const struct keywords_t *dir, const char *prom, const char *text) {
+// Called by cmd_uart_if, cmd_i2c_if,cmd_seq_if, cam_settings and cmd_files_if to
+// set new command list (command directory) and displays user supplied text
+// /Context/ - arbitrary number which will be stored
+// /dir/     - new keywords list (one of keywords_main[], keywords_uart[] tc)
+// /prom/    - prompt to use
+// /text/    - text to be displayed when switching command directory
+//
+static void change_command_directory(unsigned int context, const struct keywords_t *dir, const char *prom, const char *text) {
 
   Context = context;
   keywords = dir;
   prompt = prom;
 #if WITH_HELP
   q_printf("%% Entering %s mode. Ctrl+Z or \"exit\" to return\r\n", text);
-  q_print("% Main commands are still avaiable (but not visible in \"?\" command list)\r\n");
+  q_print("% Hint: Main commands are still avaiable (but not visible in \"?\" command list)\r\n");
 #endif
 }
 
@@ -2627,11 +2684,11 @@ static void seq_init() {
 
 
 // dump sequence content
-static void seq_dump(int seq) {
+static void seq_dump(unsigned int seq) {
 
   struct sequence *s;
 
-  if (seq < 0 || seq >= SEQUENCES_NUM) {
+  if (seq >= SEQUENCES_NUM) {
     q_printf("%% <e>Sequence %d does not exist</>\r\n", seq);
     return;
   }
@@ -3356,7 +3413,9 @@ static int cmd_var_show(int argc, char **argv) {
       q_print("% Registered variables:\r\n");
 
     while (var) {
+#pragma GCC diagnostic ignored "-Wformat"
       q_printf("%% \"<i>% 16s</>\", %d bytes long (likely of <i>%s</> type)\r\n", var->name, var->size, var->size == 4 ? "float or int" : (var->size == 2 ? "short int" : "char"));
+#pragma GCC diagnostic warning "-Wformat"            
       var = var->next;
     }
     return 0;
@@ -3392,8 +3451,9 @@ static int cmd_var_show(int argc, char **argv) {
           memcpy(&inumber, &unumber, sizeof(inumber));
         }
         memcpy(&fnumber, &unumber, sizeof(fnumber));
-      } else if (isfloat(argv[1])) {
-        fnumber = atol(argv[1]);
+      } else 
+      if (isfloat(argv[1])) {
+        fnumber = atof(argv[1]);
         memcpy(&unumber, &fnumber, sizeof(unumber));
         memcpy(&inumber, &fnumber, sizeof(inumber));
       } else
@@ -4618,9 +4678,9 @@ noinit:
 #define SERIAL_8N1 0x800001c
 
 //check if UART has its driver installed
-static inline bool uart_isup(int u) {
+static inline bool uart_isup(unsigned char u) {
 
-  return (u < 0 || u >= SOC_UART_NUM) ? false : uart_is_driver_installed(u);
+  return u >= SOC_UART_NUM ? false : uart_is_driver_installed(u);
 }
 
 // Change to uart command tree
@@ -4653,13 +4713,13 @@ static int cmd_uart_if(int argc, char **argv) {
 //TAG:baud
 static int cmd_uart_baud(int argc, char **argv) {
 
-  int u = Context;
+  unsigned char u = Context;
 
   if (argc < 2)
     return -1;
 
   if (!uart_isup(u)) {
-    q_printf("%% <e>uart%d is not initialized</>\r\n", u);
+    q_printf("%% <e>uart%u is not initialized</>\r\n", u);
 #if WITH_HELP
     q_print("%% Use command \"up\" to initialize</>\r\n");
 #endif
@@ -4746,10 +4806,8 @@ uart_tap(int remote) {
 //TODO: split to separate functions
 static int cmd_uart(int argc, char **argv) {
 
-  int u, sent = 0;
-
-
-  u = Context;
+  int sent = 0;
+  unsigned char u = Context;
 
 
   // 1. "tap" command
@@ -4844,12 +4902,12 @@ noinit:
 // Set UART (or USBCDC) to use by this shell.
 static int cmd_tty(int argc, char **argv) {
 
-  unsigned int tty;
+  unsigned char tty;
 
   if (argc < 2)
     return -1;
 
-  if ((tty = q_atol(argv[1],999)) < 999) {
+  if ((tty = q_atol(argv[1],100)) < 100) {
     // if not USB then check if requested UART is up & running
     if ((tty == 99) || ((tty < 99) && uart_isup(tty))) {
 #if WITH_HELP
@@ -4861,9 +4919,12 @@ static int cmd_tty(int argc, char **argv) {
   } else
     q_print("%% <e>Uart number expected. (use 99 for USB CDC)</>\r\n");
 
-  if (tty < 99)
-    q_printf("%% <e>UART%d is not initialized</>\r\n", tty);
-
+  if (tty < 99) {
+    q_printf("%% <e>UART%u is not initialized</>.\r\n", tty);
+#if WITH_HELP
+    q_printf("%% Use commands \" uart %u\" and \"up\" commands to initialize it\r\n", tty);
+#endif    
+  }
   return 0;
 }
 
@@ -4893,10 +4954,10 @@ static int cmd_echo(int argc, char **argv) {
 
 //TAG:reload
 //"reload"
-static int cmd_reload(int argc, char **argv) {
+static int NORETURN cmd_reload(int argc, char **argv) {
   esp_restart();
   /* NOT REACHED */
-  return 0;
+  //return 0;
 }
 
 
@@ -5538,13 +5599,13 @@ static unsigned int files_space_free(int i) {
 // handy macro
 #define files_space_used(I) (files_space_total(I) - files_space_free(I))
 
-
-typedef bool (* files_walker_t)(const char *);
+// callback which is called by files_walkdir() on every entry it founds.
+typedef int (* files_walker_t)(const char *);
 
 // Walk thru the directory tree starting at /path/ (i.e. /path/ itself and all its subdirs)
 // on every file entry file_cb() is called, on every directory entry dir_cb() is called
 //
-static int files_dirwalk(const char *path0, files_walker_t files_cb, files_walker_t dirs_cb, int depth) {
+static unsigned int files_dirwalk(const char *path0, files_walker_t files_cb, files_walker_t dirs_cb, int depth) {
 
   char path[256+16], *p;
   int len;
@@ -5791,14 +5852,18 @@ static int files_cat_text(const char *path,unsigned int line,unsigned int count,
         count--;
         if (device < 0) {
           if (numbers)
+#pragma GCC diagnostic ignored "-Wformat"
             q_printf("% 4u: ",cline);
+#pragma GCC diagnostic warning "-Wformat"            
           q_print(p);
           q_print(CRLF);
         }
         else {
           char tmp[16];
           if (numbers) {
+#pragma GCC diagnostic ignored "-Wformat"            
             sprintf(tmp,"% 4u: ",cline);
+#pragma GCC diagnostic warning "-Wformat"            
             uart_write_bytes(device,tmp,strlen(tmp));
           }
           uart_write_bytes(device,p,r);
@@ -5846,13 +5911,9 @@ static int cmd_files_if(int argc, char **argv) {
   return 0;
 }
 
-// "transmit PATH uart0|uart1|uart2|serial|usb0"
-static int cmd_files_transmit(int argc, char **argv) {
-
-  return 0;
-}
-
 // "unmount /Mount_point"
+// "unmount"
+// 
 // Unmount a filesystem
 //
 static int cmd_files_unmount(int argc, char **argv) {
@@ -6124,6 +6185,7 @@ finalize_mount:
 // "mount"
 // Without arguments display currently mounted filesystems and partition table
 //
+#pragma GCC diagnostic ignored "-Wformat"
 static int cmd_files_mount0(int argc, char **argv) {
 
   int usable = 0, i;
@@ -6183,7 +6245,7 @@ static int cmd_files_mount0(int argc, char **argv) {
 
   return 0;
 }
-
+#pragma GCC diagnostic warning "-Wformat"
 
 
 
@@ -6319,16 +6381,6 @@ path_does_not_exist:
   return 1;
 }
 
-// "pwd"
-// Prints current directory set by "cd" command
-//
-static int cmd_files_pwd(int argc, char **argv) {
-
-  q_printf("%% %s\r\n", files_get_cwd());
-  return 0;
-}
-
-
 // "ls [PATH]"
 // Directory listing for current working directory or PATH if specified
 //
@@ -6363,7 +6415,9 @@ static int cmd_files_ls(int argc, char **argv) {
           q_print("%-- USED --        *  Mounted on\r\n");
           found = true;
         }
+#pragma GCC diagnostic ignored "-Wformat"        
         q_printf("%% <b>% 9u</>       MP  [<3>%s</>]\r\n",files_space_used(i), mountpoints[i].mp);
+#pragma GCC diagnostic warning "-Wformat"        
       }
     if (!found)
       q_printf("%% <i>Root (\"%s\") directory is empty</>: no fileystems mounted\r\n%% Use command \"mount\" to list & mount available partitions\r\n",path);
@@ -6402,12 +6456,16 @@ static int cmd_files_ls(int argc, char **argv) {
             unsigned int dir_size = files_size(path0);
             total_d++;
             total_fsize += dir_size;
+#pragma GCC diagnostic ignored "-Wformat"            
             q_printf("%% % 9u  %s  DIR [<i>%s</>]\r\n", dir_size , files_time2text(st.st_mtime), ent->d_name);
+#pragma GCC diagnostic warning "-Wformat"            
           }
           else {
             total_f++;
             total_fsize += st.st_size;
+#pragma GCC diagnostic ignored "-Wformat"            
             q_printf("%% % 9u  %s      <3>%s</>\r\n",(unsigned int)st.st_size,files_time2text(st.st_mtime), ent->d_name);
+#pragma GCC diagnostic warning "-Wformat"            
           }
         } else
           q_printf("<e>stat() : failed %d, name %s</>\r\n",errno,path0);
@@ -6677,8 +6735,9 @@ static int cmd_files_cat(int argc, char **argv) {
 
   bool binary = false, numbers = false;
   char *path;
-  int device = -1, i =1;
+  int i =1;
   unsigned int line = (unsigned int)(-1), count = (unsigned int)(-1);
+  unsigned char device = (unsigned char )(-1);
 
   if (argc < 2) return -1;
   
