@@ -65,7 +65,7 @@
 #define SEQUENCES_NUM   10         // Max number of sequences available for command "sequence"
 #define MOUNTPOINTS_NUM 5          // Max number of simultaneously mounted filesystems
 #define STACKSIZE       (5*1024)   // Shell task stack size
-#define RECURSION_DEPTH_RM 127     // Max directory depth TODO: make a test with long "/a/a/a/.../a" path 
+#define DIR_RECURSION_DEPTH 127     // Max directory depth TODO: make a test with long "/a/a/a/.../a" path 
 
 // -- ECHO --
 // Automated processing (i.e. sending commands and parsing the resulting output by software) is supported by
@@ -5668,21 +5668,47 @@ static unsigned int files_dirwalk(const char *path0, files_walker_t files_cb, fi
   return processed;
 }
 
-// Remove file/directory recursively
+// Callback to be used by files_remove() when it calls to files_dirwalk()
+// This callback gets called for every FILE that needs to be removed
+static int remove_file_callback(const char *path) {
+  if (0 != unlink(path)) {
+#if WITH_HELP    
+    q_printf("%% <e>Failed to delete: \"%s\"</>\r\n",path);
+#endif    
+    return 0;
+  }
+#if WITH_HELP  
+  q_printf("%% Deleted file: \"%s\"\r\n",path);
+#endif  
+  return 1;
+}
+
+// Callback to be used by files_remove() when it calls to files_dirwalk()
+// This callback gets called for every DIRECTORY that needs to be removed
+static int remove_dir_callback(const char *path) {
+  if (rmdir(path) == 0) {
+#if WITH_HELP        
+    q_printf("%% Directory removed: \"%s\"\r\n",path);
+#endif        
+    return 1;
+  }
+#if WITH_HELP  
+  q_printf("%% <e>Failed to delete: \"%s\"</>\r\n",path);
+#endif  
+  return 0;
+}
+
+// Remove file/directory with files recursively
+// /path/  is file or directory path
+// /depth/ is max recursion depth
 // Returns number of items removed (files+directories)
-// /depth/ - is maxumum recursion depth, i.e. max number of nested directories.
-//           considering max_path is 256 characters it can be up to 127 directories: "/a/a/a/a..../a"
-// /path0/ is the path to file or directory
-// TODO: rewrite using files_dirwalk()
+//
 static int files_remove(const char *path0, int depth) {
-  
-  int len, removed = 0;
   char path[256+16], *p;    // TODO: use some MAX_PATH idf macro
 
   if (depth < 1)
     return 0;
   
-
   // make full path if necessary
   if ((p = files_full_path(path0)) == NULL)
     return 0;
@@ -5690,78 +5716,24 @@ static int files_remove(const char *path0, int depth) {
   // make a copy of full path as files_full_path()'s buffer is not reentrant (static)
   strcpy(path,p);
   
-  if ((len = strlen(path)) < 1)
-    return 0;
-
-  // is path to be removed a file?
-  // unlink() and return
-  if (files_path_exist(path,false)) {
+  
+  if (files_path_exist(path,false))     // a file?
     return unlink(path) == 0 ? 1 : 0;
-  } else 
-  // path to be removed is a directory
-  // 1. remove all the files in the directory
-  // 2. remove recursively all nested directories
-  // 3. finally remove the directory itself
-  if (files_path_exist(path,true)) {
-
-    // append "/"" to the path if it was not there already
-    if (path[len-1] != '\\' && path[len-1] != '/') {
-      path[len++] = '/';
-      path[len] = '\0';
-    }
-
-    // Go through the directory
-    DIR *dir = opendir(path);
-    if (dir) {
-      struct dirent *de;
-      while((de = readdir(dir)) != NULL) {
-
-        // append entry name to our path
-        path[len] = '\0';
-        strcat(path,de->d_name);
-
-        // if its a directory - call recursively
-        if (de->d_type == DT_DIR)
-          removed += files_remove(path, depth - 1);
-        else {
-          // if its file - just remove it
-          if (0 != unlink(path))
-            q_printf("%% <e>Failed to remove: \"%s\"</>\r\n",path);
-          else {
-            removed++;
-#if WITH_HELP            
-            q_printf("%% File removed: \"%s\"\r\n",path);
-#endif            
-          }
-        }
-      }
-      closedir(dir);
-      path[len] = '\0';
-      // finally remove the directry
-      if (rmdir(path) == 0) {
-#if WITH_HELP        
-        q_printf("%% Directory removed: \"%s\"\r\n",path);
-#endif        
-        removed++;
-        return removed;
-      }
-    }
-    q_printf("%% <e>Failed to remove \"%s\"</>\r\n",path);
-  } else
-    // path seems to not exist
+  else if (files_path_exist(path,true)) // a directory?
+    return files_dirwalk(path,remove_file_callback, remove_dir_callback, DIR_RECURSION_DEPTH);
+  else                                  // bad path
     q_printf("%% <e>File/directory \"%s\" does not exist</>\r\n",path);
-  return removed;
-}
-
-static   int files_callback(const char *p1) {
-  struct stat st;
-  if (stat(p1,&st) == 0)
-    return st.st_size;
   return 0;
 }
 
-static int dirs_callback(UNUSED const char *p2) {
-      return 0;
+
+// Callback to be used by files_size() when it calls to files_dirwalk()
+// This callback gets called for every FILE which size was requested
+static int size_file_callback(const char *p) {
+  struct stat st;
+  if (stat(p,&st) == 0)
+    return st.st_size;
+  return 0;
 }
 
 // get file/directory size in bytes
@@ -5786,7 +5758,7 @@ static unsigned int files_size(const char *path) {
 
   // size of a directory requested
   if (files_path_exist(p, true))
-    return files_dirwalk(path,files_callback, dirs_callback,32);
+    return files_dirwalk(path,size_file_callback, NULL, DIR_RECURSION_DEPTH);
 
 #if WITH_HELP
   q_printf("%% <e>Path \"%s\" does not exist\r\n",p);
@@ -6504,7 +6476,7 @@ static int cmd_files_rm(int argc, char **argv) {
   int i, num;
   for (i = 1, num = 0; i < argc; i++) {
     files_asteriks2spaces(argv[i]);
-    num += files_remove(argv[i],RECURSION_DEPTH_RM);
+    num += files_remove(argv[i],DIR_RECURSION_DEPTH);
   }
 
   if (num)
