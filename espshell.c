@@ -2241,7 +2241,7 @@ static const struct keywords_t keywords_files[] = {
        "% Ex.: \"mv /ffat/dir1 /ffat/dir2\"             - rename directory \"dir1\" to \"dir2\"\r\n"
        "% Ex.: \"mv /ffat/fileA.txt /ffat/fileB.txt\"   - rename file \"fileA.txt\" to \"fileB.txt\"\r\n"
        "% Ex.: \"mv /ffat/dir1/file1 /ffat/dir2\"       - move file to directory\r\n"
-       "% Ex.: \"mv /ffat/fileA.txt /spiffs/fileB.txt\" - move file between filesystems\r\n"), "Move/Rename files/dirs" },
+       "% Ex.: \"mv /ffat/fileA.txt /spiffs/fileB.txt\" - move file between filesystems\r\n"), "Move/rename files and/or directories" },
 
   { "cp", cmd_files_cp, 2, 
   HELP("% \"cp SOURCE DESTINATION\\r\n"
@@ -2261,7 +2261,7 @@ static const struct keywords_t keywords_files[] = {
        "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
        "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n"
        "%\r\n"
-       "% Ex.: \"write /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""), "Write bytes" },
+       "% Ex.: \"write /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""), "Write strings/bytes to the file" },
 
   { "append", cmd_files_append, MANY_ARGS, 
   HELP("% \"append FILENAME TEXT\"\r\n"
@@ -2269,7 +2269,7 @@ static const struct keywords_t keywords_files[] = {
        "% Append an ascii/hex string(s) to file\r\n"
        "% Escape sequences & ascii codes are accepted just as in \"write\" command\r\n"
        "%\r\n"
-       "% Ex.: \"append /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""),"Append bytes" },
+       "% Ex.: \"append /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""),"Append strings/bytes to the file" },
 
   { "insert", cmd_files_insert, MANY_ARGS, 
   HELP("% \"insert FILENAME LINE_NUM TEXT\"\r\n"
@@ -2278,7 +2278,7 @@ static const struct keywords_t keywords_files[] = {
        "% Escape sequences & ascii codes accepted just as in \"write\" command\r\n"
        "% Lines are numbered starting from 0. Use \"cat\" command to find out line numbers\r\n"
        "%\r\n"
-       "% Ex.: \"insert 0 /ffat/test.txt Hello World!\""), "Insert bytes" },
+       "% Ex.: \"insert 0 /ffat/test.txt Hello World!\""), "Insert lines to text file" },
 
   { "delete", cmd_files_delete, 2, 
   HELP("% \"delete FILENAME LINE_NUM [COUNT]\"\r\n"
@@ -2286,7 +2286,7 @@ static const struct keywords_t keywords_files[] = {
        "% Optionsl COUNT argument is the number of lines to remove (default is 1)"
        "% Lines are numbered starting from 0. Use \"cat\" command to find out line numbers\r\n"
        "%\r\n"
-       "% Ex.: \"delete 10 /ffat/test.txt\" - remove line #10 from \"/ffat/test.txt\""), "Delete lines" },
+       "% Ex.: \"delete 10 /ffat/test.txt\" - remove line #10 from \"/ffat/test.txt\""), "Delete lines from a text file" },
 
   { "delete", cmd_files_delete, 1, HIDDEN_KEYWORD },
 
@@ -2300,7 +2300,7 @@ static const struct keywords_t keywords_files[] = {
        "%\r\n"
        "% Display (or send by UART) a binary or text file PATH\r\n"
        "% -n : display line numbers\r\n"
-       "% -b : file is binary (mutually exclusive with \"-n\")\r\n"
+       "% -b : file is binary (mutually exclusive with \"-n\" option)\r\n"
        "% PATH  : path to the file\r\n"
        "% START : text file line number OR binary file offset for \"-b\" option\r\n"
        "% COUNT : number of lines to display (OR bytes for \"-b\" option)\r\n"
@@ -2342,12 +2342,6 @@ static const struct keywords_t keywords_main[] = {
 
   { "uptime", cmd_uptime, NO_ARGS, 
   HELP("% \"uptime\" - Shows time passed since last boot"), "System uptime" },
-#if WITH_FS
-  { "files", cmd_files_if, NO_ARGS, 
-  HELP("% \"files\"\r\n"
-       "%\r\n"
-       "% Enter files & file system operations mode"), "File system access" },
-#endif
 
   // System commands
   { "cpu", cmd_cpu_freq, 1, 
@@ -2376,8 +2370,8 @@ static const struct keywords_t keywords_main[] = {
   { "mem", cmd_mem_read, 2, 
   HELP("% \"mem ADDR [LENGTH]\"\r\n"
        "% Display LENGTH bytes of memory starting from address ADDR\r\n"
-       "% Address must be in the form \"1234ABCDE\", (hexadecimal numbers)\r\n%\r\n"
-       "% LENGTH is optional and its default value is 256 bytes\r\n"
+       "% Address is either decimal or hex (with or without leading \"0x\")\r\n%\r\n"
+       "% LENGTH is optional and its default value is 256 bytes. Can be decimal or hex\r\n"
        "% Ex.: mem 40078000 100 : display 100 bytes starting from address 40078000"), NULL },
 
   { "mem", cmd_mem_read, 1, HIDDEN_KEYWORD },
@@ -2388,7 +2382,7 @@ static const struct keywords_t keywords_main[] = {
   { "nap", cmd_nap, NO_ARGS, 
   HELP("% \"nap\"\r\n%\r\n% Put the CPU into light sleep mode, wakeup by console"), NULL },
 
-  // Interfaces (UART,I2C, RMT..)
+  // Interfaces (UART,I2C, RMT, FileSystem..)
   { "iic", cmd_i2c_if, 1, 
   HELP("% \"iic X\" \r\n%\r\n"
        "% Enter I2C interface X configuration mode \r\n"
@@ -2405,6 +2399,13 @@ static const struct keywords_t keywords_main[] = {
        "%\r\n"
        "% Create/configure a sequence\r\n"
        "% Ex.: sequence 0 - configure Sequence0"),"Sequence configuration" },
+
+#if WITH_FS
+  { "files", cmd_files_if, NO_ARGS, 
+  HELP("% \"files\"\r\n"
+       "%\r\n"
+       "% Enter files & file system operations mode"), "File system access" },
+#endif
 
   // Show funcions (more will be added)
   { "show", cmd_show, 2, 
@@ -2611,36 +2612,45 @@ void pinMode2(unsigned int pin, unsigned int flags) {
 // display a message if pin is out of range
 static bool pin_exist(int pin) {
 
+  uint64_t mask = ~SOC_GPIO_VALID_GPIO_MASK;
+
   // pin number is in range and is a valid GPIO number?
-  if ((pin >= 0) && (pin < SOC_GPIO_PIN_COUNT) && (((uint64_t)1 << pin) & SOC_GPIO_VALID_GPIO_MASK))
+  if ((pin < SOC_GPIO_PIN_COUNT) && (((uint64_t)1 << pin) & SOC_GPIO_VALID_GPIO_MASK))
     return true;
   else {
     int informed = 0;
     // pin number is incorrect, display help
     q_printf("%% Available pin numbers are 0..%d", SOC_GPIO_PIN_COUNT - 1);
 
-    for (pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++) {
-      if (!(((uint64_t)1 << pin) & SOC_GPIO_VALID_GPIO_MASK)) {
-        if (!informed) {
-          informed = 1;
-          q_print(", except pins: ");
+    if (mask)
+      for (pin = 63; pin >=0; pin--)
+        if (mask & ((uint64_t)1 << pin)) {
+          mask &= ~((uint64_t)1 << pin);
+          if (pin < SOC_GPIO_PIN_COUNT) {
+            if (!informed) {
+              informed = 1;
+              q_print(", except pins: ");
+            } else
+              q_print(", ");
+            q_printf("%s<w>%d</>",mask ? "" : "and ", pin);
+          }
         }
-        q_printf("<e>%d</>,", pin);
-      }
-    }
-
-    q_printf("\r\n%% Reserved pins (used internally): ");
+    
 
     // the function is not in .h files.
     // moreover its name has changed in recent ESP IDF
     for (pin = informed = 0; pin < SOC_GPIO_PIN_COUNT; pin++)
-      if (esp_gpio_is_pin_reserved(pin)) {
+      if (esp_gpio_is_pin_reserved(pin))
         informed++;
-        q_printf("<w>%d</>, ", pin);
-      }
 
-    if (!informed)
-      q_print("none");
+    if (informed) {
+      q_print("\r\n% Reserved pins (used internally):");
+      for (pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++)
+        if (esp_gpio_is_pin_reserved(pin)) {
+          informed--;
+          q_printf("%s<w>%d</>", informed ? ", " : " and ",pin);
+        }
+    }
 
     q_print(CRLF);
     return false;
