@@ -1786,8 +1786,9 @@ static int text2buf(int argc, char **argv, int i /* START */, char **out) {
               if (ishex(p))
                 c = hex2uint8(p);
               else {
-                q_printf("%% <e>Unknown escape sequence: \"\\%s\"</>\r\n", *p ? p : "at the end of the line");
-                return i;
+                //q_printf("%% <e>Unknown escape sequence: \"\\%s\"</>\r\n", *p ? p : "at the end of the line");
+                //return i;
+                
               }
               p++;
               if (*p) p++;
@@ -5778,7 +5779,7 @@ static unsigned int files_size(const char *path) {
 // /device/ is either uart nunmber (to send raw data) or -1 to do fancy human readable output
 // /path/ is the full path
 //
-static int files_cat_binary(const char *path, unsigned int line, unsigned int count, int device) {
+static int files_cat_binary(const char *path, unsigned int line, unsigned int count, unsigned char device) {
 
   unsigned int size, sent = 0, plen = 5*1024; //TODO: use 64k blocks if we have SPI RAM
   unsigned char *p;
@@ -5800,7 +5801,7 @@ static int files_cat_binary(const char *path, unsigned int line, unsigned int co
           while (!feof(f) && (count > 0)) {
             if ((r = fread(p,1,count < plen ? count : plen,f)) > 0) {
               count -= r;
-              if (device < 0)
+              if (device == (unsigned char)(-1))
                   q_printhex(p,r);
               else
                 uart_write_bytes(device,p,r);
@@ -6526,6 +6527,10 @@ static int cmd_files_write(int argc, char **argv) {
     }
     close(fd);
   }
+
+  if (out)
+    free(out);
+
   return 0;
 }
 
@@ -6540,14 +6545,22 @@ static int cmd_files_append(int argc, char **argv) {
 // insert TEXT before line number LINE_NUMBER
 //
 static int cmd_files_insert(int argc, char **argv) {
-
-  char *path;
-  FILE *f;
-  unsigned char *p = NULL;
-  unsigned int   plen, line = 0;
+#if 1
+  char *path, *upath = NULL;
+  FILE *f = NULL, *t = NULL;
+  unsigned char *p = NULL, *text = NULL;
+  unsigned int   plen, tlen, cline = 0, line;
 
   if (argc < 4)
     return -1;
+
+  if ((line = q_atol(argv[2],(unsigned int)(-1))) == (unsigned int)(-1)) {
+#if WITH_HELP
+    q_printf("%% Line number expected instead of \"%s\"\r\n",argv[2]);
+#endif
+    return 2;
+  }
+
 
   if ((path = files_full_path(argv[1])) == NULL)
     return 1;
@@ -6561,18 +6574,66 @@ static int cmd_files_insert(int argc, char **argv) {
 
   if ((f = fopen(path,"rb")) == NULL) {
 #if WITH_HELP
-    q_printf("%% <e>File \"%s\" does exist but failed to open</>\r\n");
+    q_printf("%% <e>File \"%s\" does exist but failed to open</>\r\n",path);
 #endif    
+    return 0;
   }
+
+  // path is the files_full_path's buffer which has some extra bytes beyound MAX_PATH boundary which are
+  // safe to use.
+  strcat(path,"~");
+  upath = strdup(path);
+  if (!upath)
+    goto free_memory_and_return;
+
+  int tmp = strlen(path);
+  path[tmp-1] = '\0'; // remove "~""
+
+  if ((t = fopen(upath,"wb")) == NULL) {
+#if WITH_HELP
+    q_printf("%% <e>Failed to create temporary file \"%s\"</>\r\n",upath);
+#endif    
+    goto free_memory_and_return;
+  }
+
+
+  tlen = text2buf(argc,argv,3,&text);
+  if (!tlen)
+    goto free_memory_and_return;
+  q_printf("tlen = %u\r\n",tlen);
+
   while (!feof(f)) {
     int r = files_getline(&p,&plen,f);
     if (r >= 0) {
-
+      cline++;
+      if (cline == line) {
+        fwrite(text,1,tlen,t); //TODO: check for errors
+        fwrite("\n",1,1,t); //TODO: check for errors
+        q_print("%% Line inserted\r\n");
+      }
+      fwrite(p,1,r,t); //TODO: check for errors
+      fwrite("\n",1,1,t); //TODO: check for errors
     }
   }
-
-  fclose(f);
-  
+#if 0  
+  unlink(path);
+  if (rename(upath,path) == 0) {
+    free(upath);
+    upath = NULL;
+  }
+#endif  
+free_memory_and_return:  
+  if (f)
+    fclose(f);
+  if (t)
+    fclose(t);
+  if (text)
+    free(text);
+  if (upath) {
+    //unlink(upath);
+    free(upath);
+  }
+#endif    
   return 0;
 }
 
