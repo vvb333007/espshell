@@ -6545,7 +6545,7 @@ static int cmd_files_append(int argc, char **argv) {
 // insert TEXT before line number LINE_NUMBER
 //
 static int cmd_files_insert(int argc, char **argv) {
-#if 1
+
   char *path, *upath = NULL;
   FILE *f = NULL, *t = NULL;
   unsigned char *p = NULL, *text = NULL;
@@ -6567,7 +6567,7 @@ static int cmd_files_insert(int argc, char **argv) {
   
   if (!files_path_exist(path, false)) {
 #if WITH_HELP
-    q_printf("%% <e>Path \"%s\" does not exist</>\r\n");  //TODO: Path does not exist is a common string.
+    q_printf("%% <e>Path \"%s\" does not exist</>\r\n",path);  //TODO: Path does not exist is a common string.
 #endif    
     return 1;
   }
@@ -6600,11 +6600,12 @@ static int cmd_files_insert(int argc, char **argv) {
   tlen = text2buf(argc,argv,3,&text);
   if (!tlen)
     goto free_memory_and_return;
-  q_printf("tlen = %u\r\n",tlen);
 
   while (!feof(f)) {
     int r = files_getline(&p,&plen,f);
     if (r >= 0) {
+      if ((r == 0) && feof(f))
+        break;
       cline++;
       if (cline == line) {
         fwrite(text,1,tlen,t); //TODO: check for errors
@@ -6615,25 +6616,23 @@ static int cmd_files_insert(int argc, char **argv) {
       fwrite("\n",1,1,t); //TODO: check for errors
     }
   }
-#if 0  
+  fclose(f);
+  fclose(t);
+  t = f = NULL;
+
   unlink(path);
   if (rename(upath,path) == 0) {
     free(upath);
     upath = NULL;
   }
-#endif  
+
 free_memory_and_return:  
-  if (f)
-    fclose(f);
-  if (t)
-    fclose(t);
-  if (text)
-    free(text);
-  if (upath) {
-    //unlink(upath);
-    free(upath);
-  }
-#endif    
+  if (p) free(p);
+  if (f) fclose(f);
+  if (t) fclose(t);
+  if (text) free(text);
+  if (upath) { unlink(upath);free(upath); }
+
   return 0;
 }
 
