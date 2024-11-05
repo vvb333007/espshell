@@ -5262,12 +5262,12 @@ static bool files_path_impossible(const char *path) {
 }
 
 // read lines from a text file
-// \n is the line separator, \r's are silently discarded
+// \n is the line separator, (\r and \n arediscarded).
 //
 // returns number of bytes read (0 means end of file is reached)
 //
 // on the first call set buf = NULL, don't change buf & size on subsequent
-// calls to getline(). free() buf if it is non-zero after you done with file
+// calls to files_getline(). free() buf if it is non-zero after you done with file
 //
 static int files_getline(char **buf, unsigned int *size, FILE *fp) {
 
@@ -5277,7 +5277,10 @@ static int files_getline(char **buf, unsigned int *size, FILE *fp) {
   // no buffer provided? allocate our own
   if (*buf == NULL)
     if ((*buf = (char *)malloc((*size = 128))) == NULL)
-      return 0;
+      return -1;
+
+  if (feof(fp))
+    return -1;
 
   wp  = *buf;          // buffer write pointer
   end = *buf + *size;  // buffer end pointer
@@ -5821,18 +5824,19 @@ fail:
 // /line/ & /count/ here stand for starting line and line count to display
 // if /numbers/ is true then line numbers are added to output stream
 //
-static int files_cat_text(const char *path,unsigned int line,unsigned int count,int device, bool numbers) {
+static int files_cat_text(const char *path,unsigned int line,unsigned int count,unsigned char device, bool numbers) {
 
   FILE *f;
   char *p = NULL;
-  unsigned int plen = 0, cline = 0, r;
+  unsigned int plen = 0, cline = 0;
+  int r;
 
   if ((f = fopen(path,"rb")) != NULL) {
-    while (count && (r = files_getline(&p,&plen,f)) > 0) {
+    while (count && (r = files_getline(&p,&plen,f)) >= 0) {
       cline++;
       if (line <= cline) {
         count--;
-        if (device < 0) {
+        if (device == (unsigned char )(-1)) {
           if (numbers)
 #pragma GCC diagnostic ignored "-Wformat"
             q_printf("% 4u: ",cline);
@@ -6536,7 +6540,39 @@ static int cmd_files_append(int argc, char **argv) {
 // insert TEXT before line number LINE_NUMBER
 //
 static int cmd_files_insert(int argc, char **argv) {
-  q_print("% Not implemented yet\r\n");
+
+  char *path;
+  FILE *f;
+  unsigned char *p = NULL;
+  unsigned int   plen, line = 0;
+
+  if (argc < 4)
+    return -1;
+
+  if ((path = files_full_path(argv[1])) == NULL)
+    return 1;
+  
+  if (!files_path_exist(path, false)) {
+#if WITH_HELP
+    q_printf("%% <e>Path \"%s\" does not exist</>\r\n");  //TODO: Path does not exist is a common string.
+#endif    
+    return 1;
+  }
+
+  if ((f = fopen(path,"rb")) == NULL) {
+#if WITH_HELP
+    q_printf("%% <e>File \"%s\" does exist but failed to open</>\r\n");
+#endif    
+  }
+  while (!feof(f)) {
+    int r = files_getline(&p,&plen,f);
+    if (r >= 0) {
+
+    }
+  }
+
+  fclose(f);
+  
   return 0;
 }
 
