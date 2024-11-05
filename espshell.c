@@ -1360,8 +1360,7 @@ static int cmd_files_mv(int, char **);
 static int cmd_files_cp(int, char **);
 static int cmd_files_write(int, char **);
 static int cmd_files_append(int, char **);
-static int cmd_files_insert(int, char **);
-static int cmd_files_delete(int, char **);
+static int cmd_files_insdel(int, char **);
 static int cmd_files_mkdir(int, char **);
 static int cmd_files_cat(int, char **);
 static int cmd_files_touch(int, char **);
@@ -2272,7 +2271,7 @@ static const struct keywords_t keywords_files[] = {
        "%\r\n"
        "% Ex.: \"append /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""),"Append strings/bytes to the file" },
 
-  { "insert", cmd_files_insert, MANY_ARGS, 
+  { "insert", cmd_files_insdel, MANY_ARGS, 
   HELP("% \"insert FILENAME LINE_NUM TEXT\"\r\n"
        "% Insert TEXT to file FILENAME before line LINE_NUM\r\n"
        "% \"\\n\" is appended to the string being inserted, \"\\r\" is not\r\n"
@@ -2281,15 +2280,15 @@ static const struct keywords_t keywords_files[] = {
        "%\r\n"
        "% Ex.: \"insert 0 /ffat/test.txt Hello World!\""), "Insert lines to text file" },
 
-  { "delete", cmd_files_delete, 2, 
+  { "delete", cmd_files_insdel, 3, 
   HELP("% \"delete FILENAME LINE_NUM [COUNT]\"\r\n"
        "% Delete line LINE_NUM from a text file FILENAME\r\n"
        "% Optionsl COUNT argument is the number of lines to remove (default is 1)"
-       "% Lines are numbered starting from 0. Use \"cat\" command to find out line numbers\r\n"
+       "% Lines are numbered starting from 1. Use \"cat -n\" command to find out line numbers\r\n"
        "%\r\n"
        "% Ex.: \"delete 10 /ffat/test.txt\" - remove line #10 from \"/ffat/test.txt\""), "Delete lines from a text file" },
 
-  { "delete", cmd_files_delete, 1, HIDDEN_KEYWORD },
+  { "delete", cmd_files_insdel, 2, HIDDEN_KEYWORD },
 
   { "mkdir", cmd_files_mkdir, MANY_ARGS,
   HELP("% \"mkdir PATH1 [PATH2 PATH3 ... PATHn]\"\r\n"
@@ -6542,16 +6541,22 @@ static int cmd_files_append(int argc, char **argv) {
 }
 
 // "insert FILENAME LINE_NUMBER TEXT"
+// "delete FILENAME LINE_NUMBER [COUNT]"
 // insert TEXT before line number LINE_NUMBER
 //
-static int cmd_files_insert(int argc, char **argv) {
+static int cmd_files_insdel(int argc, char **argv) {
 
   char *path, *upath = NULL;
   FILE *f = NULL, *t = NULL;
   unsigned char *p = NULL, *text = NULL;
   unsigned int   plen, tlen, cline = 0, line;
+  bool insert = true; // default action is insert
+  int count = 1;
 
-  if (argc < 4)
+  if (!q_strcmp(argv[0],"delete"))
+    insert = false;
+
+  if (argc < (insert ? 4 : 3))
     return -1;
 
   if ((line = q_atol(argv[2],(unsigned int)(-1))) == (unsigned int)(-1)) {
@@ -6560,7 +6565,6 @@ static int cmd_files_insert(int argc, char **argv) {
 #endif
     return 2;
   }
-
 
   if ((path = files_full_path(argv[1])) == NULL)
     return 1;
@@ -6597,9 +6601,12 @@ static int cmd_files_insert(int argc, char **argv) {
   }
 
 
-  tlen = text2buf(argc,argv,3,&text);
-  if (!tlen)
-    goto free_memory_and_return;
+  if (insert) {
+    tlen = text2buf(argc,argv,3,&text);
+    if (!tlen)
+      goto free_memory_and_return;
+  } else
+    count = q_atol(argv[3],1);
 
   while (!feof(f)) {
     int r = files_getline(&p,&plen,f);
@@ -6608,9 +6615,19 @@ static int cmd_files_insert(int argc, char **argv) {
         break;
       cline++;
       if (cline == line) {
+        if (!insert) {
+#if WITH_HELP
+          q_print("%% Line %u deleted\r\n",line);
+#endif
+          if (--count > 0)
+            line++;
+          continue;
+        }
         fwrite(text,1,tlen,t); //TODO: check for errors
         fwrite("\n",1,1,t); //TODO: check for errors
-        q_print("%% Line inserted\r\n");
+#if WITH_HELP        
+        q_print("%% Line %u inserted\r\n",line);
+#endif        
       }
       fwrite(p,1,r,t); //TODO: check for errors
       fwrite("\n",1,1,t); //TODO: check for errors
@@ -6633,14 +6650,6 @@ free_memory_and_return:
   if (text) free(text);
   if (upath) { unlink(upath);free(upath); }
 
-  return 0;
-}
-
-// "delete FILENAME LINE_NUMBER [COUNT]"
-// remove lines LINE_NUMBER .. LINE_NUMBER+COUNT lines from file
-//
-static int cmd_files_delete(int argc, char **argv) {
-  q_print("% Not implemented yet\r\n");
   return 0;
 }
 
