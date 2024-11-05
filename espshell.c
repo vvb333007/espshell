@@ -2315,12 +2315,12 @@ static const struct keywords_t keywords_files[] = {
                                         "% directory is used to determine partition label"), "Erase old & create new filesystem" },
 
   { "format", cmd_files_format, 0, HIDDEN_KEYWORD },
-
+#if 0
   { "transmit", cmd_files_transmit, 1, HELP("% \"transmit PATH (console|uart0|uart1|uart2|usbcdc|)\"\r\n"
                                         "%\r\n"
                                         "% Send file as raw bytes stream via one of uarts or usbcdc port\r\n"
                                         "% Disable software flow control on the receiving side or some bytes may be corrupted"), "Dump file to interface" },
-
+#endif
 
   KEYWORDS_END
 };
