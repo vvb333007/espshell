@@ -99,9 +99,18 @@ Example session: initialize I2C interface and read I2C EEPROM by means of ESPShe
 MEMORY FOOTPRINT/OVERHEAD
 -------------------------
 
-ESPShell uses about 30Kbytes of program memory and around 2Kbytes of variables. 
+ESPShell uses about 60Kbytes of program memory and around 5Kbytes of variables 
+(i.e. RAM).
 There is also ESPShell task stack size of 5kbytes (can be changed see STACKSIZE 
-macro in espshell.c)
+macro in espshell.c). So total RAM usage is around 10kbytes and flash usage is 
+around 60kbytes.
+
+
+Disabling the ESPShell help system (WITH_HELP macro in espshell.h or espshell.c)
+saves about 2Kbytes by decreased code, and another 18Kbytes from removed help strings.
+There are other macro definition which can be used to further decrease memory usage:
+one can disable filesystem support (all, or unused only), disable command history
+support, decrease number of available sequences or/and mountpoints
 
 
 NOTE:
