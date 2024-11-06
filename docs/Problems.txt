@@ -1,0 +1,14 @@
+Not solved yet
+--------------
+
+1. console_read_bytes() and console_write_bytes() for USBCDC boards 
+   (like Nano ESP32, or generic ESP32-S3 devboards with USB-OTG enabled).
+   I want to do it in C, i don't want to wrap up calls to Serial.read()
+   and write()
+
+
+2. Filename completion on <TAB>. Even thinking of it is frustrating. 
+   BTW when <TAB> is pressed - tab_pressed() is called so one wishing 
+   to help can start from there
+
+3. PWM mystery (see pwm_enable() code)
