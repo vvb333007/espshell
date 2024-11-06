@@ -2255,7 +2255,7 @@ static const struct keywords_t keywords_files[] = {
        "% Ex.: \"cp /spiffs/test.txt /ffat/dir/test2.txt\" - copy between filesystems\r\n"), "Copy files/dirs" },
 
   { "write", cmd_files_write, MANY_ARGS, 
-  HELP("% \"write FILENAME TEXT\"\r\n"
+  HELP("% \"write FILENAME [TEXT]\"\r\n"
        "%\r\n"
        "% Write an ascii/hex string(s) to file\r\n"
        "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
@@ -2264,7 +2264,7 @@ static const struct keywords_t keywords_files[] = {
        "% Ex.: \"write /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""), "Write strings/bytes to the file" },
 
   { "append", cmd_files_append, MANY_ARGS, 
-  HELP("% \"append FILENAME TEXT\"\r\n"
+  HELP("% \"append FILENAME [TEXT]\"\r\n"
        "%\r\n"
        "% Append an ascii/hex string(s) to file\r\n"
        "% Escape sequences & ascii codes are accepted just as in \"write\" command\r\n"
@@ -2272,7 +2272,7 @@ static const struct keywords_t keywords_files[] = {
        "% Ex.: \"append /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""),"Append strings/bytes to the file" },
 
   { "insert", cmd_files_insdel, MANY_ARGS, 
-  HELP("% \"insert FILENAME LINE_NUM TEXT\"\r\n"
+  HELP("% \"insert FILENAME LINE_NUM [TEXT]\"\r\n"
        "% Insert TEXT to file FILENAME before line LINE_NUM\r\n"
        "% \"\\n\" is appended to the string being inserted, \"\\r\" is not\r\n"
        "% Escape sequences & ascii codes accepted just as in \"write\" command\r\n"
@@ -2302,7 +2302,7 @@ static const struct keywords_t keywords_files[] = {
        "% -n : display line numbers\r\n"
        "% -b : file is binary (mutually exclusive with \"-n\" option)\r\n"
        "% PATH  : path to the file\r\n"
-       "% START : text file line number OR binary file offset for \"-b\" option\r\n"
+       "% START : text file line number (OR binary file offset if \"-b\" is used)\r\n"
        "% COUNT : number of lines to display (OR bytes for \"-b\" option)\r\n"
        "% NUM   : UART interface number to transmit file to\r\n"
        "%\r\n"
@@ -2312,7 +2312,7 @@ static const struct keywords_t keywords_files[] = {
        "% cat file 34           - display text file starting from line 34 \r\n"
        "% cat file 900 10       - 10 lines, starting from line 900 \r\n"
        "% cat -b file           - display binary file (formatted output)\r\n"
-       "% cat -b file 0x1234    - display binary file starting from offset 0x12\r\n"
+       "% cat -b file 0x1234    - display binary file starting from offset 0x1234\r\n"
        "% cat -b file 999 0x400 - 999 bytes starting from offset 1024 of binary file\r\n"
        "% cat file uart 1       - transmit a text file over UART1, strip \"\\r\" if any\r\n"
        "% cat -b file uart 1    - transmit file over UART1 \"as-is\" byte by byte"),"Display/transmit text/binary file" },
@@ -6495,9 +6495,10 @@ static int cmd_files_rm(int argc, char **argv) {
 static int cmd_files_write(int argc, char **argv) {
 
   int fd,size;
-  char *path, *out = NULL;          
+  char *path, *out = NULL;
+  char *empty = "\n";
 
-  if (argc < 3) return -1;
+  if (argc < 2) return -1;
   if ((path = files_full_path(argv[1])) == NULL)
     return 1;
 #if MUST_TOUCH
@@ -6507,7 +6508,14 @@ static int cmd_files_write(int argc, char **argv) {
   }
 #endif
 
-  size = text2buf(argc,argv,2,&out);
+  if (argc > 2)
+    size = text2buf(argc,argv,2,&out);
+  else {
+    out = empty;
+    size = 1;
+  }
+  
+
   unsigned flags = O_CREAT|O_WRONLY;
 
   // are we running as "write" or as "append" command?
@@ -6523,11 +6531,11 @@ static int cmd_files_write(int argc, char **argv) {
         q_printf("%% <e>Write to file \"%s\" failed</>\r\n",path);
       else
         q_printf("%% <i>%u</> bytes written to <2>%s</>\r\n",size,path);
+      close(fd);
     }
-    close(fd);
   }
 
-  if (out)
+  if (out && (out != empty))
     free(out);
 
   return 0;
@@ -6540,7 +6548,7 @@ static int cmd_files_append(int argc, char **argv) {
   return cmd_files_write(argc,argv);
 }
 
-// "insert FILENAME LINE_NUMBER TEXT"
+// "insert FILENAME LINE_NUMBER [TEXT]"
 // "delete FILENAME LINE_NUMBER [COUNT]"
 // insert TEXT before line number LINE_NUMBER
 //
@@ -6548,15 +6556,17 @@ static int cmd_files_insdel(int argc, char **argv) {
 
   char *path, *upath = NULL;
   FILE *f = NULL, *t = NULL;
-  unsigned char *p = NULL, *text = NULL;
-  unsigned int   plen, tlen, cline = 0, line;
+  unsigned char *p = NULL;
+  char *text = NULL;
+  unsigned int   plen, tlen = 0, cline = 0, line;
   bool insert = true; // default action is insert
   int count = 1;
+  char *empty = "\n";
 
   if (!q_strcmp(argv[0],"delete"))
     insert = false;
 
-  if (argc < (insert ? 4 : 3))
+  if (argc < 3)
     return -1;
 
   if ((line = q_atol(argv[2],(unsigned int)(-1))) == (unsigned int)(-1)) {
@@ -6602,14 +6612,19 @@ static int cmd_files_insdel(int argc, char **argv) {
 
 
   if (insert) {
-    tlen = text2buf(argc,argv,3,&text);
-    if (!tlen)
-      goto free_memory_and_return;
+    if (argc > 3) {
+      tlen = text2buf(argc,argv,3,&text);
+      if (!tlen)
+        goto free_memory_and_return;
+    } else {
+      tlen = 1;
+      text = empty;
+    }
   } else
     count = q_atol(argv[3],1);
 
   while (!feof(f)) {
-    int r = files_getline(&p,&plen,f);
+    int r = files_getline((char **)&p,&plen,f);
     if (r >= 0) {
       if ((r == 0) && feof(f))
         break;
@@ -6617,20 +6632,21 @@ static int cmd_files_insdel(int argc, char **argv) {
       if (cline == line) {
         if (!insert) {
 #if WITH_HELP
-          q_print("%% Line %u deleted\r\n",line);
+          q_printf("%% Line %u deleted\r\n",line);
 #endif
           if (--count > 0)
             line++;
           continue;
         }
-        fwrite(text,1,tlen,t); //TODO: check for errors
-        fwrite("\n",1,1,t); //TODO: check for errors
+        fwrite(text,1,tlen,t);
+        if (text != empty)
+          fwrite("\n",1,1,t); // Add \n only if it was not empty string
 #if WITH_HELP        
-        q_print("%% Line %u inserted\r\n",line);
+        q_printf("%% Line %u inserted\r\n",line);
 #endif        
       }
-      fwrite(p,1,r,t); //TODO: check for errors
-      fwrite("\n",1,1,t); //TODO: check for errors
+      fwrite(p,1,r,t);
+      fwrite("\n",1,1,t);
     }
   }
   fclose(f);
@@ -6647,7 +6663,7 @@ free_memory_and_return:
   if (p) free(p);
   if (f) fclose(f);
   if (t) fclose(t);
-  if (text) free(text);
+  if (text && text != empty) free(text);
   if (upath) { unlink(upath);free(upath); }
 
   return 0;
