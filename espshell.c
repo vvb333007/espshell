@@ -305,7 +305,7 @@ typedef struct {
 
 static portMUX_TYPE Input_mux = portMUX_INITIALIZER_UNLOCKED;
 
-static unsigned char NIL[] = "";    // Empty string
+//static unsigned char NIL[] = "";    // Empty string
 static unsigned char *Line = NULL;  // Raw user input
 static const char *Prompt = NULL;   // Current prompt to use
 static char *Screen = NULL;
@@ -536,6 +536,36 @@ TTYbackn(int n) {
     TTYback();
 }
 
+static bool rl_history = true;
+
+// enable/disable history saving. mostly for memory leaks detection
+static void
+rl_history_enable(bool enable) {
+  if (!enable) {
+    if (rl_history) {
+      int i;
+      for (i = 0; i < H.Size; i++) {
+        if (H.Lines[i]) {
+          q_free(H.Lines[i]);
+          H.Lines[i] = NULL;
+        }
+      }
+      H.Size = H.Pos = 0;
+      rl_history = false;
+#if WITH_HELP
+      q_printf("%% Command history purged, history is disabled\r\n");
+#endif
+    }
+  } else {
+    if (!rl_history) {
+      rl_history = true;
+#if WITH_HELP
+    q_printf("%% Command history is enabled\r\n");
+#endif    
+    }
+  }
+}
+
 
 
 static void
@@ -683,8 +713,6 @@ redisplay() {
   return CSmove;
 }
 
-static unsigned char *next_hist() { return H.Pos >= H.Size - 1 ? NULL : H.Lines[++H.Pos];}
-static unsigned char *prev_hist() {return H.Pos == 0 ? NULL : H.Lines[--H.Pos];}
 
 static STATUS
 do_insert_hist(unsigned char *p) {
@@ -709,6 +737,9 @@ do_hist(unsigned char *(*move)()) {
   } while (++i < Repeat);
   return do_insert_hist(p);
 }
+
+static unsigned char *next_hist() { return H.Pos >= H.Size - 1 ? NULL : H.Lines[++H.Pos];}
+static unsigned char *prev_hist() { return H.Pos == 0 ? NULL : H.Lines[--H.Pos];}
 
 static STATUS h_next() { return do_hist(next_hist);}
 static STATUS h_prev() { return do_hist(prev_hist);}
@@ -765,10 +796,11 @@ search_hist(unsigned char *search, unsigned char *(*move)()) {
   return NULL;
 }
 
+
 // CTRL+R : reverse history search
 // start typing partial command and press <Enter>
-static STATUS
-h_search() {
+static STATUS h_search() {
+
   static int Searching;
   const char *old_prompt;
   unsigned char *(*move)();
@@ -1061,7 +1093,8 @@ readline(const char *prompt) {
     if ((Line = NEW(unsigned char, Length)) == NULL)
       return NULL;
   }
-  hist_add(NIL);
+
+  hist_add(""); //TODO: how does it work?! 
 
   ScreenSize = SCREEN_INC;
   Screen = NEW(char, ScreenSize);  // TODO: allocate once, never DISPOSE()
@@ -1085,13 +1118,9 @@ readline(const char *prompt) {
 // Add an arbitrary string p to the command history.
 //
 static void rl_add_history(char *p) {
-  if (p && *p) {
-
-    if (H.Size && strcmp(p, (char *)H.Lines[H.Size - 1]) == 0)
-      return;
-
-    hist_add((unsigned char *)p);
-  }
+  if (p && *p)
+    if (!H.Size || (H.Size && strcmp(p, (char *)H.Lines[H.Size - 1])))
+      hist_add((unsigned char *)p);
 }
 #endif
 
@@ -2224,6 +2253,7 @@ static int cmd_var_show(int, char **);
 static int cmd_show(int, char **);
 
 static int cmd_exit(int, char **);
+static int cmd_history(int, char **);
 
 // suport for user-defined commands
 #ifdef EXTERNAL_PROTOTYPES
@@ -2730,12 +2760,17 @@ static const struct keywords_t keywords_main[] = {
   { "var", cmd_var_show, 1, HIDDEN_KEYWORD },
   { "var", cmd_var_show, NO_ARGS, HIDDEN_KEYWORD },
 
+  
+  { "history", cmd_history, 1, HIDDEN_KEYWORD },
+  { "history", cmd_history, 0, HIDDEN_KEYWORD },
+
 #ifdef EXTERNAL_KEYWORDS
 #  include EXTERNAL_KEYWORDS
 #endif
 
   KEYWORDS_END
 };
+
 
 //TAG:keywords
 //current keywords list to use
@@ -3164,6 +3199,18 @@ static int seq_send(unsigned int pin, unsigned int seq) {
 // There is an array 'keywords[]' in a code below where all the handlers
 // are registered
 //
+
+
+
+// "history [on|off]"
+// disable/enable/show status for command history
+//
+static int cmd_history(int argc,char **argv) {
+  if (argc < 2) q_printf("%% History is %s\r\n",rl_history ? "on" : "off"); else 
+  if (!q_strcmp(argv[1],"off")) rl_history_enable(false); else
+  if (!q_strcmp(argv[1],"on")) rl_history_enable(true); else return 1;
+  return 0;
+}
 
 
 //"exit"
@@ -7325,6 +7372,7 @@ static int cmd_question(int argc, char **argv) {
 // String p - is the user input as returned by readline()
 //
 // returns 0 on success
+
 static int
 espshell_command(char *p) {
 
@@ -7339,7 +7387,8 @@ espshell_command(char *p) {
 
 #if WITH_HISTORY
   //make a history entry
-  rl_add_history(p);
+  if (rl_history)
+    rl_add_history(p);
 #endif  
 
   //tokenize user input
