@@ -25,7 +25,8 @@
 
 // Register global or static variable to be accessible from espshell
 //
-#define convar_add( VAR ) espshell_varadd( #VAR, &VAR, sizeof(VAR))
+extern float dummy_float;
+#define convar_add( VAR ) espshell_varadd( #VAR, &VAR, sizeof(VAR), (__builtin_classify_type(VAR) == __builtin_classify_type(dummy_float)))
 //#define convar_add( VAR )
 
 
@@ -65,7 +66,7 @@ bool espshell_exec_finished();
 
 
 // DONT USE THIS! use convar_add() instead
-void espshell_varadd(const char *name, void *ptr, int size);
+void espshell_varadd(const char *name, void *ptr, int size, bool isf);
 
 // By default ESPShell occupies UART0. It could be changed
 // at compile time by setting #define USE_UART in espshell.h
