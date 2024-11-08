@@ -49,7 +49,7 @@
 // COMPILE TIME SETTINGS
 // (User can override these with espshell.h, extra/espshell.h or just change default values below)
 //
-//TAG:sttings
+//TAG:settings
 //#define SERIAL_IS_USB           // Not yet
 //#define ESPCAM                  // Include ESP32CAM commands (read extra/README.md).
 #define AUTOSTART       1          // Set to 0 for manual shell start via espshell_start().
@@ -67,8 +67,8 @@
 #define STACKSIZE       (5*1024)   // Shell task stack size
 #define DIR_RECURSION_DEPTH 127    // Max directory depth TODO: make a test with long "/a/a/a/.../a" path 
 #define MEMTEST         0          // hunt for espshell's memory leaks   
-
-// -- ECHO --
+#define DO_ECHO         1          // echo mode at espshell startup.
+// ^^ ECHO ^^
 // Automated processing (i.e. sending commands and parsing the resulting output by software) is supported by
 // "echo" command: setting echo mode to -1 ("silent") disables all ESPShell output as if there is no shell at all. 
 // This mode is used to stop ESPShell interfering sketch's output.
@@ -76,10 +76,8 @@
 // Setting echo mode to 0 ("off") disables user input echo: everything you type is not displayed, but when <Enter> is
 // pressed then command gets executed and its output is displayed. ESPShell prompt is displayed. This mode is an equivalent of
 // a modem command "ATE0".
-
 // Mode 1 ("on") is default mode when everything is displayed end echoed. This is used when you need human-friendly interface
 
-#define DO_ECHO         1          // echo mode at espshell startup.
 
 //TAG:prompts
 // Prompts used by command subdirectories
@@ -209,9 +207,7 @@ void espshell_start();
 
 // Miscellaneous forwards
 // TAG:forwards
-static inline bool uart_isup(unsigned char u);                 // Check if UART u is up and operationg (driver installed)
-static bool pin_is_input_only_pin(int pin);
-
+static inline bool uart_isup(unsigned char u);       // Check if UART u is up and operationg (is driver installed?)
 static int q_strcmp(const char *, const char *);     // loose strcmp
 static int PRINTF_LIKE q_printf(const char *, ...);  // printf()
 static int q_print(const char *);                    // puts()
@@ -225,14 +221,6 @@ enum {
 };
 
 #if MEMTEST
-// human-readable memory types
-static const char *memtags[] = {
-  "editline",       "mountpoint",      "path",        "sequence",     "command line",
-  "q_printf()",     "text2buf()",      "\"cat\" cmd", "\"var\" cmd", "CWD",
-  "RMT",            "files_getline()", "",            "",             "",
-  ""
-};
-
 // memory allocation wrappers to keep track of memory allocations and hunt leaks
 static void *q_malloc(size_t size, int type);
 static void *q_realloc(void *ptr, size_t new_size, int type);
@@ -1255,6 +1243,31 @@ argify(unsigned char *line, unsigned char ***avp) {
 }
 ////////////////////////////// EDITLINE CODE END
 
+//common messages
+static const char *Failed = "% <e>Failed</>\r\n";
+static const char *Notset = "not set\r\n";
+#if WITH_HELP
+static const char *SpacesInPath = "<e>% Too many arguments.\r\n% If your path contains spaces, please enter spaces as \"*\":\r\n% Examples: \"cd Path*With*Spaces\",  \"rm /ffat/Program*Files\"</>\r\n";
+static const char *MultipleEntries = "<2>% Processing multiple paths.\r\n% Not what you want? Use asteriks (*) instead of spaces in the path</>\r\n";
+static const char *VarOops = "<e>% Oops :-(\r\n"
+            "% No registered variables to play with</>\r\n"
+            "% <2>Try this:\r\n"
+            "%  <i>1. Add include \"extra/espshell.h\" to your sketch</>\r\n"
+            "%  <i>2. Use \"convar_add()\" macro to register your variables</>\r\n"
+            "%\r\n"
+            "% <2>Once registered, variables can be manipulated by the \"var\" command\r\n"
+            "% while your sketch is running. More is in \"docs/Commands.txt\"</>\r\n";
+#endif
+
+
+// Context: an user-defined value (a number) which is set by change_command_directory()
+// when switching to new command subtree. This is how command "uart 1" passes its argument 
+// (the number "1") to the subtree commands like "write" or "read". Used to store: 
+// sequence number, uart,i2c interface number, probably something else
+static unsigned int Context = 0;
+
+// Currently used prompt
+static const char *prompt = PROMPT;
 
 static TaskHandle_t shell_task = 0;  // Main espshell task ID
 static int shell_core = 0;           // CPU core number ESPShell is running on. For single core systems it is always 0
@@ -1266,20 +1279,19 @@ static xSemaphoreHandle argv_mux = NULL;
 // Tokenized user input:
 // argc/argv are amount of tokens and pointers to tokens respectively.
 // userinput is the raw user input with some zeros inserted by tokenizer.
-// ref is the reference counter (we have async commands so deletion of user
-// input needs to be delayed via refcounting)
+//
 typedef struct {
-  int ref;
-  int argc;
-  char **argv;
-  char *userinput;
+  int ref;          // reference counter. normally 1 but async commands can increase it
+  int argc;         // number of tokens
+  char **argv;      // tokenized input string
+  char *userinput;  //original input string
 } argcargv_t;
 
-// User input which is currently processed
+// User input which is currently processed. Normally command handlers have their hands on argv and argc
+// but asyn commands do not. This one is used by async tasks to get argc/argv values
 static argcargv_t *aa_current = NULL;
 
 // Increase refcounter on argcargv structure.
-//
 static void userinput_ref(argcargv_t *a) {
 
   if (xSemaphoreTake(argv_mux, portMAX_DELAY)) {
@@ -1338,13 +1350,17 @@ static argcargv_t *userinput_tokenize(char *userinput) {
   return a;
 }
 
+#if MEMTEST
 // -- Memory wrappers for leaks hunting --
 //
 // memory calls (malloc,realloc,free and strdup) are wrapped to keep track of
 // allocations and report ememory usage statistics.
-
-#if MEMTEST
-
+//
+// espshell stores all allocation in a list and creates 2 bytes overwrite detection
+// zone at the end of the buffer allocated. these are checked upon q_free()
+//
+// statistics is displayed by "mem" command
+//
 typedef struct list_s {
   struct list_s *next;
 } list_t;
@@ -1356,6 +1372,14 @@ typedef struct {
   unsigned int   len:19;  // length (as per malloc())
   unsigned int   type:4;  // user-defined type
 } memlog_t;
+
+// human-readable memory types
+static const char *memtags[] = {
+  "editline",       "mountpoint",      "path",        "sequence",     "command line",
+  "q_printf()",     "text2buf()",      "\"cat\" cmd", "\"var\" cmd", "CWD",
+  "RMT",            "files_getline()", "",            "",             "",
+  ""
+};
 
 // allocated blocks
 static memlog_t *head = NULL;
@@ -1391,15 +1415,17 @@ static void *q_malloc(size_t size, int type) {
         memlog_unlock();
         p[size + 0] = 0x55;
         p[size + 1] = 0xaa;
-        
       }
-  
   return (void *)p;
 }
 
+// free() wrapper. check if memory was allocated by q_malloc/realloc or q_strdup. 
+// does not free() memory if address is not on the list.
+// ignores NULL pointers, checks buffer integrity (2 bytes at the end of the buffer)
+//
 static void q_free(void *ptr) {
   if (!ptr)
-    printf("q_free() : attempt to free(NULL) ignored\r\n");
+    q_printf("FIXME: q_free() : attempt to free(NULL) ignored\r\n");
   else {
     memlog_t *ml, *prev = NULL;
     const unsigned char *p = (const unsigned char *)ptr;
@@ -1420,11 +1446,9 @@ static void q_free(void *ptr) {
     if (ml) {
       // check for memory buffer linear write overruns
       if (ml->ptr[ml->len + 0] != 0x55 || ml->ptr[ml->len + 1] != 0xaa)
-        printf("q_free() : %p buffer overrun detected\r\n",ptr);
-
+        q_printf("CRITICAL: q_free() : buffer %p (length: %d, type %d), overrun detected\r\n",ptr,ml->len,ml->type);
       free(ptr);
       free(ml);
-
     }
     else
       printf("q_free() : address %p is not  on the list, do nothing\r\n",ptr);
@@ -1448,7 +1472,6 @@ static void *q_realloc(void *ptr, size_t new_size,UNUSED int type) {
 		q_free(ptr);
 		return NULL;
 	}
-
 
   memlog_lock();
   for (ml = head; ml != NULL; ml = (memlog_t *)(ml->li.next))
@@ -1484,6 +1507,7 @@ static void *q_realloc(void *ptr, size_t new_size,UNUSED int type) {
 	return nptr;
 }
 
+// last of the family: strdup()
 static char *q_strdup(const char *ptr, int type) {
   char *p = NULL;
   if (ptr != NULL) {
@@ -1494,6 +1518,7 @@ static char *q_strdup(const char *ptr, int type) {
   return p;
 }
 
+// display memory usage statistics by ESPShell
 static void q_memleaks(const char *text) {
   int count = 0;
 
@@ -1529,81 +1554,6 @@ extern "C" bool esp_gpio_is_pin_reserved(unsigned int gpio);  //TODO: is it unsi
 extern bool esp_gpio_is_pin_reserved(unsigned int gpio);
 #endif
 
-#define MAGIC_FREQ 312000  // max allowed frequency for the "pwm" command
-
-
-#if WITH_HELP
-static int cmd_question(int, char **);
-#endif
-static int cmd_pin(int, char **);
-
-static int cmd_async(int, char **);  // "pin&" , "count&", ..
-
-static int cmd_cpu(int, char **);
-static int cmd_cpu_freq(int, char **);
-static int cmd_uptime(int, char **);
-static int cmd_mem(int, char **);
-static int cmd_mem_read(int, char **);
-static int NORETURN cmd_reload(int, char **);
-static int cmd_nap(int, char **);
-
-static int cmd_i2c_if(int, char **);
-static int cmd_i2c_clock(int, char **);
-static int cmd_i2c(int, char **);
-
-static int cmd_uart_if(int, char **);
-static int cmd_uart_baud(int, char **);
-static int cmd_uart(int, char **);
-#if WITH_FS
-static int cmd_files_if(int, char **);
-static int cmd_files_mount0(int, char **);
-static int cmd_files_mount(int, char **);
-static int cmd_files_unmount(int, char **);
-static int cmd_files_cd(int, char **);
-static int cmd_files_ls(int, char **);
-static int cmd_files_rm(int, char **);
-static int cmd_files_mv(int, char **);
-static int cmd_files_cp(int, char **);
-static int cmd_files_write(int, char **);
-static int cmd_files_append(int, char **);
-static int cmd_files_insdel(int, char **);
-static int cmd_files_mkdir(int, char **);
-static int cmd_files_cat(int, char **);
-static int cmd_files_touch(int, char **);
-static int cmd_files_format(int, char **);
-#endif  //WITH_FS
-static int cmd_tty(int, char **);
-static int cmd_echo(int, char **);
-
-static int cmd_suspend(int, char **);
-static int cmd_resume(int, char **);
-static int cmd_kill(int, char **argv);
-
-static int cmd_pwm(int, char **);
-static int cmd_count(int, char **);
-
-static int cmd_seq_if(int, char **);
-static int cmd_seq_eot(int argc, char **argv);
-static int cmd_seq_modulation(int argc, char **argv);
-static int cmd_seq_zeroone(int argc, char **argv);
-static int cmd_seq_tick(int argc, char **argv);
-static int cmd_seq_bits(int argc, char **argv);
-static int cmd_seq_levels(int argc, char **argv);
-static int cmd_seq_show(int argc, char **argv);
-
-static int cmd_var(int, char **);
-static int cmd_var_show(int, char **);
-
-static int cmd_show(int, char **);
-
-static int cmd_exit(int, char **);
-
-// suport for user-defined commands
-#ifdef EXTERNAL_PROTOTYPES
-#  include EXTERNAL_PROTOTYPES
-#endif
-
-
 //TAG:util
 
 //check if given ascii string is a decimal number. Ex.: "12345", "-12"
@@ -1613,7 +1563,7 @@ static bool isnum(const char *p) {
   if (p && *p) {
     if (*p == '-') p++;
     while (*p >= '0' && *p <= '9') p++;
-    return !(*p);  //if *p is 0 then all the chars were digits (end of line reached).
+    return *p == '\0';  //if *p is 0 then all the chars were digits (end of line reached).
   }
   return false;
 }
@@ -1641,6 +1591,21 @@ static bool isfloat(const char *p) {
 // Strings "a" , "5a", "0x5" and "0x5A" are valid input
 // TODO: check all bytes, not just 2
 static bool ishex(const char *p) {
+  if (p && *p) {
+    if (p[0] == '0' && p[1] == 'x')
+      p += 2;
+    while(*p != '\0') {
+      if ((*p < '0' || *p > '9') && (*p < 'a' || *p > 'f') && (*p < 'A' || *p > 'F'))
+        break;
+      p++;
+    }
+    return *p == '\0';
+  }
+  return false;
+}
+
+// check only first 1-2 bytes (not counting "0x" if present)
+static bool ishex2(const char *p) {
 
   if (p && *p) {
     if (p[0] == '0' && p[1] == 'x')
@@ -2004,7 +1969,7 @@ static int text2buf(int argc, char **argv, int i /* START */, char **out) {
               // Known issue (TODO:)
               // if user inputs \0xXY numbers then such numbers will pass ishex() validation,
               // will be read correctly by hex2uint8(), however /p/ will be advanced by 1 or 2, not 3 or 4
-              if (ishex(p)) {
+              if (ishex2(p)) {
                 c = hex2uint8(p);
                 p++;
                 if (*p) p++;
@@ -2042,13 +2007,19 @@ struct convar {
   struct convar *next;
   const char *name;
   void *ptr;
-  int size;
+  unsigned int isf  : 1;
+  unsigned int size : 31;
 };
 
 static struct convar *var_head = NULL;
 
 // Register new sketch variable. 
-// Memory allocated for variable is never free()'d
+// Memory allocated for variable is never free()'d. This function is not
+// supposed to be called directly: unstead a macro from espshell.h must be used (convar_add())
+//
+// /name/ - variable name
+// /ptr/  - pointer to the variable
+// /size/ - variable size in bytes
 //
 void espshell_varadd(const char *name, void *ptr, int size) {
 
@@ -2062,18 +2033,21 @@ void espshell_varadd(const char *name, void *ptr, int size) {
     var->name = name;
     var->ptr = ptr;
     var->size = size;
+    //var->isf = isf > 0 ? 1 : 0 ;
     var_head = var;
   }
 }
 
 // get registered variable value & length
 //
-static int convar_get(const char *name, void *value) {
+static int convar_get(const char *name, void *value, char **fullname) {
 
   struct convar *var = var_head;
   while (var) {
-    if (!strcmp(var->name, name)) {
+    if (!q_strcmp(name,var->name)) {
       memcpy(value, var->ptr, var->size);
+      if (fullname)
+        *fullname = (char *)var->name;
       return var->size;
     }
     var = var->next;
@@ -2153,44 +2127,6 @@ static unsigned int delay_interruptible(unsigned int duration) {
 }
 
 
-//TAG:sequences
-//
-// Sequences: the data structure defining a sequence of pulses (levels) to
-// be transmitted. Sequences are used to generate an user-defined LOW/HIGH
-// pulses train on an arbitrary GPIO pin using ESP32's hardware RMT peri
-//
-// These are used by "sequence X" command (and by a sequence subdirectory
-// commands as well) (see seq_...() functions and cmd_sequence_if() function)
-
-
-struct sequence {
-
-  float tick;                  // uSeconds.  1000000 = 1 second.   0.1 = 0.1uS
-  float mod_duty;              // modulator duty
-  unsigned int mod_freq : 30;  // modulator frequency
-  unsigned int mod_high : 1;   // modulate "1"s or "0"s
-  unsigned int eot : 1;        // end of transmission level
-  int seq_len;                 // how many rmt_data_t items is in "seq"
-  rmt_data_t *seq;             // array of rmt_data_t
-  rmt_data_t alph[2];          // alphabet. representation of "0" and "1"
-  // TODO: bytes, head, tail (NEC protocol support)
-  char *bits;  // asciiz "100101101"
-};
-
-
-// TAG:pins
-// Structure used to save/load pin states by "pin X save"/"pin X load".
-//
-static struct {
-  uint8_t flags;    // INPUT,PULLUP,...
-  bool value;       // digital value
-  uint16_t sig_out; 
-  uint16_t fun_sel;
-  int bus_type;  //periman bus type.
-} Pins[SOC_GPIO_PIN_COUNT];
-
-
-
 // TAG:keywords
 //
 // Shell command.
@@ -2222,6 +2158,77 @@ struct keywords_t {
 #define MANY_ARGS -1
 #define NO_ARGS    0
 
+
+#if WITH_HELP
+static int cmd_question(int, char **);
+#endif
+static int cmd_pin(int, char **);
+
+static int cmd_async(int, char **);  // "pin&" , "count&", ..
+
+static int cmd_cpu(int, char **);
+static int cmd_cpu_freq(int, char **);
+static int cmd_uptime(int, char **);
+static int cmd_mem(int, char **);
+static int cmd_mem_read(int, char **);
+static int NORETURN cmd_reload(int, char **);
+static int cmd_nap(int, char **);
+
+static int cmd_i2c_if(int, char **);
+static int cmd_i2c_clock(int, char **);
+static int cmd_i2c(int, char **);
+
+static int cmd_uart_if(int, char **);
+static int cmd_uart_baud(int, char **);
+static int cmd_uart(int, char **);
+#if WITH_FS
+static int cmd_files_if(int, char **);
+static int cmd_files_mount0(int, char **);
+static int cmd_files_mount(int, char **);
+static int cmd_files_unmount(int, char **);
+static int cmd_files_cd(int, char **);
+static int cmd_files_ls(int, char **);
+static int cmd_files_rm(int, char **);
+static int cmd_files_mv(int, char **);
+static int cmd_files_cp(int, char **);
+static int cmd_files_write(int, char **);
+static int cmd_files_append(int, char **);
+static int cmd_files_insdel(int, char **);
+static int cmd_files_mkdir(int, char **);
+static int cmd_files_cat(int, char **);
+static int cmd_files_touch(int, char **);
+static int cmd_files_format(int, char **);
+#endif  //WITH_FS
+static int cmd_tty(int, char **);
+static int cmd_echo(int, char **);
+
+static int cmd_suspend(int, char **);
+static int cmd_resume(int, char **);
+static int cmd_kill(int, char **argv);
+
+static int cmd_pwm(int, char **);
+static int cmd_count(int, char **);
+
+static int cmd_seq_if(int, char **);
+static int cmd_seq_eot(int argc, char **argv);
+static int cmd_seq_modulation(int argc, char **argv);
+static int cmd_seq_zeroone(int argc, char **argv);
+static int cmd_seq_tick(int argc, char **argv);
+static int cmd_seq_bits(int argc, char **argv);
+static int cmd_seq_levels(int argc, char **argv);
+static int cmd_seq_show(int argc, char **argv);
+
+static int cmd_var(int, char **);
+static int cmd_var_show(int, char **);
+
+static int cmd_show(int, char **);
+
+static int cmd_exit(int, char **);
+
+// suport for user-defined commands
+#ifdef EXTERNAL_PROTOTYPES
+#  include EXTERNAL_PROTOTYPES
+#endif
 
 // Custom uart commands (uart subderictory or uart command tree)
 // Those displayed after executing "uart 2" (or any other uart interface)
@@ -2297,8 +2304,8 @@ static const struct keywords_t keywords_i2c[] = {
   { "read", cmd_i2c, 2, 
   HELP("% \"read ADDR SIZE\"\r\n"
        "%\r\n"
-       "% Read SIZE bytes from a device at address ADDR (hex)\r\n"
-       "% Ex.: read 68 7 - read 7 bytes from device address 0x68"), "Read data from an I2C device" },
+       "% Read SIZE bytes from a device at address ADDR\r\n"
+       "% Ex.: read 0x68 7 - read 7 bytes from device address 0x68"), "Read data from an I2C device" },
 
   { "down", cmd_i2c, NO_ARGS, 
   HELP("% \"down\"\r\n"
@@ -2313,8 +2320,8 @@ static const struct keywords_t keywords_i2c[] = {
   { "write", cmd_i2c, MANY_ARGS,
   HELP("% \"write ADDR D1 [D2 ... Dn]\"\r\n"
        "%\r\n"
-       "% Write bytes D1..Dn (hex values) to address ADDR (hex) on I2C bus X\r\n"
-       "% Ex.: write 78 0 1 FF - write 3 bytes to address 0x78: 0,1 and 255"), "Send bytes to the device" },
+       "% Write bytes D1..Dn (hex values) to address ADDR on I2C bus X\r\n"
+       "% Ex.: write 0x57 0 0xff - write 2 bytes to address 0x57: 0 and 255"), "Send bytes to the device" },
 
   KEYWORDS_END
 };
@@ -2730,40 +2737,10 @@ static const struct keywords_t keywords_main[] = {
   KEYWORDS_END
 };
 
-
 //TAG:keywords
 //current keywords list to use
 static const struct keywords_t *keywords = keywords_main;
 
-//common messages
-static const char *Failed = "% <e>Failed</>\r\n";
-static const char *Notset = "not set\r\n";
-#if WITH_HELP
-static const char *SpacesInPath = "<e>% Too many arguments.\r\n% If your path contains spaces, please enter spaces as \"*\":\r\n% Examples: \"cd Path*With*Spaces\",  \"rm /ffat/Program*Files\"</>\r\n";
-static const char *MultipleEntries = "<2>% Processing multiple paths.\r\n% Not what you want? Use asteriks (*) instead of spaces in the path</>\r\n";
-static const char *VarOops = "<e>% Oops :-(\r\n"
-            "% No registered variables to play with</>\r\n"
-            "% <2>Try this:\r\n"
-            "%  <i>1. Add include \"extra/espshell.h\" to your sketch</>\r\n"
-            "%  <i>2. Use \"convar_add()\" macro to register your variables</>\r\n"
-            "%\r\n"
-            "% <2>Once registered, variables can be manipulated by the \"var\" command\r\n"
-            "% while your sketch is running. More is in \"docs/Commands.txt\"</>\r\n";
-#endif
-
-
-// prompt
-static const char *prompt = PROMPT;
-
-// sequences
-static struct sequence sequences[SEQUENCES_NUM] = { 0 };
-
-// User-defined value which is set by change_command_directory():
-// When entering uart or i2c mode the Context is UART or I2C interface number
-// When entering sequence configuration mode the Context hold sequence number
-// File manager mode does not use Context
-//
-static unsigned int Context = 0;
 
 
 // Called by cmd_uart_if, cmd_i2c_if,cmd_seq_if, cam_settings and cmd_files_if to
@@ -2783,6 +2760,20 @@ static void change_command_directory(unsigned int context, const struct keywords
   q_print("% Hint: Main commands are still avaiable (but not visible in \"?\" command list)\r\n");
 #endif
 }
+
+
+// TAG:pins
+// Structure used to save/load pin states by "pin X save"/"pin X load".
+//
+static struct {
+  uint8_t flags;    // INPUT,PULLUP,...
+  bool value;       // digital value
+  uint16_t sig_out; 
+  uint16_t fun_sel;
+  int bus_type;  //periman bus type.
+} Pins[SOC_GPIO_PIN_COUNT];
+
+static bool pin_is_input_only_pin(int pin);
 
 // same as digitalRead() but reads all pins no matter what
 // exported (not static) to enable its use in user sketch
@@ -2879,6 +2870,34 @@ static bool pin_exist(int pin) {
   }
 }
 
+//TAG:sequences
+//  -- RMT Sequences --
+//
+// Sequences: the data structure defining a sequence of pulses (levels) to
+// be transmitted. Sequences are used to generate an user-defined LOW/HIGH
+// pulses train on an arbitrary GPIO pin using ESP32's hardware RMT peri
+//
+// These are used by "sequence X" command (and by a sequence subdirectory
+// commands as well) (see seq_...() functions and cmd_sequence_if() function)
+
+
+struct sequence {
+
+  float tick;                  // uSeconds.  1000000 = 1 second.   0.1 = 0.1uS
+  float mod_duty;              // modulator duty
+  unsigned int mod_freq : 30;  // modulator frequency
+  unsigned int mod_high : 1;   // modulate "1"s or "0"s
+  unsigned int eot : 1;        // end of transmission level
+  int seq_len;                 // how many rmt_data_t items is in "seq"
+  rmt_data_t *seq;             // array of rmt_data_t
+  rmt_data_t alph[2];          // alphabet. representation of "0" and "1"
+  // TODO: bytes, head, tail (NEC protocol support)
+  char *bits;  // asciiz "100101101"
+};
+
+// sequences
+static struct sequence sequences[SEQUENCES_NUM] = { 0 };
+
 // calculate frequency from tick length
 // 0.1uS = 10Mhz
 unsigned long __attribute__((const)) seq_tick2freq(float tick_us) {
@@ -2900,7 +2919,6 @@ static void seq_freemem(int seq) {
   }
 }
 
-
 // initialize/reset sequences to default values
 //
 static void seq_init() {
@@ -2912,8 +2930,6 @@ static void seq_init() {
     sequences[i].alph[1].duration0 = sequences[i].alph[1].duration1 = 0;
   }
 }
-
-
 
 // dump sequence content
 static void seq_dump(unsigned int seq) {
@@ -3718,7 +3734,8 @@ static int cmd_var_show(int argc, char **argv) {
 
 process_as_variable_name:
 
-    if ((len = convar_get(argv[1], &u)) == 0) {
+    char *fullname;
+    if ((len = convar_get(argv[1], &u, &fullname)) == 0) {
 #if WITH_HELP
       q_printf("%% \"%s\" : No such variable\r\n",argv[1]);
       return 0;
@@ -3730,20 +3747,23 @@ process_as_variable_name:
       case 1: 
         q_printf("%% // 0x%x in hex\r\n",u.uchar);
         q_printf("%% unsigned char %s = %u;\r\n"
-                 "%%   signed char %s = %d;\r\n", argv[1], u.uchar, argv[1], u.ichar); 
+                 "%%   signed char %s = %d;\r\n", fullname, u.uchar, fullname, u.ichar); 
         break;
       case 2: 
         q_printf("%% // 0x%x in hex\r\n",u.ush);
         q_printf("%% unsigned short %s = %u;\r\n"
-                 "%%   signed short %s = %d;\r\n", argv[1], u.ush, argv[1], u.ish); 
+                 "%%   signed short %s = %d;\r\n", fullname, u.ush, fullname, u.ish); 
         break;
       case 4: 
         q_printf("%% // 0x%x in hex\r\n",u.uval);
-        q_printf("%% unsigned int %s = %u;\r\n"
-                 "%%   signed int %s = %d;\r\n", argv[1], u.uval, argv[1], u.ival); 
+        //if (isf)
+          q_printf("%% float %s = %f;\r\n",fullname,u.fval);
+        //else
+          q_printf("%% unsigned int %s = %u;\r\n"
+                   "%%   signed int %s = %d;\r\n", fullname, u.uval, fullname, u.ival); 
         break;
       default: 
-        q_printf("%% FIXME: Variable \"%s\" has unsupported size of %d bytes\r\n", argv[1], len);
+        q_printf("%% FIXME: Variable \"%s\" has unsupported size of %d bytes\r\n", fullname, len);
         return 1;
     };
     return 0;
@@ -3783,33 +3803,41 @@ static int cmd_var(int argc, char **argv) {
 
   // Set variable
   // does variable exist? get its size
-  if ((len = convar_get(argv[1], &u)) == 0)
+  char *fullname;
+  if ((len = convar_get(argv[1], &u, &fullname)) == 0)
     return 1;
 
   // value is a decimal or hexadecimal number?
-  if (isnum(argv[2]) || ishex(argv[2])) {
+  // TODO: code below will set float variables to wrong values if user enters "10" instead of "10.0"
+  //       as "10" falls under isnum() criteria and read and processed as integer. This is a known bug
+  if (isnum(argv[2]) || (argv[2][0] == '0' && argv[2][0] == 'x')) {
     bool sign = argv[2][0] == '-';
     if (sign) {
+      q_print("% Signed integer\r\n");
       u.ival = -q_atol(&(argv[2][1]),0);
-      if (len == sizeof(char)) u.ichar = u.ival;
-      else if (len == sizeof(short)) u.ish = u.ival;
+      if (len == sizeof(char)) u.ichar = u.ival; else 
+      if (len == sizeof(short)) u.ish = u.ival;
     } else {
+      q_print("% Unsigned integer\r\n");
       u.uval = q_atol(argv[2],0);
-      if (len == sizeof(char)) u.uchar = u.uval;
-      else if (len == sizeof(short)) u.ush = u.uval;
+      if (len == sizeof(char)) u.uchar = u.uval; else 
+      if (len == sizeof(short)) u.ush = u.uval;
     }
-  } else if (isfloat(argv[2]))
+  } else if (isfloat(argv[2])) {
     // floating point number
-    u.fval = atof(argv[2]);
+    q_print("% Floating point number\r\n");
+    u.fval = q_atof(argv[2],0);
+  }
   else
     // unknown
     return 2;
 
-  convar_set(argv[1], &u);
+  convar_set(fullname, &u);
   return 0;
 }
 
 
+#define MAGIC_FREQ 312000  // max allowed frequency for the "pwm" command
 
 //TAG:pwm
 // enable or disable (freq==0) tone generation on
@@ -4811,16 +4839,12 @@ static int cmd_i2c(int argc, char **argv) {
       goto noinit;
 
     // get i2c slave address
-    if (!ishex(argv[1]))
-      return 1;
-
-    addr = hex2uint8(argv[1]);
-    if (addr < 1 || addr > 127)
+    if ((addr = q_atol(argv[1],0)) == 0)
       return 1;
 
     // read all bytes to the data buffer
     for (i = 2, size = 0; i < argc; i++) {
-      if (!ishex(argv[i]))
+      if (!ishex2(argv[i]))
         return i;
       data[size++] = hex2uint8(argv[i]);
     }
@@ -4836,20 +4860,9 @@ static int cmd_i2c(int argc, char **argv) {
 
     size_t got;
 
-    if (argc < 3)
-      return -1;
-
-    if (!ishex(argv[1]))
-      return 1;
-
-    addr = hex2uint8(argv[1]);
-
-    if (addr < 1 || addr > 127)
-      return 1;
-
+    if (argc < 3) return -1;
+    if ((addr = q_atol(argv[1],0)) == 0) return 1;
     // second parameter: requested size
-    
-
     if ((size = q_atol(argv[2],I2C_RXTX_BUF+1)) > I2C_RXTX_BUF) {
       size = I2C_RXTX_BUF;
 #if WITH_HELP
