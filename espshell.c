@@ -65,7 +65,8 @@
 #define SEQUENCES_NUM   10         // Max number of sequences available for command "sequence"
 #define MOUNTPOINTS_NUM 5          // Max number of simultaneously mounted filesystems
 #define STACKSIZE       (5*1024)   // Shell task stack size
-#define DIR_RECURSION_DEPTH 127     // Max directory depth TODO: make a test with long "/a/a/a/.../a" path 
+#define DIR_RECURSION_DEPTH 127    // Max directory depth TODO: make a test with long "/a/a/a/.../a" path 
+#define MEMTEST         0          // hunt for espshell's memory leaks   
 
 // -- ECHO --
 // Automated processing (i.e. sending commands and parsing the resulting output by software) is supported by
@@ -209,11 +210,44 @@ void espshell_start();
 // Miscellaneous forwards
 // TAG:forwards
 static inline bool uart_isup(unsigned char u);                 // Check if UART u is up and operationg (driver installed)
+static bool pin_is_input_only_pin(int pin);
+
 static int q_strcmp(const char *, const char *);     // loose strcmp
 static int PRINTF_LIKE q_printf(const char *, ...);  // printf()
 static int q_print(const char *);                    // puts()
-static bool pin_is_input_only_pin(int pin);
-static uart_port_t uart = STARTUP_PORT;              // espshell runs on this port:
+
+//types of memory allocated by espshell
+enum {
+  MEM_EDITLINE = 0, MEM_MOUNTPOINT, MEM_PATH, MEM_SEQUENCE, MEM_ARGCARGV, 
+  MEM_QPRINTF,      MEM_TEXT2BUF,   MEM_CAT,  MEM_VAR,      MEM_CWD,
+  MEM_RMT,          MEM_GETLINE,    MEM_12,   MEM_13,       MEM_14,   
+  MEM_15,
+};
+
+#if MEMTEST
+// human-readable memory types
+static const char *memtags[] = {
+  "editline",       "mountpoint",      "path",        "sequence",     "command line",
+  "q_printf()",     "text2buf()",      "\"cat\" cmd", "\"var\" cmd", "CWD",
+  "RMT",            "files_getline()", "",            "",             "",
+  ""
+};
+
+// memory allocation wrappers to keep track of memory allocations and hunt leaks
+static void *q_malloc(size_t size, int type);
+static void *q_realloc(void *ptr, size_t new_size, int type);
+static char *q_strdup(const char *ptr, int type);
+static void  q_free(void *ptr);
+static void  q_memleaks();
+#else
+#  define q_malloc(size,type) malloc((size))
+#  define q_realloc(ptr,new_size,type) realloc((ptr),(new_size))
+#  define q_strdup(ptr, type) strdup((ptr))
+#  define q_free(ptr) free((ptr))
+#endif //MEMTEST
+
+// espshell runs on this port:
+static uart_port_t uart = STARTUP_PORT;              
 
 // TAG:console
 // --   SHELL TO CONSOLE HARDWARE GLUE --
@@ -249,9 +283,9 @@ static INLINE int console_here(int i) { return i < 0 ? uart : (i > UART_NUM_MAX 
 #define MEM_INC 64      // "Line" buffer realloc increments
 #define SCREEN_INC 256  // "Screen" buffer realloc increments
 
-#define DISPOSE(p) free((char *)(p))
-#define NEW(T, c) ((T *)malloc((unsigned int)(sizeof(T) * (c))))
-#define RENEW(p, T, c) (p = (T *)realloc((char *)(p), (unsigned int)(sizeof(T) * (c))))
+#define DISPOSE(p) q_free((char *)(p))
+#define NEW(T, c) ((T *)q_malloc((unsigned int)(sizeof(T) * (c)), MEM_EDITLINE))
+#define RENEW(p, T, c) (p = (T *)q_realloc((char *)(p), (unsigned int)(sizeof(T) * (c)),MEM_EDITLINE))
 #define COPYFROMTO(_new, p, len) (void)memcpy((char *)(_new), (char *)(p), (int)(len))
 
 #define NO_ARG (-1)
@@ -718,7 +752,7 @@ search_hist(unsigned char *search, unsigned char *(*move)()) {
   if (search && *search) {
     if (old_search)
       DISPOSE(old_search);
-    old_search = (unsigned char *)strdup((char *)search);
+    old_search = (unsigned char *)q_strdup((char *)search,MEM_EDITLINE);
   } else {
     if (old_search == NULL || *old_search == '\0')
       return NULL;
@@ -1004,7 +1038,9 @@ editinput() {
 
   //Original code has a bug here: Line was not set to NULL causing random heap corruption
   //on ESP32
-  free(Line);
+  // TODO: investigate
+  q_free(Line);
+  q_print("Wow\r\n");
   return (Line = NULL);
 }
 
@@ -1012,7 +1048,7 @@ static void
 hist_add(unsigned char *p) {
   int i;
 
-  if ((p = (unsigned char *)strdup((char *)p)) == NULL)
+  if ((p = (unsigned char *)q_strdup((char *)p,MEM_EDITLINE)) == NULL)
     return;
   if (H.Size < HIST_SIZE)
     H.Lines[H.Size++] = p;
@@ -1047,7 +1083,7 @@ readline(const char *prompt) {
 
   if ((line = editinput()) != NULL) {
     const unsigned char *nl = (const unsigned char *)"\r\n";
-    line = (unsigned char *)strdup((char *)line);
+    line = (unsigned char *)q_strdup((char *)line,MEM_EDITLINE);
     TTYputs(nl);
     TTYflush();
   }
@@ -1266,10 +1302,10 @@ static void userinput_unref(argcargv_t *a) {
       // ref dropped to zero: delete everything
       if (a->ref == 0) {
         if (a->argv)
-          free(a->argv);
+          q_free(a->argv);
         if (a->userinput)
-          free(a->userinput);
-        free(a);
+          q_free(a->userinput);
+        q_free(a);
       }
     }
     xSemaphoreGive(argv_mux);
@@ -1284,20 +1320,190 @@ static void userinput_unref(argcargv_t *a) {
 static argcargv_t *userinput_tokenize(char *userinput) {
   argcargv_t *a = NULL;
   if (userinput && *userinput) {
-    if ((a = (argcargv_t *)malloc(sizeof(argcargv_t))) != NULL) {
+    if ((a = (argcargv_t *)q_malloc(sizeof(argcargv_t),MEM_ARGCARGV)) != NULL) {
+      a->argv = NULL;
       a->argc = argify((unsigned char *)userinput, (unsigned char ***)&(a->argv));
       if (a->argc > 0) {
         a->userinput = userinput;
         a->ref = 1;
       } else {
-        free(a);
-        free(userinput);
+        if (a->argv)
+          q_free(a->argv);
+        q_free(a);
+        q_free(userinput);
         a = NULL;
       }
     }
   }
   return a;
 }
+
+// -- Memory wrappers for leaks hunting --
+//
+// memory calls (malloc,realloc,free and strdup) are wrapped to keep track of
+// allocations and report ememory usage statistics.
+
+#if MEMTEST
+
+typedef struct list_s {
+  struct list_s *next;
+} list_t;
+
+// memory record struct
+typedef struct {
+  list_t         li;      // list item. must be first member of a struct
+  unsigned char *ptr;     // pointer to memory (as per malloc())
+  unsigned int   len:19;  // length (as per malloc())
+  unsigned int   type:4;  // user-defined type
+} memlog_t;
+
+// allocated blocks
+static memlog_t *head = NULL;
+
+// allocated memory total, and overhead added by memory logger
+static unsigned int allocated = 0, internal = 0;
+
+// memory logger mutex to access memory records list
+static xSemaphoreHandle mem_mux = NULL;
+
+// lock/unlock memory records list
+#define memlog_lock() xSemaphoreTake(mem_mux, portMAX_DELAY);
+#define memlog_unlock() xSemaphoreGive(mem_mux);
+
+// memory allocated with extra 2 bytes: those are memory buffer overrun
+// markers. we check these at every q_free()
+static void *q_malloc(size_t size, int type) {
+
+  unsigned char *p = NULL;
+  memlog_t *ml;
+
+  if ((type >= 0) && (type < 16) && (size < 0x80000) && (size > 0))
+    if ((p = (unsigned char *)malloc(size + 2)) != NULL)
+      if ((ml = (memlog_t *)malloc(sizeof(memlog_t))) != NULL) {
+        ml->ptr = p;
+        ml->len = size;
+        ml->type = type;
+        memlog_lock();
+        ml->li.next = (list_t *)head;
+        head = ml;
+        allocated += size;
+        internal += sizeof(memlog_t) + 2;
+        memlog_unlock();
+        p[size + 0] = 0x55;
+        p[size + 1] = 0xaa;
+        
+      }
+  
+  return (void *)p;
+}
+
+static void q_free(void *ptr) {
+  if (!ptr)
+    printf("q_free() : attempt to free(NULL) ignored\r\n");
+  else {
+    memlog_t *ml, *prev = NULL;
+    const unsigned char *p = (const unsigned char *)ptr;
+    memlog_lock();
+    for (ml = head; ml != NULL; ml = (memlog_t *)(ml->li.next)) {
+      if (ml->ptr == p) {
+        if (prev)
+          prev->li.next = ml->li.next;
+        else
+          head = (memlog_t *)ml->li.next;
+        allocated -= ml->len;
+        internal -= (sizeof(memlog_t) + 2);
+        break;
+      }
+      prev = ml;
+    }
+    memlog_unlock();
+    if (ml) {
+      // check for memory buffer linear write overruns
+      if (ml->ptr[ml->len + 0] != 0x55 || ml->ptr[ml->len + 1] != 0xaa)
+        printf("q_free() : %p buffer overrun detected\r\n",ptr);
+
+      free(ptr);
+      free(ml);
+
+    }
+    else
+      printf("q_free() : address %p is not  on the list, do nothing\r\n",ptr);
+  }
+}
+
+// generic realloc(). it is much worse than newlib's one because this one
+// doesn't know anything about heap structure and can't simple "extend" block.
+// instead straightforward "allocate then copy" strategy is used
+//
+static void *q_realloc(void *ptr, size_t new_size,UNUSED int type) {
+
+	char *nptr;
+  memlog_t *ml;
+
+  // trivial cases
+	if (ptr == NULL)
+		return q_malloc(new_size,type);
+
+	if (new_size == 0 && ptr != NULL) {
+		q_free(ptr);
+		return NULL;
+	}
+
+
+  memlog_lock();
+  for (ml = head; ml != NULL; ml = (memlog_t *)(ml->li.next))
+    if (ml->ptr == (unsigned char *)ptr)
+      break;
+  
+  if (!ml) {
+    memlog_unlock();
+    printf("q_realloc() : trying to realloc pointer %p which is not on the list\r\n",ptr);
+    return NULL;
+  }
+
+	if (new_size == ml->len) {
+    memlog_unlock();
+		return ptr;
+  }
+
+	if ((nptr = (char *)malloc(new_size + 2)) != NULL) {
+
+    nptr[new_size + 0] = 0x55;
+    nptr[new_size + 1] = 0xaa;
+
+    memcpy(nptr, ptr, (new_size < ml->len) ? new_size : ml->len);
+  	free(ptr);
+
+    ml->ptr = (unsigned char *)nptr;
+    allocated -= ml->len;
+    ml->len = new_size;
+    allocated += new_size;
+  }
+
+  memlog_unlock();
+	return nptr;
+}
+
+static char *q_strdup(const char *ptr, int type) {
+  char *p = NULL;
+  if (ptr != NULL) {
+    int len = strlen(ptr);
+    if ((p = (char *)q_malloc(len + 1,type)) != NULL)
+      strcpy(p,ptr);
+  }
+  return p;
+}
+
+static void q_memleaks(const char *text) {
+  int count = 0;
+
+  q_printf("%s\r\n%% Dynamic memory used by ESPShell: %u (+ %u qlib overhead) bytes\r\n",text,allocated,internal);
+  for (memlog_t *ml = head; ml; ml = (memlog_t *)(ml->li.next))
+    q_printf("%% %u: type: %s, size: %u, ptr=%p\r\n",++count,memtags[ml->type],ml->len,ml->ptr);
+  q_printf("%% %u memory block in total\r\n",count);
+}
+#endif //MEMTEST
+
 
 // check if *this* task (a caller) is executed as separate (background) task
 // or it is executed in context of ESPShell
@@ -1602,10 +1808,11 @@ static inline const char *q_findchar(const char *str, char sym) {
 
 
 // adopted from esp32-hal-uart.c Arduino Core
+// TODO: remake to either use non-static buffer OR use sync objects
 //
 static int __printfv(const char *format, va_list arg) {
 
-  static char buf[128 + 1];
+  static char buf[128 + 1]; // TODO: Mystery#2. Crashes without /static/. 
   char *temp = buf;
   uint32_t len;
   int ret;
@@ -1616,17 +1823,17 @@ static int __printfv(const char *format, va_list arg) {
   len = vsnprintf(NULL, 0, format, copy);
   va_end(copy);
 
-  // if required buffer is lanrger than built-in pne then allocate
-  // new buffer
+  // if required buffer is larger than built-in one then allocate
+  // a new buffer
   if (len >= sizeof(buf))
-    if ((temp = (char *)malloc(len + 1)) == NULL)
+    if ((temp = (char *)q_malloc(len + 1, MEM_QPRINTF)) == NULL)
       return 0;
 
   // actual printf()
   vsnprintf(temp, len + 1, format, arg);
   ret = q_print(temp);
   if (temp != buf)
-    free(temp);
+    q_free(temp);
   return ret;
 }
 
@@ -1756,7 +1963,17 @@ static void q_printhex(const unsigned char *p, unsigned int len) {
   }
 }
 
-// convert arguments for uart/write and files/write commands
+#define ESPSHELL_MAX_INPUT_LENGTH 500
+
+// convert argument TEXT for uart/write and files/write commands (and others)
+// to a buffer.
+//
+// /argc/
+// /argv/
+// /i/    - first argv to start collecting text from
+// /out/  - allocated buffer
+// Returns number of bytes in buffer /*out/
+//
 static int text2buf(int argc, char **argv, int i /* START */, char **out) {
 
     int size = 0;
@@ -1767,7 +1984,7 @@ static int text2buf(int argc, char **argv, int i /* START */, char **out) {
 
   //instead of estimating buffer size just allocate 512 bytes buffer: espshell
   // input strings are limited to 500 bytes.
-  if ((*out = b = (char *)malloc(512)) != NULL) {
+  if ((*out = b = (char *)q_malloc(ESPSHELL_MAX_INPUT_LENGTH + 12, MEM_TEXT2BUF)) != NULL) {
   // go thru all the arguments and send them. the space is inserted between arguments
     do {
       char *p = argv[i];
@@ -1781,16 +1998,20 @@ static int text2buf(int argc, char **argv, int i /* START */, char **out) {
             case 'r':  p++;  c = '\r';  break;
             case 't':  p++;  c = '\t';  break;
             case 'e':  p++;  c = '\e';  break;
+            case 'v':  p++;  c = '\v';  break;
+            case 'b':  p++;  c = '\b';  break;
             default:
-              if (ishex(p))
+              // Known issue (TODO:)
+              // if user inputs \0xXY numbers then such numbers will pass ishex() validation,
+              // will be read correctly by hex2uint8(), however /p/ will be advanced by 1 or 2, not 3 or 4
+              if (ishex(p)) {
                 c = hex2uint8(p);
-              else {
-                //q_printf("%% <e>Unknown escape sequence: \"\\%s\"</>\r\n", *p ? p : "at the end of the line");
-                //return i;
-                
+                p++;
+                if (*p) p++;
               }
-              p++;
-              if (*p) p++;
+              else {
+                // unknown escape sequence
+              }
           }
         }
         *b++ = c;
@@ -1826,7 +2047,8 @@ struct convar {
 
 static struct convar *var_head = NULL;
 
-// register new sketch variable.
+// Register new sketch variable. 
+// Memory allocated for variable is never free()'d
 //
 void espshell_varadd(const char *name, void *ptr, int size) {
 
@@ -1835,7 +2057,7 @@ void espshell_varadd(const char *name, void *ptr, int size) {
   if (size != 1 && size != 2 && size != 4)
     return;
 
-  if ((var = (struct convar *)malloc(sizeof(struct convar))) != NULL) {
+  if ((var = (struct convar *)q_malloc(sizeof(struct convar),MEM_VAR)) != NULL) {
     var->next = var_head;
     var->name = name;
     var->ptr = ptr;
@@ -2669,11 +2891,11 @@ unsigned long __attribute__((const)) seq_tick2freq(float tick_us) {
 static void seq_freemem(int seq) {
 
   if (sequences[seq].bits) {
-    free(sequences[seq].bits);
+    q_free(sequences[seq].bits);
     sequences[seq].bits = NULL;
   }
   if (sequences[seq].seq) {
-    free(sequences[seq].seq);
+    q_free(sequences[seq].seq);
     sequences[seq].seq = NULL;
   }
 }
@@ -2822,7 +3044,7 @@ static int seq_compile(int seq) {
       if (!i)
         return -2;
 
-      s->seq = (rmt_data_t *)malloc(sizeof(rmt_data_t) * i);
+      s->seq = (rmt_data_t *)q_malloc(sizeof(rmt_data_t) * i, MEM_RMT);
       if (!s->seq)
         return -3;
       s->seq_len = i;
@@ -2847,7 +3069,7 @@ static int seq_compile(int seq) {
       int k, j, i = strlen(s->bits);
       // add one extra bit is string length is uneven by copying last bit
       if (i & 1) {
-        char *r = (char *)realloc(s->bits, i + 2);
+        char *r = (char *)q_realloc(s->bits, i + 2,MEM_SEQUENCE);
         if (!r)
           return -5;
         s->bits = r;
@@ -2859,7 +3081,7 @@ static int seq_compile(int seq) {
         i++;
       }
       s->seq_len = i / 2;
-      s->seq = (rmt_data_t *)malloc(sizeof(rmt_data_t) * s->seq_len);
+      s->seq = (rmt_data_t *)q_malloc(sizeof(rmt_data_t) * s->seq_len,MEM_RMT);
 
       if (!s->seq)
         return -6;
@@ -3180,7 +3402,7 @@ static int cmd_seq_bits(int argc, char **argv) {
     return 1;
 
   seq_freemem(Context);
-  s->bits = strdup(argv[1]);
+  s->bits = q_strdup(argv[1],MEM_SEQUENCE);
 
   if (!s->bits)
     return -1;
@@ -3221,7 +3443,7 @@ static int cmd_seq_levels(int argc, char **argv) {
 
 
   s->seq_len = i / 2;
-  s->seq = (rmt_data_t *)malloc(sizeof(rmt_data_t) * s->seq_len);
+  s->seq = (rmt_data_t *)q_malloc(sizeof(rmt_data_t) * s->seq_len,MEM_RMT);
 
   if (!s->seq)
     return -1;
@@ -3613,7 +3835,6 @@ static int pwm_enable(unsigned int pin, unsigned int freq, float duty) {
 
   if (freq) {
     ledcAttach(pin, freq, resolution);
-    delay(100);
     ledcWrite(pin, (unsigned int)(duty * ((1 << resolution) - 1)));
   }
 
@@ -3655,7 +3876,7 @@ static int cmd_pwm(int argc, char **argv) {
   // FIXME: TODO: evil hack. for unknown reason sometimes on fresh boot the first call to pwm_enable()
   //              has no effect. No errors reported also even at Verbose level. So we just call this function twice every time
   pwm_enable(pin, freq, duty);
-  if (pwm_enable(pin, freq, duty) < 0) {
+  if (freq && pwm_enable(pin, freq, duty) < 0) {
 #if WITH_HELP
     q_print(Failed);
 #endif
@@ -4404,6 +4625,9 @@ static int cmd_mem(UNUSED int argc, UNUSED char **argv) {
     q_printf("%% External SPIRAM detected (available to \"malloc()\"):\r\n"
              "%% Total <i>%u</>Mbytes, free: <i>%u</> bytes\r\n", total / 1024, heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
   
+#if MEMTEST
+  q_memleaks("%% -- Memory currently used by ESPShell --\r\n");
+#endif  
   return 0;
 }
 //"mem ADDR LENGTH"
@@ -4879,7 +5103,7 @@ static int cmd_uart(int argc, char **argv) {
       if ((size = uart_write_bytes(u, out, size)) > 0)
         sent+=size;
     if (out)
-      free(out);
+      q_free(out);
 
     q_printf("%% %u bytes sent\r\n", sent);
   } else
@@ -5267,7 +5491,7 @@ static bool files_path_impossible(const char *path) {
 // returns number of bytes read (0 means end of file is reached)
 //
 // on the first call set buf = NULL, don't change buf & size on subsequent
-// calls to files_getline(). free() buf if it is non-zero after you done with file
+// calls to files_getline(). When done, free(buf) if it is non-zero
 //
 static int files_getline(char **buf, unsigned int *size, FILE *fp) {
 
@@ -5276,7 +5500,7 @@ static int files_getline(char **buf, unsigned int *size, FILE *fp) {
 
   // no buffer provided? allocate our own
   if (*buf == NULL)
-    if ((*buf = (char *)malloc((*size = 128))) == NULL)
+    if ((*buf = (char *)q_malloc((*size = 128),MEM_GETLINE)) == NULL)
       return -1;
 
   if (feof(fp))
@@ -5307,7 +5531,7 @@ static int files_getline(char **buf, unsigned int *size, FILE *fp) {
       char   *tmp;
       int     written_so_far = wp - *buf;
 
-      if ((tmp = (char *)realloc(*buf, (*size *= 2))) == NULL)
+      if ((tmp = (char *)q_realloc(*buf, (*size *= 2),MEM_GETLINE)) == NULL)
         return -1;
 
       // update pointers
@@ -5338,13 +5562,13 @@ static const char *files_set_cwd(const char *cwd) {
 
   if (Cwd != cwd) {
     if (Cwd) {
-      free(Cwd);
+      q_free(Cwd);
       Cwd = NULL;
     }
     if (cwd) {
       int len = strlen(cwd);
       if (len) {
-        Cwd = (char *)malloc(len + 2);
+        Cwd = (char *)q_malloc(len + 2,MEM_CWD);
         if (Cwd) {
           strcpy(Cwd, cwd);
 
@@ -5789,7 +6013,7 @@ static int files_cat_binary(const char *path, unsigned int line, unsigned int co
     if (line < size) {
       if (size < plen)
         plen = size;
-      if ((p = (unsigned char *)malloc(plen + 1)) != NULL) {  // +1 is for trailing \0 that we add later
+      if ((p = (unsigned char *)q_malloc(plen + 1,MEM_CAT)) != NULL) {
         if ((f = fopen(path,"rb")) != NULL) {
           if (line) {
             if (fseek(f, line, SEEK_SET) != 0) {
@@ -5813,7 +6037,7 @@ static int files_cat_binary(const char *path, unsigned int line, unsigned int co
 fail:          
           fclose(f);
         } else q_printf("%% <e>Failed to open \"%s\" for reading</>\r\n",path);
-        free(p);
+        q_free(p);
       } else q_print("%% Out of memory\r\n");
     } else q_printf("%% <e>Offset %u (0x%x) is beyound the file end. File size is %u</>\r\n",line,line,size);
   } else q_print("%% Empty file\r\n");
@@ -5859,7 +6083,7 @@ static int files_cat_text(const char *path,unsigned int line,unsigned int count,
       }
     }
     if (p)
-      free(p);
+      q_free(p);
     fclose(f);
   } else
     q_printf("%% <e>Can not open file \"%s\" for reading</>\r\n",path);
@@ -5914,6 +6138,8 @@ static int cmd_files_unmount(int argc, char **argv) {
   if (argc < 2) {
     if ((path = (char *)files_get_cwd()) == NULL)
       return 0;
+    if (strlen(path) >= sizeof(path0)) // must not happen
+      abort();
     strcpy(path0,path);
     path = path0;
   } else
@@ -5966,7 +6192,7 @@ finalize_unmount:
 #if WITH_FAT
   mountpoints[i].wl_handle = WL_INVALID_HANDLE;
 #endif  
-  free(mountpoints[i].mp);
+  q_free(mountpoints[i].mp);
   mountpoints[i].mp = NULL;
   mountpoints[i].label[0] = '\0';
 
@@ -6156,7 +6382,7 @@ finalize_mount:
   if (it)
     esp_partition_iterator_release(it);
 
-  if ((mountpoints[i].mp = strdup(mp)) == NULL)
+  if ((mountpoints[i].mp = q_strdup(mp,MEM_MOUNTPOINT)) == NULL)
     q_print(Failed);
   else {
     mountpoints[i].type = part->subtype;
@@ -6496,7 +6722,7 @@ static int cmd_files_write(int argc, char **argv) {
 
   int fd,size;
   char *path, *out = NULL;
-  char *empty = "\n";
+  char empty[] = { '\n' , '\0' };
 
   if (argc < 2) return -1;
   if ((path = files_full_path(argv[1])) == NULL)
@@ -6536,7 +6762,7 @@ static int cmd_files_write(int argc, char **argv) {
   }
 
   if (out && (out != empty))
-    free(out);
+    q_free(out);
 
   return 0;
 }
@@ -6561,7 +6787,7 @@ static int cmd_files_insdel(int argc, char **argv) {
   unsigned int   plen, tlen = 0, cline = 0, line;
   bool insert = true; // default action is insert
   int count = 1;
-  char *empty = "\n";
+  char empty[] = { '\n', '\0' };
 
   if (!q_strcmp(argv[0],"delete"))
     insert = false;
@@ -6596,7 +6822,7 @@ static int cmd_files_insdel(int argc, char **argv) {
   // path is the files_full_path's buffer which has some extra bytes beyound MAX_PATH boundary which are
   // safe to use.
   strcat(path,"~");
-  upath = strdup(path);
+  upath = q_strdup(path,MEM_PATH);
   if (!upath)
     goto free_memory_and_return;
 
@@ -6655,16 +6881,16 @@ static int cmd_files_insdel(int argc, char **argv) {
 
   unlink(path);
   if (rename(upath,path) == 0) {
-    free(upath);
+    q_free(upath);
     upath = NULL;
   }
 
 free_memory_and_return:  
-  if (p) free(p);
+  if (p) q_free(p);
   if (f) fclose(f);
   if (t) fclose(t);
-  if (text && text != empty) free(text);
-  if (upath) { unlink(upath);free(upath); }
+  if (text && text != empty) q_free(text);
+  if (upath) { unlink(upath);q_free(upath); }
 
   return 0;
 }
@@ -7222,6 +7448,11 @@ static void espshell_task(const void *arg) {
 
     if (!argv_mux)
       argv_mux = xSemaphoreCreateMutex();
+#if MEMTEST      
+    if (!mem_mux)
+      mem_mux = xSemaphoreCreateMutex();
+#endif
+    
     // on multicore processors use another core: if Arduino uses Core1 then
     // espshell will be on core 0.
     shell_core = xPortGetCoreID();
