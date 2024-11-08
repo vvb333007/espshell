@@ -2050,7 +2050,7 @@ static struct convar *var_head = NULL;
 // /ptr/  - pointer to the variable
 // /size/ - variable size in bytes
 //
-void espshell_varadd(const char *name, void *ptr, int size) {
+void espshell_varadd(const char *name, void *ptr, int size, bool isf) {
 
   struct convar *var;
 
@@ -2062,14 +2062,14 @@ void espshell_varadd(const char *name, void *ptr, int size) {
     var->name = name;
     var->ptr = ptr;
     var->size = size;
-    //var->isf = isf > 0 ? 1 : 0 ;
+    var->isf = isf ? 1 : 0;
     var_head = var;
   }
 }
 
 // get registered variable value & length
 //
-static int convar_get(const char *name, void *value, char **fullname) {
+static int convar_get(const char *name, void *value, char **fullname, bool *isf) {
 
   struct convar *var = var_head;
   while (var) {
@@ -2077,6 +2077,8 @@ static int convar_get(const char *name, void *value, char **fullname) {
       memcpy(value, var->ptr, var->size);
       if (fullname)
         *fullname = (char *)var->name;
+      if (isf)
+        *isf = var->isf;
       return var->size;
     }
     var = var->next;
@@ -3782,7 +3784,8 @@ static int cmd_var_show(int argc, char **argv) {
 process_as_variable_name:
 
     char *fullname;
-    if ((len = convar_get(argv[1], &u, &fullname)) == 0) {
+    bool isf;
+    if ((len = convar_get(argv[1], &u, &fullname, &isf)) == 0) {
 #if WITH_HELP
       q_printf("%% \"%s\" : No such variable\r\n",argv[1]);
       return 0;
@@ -3803,9 +3806,9 @@ process_as_variable_name:
         break;
       case 4: 
         q_printf("%% // 0x%x in hex\r\n",u.uval);
-        //if (isf)
-          q_printf("%% float %s = %f;\r\n",fullname,u.fval);
-        //else
+        if (isf)
+          q_printf("%% float %s = %ff;\r\n",fullname,u.fval);
+        else
           q_printf("%% unsigned int %s = %u;\r\n"
                    "%%   signed int %s = %d;\r\n", fullname, u.uval, fullname, u.ival); 
         break;
@@ -3851,12 +3854,20 @@ static int cmd_var(int argc, char **argv) {
   // Set variable
   // does variable exist? get its size
   char *fullname;
-  if ((len = convar_get(argv[1], &u, &fullname)) == 0)
+  bool isf;
+  if ((len = convar_get(argv[1], &u, &fullname,&isf)) == 0)
     return 1;
 
-  // value is a decimal or hexadecimal number?
-  // TODO: code below will set float variables to wrong values if user enters "10" instead of "10.0"
-  //       as "10" falls under isnum() criteria and read and processed as integer. This is a known bug
+  if (isf) {
+    if (isfloat(argv[2])) {
+      // floating point number
+      q_print("% Floating point number\r\n");
+      u.fval = q_atof(argv[2],0);
+    } else {
+      q_printf("%% Variable \"%s\" has type \"float\" and expects floating point argument\r\n",fullname);
+      return 2;
+    }   
+  } else
   if (isnum(argv[2]) || (argv[2][0] == '0' && argv[2][0] == 'x')) {
     bool sign = argv[2][0] == '-';
     if (sign) {
@@ -3870,12 +3881,7 @@ static int cmd_var(int argc, char **argv) {
       if (len == sizeof(char)) u.uchar = u.uval; else 
       if (len == sizeof(short)) u.ush = u.uval;
     }
-  } else if (isfloat(argv[2])) {
-    // floating point number
-    q_print("% Floating point number\r\n");
-    u.fval = q_atof(argv[2],0);
-  }
-  else
+  } else
     // unknown
     return 2;
 
