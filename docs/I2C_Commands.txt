@@ -84,17 +84,27 @@ Ok, we found two devices. Lets communicate with clock chip: read current
 time. We will use "read" and "write" commands to send a time request and
 read the reply:
 
-  esp32-i2c#>write 68 0
+  esp32-i2c#>write 0x68 0
   % Sending 1 bytes over I2C0
-  esp32-i2c#>read 68 7
+  esp32-i2c#>read 0x68 7
   % I2C0 received 7 bytes:
-  24 25 22 03 18 09 24
+  24 25 22 03 18 09 24                <------- hex numbers
 
 
 Byte string received contains current time: 22:25:24 Third day of the week, 18
 of September 2024. Having datasheet of connected I2C device one can send and
 receive data to the device. Might be useful when developing a library for a new
 I2C device
+
+For simplicity, the data bytes dont have to contain "0x": instead of entering
+0x98 one can enter just 98: eny input is treated as hexadecimal numbers:
+
+    esp32-i2c#>write 0x68 0x11 0x12 0x13
+
+    is equal to
+
+    esp32-i2c#>write 0x68 11 12 13
+
 
 Another example is about reading EEPROM (address 57):
 
@@ -105,9 +115,9 @@ Another example is about reading EEPROM (address 57):
   % Device found at address 57
   % Device found at address 68
   % 2 devices found
-  esp32-i2c#>write 57 0 0
+  esp32-i2c#>write 0x57 0 0
   % Sending 2 bytes over I2C0
-  esp32-i2c#>read 57 56
+  esp32-i2c#>read 0x57 56
   % I2C0 received 56 bytes:
         0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F   |0123456789ABCDEF
   ----------------------------------------------------------+----------------
