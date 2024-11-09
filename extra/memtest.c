@@ -26,22 +26,23 @@ typedef struct {
 
 // human-readable memory types
 static const char *memtags[] = {
-  "editline",
-  "mountpoint",
-  "path (generic)",
-  "sequence",
-  "command line",
-  "printf buffer",     
-  "text2buf output",
-  "cat command buffer",
-  "registered sketch variable",
-  "path (current working directory)",
-  "RMT symbols",
-  "getline buffer",
-  "",            
-  "",             
-  "",
-  ""
+
+  "MEM_EDITLINE",
+  "MEM_ARGV",
+  "MEM_ARGCARGV",
+  "MEM_LINE",
+  "MEM_SCREEN",
+  "MEM_HISTORY",
+  "MEM_TEXT2BUF",
+  "MEM_MOUNTPOINT",
+  "MEM_PATH",
+  "MEM_CWD",
+  "MEM_CAT",
+  "MEM_GETLINE",
+  "MEM_SEQUENCE",
+  "MEM_RMT",
+  "MEM_QPRINTF",
+  "MEM_VAR",
 };
 
 // allocated blocks
@@ -195,7 +196,7 @@ static void q_memleaks(const char *text) {
   q_printf("%s\r\n%% Dynamic memory used by ESPShell: %u (+ %u qlib overhead) bytes\r\n",text,allocated,internal);
   for (memlog_t *ml = head; ml; ml = (memlog_t *)(ml->li.next))
     q_printf("%% %u: type: %s, size: %u, ptr=%p\r\n",++count,memtags[ml->type],ml->len,ml->ptr);
-  q_printf("%% %u memory block in total\r\n",count);
+  q_printf("%% %u memory block%s in total\r\n",count, count == 1 ? "" : "s");
 }
 
 #endif //COMPILING_ESPSHELL
