@@ -214,18 +214,38 @@ static int q_print(const char *);                    // puts()
 
 // -- Memory allocation wrappers --
 // If MEMTEST is set to 0 (the default value) then q_malloc is simply malloc(), 
-// q_free() is free() and so on. If MEMTEST is non-zero then ESPShell tries to 
-// load extra/memlog.c which provides q_malloc, q_strdup, q_realloc and q_free 
-// functions which do memory statistics stuff and perform some checks on pointers
-
-// Memory type: a number from 0 to 15, one of the constants below. Newly allocated
-// memory is assigned one of the types below. Command "mem" invokes q_memleaks() function
-// to dump memory allocation information as well. Only works #if MEMTEST == 1
+// q_free() is free() and so on. 
+// 
+// If MEMTEST is non-zero then ESPShell tries to  load "extra/memlog.c" extension
+// which provides its own versions of q_malloc, q_strdup, q_realloc and q_free  
+// functions which do memory statistics/tracking and perform some checks on pointers
+// being freed
+//
+// ENUM /Memory type/: a number from 0 to 15 to identify newly allocated memory block intended 
+// usage. Newly allocated memory is assigned one of the types below. Command "mem" invokes 
+// q_memleaks() function to dump memory allocation information. Only works #if MEMTEST == 1
 enum {
-  MEM_EDITLINE = 0, MEM_MOUNTPOINT, MEM_PATH, MEM_SEQUENCE, MEM_ARGCARGV, 
-  MEM_QPRINTF,      MEM_TEXT2BUF,   MEM_CAT,  MEM_VAR,      MEM_CWD,
-  MEM_RMT,          MEM_GETLINE,    MEM_12,   MEM_13,       MEM_14,   
-  MEM_15,
+  MEM_EDITLINE = 0,  // allocated by editline library (general)
+  MEM_ARGV,          // parsed input string (argv[] array)
+  MEM_ARGCARGV,      // parsed user input refcounted object
+  MEM_LINE,
+  MEM_SCREEN,
+  MEM_HISTORY,
+
+  MEM_TEXT2BUF,      // TEXT argument (fs commands write,append,insert or uart's write are examples) converted to byte array
+
+  MEM_MOUNTPOINT,    // path (mountpoint)
+  MEM_PATH,          // path (generic)
+  MEM_CWD,           // path (current working directory)
+  MEM_CAT,           // memory used by "cat" command
+  MEM_GETLINE,       // memory allocated by files_getline()
+
+  MEM_SEQUENCE,      // sequence bitstring
+  MEM_RMT,           // sequence symbols array
+  
+  MEM_QPRINTF,       // printf internal buffer
+  MEM_VAR            // memory used to track variables
+
 };
 
 
@@ -286,7 +306,7 @@ static INLINE int console_here(int i) { return i < 0 ? uart : (i > UART_NUM_MAX 
 #define SCREEN_INC 256  // "Screen" buffer realloc increments
 
 #define DISPOSE(p) q_free((char *)(p))
-#define NEW(T, c) ((T *)q_malloc((unsigned int)(sizeof(T) * (c)), MEM_EDITLINE))
+#define NEW(T, c, Typ) ((T *)q_malloc((unsigned int)(sizeof(T) * (c)), Typ))
 #define RENEW(p, T, c) (p = (T *)q_realloc((char *)(p), (unsigned int)(sizeof(T) * (c)),MEM_EDITLINE))
 #define COPYFROMTO(_new, p, len) (void)memcpy((char *)(_new), (char *)(p), (int)(len))
 
@@ -696,7 +716,7 @@ insert_string(unsigned char *p) {
 
   len = strlen((char *)p);
   if (End + len >= Length) {
-    if ((_new = NEW(unsigned char, Length + len + MEM_INC)) == NULL)
+    if ((_new = NEW(unsigned char, Length + len + MEM_INC, MEM_LINE)) == NULL)
       return CSstay;
     if (Length) {
       COPYFROMTO(_new, Line, Length);
@@ -952,7 +972,7 @@ insert_char(int c) {
     return insert_string(buff);
   }
 
-  if ((p = NEW(unsigned char, Repeat + 1)) == NULL)
+  if ((p = NEW(unsigned char, Repeat + 1, MEM_EDITLINE)) == NULL)
     return CSstay;
   for (i = Repeat, q = p; --i >= 0;)
     *q++ = c;
@@ -1082,7 +1102,7 @@ static void
 hist_add(unsigned char *p) {
   int i;
 
-  if ((p = (unsigned char *)q_strdup((char *)p,MEM_EDITLINE)) == NULL)
+  if ((p = (unsigned char *)q_strdup((char *)p,MEM_HISTORY)) == NULL)
     return;
   if (H.Size < HIST_SIZE)
     H.Lines[H.Size++] = p;
@@ -1104,14 +1124,14 @@ readline(const char *prompt) {
 
   if (Line == NULL) {
     Length = MEM_INC;
-    if ((Line = NEW(unsigned char, Length)) == NULL)
+    if ((Line = NEW(unsigned char, Length, MEM_LINE)) == NULL)
       return NULL;
   }
 
   hist_add(nil); //TODO: how does it work?! 
 
   ScreenSize = SCREEN_INC;
-  Screen = NEW(char, ScreenSize);  // TODO: allocate once, never DISPOSE()
+  Screen = NEW(char, ScreenSize, MEM_SCREEN);  // TODO: allocate once, never DISPOSE()
 
   TTYputs((const unsigned char *)(Prompt = prompt));
   TTYflush();
@@ -1238,7 +1258,7 @@ argify(unsigned char *line, unsigned char ***avp) {
   int i;
 
   i = MEM_INC;
-  if ((*avp = p = NEW(unsigned char *, i)) == NULL)
+  if ((*avp = p = NEW(unsigned char *, i, MEM_ARGV)) == NULL)
     return 0;
 
   /* skip leading whitespace */
@@ -1255,7 +1275,7 @@ argify(unsigned char *line, unsigned char ***avp) {
 
         if (ac + 1 == i) {
 
-          _new = NEW(unsigned char *, i + MEM_INC);
+          _new = NEW(unsigned char *, i + MEM_INC, MEM_ARGV);
 
           if (_new == NULL) {
             p[ac] = NULL;
