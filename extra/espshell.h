@@ -136,7 +136,7 @@ void digitalForceWrite(int pin, unsigned char level);
 
 // Discussion: https://github.com/espressif/arduino-esp32/issues/10370
 // 
-// pinMode() is a heavy machinery: setting a pin INPUT or OUTPUT dors not just\
+// pinMode() is a heavy machinery: setting a pin INPUT or OUTPUT dors not just
 // change pin modes: it also calls init/deinit functions of a driver associated 
 // with pins. As a result, pinMode(3, OUTPU) (pin 3 is an UART0 TX pin on most ESP32's)
 // breaks UART0 completely: it call deinit code for the pin, reconfigures pin to be "a GPIO"
