@@ -212,7 +212,15 @@ static int q_strcmp(const char *, const char *);     // loose strcmp
 static int PRINTF_LIKE q_printf(const char *, ...);  // printf()
 static int q_print(const char *);                    // puts()
 
-//types of memory allocated by espshell
+// -- Memory allocation wrappers --
+// If MEMTEST is set to 0 (the default value) then q_malloc is simply malloc(), 
+// q_free() is free() and so on. If MEMTEST is non-zero then ESPShell tries to 
+// load extra/memlog.c which provides q_malloc, q_strdup, q_realloc and q_free 
+// functions which do memory statistics stuff and perform some checks on pointers
+
+// Memory type: a number from 0 to 15, one of the constants below. Newly allocated
+// memory is assigned one of the types below. Command "mem" invokes q_memleaks() function
+// to dump memory allocation information as well. Only works #if MEMTEST == 1
 enum {
   MEM_EDITLINE = 0, MEM_MOUNTPOINT, MEM_PATH, MEM_SEQUENCE, MEM_ARGCARGV, 
   MEM_QPRINTF,      MEM_TEXT2BUF,   MEM_CAT,  MEM_VAR,      MEM_CWD,
@@ -220,19 +228,25 @@ enum {
   MEM_15,
 };
 
+
+// search & include memtest.c sources if MEMTEST is enabled
 #if MEMTEST
-// memory allocation wrappers to keep track of memory allocations and hunt leaks
-static void *q_malloc(size_t size, int type);
-static void *q_realloc(void *ptr, size_t new_size, int type);
-static char *q_strdup(const char *ptr, int type);
-static void  q_free(void *ptr);
-static void  q_memleaks();
-#else
+#  if __has_include("extra/memtest.c")
+#    include "extra/memtest.c"
+#  else
+#    warning "MEMTEST is defined, but no extra/memtest.c file were found. Disabling memory leaks tests"
+#    undef MEMTEST
+#    define MEMTEST 0
+#  endif
+#endif
+
+// fallback to newlib
+#if !MEMTEST
 #  define q_malloc(size,type) malloc((size))
 #  define q_realloc(ptr,new_size,type) realloc((ptr),(new_size))
 #  define q_strdup(ptr, type) strdup((ptr))
 #  define q_free(ptr) free((ptr))
-#endif //MEMTEST
+#endif
 
 // espshell runs on this port:
 static uart_port_t uart = STARTUP_PORT;              
@@ -1086,7 +1100,7 @@ hist_add(unsigned char *p) {
 static char *
 readline(const char *prompt) {
   unsigned char *line;
-  //int s;
+  unsigned char nil[] = { 0 };
 
   if (Line == NULL) {
     Length = MEM_INC;
@@ -1094,7 +1108,7 @@ readline(const char *prompt) {
       return NULL;
   }
 
-  hist_add(""); //TODO: how does it work?! 
+  hist_add(nil); //TODO: how does it work?! 
 
   ScreenSize = SCREEN_INC;
   Screen = NEW(char, ScreenSize);  // TODO: allocate once, never DISPOSE()
@@ -1312,8 +1326,8 @@ static xSemaphoreHandle argv_mux = NULL;
 typedef struct {
   int ref;          // reference counter. normally 1 but async commands can increase it
   int argc;         // number of tokens
-  char **argv;      // tokenized input string
-  char *userinput;  //original input string
+  char **argv;      // tokenized input string (array of pointers to various locations withn userinput)
+  char *userinput;  //original input string with '\0's inserted by tokenizer
 } argcargv_t;
 
 // User input which is currently processed. Normally command handlers have their hands on argv and argc
@@ -1378,186 +1392,6 @@ static argcargv_t *userinput_tokenize(char *userinput) {
   }
   return a;
 }
-
-#if MEMTEST
-// -- Memory wrappers for leaks hunting --
-//
-// memory calls (malloc,realloc,free and strdup) are wrapped to keep track of
-// allocations and report ememory usage statistics.
-//
-// espshell stores all allocation in a list and creates 2 bytes overwrite detection
-// zone at the end of the buffer allocated. these are checked upon q_free()
-//
-// statistics is displayed by "mem" command
-//
-typedef struct list_s {
-  struct list_s *next;
-} list_t;
-
-// memory record struct
-typedef struct {
-  list_t         li;      // list item. must be first member of a struct
-  unsigned char *ptr;     // pointer to memory (as per malloc())
-  unsigned int   len:19;  // length (as per malloc())
-  unsigned int   type:4;  // user-defined type
-} memlog_t;
-
-// human-readable memory types
-static const char *memtags[] = {
-  "editline",       "mountpoint",      "path",        "sequence",     "command line",
-  "q_printf()",     "text2buf()",      "\"cat\" cmd", "\"var\" cmd", "CWD",
-  "RMT",            "files_getline()", "",            "",             "",
-  ""
-};
-
-// allocated blocks
-static memlog_t *head = NULL;
-
-// allocated memory total, and overhead added by memory logger
-static unsigned int allocated = 0, internal = 0;
-
-// memory logger mutex to access memory records list
-static xSemaphoreHandle mem_mux = NULL;
-
-// lock/unlock memory records list
-#define memlog_lock() xSemaphoreTake(mem_mux, portMAX_DELAY);
-#define memlog_unlock() xSemaphoreGive(mem_mux);
-
-// memory allocated with extra 2 bytes: those are memory buffer overrun
-// markers. we check these at every q_free()
-static void *q_malloc(size_t size, int type) {
-
-  unsigned char *p = NULL;
-  memlog_t *ml;
-
-  if ((type >= 0) && (type < 16) && (size < 0x80000) && (size > 0))
-    if ((p = (unsigned char *)malloc(size + 2)) != NULL)
-      if ((ml = (memlog_t *)malloc(sizeof(memlog_t))) != NULL) {
-        ml->ptr = p;
-        ml->len = size;
-        ml->type = type;
-        memlog_lock();
-        ml->li.next = (list_t *)head;
-        head = ml;
-        allocated += size;
-        internal += sizeof(memlog_t) + 2;
-        memlog_unlock();
-        p[size + 0] = 0x55;
-        p[size + 1] = 0xaa;
-      }
-  return (void *)p;
-}
-
-// free() wrapper. check if memory was allocated by q_malloc/realloc or q_strdup. 
-// does not free() memory if address is not on the list.
-// ignores NULL pointers, checks buffer integrity (2 bytes at the end of the buffer)
-//
-static void q_free(void *ptr) {
-  if (!ptr)
-    q_printf("FIXME: q_free() : attempt to free(NULL) ignored\r\n");
-  else {
-    memlog_t *ml, *prev = NULL;
-    const unsigned char *p = (const unsigned char *)ptr;
-    memlog_lock();
-    for (ml = head; ml != NULL; ml = (memlog_t *)(ml->li.next)) {
-      if (ml->ptr == p) {
-        if (prev)
-          prev->li.next = ml->li.next;
-        else
-          head = (memlog_t *)ml->li.next;
-        allocated -= ml->len;
-        internal -= (sizeof(memlog_t) + 2);
-        break;
-      }
-      prev = ml;
-    }
-    memlog_unlock();
-    if (ml) {
-      // check for memory buffer linear write overruns
-      if (ml->ptr[ml->len + 0] != 0x55 || ml->ptr[ml->len + 1] != 0xaa)
-        q_printf("CRITICAL: q_free() : buffer %p (length: %d, type %d), overrun detected\r\n",ptr,ml->len,ml->type);
-      free(ptr);
-      free(ml);
-    }
-    else
-      printf("q_free() : address %p is not  on the list, do nothing\r\n",ptr);
-  }
-}
-
-// generic realloc(). it is much worse than newlib's one because this one
-// doesn't know anything about heap structure and can't simple "extend" block.
-// instead straightforward "allocate then copy" strategy is used
-//
-static void *q_realloc(void *ptr, size_t new_size,UNUSED int type) {
-
-	char *nptr;
-  memlog_t *ml;
-
-  // trivial cases
-	if (ptr == NULL)
-		return q_malloc(new_size,type);
-
-	if (new_size == 0 && ptr != NULL) {
-		q_free(ptr);
-		return NULL;
-	}
-
-  memlog_lock();
-  for (ml = head; ml != NULL; ml = (memlog_t *)(ml->li.next))
-    if (ml->ptr == (unsigned char *)ptr)
-      break;
-  
-  if (!ml) {
-    memlog_unlock();
-    printf("q_realloc() : trying to realloc pointer %p which is not on the list\r\n",ptr);
-    return NULL;
-  }
-
-	if (new_size == ml->len) {
-    memlog_unlock();
-		return ptr;
-  }
-
-	if ((nptr = (char *)malloc(new_size + 2)) != NULL) {
-
-    nptr[new_size + 0] = 0x55;
-    nptr[new_size + 1] = 0xaa;
-
-    memcpy(nptr, ptr, (new_size < ml->len) ? new_size : ml->len);
-  	free(ptr);
-
-    ml->ptr = (unsigned char *)nptr;
-    allocated -= ml->len;
-    ml->len = new_size;
-    allocated += new_size;
-  }
-
-  memlog_unlock();
-	return nptr;
-}
-
-// last of the family: strdup()
-static char *q_strdup(const char *ptr, int type) {
-  char *p = NULL;
-  if (ptr != NULL) {
-    int len = strlen(ptr);
-    if ((p = (char *)q_malloc(len + 1,type)) != NULL)
-      strcpy(p,ptr);
-  }
-  return p;
-}
-
-// display memory usage statistics by ESPShell
-static void q_memleaks(const char *text) {
-  int count = 0;
-
-  q_printf("%s\r\n%% Dynamic memory used by ESPShell: %u (+ %u qlib overhead) bytes\r\n",text,allocated,internal);
-  for (memlog_t *ml = head; ml; ml = (memlog_t *)(ml->li.next))
-    q_printf("%% %u: type: %s, size: %u, ptr=%p\r\n",++count,memtags[ml->type],ml->len,ml->ptr);
-  q_printf("%% %u memory block in total\r\n",count);
-}
-#endif //MEMTEST
-
 
 // check if *this* task (a caller) is executed as separate (background) task
 // or it is executed in context of ESPShell
@@ -7508,18 +7342,10 @@ static void espshell_task(const void *arg) {
   // arg is not NULL - first time call: start a task and return immediately
   if (arg) {
     if (shell_task != NULL) {
-#if WITH_HELP
       q_print("% ESPShell is started already\r\n");
-#endif
       return;
     }
 
-    if (!argv_mux)
-      argv_mux = xSemaphoreCreateMutex();
-#if MEMTEST      
-    if (!mem_mux)
-      mem_mux = xSemaphoreCreateMutex();
-#endif
     
     // on multicore processors use another core: if Arduino uses Core1 then
     // espshell will be on core 0.
@@ -7535,7 +7361,7 @@ static void espshell_task(const void *arg) {
       delay(1000);
 
 #if WITH_HELP
-    q_print("% ESPShell. Type \"?\" and press <Enter> for help\r\n");
+    q_print("% ESPShell. Type \"?\" and press <Enter> for help\r\n% Press <Ctrl>+L to clear the screen and to enable colors\r\n");
 #endif
 
     while (!Exit) {
@@ -7551,10 +7377,19 @@ static void espshell_task(const void *arg) {
 }
 
 // Start ESPShell
+// Normally (AUTOSTART==1) starts automatically. With autostart disabled EPShell can
+// be started by calling espshell_start(). 
+//
+// This function also cqan start the shell which was terminated by command "exit ex"
+//
 #if AUTOSTART
 void STARTUP_HOOK espshell_start() {
 #else
 void espshell_start() {
+#endif
+  if (!argv_mux) argv_mux = xSemaphoreCreateMutex();
+#if MEMTEST
+  q_meminit();
 #endif
   seq_init(); 
   espshell_task((const void *)1);
