@@ -262,10 +262,10 @@ enum {
 
 // fallback to newlib
 #if !MEMTEST
-#  define q_malloc(size,type) malloc((size))
-#  define q_realloc(ptr,new_size,type) realloc((ptr),(new_size))
-#  define q_strdup(ptr, type) strdup((ptr))
-#  define q_free(ptr) free((ptr))
+#  define q_malloc(_size, _type) malloc((_size))
+#  define q_realloc(_ptr,_new_size,_type) realloc((_ptr),(_new_size))
+#  define q_strdup(_ptr, _type) strdup((_ptr))
+#  define q_free(_ptr) free((_ptr))
 #endif
 
 // espshell runs on this port:
@@ -302,7 +302,9 @@ static INLINE int console_here(int i) { return i < 0 ? uart : (i > UART_NUM_MAX 
 // TAG:editline
 #define CRLF "\r\n"
 
-#define MEM_INC 64      // "Line" buffer realloc increments
+#define MEM_INC  64      // generic  buffer realloc increments
+#define MEM_INC2 16      // dont touch this
+
 #define SCREEN_INC 256  // "Screen" buffer realloc increments
 
 #define DISPOSE(p) q_free((char *)(p))
@@ -1145,6 +1147,7 @@ readline(const char *prompt) {
 
   DISPOSE(Screen);
   DISPOSE(H.Lines[--H.Size]);
+  
   return (char *)line;
 }
 
@@ -1257,7 +1260,7 @@ argify(unsigned char *line, unsigned char ***avp) {
   int ac;
   int i;
 
-  i = MEM_INC;
+  i = MEM_INC2;
   if ((*avp = p = NEW(unsigned char *, i, MEM_ARGV)) == NULL)
     return 0;
 
@@ -1275,7 +1278,7 @@ argify(unsigned char *line, unsigned char ***avp) {
 
         if (ac + 1 == i) {
 
-          _new = NEW(unsigned char *, i + MEM_INC, MEM_ARGV);
+          _new = NEW(unsigned char *, i + MEM_INC2, MEM_ARGV);
 
           if (_new == NULL) {
             p[ac] = NULL;
@@ -1283,7 +1286,7 @@ argify(unsigned char *line, unsigned char ***avp) {
           }
 
           COPYFROMTO(_new, p, i * sizeof(char **));
-          i += MEM_INC;
+          i += MEM_INC2;
           DISPOSE(p);
           *avp = p = _new;
         }
@@ -1308,7 +1311,7 @@ argify(unsigned char *line, unsigned char ***avp) {
 
 //common messages
 static const char *Failed = "% <e>Failed</>\r\n";
-static const char *Notset = "not set\r\n";
+static const char *Notset = "<1>not set</>\r\n";
 #if WITH_HELP
 static const char *SpacesInPath = "<e>% Too many arguments.\r\n% If your path contains spaces, please enter spaces as \"*\":\r\n% Examples: \"cd Path*With*Spaces\",  \"rm /ffat/Program*Files\"</>\r\n";
 static const char *MultipleEntries = "<2>% Processing multiple paths.\r\n% Not what you want? Use asteriks (*) instead of spaces in the path</>\r\n";
@@ -1335,20 +1338,20 @@ static const char *prompt = PROMPT;
 static TaskHandle_t shell_task = 0;  // Main espshell task ID
 static int shell_core = 0;           // CPU core number ESPShell is running on. For single core systems it is always 0
 
-// Mutex to protect reference counters of argcargv_t structure.
-// Yes it is global single lock
-static xSemaphoreHandle argv_mux = NULL;
-
 // Tokenized user input:
 // argc/argv are amount of tokens and pointers to tokens respectively.
 // userinput is the raw user input with some zeros inserted by tokenizer.
 //
 typedef struct {
-  int ref;          // reference counter. normally 1 but async commands can increase it
-  int argc;         // number of tokens
+  int    ref;       // reference counter. normally 1 but async commands can increase it
+  int    argc;      // number of tokens
   char **argv;      // tokenized input string (array of pointers to various locations withn userinput)
-  char *userinput;  //original input string with '\0's inserted by tokenizer
+  char  *userinput; //original input string with '\0's inserted by tokenizer
 } argcargv_t;
+
+// Mutex to protect reference counters of argcargv_t structure.
+// Yes it is global single lock
+static xSemaphoreHandle argv_mux = NULL;
 
 // User input which is currently processed. Normally command handlers have their hands on argv and argc
 // but asyn commands do not. This one is used by async tasks to get argc/argv values
@@ -1405,7 +1408,7 @@ static argcargv_t *userinput_tokenize(char *userinput) {
         if (a->argv)
           q_free(a->argv);
         q_free(a);
-        q_free(userinput);
+        //q_free(userinput);
         a = NULL;
       }
     }
@@ -6349,7 +6352,7 @@ static int cmd_files_mount0(int argc, char **argv) {
         q_print("<i>");
 #endif
         //"label" "fs type" "partition size"
-      q_printf("%%% 16s|%s|%s| % 6uK | ",part->label,mountable ? "+" : " ", files_subtype2text(part->subtype),(unsigned int)part->size / 1024);
+      q_printf("%%% 16s|%s|%s| % 6uK | ",part->label,mountable ? "+" : " ", files_subtype2text(part->subtype),part->size / 1024);
       
       if ((i = files_mountpoint_by_label(part->label)) >= 0)
         // "mountpoint" "total fs size" "available fs size"
@@ -6369,12 +6372,9 @@ static int cmd_files_mount0(int argc, char **argv) {
     q_print("% <2>No usable partitions were found. Use (Tools->Partition Scheme) in Arduino IDE</>\r\n");
   else
     q_printf("%% <i>%u</> mountable partition%s found. (+) - mountable partition\r\n", usable, usable == 1 ? "" : "s");
-  
 #endif  //WITH_HELP
-
   if (it)
     esp_partition_iterator_release(it);
-
   return 0;
 }
 #pragma GCC diagnostic warning "-Wformat"
@@ -7242,8 +7242,12 @@ espshell_command(char *p) {
   argcargv_t *aa = NULL;
 
   // sanity checks
-  if (!p) return -1;
-  if (!p[0]) return -1;
+  if (!p) goto early_fail;
+  if (!p[0]) goto early_fail;
+
+  //tokenize user input
+  if ((aa = userinput_tokenize(p)) == NULL)
+    goto early_fail;
 
 #if WITH_HISTORY
   //make a history entry
@@ -7251,9 +7255,6 @@ espshell_command(char *p) {
     rl_add_history(p);
 #endif  
 
-  //tokenize user input
-  if ((aa = userinput_tokenize(p)) == NULL)
-    return -1;
 
   //make it global so async functions can increase the refcounter
   aa_current = aa;
@@ -7331,6 +7332,9 @@ one_more_try:
   // free memory associated wih user input
   userinput_unref(aa);
   return bad;
+early_fail:
+  if (p) q_free(p);
+  return -1;
 }
 
 
