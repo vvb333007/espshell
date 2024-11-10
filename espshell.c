@@ -67,7 +67,7 @@
 #define MOUNTPOINTS_NUM 5          // Max number of simultaneously mounted filesystems
 #define STACKSIZE       (5*1024)   // Shell task stack size
 #define DIR_RECURSION_DEPTH 127    // Max directory depth TODO: make a test with long "/a/a/a/.../a" path 
-#define MEMTEST         1          // hunt for espshell's memory leaks   
+#define MEMTEST         0          // hunt for espshell's memory leaks   
 #define DO_ECHO         1          // echo mode at espshell startup.
 // ^^ ECHO ^^
 // Automated processing (i.e. sending commands and parsing the resulting output by software) is supported by
