@@ -86,7 +86,7 @@
 #define PROMPT_I2C "esp32-i2c%u>"        // i2c prompt
 #define PROMPT_UART "esp32-uart%u>"      // uart prompt   
 #define PROMPT_SEQ "esp32-seq%u>"        // Sequence subtree prompt
-#define PROMPT_FILES "esp32#(%s%s%s)>"   // File manager prompt
+#define PROMPT_FILES "esp32#(<i>%s</>)>" // File manager prompt
 #define PROMPT_SEARCH "Search: "         // History search prompt
 
 //TAG:includes
@@ -3750,7 +3750,7 @@ static int cmd_var(int argc, char **argv) {
   if (isf) {
     if (isfloat(argv[2])) {
       // floating point number
-      q_print("% Floating point number\r\n");
+      //q_print("% Floating point number\r\n");
       u.fval = q_atof(argv[2],0);
     } else {
       q_printf("%% Variable \"%s\" has type \"float\" and expects floating point argument\r\n",fullname);
@@ -3760,12 +3760,12 @@ static int cmd_var(int argc, char **argv) {
   if (isnum(argv[2]) || (argv[2][0] == '0' && argv[2][0] == 'x')) {
     bool sign = argv[2][0] == '-';
     if (sign) {
-      q_print("% Signed integer\r\n");
+      //q_print("% Signed integer\r\n");
       u.ival = -q_atol(&(argv[2][1]),0);
       if (len == sizeof(char)) u.ichar = u.ival; else 
       if (len == sizeof(short)) u.ish = u.ival;
     } else {
-      q_print("% Unsigned integer\r\n");
+      //q_print("% Unsigned integer\r\n");
       u.uval = q_atol(argv[2],0);
       if (len == sizeof(char)) u.uchar = u.uval; else 
       if (len == sizeof(short)) u.ush = u.uval;
@@ -4184,7 +4184,7 @@ static int pin_show(int argc, char **argv) {
   peripheral_bus_type_t type;
 
   res = esp_gpio_is_pin_reserved(pin);
-  q_printf("%% Pin %d is ", pin);
+  q_printf("%% Pin %u (GPIO%u) is ", pin,pin);
 
   if (res)
     q_print("<w>**RESERVED**</>, ");
@@ -4210,7 +4210,6 @@ static int pin_show(int argc, char **argv) {
     
   }
 
-
   gpio_ll_get_io_config(&GPIO, pin, &pu, &pd, &ie, &oe, &od, &drv, &fun_sel, &sig_out, &sleep_sel);
 
   if (ie || oe || od || pu || pd || sleep_sel) {
@@ -4222,7 +4221,7 @@ static int pin_show(int argc, char **argv) {
     if (pd) q_print("PULL_DOWN, ");
     if (od) q_print("OPEN_DRAIN, ");
     if (sleep_sel) q_print("sleep mode selected,");
-    if (!pu && !pd && ie) q_print(" input is floating!");
+    if (!pu && !pd && ie) q_print(" input is floating");
     
     q_print("</>\r\n");
 
@@ -4262,10 +4261,16 @@ static int pin_show(int argc, char **argv) {
     if (drv == 2) drv == 3 else if (drv == 3) drv == 2;
   }
 #endif
-  q_printf("%% Maximum current is %u milliamps\r\n", !drv ? 5 : (drv == 1 ? 10 : (drv == 2 ? 20 : 40)));
-
-  if (sleep_sel)
-    q_print("% Sleep select: YES\r\n");
+  drv = !drv ? 5 : (drv == 1 ? 10 : (drv == 2 ? 20 : 40));
+  q_print("% Maximum current is ");
+#if WITH_COLOR  
+  if (drv > 20)
+    q_print("<w>");
+  else if(drv < 20)
+    q_printf("<i>");
+#endif
+  q_printf("%u",(unsigned int)drv);
+  q_print("</> milliamps\r\n");
 
   // enable INPUT if was not enabled before
   //
@@ -4316,7 +4321,7 @@ static int cmd_pin(int argc, char **argv) {
     while (i < argc) {
 
       //1. "seq NUM" keyword found:
-      if (!q_strcmp(argv[i], "seq")) {
+      if (!q_strcmp(argv[i], "sequence")) {
         if ((i + 1) >= argc) {
 #if WITH_HELP
           q_print("% <e>Sequence number expected after \"seq\"</>\r\n");
@@ -5535,11 +5540,7 @@ static const char *files_set_cwd(const char *cwd) {
     }
   }
 
-  sprintf(prom,PROMPT_FILES,
-    Color ? "\033[33;93m" : "",  // enable standart ANSI yellow and then bright color. One of them is supported for sure :)
-    Cwd ? Cwd : "?",
-    Color ? "\033[0m" : "");
-
+  sprintf(prom,PROMPT_FILES, Cwd ? Cwd : "?");
   prompt = prom;
 
   return Cwd;
