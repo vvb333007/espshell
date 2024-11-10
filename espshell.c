@@ -7245,15 +7245,19 @@ espshell_command(char *p) {
   if (!p) goto early_fail;
   if (!p[0]) goto early_fail;
 
+#if WITH_HISTORY
+  //make a history entry
+  // TODO: strip leading and trailing whitespace
+  if (rl_history)
+    rl_add_history(p);
+#endif  
+
   //tokenize user input
   if ((aa = userinput_tokenize(p)) == NULL)
     goto early_fail;
 
-#if WITH_HISTORY
-  //make a history entry
-  if (rl_history)
-    rl_add_history(p);
-#endif  
+  // from now on /p/ is freed by userinput_unref()!
+
 
 
   //make it global so async functions can increase the refcounter
