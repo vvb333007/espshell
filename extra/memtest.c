@@ -193,10 +193,19 @@ static char *q_strdup(const char *ptr, int type) {
 static void q_memleaks(const char *text) {
   int count = 0;
 
-  q_printf("%s\r\n%% Dynamic memory used by ESPShell: %u (+ %u qlib overhead) bytes\r\n",text,allocated,internal);
+
+  q_printf("%%%s\r\n%% Allocated: <i>%u bytes</> (+ <i>%u bytes</> used by memory tracker)\r\n",text,allocated,internal); 
+
+  q_print("<r>"
+          "%  Entry | Memory  type |   Size  |  Address  \r\n"
+          "%--------+--------------+---------+-----------</>\r\n");
+#pragma GCC diagnostic ignored "-Wformat"
   for (memlog_t *ml = head; ml; ml = (memlog_t *)(ml->li.next))
-    q_printf("%% %u: type: MEM_%s, size: %u, ptr=%p\r\n",++count,memtags[ml->type],ml->len,ml->ptr);
-  q_printf("%% %u memory block%s in total\r\n",count, count == 1 ? "" : "s");
+    q_printf("%%  % 5u | % 12s | % 7u | %p \r\n",++count,memtags[ml->type],ml->len,ml->ptr);
+#pragma GCC diagnostic warning "-Wformat"
+#if WITH_HELP
+  q_printf("<r>%% Tracking %07u memory block%s              </>\r\n%% Use command \"mem ADDRESS [COUNT]\" to display data at memory address",count, count == 1 ? "" : "s");
+#endif
 }
 
 #endif //COMPILING_ESPSHELL
