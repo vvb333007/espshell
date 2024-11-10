@@ -15,7 +15,7 @@ File contains some definitions from ESPShell which can be used in user sketch to
    types) to be accessible from the shell: by using "var" command one can set and 
    display variable values while sketch is executed.
 
-   Use "espshell_var(Variable_Name)" macro to register all variables of interest. 
+   Use "convar_add(Variable_Name)" macro to register all variables of interest. 
    There is an example of its use in example_blink.ino which registers 4 variables 
    to play with
 
