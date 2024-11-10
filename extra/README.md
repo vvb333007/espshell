@@ -28,7 +28,7 @@ File contains some definitions from ESPShell which can be used in user sketch to
 
 When compiled, ESPShell searches for its include (i.e. "espshell.h") file in sketch 
 directory and in "extra/" subdirectory of sketch directory. If found - "espshell.h" is 
-then used by ESPshell to get some compile time setting overrides (there is number of 
+then used by ESPshell to get some compile time setting overrides (there are number of 
 them commented out in the "epshell.h") 
 
 
@@ -36,22 +36,26 @@ them commented out in the "epshell.h")
 memtest.c
 ---------
 
-File is used by ESPShell when MEMTEST macro is defined either in espshell.c or espshell.h.
-This file is a memory tracking module which keeps track of memory usage by ESPShell and helps
-detect memory leaks (in ESPShell) and perform some extra checks on pointers being freed: 
-every allocated memory has 2 bytes padding (0x55, 0xaa) which is checked by free() to see
-if there were buffer overruns.
+File is used (#included) by ESPShell when MEMTEST macro is defined (either in espshell.c
+or in espshell.h.)
+
+This file is a memory tracking module which keeps track of memory usage by ESPShell and 
+helps detect memory leaks (in ESPShell) and perform some extra checks on pointers being 
+freed: every allocated memory has 2 bytes padding (0x55, 0xaa) which is checked by free() 
+to see if there were buffer overruns.
 
 You need it if you are ESPShell developer.
 
 
 
-esp32cam_prototypes.h, esp32cam_keywords.c and esp32cam_handlers.c 
-------------------------------------------------------------------
+esp32cam_prototypes.h
+esp32cam_keywords.c
+esp32cam_handlers.c 
+---------------------
 
 Three files are extra commands for use with AiThinker ESP32Cam (and its clones).
 
-These add esp camera commands to the main command tree, enabling user to initialize 
+These files add esp camera commands to the main command tree, enabling user to initialize 
 and deinitialize camera (with poweroffpoweroff), taking a picture, change the camera 
 settings and sending picture (a JPEG file) over the uart for further processing. 
 
@@ -110,4 +114,3 @@ picture content encoded in hex ascii bytes (it is up to user to decode this). Pi
 files
 
 More commands are under "camera ?"
-a
