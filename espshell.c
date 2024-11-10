@@ -53,7 +53,8 @@
 //#define SERIAL_IS_USB           // Not yet
 //#define ESPCAM                  // Include ESP32CAM commands (read extra/README.md).
 #define AUTOSTART       1          // Set to 0 for manual shell start via espshell_start().
-#define WITH_COLOR      1          // Enable terminal colors
+#define WITH_COLOR      1          // Enable terminal colors support
+#define AUTO_COLOR      1          // Let ESPShell decide wheither to enable coloring or not
 #define WITH_HELP       1          // Set to 0 to save some program space by excluding help strings/functions
 #define WITH_HISTORY    1          // Set to 0 to when looking for memory leaks
 #define WITH_FS         1          // Filesystems (fat/spiffs/littlefs) support (cp,mv,insert and delete are not implemented yet)
@@ -66,7 +67,7 @@
 #define MOUNTPOINTS_NUM 5          // Max number of simultaneously mounted filesystems
 #define STACKSIZE       (5*1024)   // Shell task stack size
 #define DIR_RECURSION_DEPTH 127    // Max directory depth TODO: make a test with long "/a/a/a/.../a" path 
-#define MEMTEST         0          // hunt for espshell's memory leaks   
+#define MEMTEST         1          // hunt for espshell's memory leaks   
 #define DO_ECHO         1          // echo mode at espshell startup.
 // ^^ ECHO ^^
 // Automated processing (i.e. sending commands and parsing the resulting output by software) is supported by
@@ -353,6 +354,7 @@ static int OldPoint;
 static int Point;
 static int PushBack;
 static int Pushed;
+static bool ColorAuto = AUTO_COLOR;
 static bool Color = false;     // Enable coloring
 static bool Exit = false;      // True == close the shell and kill its FreeRTOS task.
 static const char *Input = "";  // "Artificial input queue". if non empty then symbols are
@@ -557,8 +559,9 @@ try_again:
   // if we receive lower keycodes from user that means his terminal
   // is not an Arduino IDE Serial Monitor or alike, so we can enable
   // syntax coloring.
-  if (c < ' ' && c != '\n' && c != '\r' && c != '\t')
-    Color = true;
+  if (ColorAuto)
+    if (c < ' ' && c != '\n' && c != '\r' && c != '\t')
+      Color = true;
 #endif
 
   return c;
@@ -2111,8 +2114,12 @@ static int cmd_var_show(int, char **);
 
 static int cmd_show(int, char **);
 
+// specials
 static int cmd_exit(int, char **);
 static int cmd_history(int, char **);
+#if WITH_COLOR
+static int cmd_colors(int, char **);
+#endif
 
 // suport for user-defined commands
 #ifdef EXTERNAL_PROTOTYPES
@@ -2622,7 +2629,10 @@ static const struct keywords_t keywords_main[] = {
   
   { "history", cmd_history, 1, HIDDEN_KEYWORD },
   { "history", cmd_history, 0, HIDDEN_KEYWORD },
-
+#if WITH_COLOR  
+  { "colors", cmd_colors, 1, HIDDEN_KEYWORD },
+  { "colors", cmd_colors, 0, HIDDEN_KEYWORD },
+#endif
 #ifdef EXTERNAL_KEYWORDS
 #  include EXTERNAL_KEYWORDS
 #endif
@@ -3070,8 +3080,30 @@ static int cmd_history(int argc,char **argv) {
   if (!q_strcmp(argv[1],"on")) rl_history_enable(true); else return 1;
   return 0;
 }
-
-
+#if WITH_COLOR
+// "colors [on|off|auto]"
+//
+// disable/enable terminal colors (or show colorer status)
+// Automated output processing or broken terminals need this
+//
+static int cmd_colors(int argc,char **argv) {
+  if (argc < 2) 
+    q_printf("%% Color is \"%s\"\r\n",ColorAuto ? "auto" : (Color ? "on" : "off")); 
+  else 
+  if (!q_strcmp(argv[1],"auto")) {
+    Color = false;
+    ColorAuto = true;
+  } else
+  if (!q_strcmp(argv[1],"off"))
+    ColorAuto = Color = false;
+  else
+  if (!q_strcmp(argv[1],"on")) {
+    ColorAuto = false;
+    Color = true;
+  } else return 1;
+  return 0;
+}
+#endif //WITH_COLOR
 //"exit"
 //"exit exit"
 // exists from command subderictory or closes the shell ("exit exit")
@@ -4564,7 +4596,7 @@ static int cmd_mem(UNUSED int argc, UNUSED char **argv) {
              "%% Total <i>%u</>Mbytes, free: <i>%u</> bytes\r\n", total / 1024, heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
   
 #if MEMTEST
-  q_memleaks("%% -- Memory currently used by ESPShell --\r\n");
+  q_memleaks("-- Memory currently used by ESPShell --");
 #endif  
   return 0;
 }
