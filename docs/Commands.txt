@@ -93,7 +93,7 @@ Here is the list of currently supported commands (main command tree):
 % "iic"        : I2C commands
 % "uart"       : UART commands
 % "sequence"   : Sequence configuration
-% "tty"        : IO redirect
+% "files"      : Filesystem access
 % "echo"       : Enable/Disable user input echo
 % "suspend"    : Suspend sketch execution
 % "resume"     : Resume sketch execution
@@ -218,7 +218,10 @@ Here is the list of currently supported commands (main command tree):
              tree if subdirectory has no matching command
 
 
-"tty"      - Use specified UART for espshell input / output. Used to run the 
+"files"    - Enter file manager mode. This mode allows user to perform basic file 
+             system commands (list directory contens, file and directory creation,
+             file editing and file transfer). Details are in "docs/Filesystem_Commands.txt"
+
              shell on uarts other than default leaving UART0 purely for sketch.
 
 
