@@ -51,7 +51,7 @@
 //
 //TAG:settings
 //#define SERIAL_IS_USB           // Not yet
-//#define ESPCAM                  // Include ESP32CAM commands (read extra/README.md).
+#define ESPCAM                  // Include ESP32CAM commands (read extra/README.md).
 #define AUTOSTART       1          // Set to 0 for manual shell start via espshell_start().
 #define WITH_COLOR      1          // Enable terminal colors support
 #define AUTO_COLOR      1          // Let ESPShell decide wheither to enable coloring or not
@@ -86,7 +86,7 @@
 #define PROMPT_I2C "esp32-i2c%u>"        // i2c prompt
 #define PROMPT_UART "esp32-uart%u>"      // uart prompt   
 #define PROMPT_SEQ "esp32-seq%u>"        // Sequence subtree prompt
-#define PROMPT_FILES "esp32#(<i>%s</>)>" // File manager prompt
+#define PROMPT_FILES "esp32#(%s%s%s)>" // File manager prompt
 #define PROMPT_SEARCH "Search: "         // History search prompt
 
 //TAG:includes
@@ -194,6 +194,22 @@
 #pragma GCC diagnostic warning "-Wformat"                   // enable -Wformat warnings. Turned off by Arduino IDE by default
 #define xstr(s) ystr(s)
 #define ystr(s) #s
+
+
+// coloring macros.
+// coloring is auto-enabled upon reception of certain symbols from user: arrow keys,
+// <tab>, Ctrl+??? and such will enable syntax coloring
+//
+#define esc_i "\033[33;93m"             // [I]important information (eye-catching bright yellow)
+#define esc_r "\033[38;5;0;48;5;255m"   // [R]eversed monochrome (black on white)
+//#define esc_r "\033[7m"                 // Alternative reversal sequence
+#define esc_w "\033[31;91m"             // [W]arning message ( failsafe red )
+#define esc_e "\033[35;95m"             // [E]rror message (bright magenta)
+#define esc_b "\033[1m"                 // [B]old
+#define esc_n "\033[0m"                 // [N]ormal colors
+#define esc_1 "\033[33m"                // Hint[1] dark yellow
+#define esc_2 "\033[36m"                // Hint[2] dark cyan
+#define esc_3 "\033[92m"                // Hint[3] bright green
 
 
 
@@ -450,19 +466,6 @@ static const KEYMAP MetaMap[] = {
   { 0, NULL }
 };
 
-// coloring macros.
-// coloring is auto-enabled upon reception of certain symbols from user: arrow keys,
-// <tab>, Ctrl+??? and such will enable syntax coloring
-//
-#define esc_i "\033[33;93m"             // [I]important information (eye-catching bright yellow)
-#define esc_r "\033[38;5;0;48;5;255m"   // [R]eversed monochrome (black on white)
-#define esc_w "\033[31;91m"             // [W]arning message ( failsafe red )
-#define esc_e "\033[35;95m"             // [E]rror message (bright magenta)
-#define esc_b "\033[1m"                 // [B]old
-#define esc_n "\033[0m"                 // [N]ormal colors
-#define esc_1 "\033[33m"                // Hint[1] dark yellow
-#define esc_2 "\033[36m"                // Hint[2] dark cyan
-#define esc_3 "\033[92m"                // Hint[3] dark cyan
 
 // Queue an arbitrary asciiz string to simulate user input.
 // String queued has higher priority than user input so console_read() would
@@ -1317,7 +1320,7 @@ static const char *Failed = "% <e>Failed</>\r\n";
 static const char *Notset = "<1>not set</>\r\n";
 #if WITH_HELP
 static const char *SpacesInPath = "<e>% Too many arguments.\r\n% If your path contains spaces, please enter spaces as \"*\":\r\n% Examples: \"cd Path*With*Spaces\",  \"rm /ffat/Program*Files\"</>\r\n";
-static const char *MultipleEntries = "<2>% Processing multiple paths.\r\n% Not what you want? Use asteriks (*) instead of spaces in the path</>\r\n";
+static const char *MultipleEntries = "% Processing <2>multiple paths</>.\r\n% Not what you want? <2>Use asteriks (*) instead of spaces</> in the path</>\r\n";
 static const char *VarOops = "<e>% Oops :-(\r\n"
             "% No registered variables to play with</>\r\n"
             "% <2>Try this:\r\n"
@@ -2537,8 +2540,8 @@ static const struct keywords_t keywords_main[] = {
   HELP("% \"show sequence X\" - display sequence X\r\n"), "Display information" },
 
   // Shell input/output settings
-  { "tty", cmd_tty, 1,
-  HELP("% \"tty X\" Use uart X for command line interface"), "IO redirect" },
+  { "tty", cmd_tty, 1, HIDDEN_KEYWORD },
+  //HELP("% \"tty X\" Use uart X for command line interface"), "IO redirect" },
 
   { "echo", cmd_echo, 1,
   HELP("% \"echo on|off|silent\" Echo user input on/off (default is on)"), "Enable/Disable user input echo" },
@@ -3075,11 +3078,18 @@ static int seq_send(unsigned int pin, unsigned int seq) {
 // disable/enable/show status for command history
 //
 static int cmd_history(int argc,char **argv) {
-  if (argc < 2) q_printf("%% History is %s\r\n",rl_history ? "on" : "off"); else 
-  if (!q_strcmp(argv[1],"off")) rl_history_enable(false); else
-  if (!q_strcmp(argv[1],"on")) rl_history_enable(true); else return 1;
+  if (argc < 2) 
+  // no arguments? display history status
+    q_printf("%% History is %s\r\n",rl_history ? "on" : "off"); else 
+  // history off: disable history and free all memory associated with history
+  if (!q_strcmp(argv[1],"off"))
+    rl_history_enable(false); else
+  // history on: enable history
+  if (!q_strcmp(argv[1],"on")) 
+    rl_history_enable(true); else return 1;
   return 0;
 }
+
 #if WITH_COLOR
 // "colors [on|off|auto]"
 //
@@ -3090,17 +3100,33 @@ static int cmd_colors(int argc,char **argv) {
   if (argc < 2) 
     q_printf("%% Color is \"%s\"\r\n",ColorAuto ? "auto" : (Color ? "on" : "off")); 
   else 
+  // auto-colors: colors are enabled by ESPShell if it detects proper terminal software on user side
   if (!q_strcmp(argv[1],"auto")) {
     Color = false;
     ColorAuto = true;
   } else
+  // colors off: don't send any ANSI color escape sequences. Use with broken terminals 
   if (!q_strcmp(argv[1],"off"))
     ColorAuto = Color = false;
   else
+  // colors on : enable color sequences
   if (!q_strcmp(argv[1],"on")) {
     ColorAuto = false;
     Color = true;
-  } else return 1;
+  } else 
+  // hidden command
+  if (!q_strcmp(argv[1],"test")) {
+    int i;
+
+    for (i=0; i < 8; i++)
+      q_printf("3%d: \e[3%dmLorem Ipsum Dolor 1234567890 @#\e[0m 9%d\e[9%dmLorem Ipsum Dolor 1234567890 @#\e[0m\r\n",i,i,i,i);
+
+    for (i=0; i < 108; i++)
+      q_printf("%d: \e[%dmLorem Ipsum Dolor 1234567890 @#\e[0m\r\n",i,i);
+
+  } else 
+    return 1;
+
   return 0;
 }
 #endif //WITH_COLOR
@@ -3119,13 +3145,11 @@ static int cmd_exit(int argc, char **argv) {
     // memory is not freed. It all can/will be reused on espshell restart via espshell_start() call
     if (argc > 1 && !q_strcmp(argv[1], "exit"))
       Exit = true;
-    
-
   return 0;
 }
 
 //TAG:show
-//"show seq NUMBER"
+//"show KEYWORD"
 
 static int cmd_show(int argc, char **argv) {
 
@@ -3133,6 +3157,10 @@ static int cmd_show(int argc, char **argv) {
     return -1;
   if (!q_strcmp(argv[1], "sequence"))
     return cmd_seq_show(argc, argv);
+  // TODO: one day move "display" commands under "show"
+  //if (!q_strcmp(argv[1], "cpu"))
+  //if (!q_strcmp(argv[1], "memory"))
+  //if (!q_strcmp(argv[1], "uptime"))
   return 1;
 }
 
@@ -5518,6 +5546,7 @@ static char *files_time2text(time_t t) {
 //
 static const char *files_set_cwd(const char *cwd) {
 
+  int len;
   static char prom[256+16] = { 0 };
 
   if (Cwd != cwd) {
@@ -5525,22 +5554,18 @@ static const char *files_set_cwd(const char *cwd) {
       q_free(Cwd);
       Cwd = NULL;
     }
-    if (cwd) {
-      int len = strlen(cwd);
-      if (len) {
-        Cwd = (char *)q_malloc(len + 2,MEM_CWD);
-        if (Cwd) {
+    if (cwd)
+      if ((len = strlen(cwd)) > 0)
+        if ((Cwd = (char *)q_malloc(len + 2,MEM_CWD)) != NULL) {
           strcpy(Cwd, cwd);
-
           len--;
           if (Cwd[len] != '/' && cwd[len] != '\\')
             strcat(Cwd, "/");
         }
-      }
-    }
   }
 
-  sprintf(prom,PROMPT_FILES, Cwd ? Cwd : "?");
+  sprintf(prom,PROMPT_FILES, (Color ? esc_i : ""),  (Cwd ? Cwd : "?"), (Color ? esc_n : ""));
+
   prompt = prom;
 
   return Cwd;
@@ -5861,7 +5886,7 @@ static int remove_file_callback(const char *path) {
     return 0;
   }
 #if WITH_HELP  
-  q_printf("%% Deleted file: \"%s\"\r\n",path);
+  q_printf("%% Deleted file: \"<3>%s</>\"\r\n",path);
 #endif  
   return 1;
 }
@@ -5871,7 +5896,7 @@ static int remove_file_callback(const char *path) {
 static int remove_dir_callback(const char *path) {
   if (rmdir(path) == 0) {
 #if WITH_HELP        
-    q_printf("%% Directory removed: \"%s\"\r\n",path);
+    q_printf("%% Directory removed: \"<i>%s</>\"\r\n",path);
 #endif        
     return 1;
   }
@@ -6581,7 +6606,7 @@ static int cmd_files_ls(int argc, char **argv) {
           found = true;
         }
 #pragma GCC diagnostic ignored "-Wformat"        
-        q_printf("%% <b>% 9u</>       MP  [<3>%s</>]\r\n",files_space_used(i), mountpoints[i].mp);
+        q_printf("%% <b>% 9u</>       MP  [<i>%s</>]\r\n",files_space_used(i), mountpoints[i].mp);
 #pragma GCC diagnostic warning "-Wformat"        
       }
     if (!found)
@@ -6709,7 +6734,7 @@ static int cmd_files_write(int argc, char **argv) {
       if (size < 0)
         q_printf("%% <e>Write to file \"%s\" failed</>\r\n",path);
       else
-        q_printf("%% <i>%u</> bytes written to <2>%s</>\r\n",size,path);
+        q_printf("%% <i>%u</> bytes written to <3>%s</>\r\n",size,path);
       close(fd);
     }
   }
@@ -6784,7 +6809,7 @@ static int cmd_files_insdel(int argc, char **argv) {
 
   if ((t = fopen(upath,"wb")) == NULL) {
 #if WITH_HELP
-    q_printf("%% <e>Failed to create temporary file \"%s\"</>\r\n",upath);
+    q_printf("%% <e>Failed to create temporary file \"<3>%s\"</>\r\n",upath);
 #endif    
     goto free_memory_and_return;
   }
@@ -6865,10 +6890,21 @@ static int cmd_files_mkdir(int argc, char **argv) {
     if (argv[i][0] == '\0')
       return i;
     files_asteriks2spaces(argv[i]);
-    if ((argv[i] = files_full_path(argv[i])) != NULL)
-      if (!files_path_impossible(argv[i]))
+    if ((argv[i] = files_full_path(argv[i])) != NULL) {
+      if (!files_path_impossible(argv[i])) {
         if (mkdir(argv[i],0777) != 0)
           q_printf("%% <e>Failed to create directory \"%s\", error %d</>\r\n",argv[i],errno);
+#if WITH_HELP
+        else
+          q_printf("%% Directory \"<i>%s</>\" has been created\r\n",argv[1]);
+#endif
+      
+      }
+#if WITH_HELP
+      else
+        q_printf("%% Impossible path for \"mkdir\" : \"%s\"\r\n",argv[i]);
+#endif      
+    }
   }
   return 0;
 }
@@ -6893,8 +6929,12 @@ static int cmd_files_touch(int argc, char **argv) {
     argv[i] = files_full_path(argv[i]);
 
     // try to open file, creating it if it doesn't exist
-    if ((fd = open(argv[i], O_CREAT | O_WRONLY, 0666)) > 0)
+    if ((fd = open(argv[i], O_CREAT | O_WRONLY, 0666)) > 0) {
       close(fd);
+#if WITH_HELP
+      q_printf("%% Touched \"<3>%s</>\"\r\n",argv[i]);
+#endif      
+    }
     else
       q_printf("%% <e>Failed to create file \"%s\", error code is %d</>\r\n",argv[i],errno);
   }
