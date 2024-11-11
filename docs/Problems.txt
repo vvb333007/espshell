@@ -1,14 +1,37 @@
-Not solved yet
---------------
-
+Known problems not solved yet
+-----------------------------
 1. console_read_bytes() and console_write_bytes() for USBCDC boards 
-   (like Nano ESP32, or generic ESP32-S3 devboards with USB-OTG enabled).
-   I want to do it in C, i don't want to wrap up calls to Serial.read()
-   and write()
+   (like Nano ESP32, or generic ESP32-S3 devboards with USB-OTG enabled)
 
 
-2. Filename completion on <TAB>. Even thinking of it is frustrating. 
-   BTW when <TAB> is pressed - tab_pressed() is called so one wishing 
-   to help can start from there
+2. Filename completion. Even thinking of it is frustrating. BTW when 
+   <TAB> is pressed - tab_pressed() is called so one wishing to help 
+   can start from there
 
 3. PWM mystery (see pwm_enable() code)
+
+
+Working on
+----------
+
+Make file manager be able to mount SDMMC memory cards (either via mmc (4 and 1 bit) or spi interfaces).
+
+Make file manager be able to send/receive files over http protocol (by deploying a minimalistic http server, uploading)
+                                                                   OR
+                                                     ftp  protocol (server, uploading)
+
+Implement "mv" and "cp" commands which
+  1. Work when SRC and DST are on two deifferent filesystems
+  2. Both commands are able to replicate SRC directory structure by default
+
+Make support for SPI bus and Crypto Acceleratr (use scenarios, commands). Latter
+looks promising as a general use tool (encrypt/decrypt/hash arbitrary data)
+
+Create a solution for the scenario where ESP32Cam: 
+  1. makes a picture, 
+  2. saves it to SIMCOM7600E internal filesystem (via uart/AT commands), and 
+  3. sends by internet to remote host
+
+  All with ESPShell commands only
+
+
