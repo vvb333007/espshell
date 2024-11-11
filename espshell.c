@@ -285,6 +285,18 @@ enum {
 #  define q_free(_ptr) free((_ptr))
 #endif
 
+// strdup() + extra 256 bytes
+static char *q_strdup256(const char *ptr, int type) {
+  char *p = NULL;
+  if (ptr != NULL) {
+    int len = strlen(ptr);
+    if ((p = (char *)q_malloc(len + 16 + 1,type)) != NULL)
+      strcpy(p,ptr);
+  }
+  return p;
+}
+
+
 // espshell runs on this port:
 static uart_port_t uart = STARTUP_PORT;              
 
@@ -5312,46 +5324,53 @@ static int
 cmd_uptime(UNUSED int argc, UNUSED char **argv) {
 
   unsigned int sec, min = 0, hr = 0, day = 0;
-  sec = (unsigned int)(esp_timer_get_time() / 1000000);
-
+  sec = (unsigned int)(esp_timer_get_time() / 1000000ULL);
+  
   const char *rr;
 
   switch (esp_reset_reason()) {
-    case ESP_RST_POWERON: rr = "power-on event"; break;
-    case ESP_RST_SW: rr = "reload command"; break;
-    case ESP_RST_PANIC: rr = "panic()!"; break;
-    case ESP_RST_INT_WDT: rr = "an interrupt watchdog"; break;
-    case ESP_RST_TASK_WDT: rr = "a task watchdog"; break;
-    case ESP_RST_WDT: rr = "an unspecified watchdog"; break;
-    case ESP_RST_DEEPSLEEP: rr = "coming up from deep sleep"; break;
-    case ESP_RST_BROWNOUT: rr = "brownout"; break;
-    case ESP_RST_SDIO: rr = "SDIO"; break;
-    case ESP_RST_USB: rr = "USB event"; break;
-    case ESP_RST_JTAG: rr = "JTAG"; break;
-    case ESP_RST_EFUSE: rr = "eFuse errors"; break;
-    case ESP_RST_PWR_GLITCH: rr = "power glitch"; break;
-    case ESP_RST_CPU_LOCKUP: rr = "lockup (double exception)"; break;
-    default: rr = "no idea";
+    case ESP_RST_POWERON: rr = "Board power-on"; break;
+
+    case ESP_RST_SW: rr = "<i>reload command"; break;
+    case ESP_RST_DEEPSLEEP: rr = "<i>returned from a deep sleep"; break;
+
+    case ESP_RST_SDIO: rr = "<1>SDIO event"; break;
+    case ESP_RST_USB: rr = "<1>USB event"; break;
+    case ESP_RST_JTAG: rr = "<1>JTAG event"; break;
+        
+
+    case ESP_RST_PANIC: rr = "<w>panic() called :-("; break;
+    case ESP_RST_INT_WDT: rr = "<w>an interrupt watchdog"; break;
+    case ESP_RST_TASK_WDT: rr = "<w>a task watchdog"; break;
+    case ESP_RST_WDT: rr = "<w>an unspecified watchdog"; break;
+
+    case ESP_RST_BROWNOUT: rr = "<2>brownout"; break;
+    case ESP_RST_PWR_GLITCH: rr = "<2>power glitch"; break;
+
+    case ESP_RST_EFUSE: rr = "<3>eFuse errors"; break;
+    case ESP_RST_CPU_LOCKUP: rr = "<3>lockup (double exception)"; break;
+
+    default: rr = "<e>no idea</>";
   };
 
   q_print("% Last boot was ");
-  if (sec > 60 * 60 * 24) {
+  if (sec >= 60 * 60 * 24) {
     day = sec / (60 * 60 * 24);
     sec = sec % (60 * 60 * 24);
     q_printf("%u day%s ", day, day == 1 ? "" : "s");
   }
-  if (sec > 60 * 60) {
+  if (sec >= 60 * 60) {
     hr = sec / (60 * 60);
     sec = sec % (60 * 60);
     q_printf("%u hour%s ", hr, hr == 1 ? "" : "s");
   }
-  if (sec > 60) {
+  if (sec >= 60) {
     min = sec / 60;
     sec = sec % 60;
     q_printf("%u minute%s ", min, min == 1 ? "" : "s");
   }
 
-  q_printf("%u second%s ago\r\n%% Restart reason was \"%s\"\r\n", sec, sec == 1 ? "" : "s", rr);
+  q_printf("%u second%s ago\r\n%% Restart reason was \"%s</>\"\r\n", sec, sec == 1 ? "" : "s", rr);
 
 
   return 0;
@@ -5392,7 +5411,7 @@ static int cmd_kill(int argc, char **argv) {
   unsigned int taskid = hex2uint32(argv[1]);
   if (taskid == 0) {
 #if WITH_HELP
-    q_print("% Task id is a hex number, something like \"3fff0030\"\r\n");
+    q_print("% Task id is a hex number, something like \"3fff0030\" or \"0x40005566\"\r\n");
 #endif
     return 1;
   }
@@ -5458,7 +5477,7 @@ static void files_strip_trailing_slash(char *p) {
 static INLINE bool files_path_is_root(const char *path) {
   return (path && (path[0] == '/' || path[0] == '\\') && (path[1] == '\0'));
 }
-
+#if 0
 // Check if path is ok for file/directory creation
 // Any objects in "/" are impossible except for mountpoint dirs
 // TODO: add more checks here: double dots, bad characters, too long and so on
@@ -5472,7 +5491,7 @@ static bool files_path_impossible(const char *path) {
   }
   return *path == '\0';
 }
-
+#endif
 // read lines from a text file
 // \n is the line separator, (\r and \n arediscarded).
 //
@@ -5679,6 +5698,7 @@ const esp_partition_t *files_partition_by_label(const char *label) {
 //                otherwhise
 // path is appended to cwd and this full path is used
 // Asteriks (*), if present, are converted to spaces ( )
+// TODO: add bool convert_asteriks flag. need it for files_create_dirs()
 //
 static char *files_full_path(const char *path) {
 
@@ -5825,7 +5845,7 @@ typedef int (* files_walker_t)(const char *);
 //
 static unsigned int files_dirwalk(const char *path0, files_walker_t files_cb, files_walker_t dirs_cb, int depth) {
 
-  char path[256+16], *p;
+  char *path = NULL;
   int len;
   DIR *dir;
   unsigned int processed = 0;
@@ -5834,14 +5854,11 @@ static unsigned int files_dirwalk(const char *path0, files_walker_t files_cb, fi
     return 0;
 
   // figure out full path, if needed
-  if ((p = files_full_path(path0)) == NULL)
+  if ((path = q_strdup256(files_full_path(path0), MEM_PATH)) == NULL)
     return 0;
-  
-  // save a copy, files_full_path's buffer is not reentrat 
-  len = strlen(p);
-  if (len < 1 || len > (sizeof(path) - 8)) // 8 - reserve some space "/" appending
-    return 0;
-  strcpy(path,p);
+
+  if ((len = strlen(path)) < 1) 
+    goto free_and_exit;
 
   // directory exists?
   if (files_path_exist(path,true)) {
@@ -5857,15 +5874,17 @@ static unsigned int files_dirwalk(const char *path0, files_walker_t files_cb, fi
       struct dirent *de;
       while((de = readdir(dir)) != NULL) {
 
-        path[len] = '\0';        // cut off previous addition
-        strcat(path,de->d_name); // add entry name to our path
+        if (strlen(de->d_name) < 256) {
+          path[len] = '\0';        // cut off previous addition
+          strcat(path,de->d_name); // add entry name to our path
 
-        // if its a directory - call recursively
-        if (de->d_type == DT_DIR)
-          processed += files_dirwalk(path,files_cb,dirs_cb, depth - 1);
-        else 
-          if (files_cb)
-            processed += files_cb(path);
+          // if its a directory - call recursively
+          if (de->d_type == DT_DIR)
+            processed += files_dirwalk(path,files_cb,dirs_cb, depth - 1);
+          else 
+            if (files_cb)
+              processed += files_cb(path);
+        }
       }
       closedir(dir);
       path[len] = '\0';
@@ -5873,6 +5892,9 @@ static unsigned int files_dirwalk(const char *path0, files_walker_t files_cb, fi
         processed += dirs_cb(path);
     }
   }
+free_and_exit:
+  if (path)
+    q_free(path);
   return processed;
 }
 
@@ -5947,6 +5969,8 @@ static int size_file_callback(const char *p) {
 // get file/directory size in bytes
 // /path/ is the path to the file or to the directory
 //
+// TODO: with STACKSIZE of 5Kb crashes on path "1/2/3/4/5/6/7/9/file.txt"
+//
 static unsigned int files_size(const char *path) {
 
   struct stat st;
@@ -5954,7 +5978,7 @@ static unsigned int files_size(const char *path) {
   char *path0 = files_full_path(path);
   if (!path0)
     return 0;
-  strcpy(p,path0);
+  strcpy(p,path0); //TODO: check length. 
 
   // size of file requested
   if (files_path_exist(p, false)) {
@@ -6069,6 +6093,51 @@ static int files_cat_text(const char *path,unsigned int line,unsigned int count,
   } else
     q_printf("%% <e>Can not open file \"%s\" for reading</>\r\n",path);
   return 0;
+}
+
+static int files_create_dirs(const char *path0, bool last_is_file) {
+  int argc, len, i, ret = 0, created = 0;
+  char **argv = NULL, *path;
+  char buf[256+16] = { 0 };
+  
+  if ((len = strlen((path = files_full_path(path0)))) > 0) {
+    // replace all path separators with spaces: this way we can use argify()
+    // to split it to components. FIXME: this will screw "space in path" up
+    for (i = 0; i < len; i++)
+      if (path[i] == '/' || path[i] == '\\')
+        path[i] = ' ';
+
+    // argify and strip last component if it is a file
+    if ((argc = argify((unsigned char *)path,(unsigned char ***)&argv)) > 0) {
+      if (last_is_file)
+        argc--;
+      if (argc > 0) {
+        // walk thru all path components and create them if do not exist
+        for (i = 0; i < argc; i++) {
+          strcat(buf,"/");
+          strcat(buf,argv[i]);
+          if (!files_path_exist(buf,true)) {
+            if (mkdir(buf,0777) != 0) {
+              ret = -1;
+#if WITH_HELP
+              q_printf("%% <e>Failed to create directory \"%s\"</>\r\n",buf);
+#endif              
+              goto fail;
+            }
+#if WITH_HELP            
+            q_printf("%% Created directory: \"<i>%s\"</>\r\n",buf);
+#endif
+            created++;
+          }
+        }
+      }
+    }
+  }
+
+fail:
+  if (argv)
+    q_free(argv);
+  return ret;
 }
 
 // <TAB> (Ctrl+I) handler. Jump to next argument
@@ -6705,12 +6774,6 @@ static int cmd_files_write(int argc, char **argv) {
   if (argc < 2) return -1;
   if ((path = files_full_path(argv[1])) == NULL)
     return 1;
-#if MUST_TOUCH
-  if (!files_path_exist(path,false)) {
-    q_printf("%% <e>File \"%s\" does not exist, \"touch\" it first</>\r\n",path);
-    return 0;
-  }
-#endif
 
   if (argc > 2)
     size = text2buf(argc,argv,2,&out);
@@ -6718,7 +6781,6 @@ static int cmd_files_write(int argc, char **argv) {
     out = empty;
     size = 1;
   }
-  
 
   unsigned flags = O_CREAT|O_WRONLY;
 
@@ -6728,17 +6790,30 @@ static int cmd_files_write(int argc, char **argv) {
   else
     flags |= O_TRUNC;
 
-  if (size > 0) {
-    if ((fd = open(path,flags)) > 0) {
-      size = write(fd,out,size);
-      if (size < 0)
-        q_printf("%% <e>Write to file \"%s\" failed</>\r\n",path);
-      else
-        q_printf("%% <i>%u</> bytes written to <3>%s</>\r\n",size,path);
-      close(fd);
-    }
-  }
+  if (size > 0)
+    // create path components (if any)
+    if (files_create_dirs(path,true) >= 0) {
 
+      // files_create_dirs() destroys /path/ as it is static buffer of files_full_path
+      // instead of q_strdup just reevaluate it
+      if ((path = files_full_path(argv[1])) == NULL)
+        goto free_and_exit;
+
+      // ceate file and write TEXT
+      if ((fd = open(path,flags)) > 0) {
+        size = write(fd,out,size);
+        if (size < 0)
+          q_printf("%% <e>Write to file \"%s\" failed, code %d</>\r\n",path,errno);
+        else
+          q_printf("%% <i>%u</> bytes written to <3>%s</>\r\n",size,path);
+        close(fd);
+        goto free_and_exit;
+      }
+    }
+#if WITH_HELP
+  q_print("%% <e>Failed to create file or path component</>\r\n");
+#endif  
+free_and_exit:
   if (out && (out != empty))
     q_free(out);
 
@@ -6878,7 +6953,7 @@ free_memory_and_return:
 //
 static int cmd_files_mkdir(int argc, char **argv) {
 
-  int i;
+  int i, failed = 0;
   if (argc < 2) return -1;
 #if WITH_HELP  
   if (argc > 2)
@@ -6889,23 +6964,13 @@ static int cmd_files_mkdir(int argc, char **argv) {
     files_strip_trailing_slash(argv[i]);
     if (argv[i][0] == '\0')
       return i;
-    files_asteriks2spaces(argv[i]);
-    if ((argv[i] = files_full_path(argv[i])) != NULL) {
-      if (!files_path_impossible(argv[i])) {
-        if (mkdir(argv[i],0777) != 0)
-          q_printf("%% <e>Failed to create directory \"%s\", error %d</>\r\n",argv[i],errno);
-#if WITH_HELP
-        else
-          q_printf("%% Directory \"<i>%s</>\" has been created\r\n",argv[1]);
-#endif
-      
-      }
-#if WITH_HELP
-      else
-        q_printf("%% Impossible path for \"mkdir\" : \"%s\"\r\n",argv[i]);
-#endif      
-    }
+    if (files_create_dirs(argv[i],false) < 0)
+      failed++;
   }
+#if WITH_HELP  
+  if (failed)
+    q_printf("%% <e>There were errors during directory creation. (%d fails)</>\r\n",failed);
+#endif  
   return 0;
 }
 
@@ -6924,8 +6989,11 @@ static int cmd_files_touch(int argc, char **argv) {
 
   for (i = 1; i < argc; i++) {
 
-    // create path from user input (arg1..argN) and current working directory set by "cd"
-    files_asteriks2spaces(argv[i]);
+    if (files_create_dirs(argv[i],true) < 0)  {
+      q_print("%% <e>Failed to create path for a file</>\r\n");
+      return 0;
+    }
+
     argv[i] = files_full_path(argv[i]);
 
     // try to open file, creating it if it doesn't exist
