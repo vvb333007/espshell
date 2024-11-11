@@ -291,6 +291,9 @@ If TEXT is omitted, then single "\n" byte is written (newline symbol)
   % 18 bytes written
   esp32#(/wwwroot/)>
 
+If PATH had subdirs in it then "write" command creates all required directories to
+store the file
+
 "append PATH TEXT" : Append bytes
 -----------------------
 This is a twin brother of "write" command which appends data to the file instead of 
@@ -300,14 +303,8 @@ rewriting it
 "mkdir PATH1 PATH2 ... PATHn" : Create directory/ies
 ----------------------------------------------------
 
-Creates a directory. Nested path creation is not supported: dont expect that "mkdir 1/2/3/4"
-will create 4 directories for you. Instead it should be something like 
-
-  esp32#(/wwwroot/)>mkdir 1
-  esp32#(/wwwroot/)>mkdir 1/2
-  esp32#(/wwwroot/)>mkdir 1/2/3
-  esp32#(/wwwroot/)>mkdir 1/2/3/4
-  esp32#(/wwwroot/)>
+Creates a directory. Nested path creation is supported: "mkdir 1/2/3/4"
+will create 4 directories for you. 
 
 Example 1: create directories /wwwroot/1, /wwwroot/2 and /wwwroot/3:
 
@@ -318,12 +315,15 @@ This command can not create directories in root ("/") directory: use "mount" com
 instead.
 
 NOTE: if you want spaces (" ") in your path then use asterikas "*" instead of spaces:
-ESPShell converts asteriks to spaces in paths and file names
+ESPShell converts asteriks to spaces in paths and file names. However, when multiple directories
+are created withing single path argument then asteriks/spaces logic fails. it is a known issue.
 
 
 "touch PATH1 PATH2 ... PATHn" : Create new or update timestamps on existing file(s)
 -----------------------------------------------------------------------------------
-As it Linux counterpart, this command creates new files or updates timestamps on existing files
+As it Linux counterpart, this command creates new files or updates timestamps on existing files.
+For PATH containing subdirectories: all directories that are required to touch the file will
+be automatically created
 
 
 "insert PATH LINE_NUM [TEXT]" : Insert bytes into text file
