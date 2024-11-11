@@ -82,12 +82,13 @@
 
 //TAG:prompts
 // Prompts used by command subdirectories
-#define PROMPT "esp32#>"                 // Main prompt
-#define PROMPT_I2C "esp32-i2c%u>"        // i2c prompt
-#define PROMPT_UART "esp32-uart%u>"      // uart prompt   
-#define PROMPT_SEQ "esp32-seq%u>"        // Sequence subtree prompt
-#define PROMPT_FILES "esp32#(%s%s%s)>" // File manager prompt
+#define PROMPT        "esp32#>"          // Main prompt
+#define PROMPT_I2C    "esp32-i2c%u>"     // i2c prompt
+#define PROMPT_UART   "esp32-uart%u>"    // uart prompt   
+#define PROMPT_SEQ    "esp32-seq%u>"     // Sequence subtree prompt
+#define PROMPT_FILES  "esp32#(%s%s%s)>"  // File manager prompt (color tag, path, color tag)
 #define PROMPT_SEARCH "Search: "         // History search prompt
+#define MAX_PROMPT_LEN 16                // not including %u and %s
 
 //TAG:includes
 #include <stdio.h>
@@ -126,6 +127,9 @@
 #include <esp32-hal-uart.h>
 
 // Support files for LittleFS, FAT and SPIFFS filesystems
+#define MAX_PATH 256
+#define MAX_FILENAME 256
+
 #if WITH_FS
 #  include <sys/unistd.h>
 #  include <sys/stat.h>
@@ -200,6 +204,7 @@
 // coloring is auto-enabled upon reception of certain symbols from user: arrow keys,
 // <tab>, Ctrl+??? and such will enable syntax coloring
 //
+//TAG:esc
 #define esc_i "\033[33;93m"             // [I]important information (eye-catching bright yellow)
 #define esc_r "\033[38;5;0;48;5;255m"   // [R]eversed monochrome (black on white)
 //#define esc_r "\033[7m"                 // Alternative reversal sequence
@@ -290,7 +295,7 @@ static char *q_strdup256(const char *ptr, int type) {
   char *p = NULL;
   if (ptr != NULL) {
     int len = strlen(ptr);
-    if ((p = (char *)q_malloc(len + 16 + 1,type)) != NULL)
+    if ((p = (char *)q_malloc(len + 256 + 1,type)) != NULL)
       strcpy(p,ptr);
   }
   return p;
@@ -1493,7 +1498,7 @@ static bool isfloat(const char *p) {
 // Check if given ascii string is a hex BYTE.
 // String may or may not start with "0x"
 // Strings "a" , "5a", "0x5" and "0x5A" are valid input
-// TODO: check all bytes, not just 2
+//
 static bool ishex(const char *p) {
   if (p && *p) {
     if (p[0] == '0' && p[1] == 'x')
@@ -5477,21 +5482,7 @@ static void files_strip_trailing_slash(char *p) {
 static INLINE bool files_path_is_root(const char *path) {
   return (path && (path[0] == '/' || path[0] == '\\') && (path[1] == '\0'));
 }
-#if 0
-// Check if path is ok for file/directory creation
-// Any objects in "/" are impossible except for mountpoint dirs
-// TODO: add more checks here: double dots, bad characters, too long and so on
-//
-static bool files_path_impossible(const char *path) {
-  int separators = 0;
-  while (*path && (separators < 2)) {
-    if (*path == '\\' || *path == '/')
-      separators++;
-    path++;
-  }
-  return *path == '\0';
-}
-#endif
+
 // read lines from a text file
 // \n is the line separator, (\r and \n arediscarded).
 //
@@ -5566,7 +5557,7 @@ static char *files_time2text(time_t t) {
 static const char *files_set_cwd(const char *cwd) {
 
   int len;
-  static char prom[256+16] = { 0 };
+  static char prom[MAX_PATH + MAX_PROMPT_LEN] = { 0 };
 
   if (Cwd != cwd) {
     if (Cwd) {
@@ -5694,37 +5685,43 @@ const esp_partition_t *files_partition_by_label(const char *label) {
 // function uses static buffer to store result so it is cannot be called in recursive function
 // without copying the result to stack
 //
-// If /path/ starts from "/" then it is used as is
-//                otherwhise
-// path is appended to cwd and this full path is used
-// Asteriks (*), if present, are converted to spaces ( )
-// TODO: add bool convert_asteriks flag. need it for files_create_dirs()
+// /path/ absolute or relative path
+// /do_asteriks/ should convert asteriks to spaces or not
+// 
+// returns pointer to a buffer (extendable up to 16 bytes) with full path or "/" if
+// errors happened
 //
-static char *files_full_path(const char *path) {
+static char *files_full_path(const char *path, bool do_asteriks) {
 
-  static char out[256+16];
+  static char out[MAX_PATH+16];
   int len, cwd_len;
+  // default /full path/ when something fails is "/": the reason for that
+  // is that it is not possible to do any damage to the root path "/"
+  out[0] = '/';
+  out[1] = '\0';
 
   // is cwd ok?
   if ((Cwd == NULL) && (files_set_cwd("/") == NULL))
-      return NULL;
+      return out;
 
   len = strlen(path);
 
+  // path is absolute. nothing to do - just return a copy
   if (path[0] == '/' || path[0] == '\\') {
-    if (len >= sizeof(out))
-      return NULL;
-    strcpy(out, path);
+    if (len < sizeof(out))
+      strcpy(out, path);
     goto done;
   }
 
+  // path is relative. add CWD
   cwd_len = strlen(Cwd);
-  if ((len + cwd_len) >= sizeof(out))
-    return NULL;
-  strcpy(out, Cwd);
-  strcat(out, path);
+  if ((len + cwd_len) < sizeof(out)) {
+    strcpy(out, Cwd);
+    strcat(out, path);
+  }
 done:
-  files_asteriks2spaces(out);
+  if (do_asteriks)
+    files_asteriks2spaces(out);
   return out;
 }
 
@@ -5854,7 +5851,7 @@ static unsigned int files_dirwalk(const char *path0, files_walker_t files_cb, fi
     return 0;
 
   // figure out full path, if needed
-  if ((path = q_strdup256(files_full_path(path0), MEM_PATH)) == NULL)
+  if ((path = q_strdup256(files_full_path(path0, true), MEM_PATH)) == NULL)
     return 0;
 
   if ((len = strlen(path)) < 1) 
@@ -5874,7 +5871,8 @@ static unsigned int files_dirwalk(const char *path0, files_walker_t files_cb, fi
       struct dirent *de;
       while((de = readdir(dir)) != NULL) {
 
-        if (strlen(de->d_name) < 256) {
+        // path buffer has 256 bytes extra space
+        if (strlen(de->d_name) < MAX_FILENAME) {
           path[len] = '\0';        // cut off previous addition
           strcat(path,de->d_name); // add entry name to our path
 
@@ -5934,18 +5932,13 @@ static int remove_dir_callback(const char *path) {
 // Returns number of items removed (files+directories)
 //
 static int files_remove(const char *path0, int depth) {
-  char path[256+16], *p;    // TODO: use some MAX_PATH idf macro
+  char path[MAX_PATH+16];    // TODO: use dynamic memory 
 
   if (depth < 1)
     return 0;
-  
-  // make full path if necessary
-  if ((p = files_full_path(path0)) == NULL)
-    return 0;
 
   // make a copy of full path as files_full_path()'s buffer is not reentrant (static)
-  strcpy(path,p);
-  
+  strcpy(path,files_full_path(path0, true));
   
   if (files_path_exist(path,false))     // a file?
     return unlink(path) == 0 ? 1 : 0;
@@ -5969,16 +5962,11 @@ static int size_file_callback(const char *p) {
 // get file/directory size in bytes
 // /path/ is the path to the file or to the directory
 //
-// TODO: with STACKSIZE of 5Kb crashes on path "1/2/3/4/5/6/7/9/file.txt"
-//
 static unsigned int files_size(const char *path) {
 
   struct stat st;
-  char p[256+16];
-  char *path0 = files_full_path(path);
-  if (!path0)
-    return 0;
-  strcpy(p,path0); //TODO: check length. 
+  char p[MAX_PATH+16];
+  strcpy(p,files_full_path(path, true));
 
   // size of file requested
   if (files_path_exist(p, false)) {
@@ -6095,12 +6083,19 @@ static int files_cat_text(const char *path,unsigned int line,unsigned int count,
   return 0;
 }
 
+// for given path "some/path/with/directories/and/files.txt" creates all the directories
+// if they do not exist. 
+//
+// /path0/         - relative or absolute path
+// /last_is_file/  - if /true/ then last component of the path will be ignored
+//
 static int files_create_dirs(const char *path0, bool last_is_file) {
+
   int argc, len, i, ret = 0, created = 0;
   char **argv = NULL, *path;
-  char buf[256+16] = { 0 };
+  char buf[MAX_PATH+16] = { 0 };
   
-  if ((len = strlen((path = files_full_path(path0)))) > 0) {
+  if ((len = strlen((path = files_full_path(path0,false)))) > 0) {
     // replace all path separators with spaces: this way we can use argify()
     // to split it to components. FIXME: this will screw "space in path" up
     for (i = 0; i < len; i++)
@@ -6115,6 +6110,7 @@ static int files_create_dirs(const char *path0, bool last_is_file) {
         // walk thru all path components and create them if do not exist
         for (i = 0; i < argc; i++) {
           strcat(buf,"/");
+          files_asteriks2spaces(argv[i]);
           strcat(buf,argv[i]);
           if (!files_path_exist(buf,true)) {
             if (mkdir(buf,0777) != 0) {
@@ -6199,8 +6195,7 @@ static int cmd_files_unmount(int argc, char **argv) {
   files_strip_trailing_slash(path);
 
   // expand name if needed
-  if ((path = files_full_path(path)) == NULL)
-    return 1;
+  path = files_full_path(path, true);
 
   // find a corresponding mountpoint
   if ((i = files_mountpoint_by_path(path,true)) < 0) {
@@ -6644,16 +6639,15 @@ path_does_not_exist:
 // Directory listing for current working directory or PATH if specified
 //
 static int cmd_files_ls(int argc, char **argv) {
-  char path[256+16],*p;
+  char path[MAX_PATH+16],*p;
   int plen;
   
-  if ((p = (argc > 1) ? files_full_path(argv[1]) : files_full_path(Cwd)) == NULL)
-    return 0;
+  p = (argc > 1) ? files_full_path(argv[1], true) : files_full_path(Cwd, false);
 
   if ((plen = strlen(p)) == 0)
     return 0;
 
-  if (plen > (256+8))
+  if (plen > MAX_PATH)
     return 0;
 
   strcpy(path,p);
@@ -6698,9 +6692,9 @@ static int cmd_files_ls(int argc, char **argv) {
       while ((ent = readdir(dir)) != NULL) {
         
         struct stat st;
-        char path0[256+16] = { 0 };
+        char path0[MAX_PATH+16] = { 0 };
 
-        if (strlen(ent->d_name) + 1 + plen > (sizeof(path0) - 8)) {
+        if (strlen(ent->d_name) + 1 + plen > MAX_PATH) {
           q_print("% <e>Path is too long</>\r\n");
           continue;
         }
@@ -6772,8 +6766,8 @@ static int cmd_files_write(int argc, char **argv) {
   char empty[] = { '\n' , '\0' };
 
   if (argc < 2) return -1;
-  if ((path = files_full_path(argv[1])) == NULL)
-    return 1;
+
+  path = files_full_path(argv[1], true);
 
   if (argc > 2)
     size = text2buf(argc,argv,2,&out);
@@ -6796,8 +6790,7 @@ static int cmd_files_write(int argc, char **argv) {
 
       // files_create_dirs() destroys /path/ as it is static buffer of files_full_path
       // instead of q_strdup just reevaluate it
-      if ((path = files_full_path(argv[1])) == NULL)
-        goto free_and_exit;
+      path = files_full_path(argv[1], true);
 
       // ceate file and write TEXT
       if ((fd = open(path,flags)) > 0) {
@@ -6855,10 +6848,7 @@ static int cmd_files_insdel(int argc, char **argv) {
     return 2;
   }
 
-  if ((path = files_full_path(argv[1])) == NULL)
-    return 1;
-  
-  if (!files_path_exist(path, false)) {
+  if (!files_path_exist((path = files_full_path(argv[1], true)), false)) {
 #if WITH_HELP
     q_printf("%% <e>Path \"%s\" does not exist</>\r\n",path);  //TODO: Path does not exist is a common string.
 #endif    
@@ -6994,7 +6984,7 @@ static int cmd_files_touch(int argc, char **argv) {
       return 0;
     }
 
-    argv[i] = files_full_path(argv[i]);
+    argv[i] = files_full_path(argv[i], true);
 
     // try to open file, creating it if it doesn't exist
     if ((fd = open(argv[i], O_CREAT | O_WRONLY, 0666)) > 0) {
@@ -7143,7 +7133,7 @@ static int cmd_files_cat(int argc, char **argv) {
   if (i >= argc)
     return -1;
     
-  if (!files_path_exist((path = files_full_path(argv[i])), false)) {
+  if (!files_path_exist((path = files_full_path(argv[i],true)), false)) {
 #if WITH_HELP
     q_printf("%% File not found:\"<e>%s</>\"\r\n",path);
     return 0;
