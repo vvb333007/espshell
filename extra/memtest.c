@@ -27,22 +27,22 @@ typedef struct {
 // human-readable memory types
 static const char *memtags[] = {
 
+  "TMP",
+  "STATIC",
   "EDITLINE",
-  "ARGV",
+  "ARGIFY",
   "ARGCARGV",
   "LINE",
-  "SCREEN",
   "HISTORY",
   "TEXT2BUF",
-  "MOUNTPOINT",
   "PATH",
-  "CWD",
-  "CAT",
   "GETLINE",
   "SEQUENCE",
-  "RMT",
-  "QPRINTF",
-  "VAR",
+  "UNUSED11",
+  "UNUSED12",
+  "UNUSED13",
+  "UNUSED14",
+  "UNUSED15"
 };
 
 // allocated blocks
@@ -122,7 +122,7 @@ static void q_free(void *ptr) {
       free(ml);
     }
     else
-      printf("q_free() : address %p is not  on the list, do nothing\r\n",ptr);
+      q_printf("q_free() : address %p is not  on the list, do nothing\r\n",ptr);
   }
 }
 
@@ -151,7 +151,7 @@ static void *q_realloc(void *ptr, size_t new_size,UNUSED int type) {
   
   if (!ml) {
     memlog_unlock();
-    printf("q_realloc() : trying to realloc pointer %p which is not on the list\r\n",ptr);
+    q_printf("q_realloc() : trying to realloc pointer %p which is not on the list\r\n",ptr);
     return NULL;
   }
 
@@ -179,6 +179,14 @@ static void *q_realloc(void *ptr, size_t new_size,UNUSED int type) {
 }
 
 // last of the family: strdup()
+// correctly duplicates NULL pointer
+//
+// /ptr/  - asciiz to be duplicated
+// /type/ - memory type
+//
+//  returns NULL if ptr NULL or is empty string, or it is out of memory
+//  return pointer to new buffer with string copied
+//
 static char *q_strdup(const char *ptr, int type) {
   char *p = NULL;
   if (ptr != NULL) {
@@ -189,22 +197,42 @@ static char *q_strdup(const char *ptr, int type) {
   return p;
 }
 
-// display memory usage statistics by ESPShell
+// Display memory usage statistics by ESPShell
+// Warning signs (possible leaks): 
+//
+//  - MEM_HISTORY or MEM_LINE entries count increase (beyond 20 and 1 resp.)
+//  - MEM_TMP buffers
+//  - Multiple MEM_ARGIIFY or/and multiple MEM_ARGCARGV
+//  - Multiple (>2) MEM_PATH
+//
 static void q_memleaks(const char *text) {
   int count = 0;
 
+  unsigned int counters[16] = { 0 };
 
-  q_printf("%%%s\r\n%% Allocated: <i>%u bytes</> (+ <i>%u bytes</> used by memory tracker)\r\n",text,allocated,internal); 
+  q_printf("%%%s\r\n%% Allocated by ESPShell: <i>%u bytes</> (+ <i>%u bytes</> used by memory tracker)\r\n%%\r\n",text,allocated,internal); 
 
   q_print("<r>"
           "%  Entry | Memory  type |   Size  |  Address  \r\n"
           "%--------+--------------+---------+-----------</>\r\n");
+
+  for (memlog_t *ml = head; ml; ml = (memlog_t *)(ml->li.next)) {
 #pragma GCC diagnostic ignored "-Wformat"
-  for (memlog_t *ml = head; ml; ml = (memlog_t *)(ml->li.next))
     q_printf("%%  % 5u | % 12s | % 7u | %p \r\n",++count,memtags[ml->type],ml->len,ml->ptr);
 #pragma GCC diagnostic warning "-Wformat"
+    counters[ml->type]++;
+  }
+
+  if ((counters[MEM_HISTORY] > HIST_SIZE) ||
+      (counters[MEM_LINE] > 1) ||
+      (counters[MEM_TMP] > 0) ||
+      (counters[MEM_ARGIFY] > 1) ||
+      (counters[MEM_ARGCARGV] > 1))
+    q_printf("%% WARNING: possible memory leak(s) detected\r\n");
+
 #if WITH_HELP
-  q_printf("<r>%% Tracking %07u memory block%s              </>\r\n%% Use command \"mem ADDRESS [COUNT]\" to display data at memory address",count, count == 1 ? "" : "s");
+  q_printf("<r>%% Tracking %07u memory block%s              </>\r\n"
+              "%% Use command \"mem ADDRESS [COUNT]\" to display data at memory address\r\n",count, count == 1 ? "" : "s");
 #endif
 }
 
