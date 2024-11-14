@@ -201,37 +201,40 @@ static int cam_set_size(int argc, char **argv) {
 
 // extra commands under camera settings subdirectory
 static struct keywords_t keywords_espcam[] = {
-  KEYWORDS_BEGIN{ "gain", cam_set_gain, 1, HELP("\"gain auto|(0..30)\"\n\r"
+
+  KEYWORDS_BEGIN
+
+  { "gain", cam_set_gain, 1, HELPK("\"gain auto|(0..30)\"\n\r"
                                                 "% Set camera sensetivity (auto or 0..30)"),
                   "Gain" },
 
-  { "balance", cam_set_balance, 1, HELP("% whitebalance none|auto|sunny|cloudy|office|home\n\r"
+  { "balance", cam_set_balance, 1, HELPK("% whitebalance none|auto|sunny|cloudy|office|home\n\r"
                                         "% Set camera WB mode"),
     "White balance" },
 
-  { "exposure", cam_set_exposure, 2, HELP("% exposure auto [-2..2]\n\r"
+  { "exposure", cam_set_exposure, 2, HELPK("% exposure auto [-2..2]\n\r"
                                           "% \n\r"
                                           "% Set camera exposure mode to auto & optional AE shift"),
     "Exposure" },
-  { "exposure", cam_set_exposure, 1, HELP("% exposure 0..1200\n\r"
+  { "exposure", cam_set_exposure, 1, HELPK("% exposure 0..1200\n\r"
                                           "%\n\r"
                                           "% Set camera exposure manually"),
     "Exposure" },
 
 
-  { "brightness", cam_set_qbcss, 1, HELP("% Adjust brightness: -2..2"),
+  { "brightness", cam_set_qbcss, 1, HELPK("% Adjust brightness: -2..2"),
     "Brightness" },
 
-  { "saturation", cam_set_qbcss, 1, HELP("% \"saturation X\" - Adjust saturation: -2..2"),
+  { "saturation", cam_set_qbcss, 1, HELPK("% \"saturation X\" - Adjust saturation: -2..2"),
     "Saturation" },
 
-  { "contrast", cam_set_qbcss, 1, HELP("% \"contrast X\" - Adjust contrast: -2..2"),
+  { "contrast", cam_set_qbcss, 1, HELPK("% \"contrast X\" - Adjust contrast: -2..2"),
     "Contrast" },
 
-  { "sharpness", cam_set_qbcss, 1, HELP("% \"sharpness\" - Adjust sharpness: -2..2"),
+  { "sharpness", cam_set_qbcss, 1, HELPK("% \"sharpness\" - Adjust sharpness: -2..2"),
     "Sharpness" },
 
-  { "size", cam_set_size, 1, HELP("% \"size vga|svga|xga|hd|sxga|uxga\"\n\r\n\r"
+  { "size", cam_set_size, 1, HELPK("% \"size vga|svga|xga|hd|sxga|uxga\"\n\r\n\r"
                                   "% Set frame size:\n\r"
                                   "% vga  - 640x480\n\r"
                                   "% svga - 800x600\n\r"
@@ -241,7 +244,7 @@ static struct keywords_t keywords_espcam[] = {
                                   "% uxga - 1600x1200 (Default)"),
     "Resolution" },
 
-  { "quality", cam_set_qbcss, 1, HELP("% \"quality 2..63\"\n\r"
+  { "quality", cam_set_qbcss, 1, HELPK("% \"quality 2..63\"\n\r"
                                       "% Set JPEG quality:\n\r"
                                       "% 2 - high ... 63 - low"),
     "Picture quality" },
