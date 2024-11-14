@@ -4,7 +4,7 @@
 
 // command entries for main command tree
 
-{ "camera", cmd_cam, 1, HELP("% \"camera up|down|settings|capture|filesize|transfer\" - Camera commands:\n\r" \
+{ "camera", cmd_cam, 1, HELPK("% \"camera up|down|settings|capture|filesize|transfer\" - Camera commands:\n\r" \
                         "%\n\r" \
                         "% setting  - Enter ESPCam setting\n\r" \
                         "% capture  - Capture a single shot (JPEG)\n\r" \
