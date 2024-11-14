@@ -1,11 +1,11 @@
 /* 
- * ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
+ * ESP32Shell for the Arduino Framework by vvb333007
+ * Author: Viacheslav Burdzhanadze <vvb@nym.hush.com>
  *
  * Latest source code is at: https://github.com/vvb333007/espshell/
  *
- * Uses editline library ( (c) 1992,1993 by Simmule Turner and Rich Salz)
  *
- * WHAT  IS THIS:
+ * WHAT IS THIS:
  * -------------
  * This is a debugging/development tool for use with Arduino projects on
  * ESP32 hardware. Provides a command line interface running in parallel
@@ -44,24 +44,25 @@
  *
  * 7. Copyright information is at the end of this file
  */
+
 #define COMPILING_ESPSHELL 1  // dont touch this!
 
-// COMPILE TIME SETTINGS
-// (User can override these with espshell.h, extra/espshell.h or just change default values below)
-//
 //TAG:settings
+// -- COMPILE-TIME SETTINGS --
+// (User can override these in espshell.h, extra/espshell.h or just change default values below)
+//
 //#define SERIAL_IS_USB           // Not yet
-#define ESPCAM                  // Include ESP32CAM commands (read extra/README.md).
+//#define ESPCAM                  // Include ESP32CAM commands (read extra/README.md).
 #define AUTOSTART       1          // Set to 0 for manual shell start via espshell_start().
 #define WITH_COLOR      1          // Enable terminal colors support
 #define AUTO_COLOR      1          // Let ESPShell decide wheither to enable coloring or not
 #define WITH_HELP       1          // Set to 0 to save some program space by excluding help strings/functions
 #define WITH_HISTORY    1          // Set to 0 to when looking for memory leaks
+#define HIST_SIZE       20         // History buffer size (number of commands to remember)
 #define WITH_FS         1          // Filesystems (fat/spiffs/littlefs) support (cp,mv,insert and delete are not implemented yet)
 #define WITH_SPIFFS     1          // support SPIF filesystem
 #define WITH_LITTLEFS   1          //   --    LittleFS
 #define WITH_FAT        1          //   --    FAT
-#define HIST_SIZE       20         // History buffer size (number of commands to remember)
 #define STARTUP_PORT    UART_NUM_0 // Uart number (or 99 for USBCDC) where shell will be deployed at startup
 #define SEQUENCES_NUM   10         // Max number of sequences available for command "sequence"
 #define MOUNTPOINTS_NUM 5          // Max number of simultaneously mounted filesystems
@@ -70,14 +71,17 @@
 #define MEMTEST         0          // hunt for espshell's memory leaks   
 #define DO_ECHO         1          // echo mode at espshell startup.
 // ^^ ECHO ^^
-// Automated processing (i.e. sending commands and parsing the resulting output by software) is supported by
-// "echo" command: setting echo mode to -1 ("silent") disables all ESPShell output as if there is no shell at all. 
-// This mode is used to stop ESPShell interfering sketch's output.
+// Automated processing support via "echo" command:
 //
-// Setting echo mode to 0 ("off") disables user input echo: everything you type is not displayed, but when <Enter> is
-// pressed then command gets executed and its output is displayed. ESPShell prompt is displayed. This mode is an equivalent of
-// a modem command "ATE0".
-// Mode 1 ("on") is default mode when everything is displayed end echoed. This is used when you need human-friendly interface
+// a) Setting echo mode to -1 ("echo silent") disables ALL ESPShell output as if there is no shell at all. User input,
+//    however, is processed and commands are executed. Screen remains black, no prompt is displayed.
+//
+// b) Setting echo mode to 0 ("echo off") disables user input echo: everything **you type** is not displayed (i.e. not 
+//    echoed back), but when <Enter> is pressed then command gets executed and its output is displayed, shell prompt
+//    is displayed. This mode is an equivalent of a modem command "ATE0".
+//
+// c) Default (human-friendly) mode ("echo on"): user input echoed back, all screen output is enabled. Equivalent of 
+//    the "ATE1" modem command
 
 
 //TAG:prompts
@@ -88,7 +92,8 @@
 #define PROMPT_SEQ    "esp32-seq%u>"     // Sequence subtree prompt
 #define PROMPT_FILES  "esp32#(%s%s%s)>"  // File manager prompt (color tag, path, color tag)
 #define PROMPT_SEARCH "Search: "         // History search prompt
-#define MAX_PROMPT_LEN 16                // not including %u and %s
+
+#define MAX_PROMPT_LEN 16                // except for PROMPT_FILES, max length of a prompt
 
 //TAG:includes
 #include <stdio.h>
@@ -127,8 +132,8 @@
 #include <esp32-hal-uart.h>
 
 // Support files for LittleFS, FAT and SPIFFS filesystems
-#define MAX_PATH 256
-#define MAX_FILENAME 256
+#define MAX_PATH     256   // max path len
+#define MAX_FILENAME 256   // max filename len (equal to MAX_PATH for now)
 
 #if WITH_FS
 #  include <sys/unistd.h>
@@ -206,11 +211,11 @@
 //
 //TAG:esc
 #define esc_i "\033[33;93m"             // [I]important information (eye-catching bright yellow)
-#define esc_r "\033[38;5;0;48;5;255m"   // [R]eversed monochrome (black on white)
-//#define esc_r "\033[7m"                 // Alternative reversal sequence
-#define esc_w "\033[31;91m"             // [W]arning message ( failsafe red )
-#define esc_e "\033[35;95m"             // [E]rror message (bright magenta)
-#define esc_b "\033[1m"                 // [B]old
+//#define esc_r "\033[38;5;0;48;5;255m"   // [R]eversed monochrome (black on white)
+#define esc_r "\033[7m"                 // Alternative reversal sequence
+#define esc_w "\033[91m"             // [W]arning message ( bright red )
+#define esc_e "\033[95m"             // [E]rror message (bright magenta)
+#define esc_b "\033[1;97m"              // [B]old bright white
 #define esc_n "\033[0m"                 // [N]ormal colors
 #define esc_1 "\033[33m"                // Hint[1] dark yellow
 #define esc_2 "\033[36m"                // Hint[2] dark cyan
@@ -247,27 +252,22 @@ static int q_print(const char *);                    // puts()
 // usage. Newly allocated memory is assigned one of the types below. Command "mem" invokes 
 // q_memleaks() function to dump memory allocation information. Only works #if MEMTEST == 1
 enum {
-  MEM_EDITLINE = 0,  // allocated by editline library (general)
-  MEM_ARGV,          // parsed input string (argv[] array)
-  MEM_ARGCARGV,      // parsed user input refcounted object
-  MEM_LINE,
-  MEM_SCREEN,
-  MEM_HISTORY,
-
+  MEM_TMP = 0,       // tmp buffer. must not appear on q_memleaks() report
+  MEM_STATIC,        // memory allocated once, never freed: sketch variables is an example
+  MEM_EDITLINE,      // allocated by editline library (general)
+  MEM_ARGIFY,        // argify() output
+  MEM_ARGCARGV,      // refcounted user input
+  MEM_LINE,          // input string from editline lib
+  MEM_HISTORY,       // command history entry
   MEM_TEXT2BUF,      // TEXT argument (fs commands write,append,insert or uart's write are examples) converted to byte array
-
-  MEM_MOUNTPOINT,    // path (mountpoint)
-  MEM_PATH,          // path (generic)
-  MEM_CWD,           // path (current working directory)
-  MEM_CAT,           // memory used by "cat" command
+  MEM_PATH,          // path (c-string)
   MEM_GETLINE,       // memory allocated by files_getline()
-
-  MEM_SEQUENCE,      // sequence bitstring
-  MEM_RMT,           // sequence symbols array
-  
-  MEM_QPRINTF,       // printf internal buffer
-  MEM_VAR            // memory used to track variables
-
+  MEM_SEQUENCE,      // sequence-related allocations
+  MEM_UNUSED11,
+  MEM_UNUSED12,
+  MEM_UNUSED13,
+  MEM_UNUSED14,
+  MEM_UNUSED15
 };
 
 
@@ -395,7 +395,7 @@ static const char *Input = "";  // "Artificial input queue". if non empty then s
 static unsigned int Length;
 static unsigned int ScreenCount;
 static unsigned int ScreenSize;
-
+static bool rl_history = true;
 
 static int Echo = DO_ECHO;  // Runtime echo flag: -1=silent,0=off,1=on
 
@@ -594,38 +594,6 @@ TTYbackn(int n) {
   while (--n >= 0)
     TTYback();
 }
-
-static bool rl_history = true;
-
-// enable/disable history saving. mostly for memory leaks detection
-static void
-rl_history_enable(bool enable) {
-  if (!enable) {
-    if (rl_history) {
-      int i;
-      for (i = 0; i < H.Size; i++) {
-        if (H.Lines[i]) {
-          q_free(H.Lines[i]);
-          H.Lines[i] = NULL;
-        }
-      }
-      H.Size = H.Pos = 0;
-      rl_history = false;
-#if WITH_HELP
-      q_printf("%% Command history purged, history is disabled\r\n");
-#endif
-    }
-  } else {
-    if (!rl_history) {
-      rl_history = true;
-#if WITH_HELP
-    q_printf("%% Command history is enabled\r\n");
-#endif    
-    }
-  }
-}
-
-
 
 static void
 reposition() {
@@ -1156,7 +1124,7 @@ readline(const char *prompt) {
   hist_add(nil); //TODO: how does it work?! 
 
   ScreenSize = SCREEN_INC;
-  Screen = NEW(char, ScreenSize, MEM_SCREEN);  // TODO: allocate once, never DISPOSE()
+  Screen = NEW(char, ScreenSize, MEM_TMP);
 
   TTYputs((const unsigned char *)(Prompt = prompt));
   TTYflush();
@@ -1174,7 +1142,7 @@ readline(const char *prompt) {
   return (char *)line;
 }
 
-#if WITH_HISTORY
+
 // Add an arbitrary string p to the command history.
 //
 static void rl_add_history(char *p) {
@@ -1182,7 +1150,7 @@ static void rl_add_history(char *p) {
     if (!H.Size || (H.Size && strcmp(p, (char *)H.Lines[H.Size - 1])))
       hist_add((unsigned char *)p);
 }
-#endif
+
 
 
 static STATUS
@@ -1284,7 +1252,7 @@ argify(unsigned char *line, unsigned char ***avp) {
   int i;
 
   i = MEM_INC2;
-  if ((*avp = p = NEW(unsigned char *, i, MEM_ARGV)) == NULL)
+  if ((*avp = p = NEW(unsigned char *, i, MEM_ARGIFY)) == NULL)
     return 0;
 
   /* skip leading whitespace */
@@ -1301,7 +1269,7 @@ argify(unsigned char *line, unsigned char ***avp) {
 
         if (ac + 1 == i) {
 
-          _new = NEW(unsigned char *, i + MEM_INC2, MEM_ARGV);
+          _new = NEW(unsigned char *, i + MEM_INC2, MEM_ARGIFY);
 
           if (_new == NULL) {
             p[ac] = NULL;
@@ -1337,15 +1305,15 @@ static const char *Failed = "% <e>Failed</>\r\n";
 static const char *Notset = "<1>not set</>\r\n";
 #if WITH_HELP
 static const char *SpacesInPath = "<e>% Too many arguments.\r\n% If your path contains spaces, please enter spaces as \"*\":\r\n% Examples: \"cd Path*With*Spaces\",  \"rm /ffat/Program*Files\"</>\r\n";
-static const char *MultipleEntries = "% Processing <2>multiple paths</>.\r\n% Not what you want? <2>Use asteriks (*) instead of spaces</> in the path</>\r\n";
+static const char *MultipleEntries = "% Processing multiple paths.\r\n% Not what you want? Use asteriks (*) instead of spaces in the path\r\n";
 static const char *VarOops = "<e>% Oops :-(\r\n"
             "% No registered variables to play with</>\r\n"
-            "% <2>Try this:\r\n"
+            "% Try this:\r\n"
             "%  <i>1. Add include \"extra/espshell.h\" to your sketch</>\r\n"
             "%  <i>2. Use \"convar_add()\" macro to register your variables</>\r\n"
             "%\r\n"
-            "% <2>Once registered, variables can be manipulated by the \"var\" command\r\n"
-            "% while your sketch is running. More is in \"docs/Commands.txt\"</>\r\n";
+            "% Once registered, variables can be manipulated by the \"var\" command\r\n"
+            "% while your sketch is running. More is in \"docs/Commands.txt\"\r\n";
 #endif
 
 
@@ -1618,12 +1586,14 @@ static unsigned int binary2uint32(const char *p) {
   return value;
 }
 
-// q_atol() : better version of atol()
-// 1. Accepts decimal, hex or binary numbers
+// q_atol() : extended version of atol()
+// 1. Accepts decimal, hex,octal or binary numbers (0x for hex, 0 for octal, 0b for binary)
 // 2. If conversion fails (bad symbols in string, empty string etc) the
 //    "def" value is returned
 //
 // TAG:atol
+#define DEF_BAD ((unsigned int)(-1))
+
 static unsigned int q_atol(const char *p, unsigned int def) {
   if (p && *p) {
     if (isnum(p))                // decimal number?
@@ -1700,7 +1670,7 @@ static int __printfv(const char *format, va_list arg) {
   // if required buffer is larger than built-in one then allocate
   // a new buffer
   if (len >= sizeof(buf))
-    if ((temp = (char *)q_malloc(len + 1, MEM_QPRINTF)) == NULL)
+    if ((temp = (char *)q_malloc(len + 1, MEM_TMP)) == NULL)
       return 0;
 
   // actual printf()
@@ -1906,50 +1876,61 @@ static int text2buf(int argc, char **argv, int i /* START */, char **out) {
 }
 
 
-// Console Variables.
+// -- Console Variables --
 //
-// User sketch can register global or static variables to be accessible
-// from ESPShell. Once registered, variables can be manipulated by
-// "var" command. See "extra/espshell.h" for convar_add() definition
+// User sketch can **register** global or static variables to be accessible (for reading/writing)
+// from ESPShell. Once registered, variables can be manipulated by "var" command: see "extra/espshell.h" 
+// for convar_add() definition, and example_blink.ino for example of use
 
+// "Console Variable" (convar) descriptor
 struct convar {
-  struct convar *next;
-  const char *name;
-  void *ptr;
-  unsigned int isf  : 1;
-  unsigned int size : 31;
+  struct convar *next;     // next var in list
+  const char    *name;     // var name
+  void          *ptr;      // &var
+  unsigned int   isf  :1;  // is it "float"?
+  unsigned int   isp  :1;  // is it "void *"?
+  unsigned int   size :30; // size of array pointed by /ptr/: 1,2 or 4 bytes
 };
 
+// All registered variables. Access to the list is **not thread safe**
 static struct convar *var_head = NULL;
 
 // Register new sketch variable. 
-// Memory allocated for variable is never free()'d. This function is not
-// supposed to be called directly: unstead a macro from espshell.h must be used (convar_add())
+// Memory allocated for variable descriptor is never free()'d. This function is not
+// supposed to be called directly: instead a macro "convar_add()" (see "extra/espshell.h") must be used
 //
 // /name/ - variable name
 // /ptr/  - pointer to the variable
 // /size/ - variable size in bytes
+// /isf/  - typeof(var) = "float" ?
+// /isp/  - typeof(var) = "pointer" ?
 //
-void espshell_varadd(const char *name, void *ptr, int size, bool isf) {
+void espshell_varadd(const char *name, void *ptr, int size, bool isf, bool isp) {
 
   struct convar *var;
 
   if (size != 1 && size != 2 && size != 4)
     return;
 
-  if ((var = (struct convar *)q_malloc(sizeof(struct convar),MEM_VAR)) != NULL) {
+  if ((var = (struct convar *)q_malloc(sizeof(struct convar),MEM_STATIC)) != NULL) {
     var->next = var_head;
     var->name = name;
     var->ptr = ptr;
     var->size = size;
     var->isf = isf ? 1 : 0;
+    var->isp = isp ? 1 : 0;
     var_head = var;
   }
 }
 
 // get registered variable value & length
+// In:  /name/      - variable name
+// Out: /value/     - variable value copied to the buffer (4 bytes min length)
+//      /*fullname/ - variable canonical name 
+//      /*isf/      - is variable of a 'float' type?
+//      /*isp*/     - is variable of a pointer type?
 //
-static int convar_get(const char *name, void *value, char **fullname, bool *isf) {
+static int convar_get(const char *name, void *value, char **fullname, bool *isf, bool *isp) {
 
   struct convar *var = var_head;
   while (var) {
@@ -1959,6 +1940,8 @@ static int convar_get(const char *name, void *value, char **fullname, bool *isf)
         *fullname = (char *)var->name;
       if (isf)
         *isf = var->isf;
+      if (isp)
+        *isp = var->isp;
       return var->size;
     }
     var = var->next;
@@ -2040,59 +2023,66 @@ static unsigned int delay_interruptible(unsigned int duration) {
 
 // TAG:keywords
 //
-// Shell command.
+// Shell command entry. There are arrays of these entries defined. Each array represents
+// a command **subtree** (or subdirectory). Root (main) command tree is called keywords_main[]
 struct keywords_t {
-  const char *cmd;                   // Command keyword ex.: "pin"
-  int (*cb)(int argc, char **argv);  // Callback to call (one of cmd_xxx functions)
-  int argc;                          // Number of arguments required. Negative value means "any"
-  const char *help;                  // Help text displayed on "? command"
-  const char *brief;                 // Brief text displayed on "?". NULL means "use help text, not brief"
-};
-
-// KEYWORDS_BEGIN - common commands inserted in every command tree at the beginning
-#if WITH_HELP
-#define HELP(X) X
-#define KEYWORDS_BEGIN { "?", cmd_question, -1, "% \"?\" - Show the list of available commands\r\n% \"<2>? comm</>\" - Get help on command \"<2>comm</>\"\r\n% \"<2>? keys</>\" - Get information on terminal keys used by ESPShell", "Commands list & help" },
-#else
-#define HELP(X) ""
-#define KEYWORDS_BEGIN
-#endif
-
-// KEYWORDS_END - common commands inserted at the end of every command tree
-#define KEYWORDS_END { "exit", cmd_exit, -1, "Exit", NULL }, { NULL, NULL, 0, NULL, NULL }
-
-// Command flag to mark any keyword as "hidden" i.e. not displayable by "?"
-// command.
-#define HIDDEN_KEYWORD NULL, NULL
-
-// Number of arguments accepted by command:
+  const char *cmd;                        // Command keyword ex.: "pin"
+  int       (*cb)(int argc, char **argv); // Callback to call (one of cmd_xxx functions)
 #define MANY_ARGS -1
 #define NO_ARGS    0
+  int         argc;                       // Number of arguments required (number or MANY_ARGS or NO_ARGS)
+#define HIDDEN_KEYWORD NULL, NULL         // /help/ and /brief/ initializer which is used t hide command from being displayed by "?" command
+  const char *help;                       // Help text displayed on "? command"
+  const char *brief;                      // Brief text displayed on "?". NULL means "use help text, not brief"
+};
 
 
 #if WITH_HELP
-static int cmd_question(int, char **);
+#  define HELP(...)  __VA_ARGS__
+#  define HELPK(...) __VA_ARGS__
+// Common commands inserted in every command tree at the beginning and HELP macro:
+#  define KEYWORDS_BEGIN { "?", cmd_question, MANY_ARGS, \
+                          "% \"? [KEYWORD|keys]\"\r\n" \
+                          "% Show list of available commands or display command help page:\r\n" \
+                          "% \"?\"         - Show list of available commands\r\n" \
+                          "% \"? KEYWORD\" - Get help on command KEYWORD\r\n" \
+                          "% \"? pinout\"  - Display board pinout\r\n" \
+                          "% \"? keys\"    - Get information on terminal keys used by ESPShell", "Commands list & help" },
+#else
+#  define HELP(...) do {} while(0)
+#  define HELPK(...)   ""
+#  define KEYWORDS_BEGIN
 #endif
-static int cmd_pin(int, char **);
 
-static int cmd_async(int, char **);  // "pin&" , "count&", ..
+// Common commands inserted at the end of every command tree
+#define KEYWORDS_END { "exit", cmd_exit, MANY_ARGS, \
+                        HELPK("% \"exit [exit]\"  (hotkey: Ctrl+Z)\r\n" \
+                        "% Exit from uart, i2c, spi, ... configuration modes, has no effect when executed\r\n" \
+                        "% in main command mode unless typed twice (\"exit exit\"): in this case ESPShell\r\n" \
+                        "% closes and stops its task\r\n"), HELPK("Exit") }, \
+                     { NULL, NULL, 0, NULL, NULL }
 
-static int cmd_cpu(int, char **);
-static int cmd_cpu_freq(int, char **);
-static int cmd_uptime(int, char **);
-static int cmd_mem(int, char **);
-static int cmd_mem_read(int, char **);
-static int NORETURN cmd_reload(int, char **);
-static int cmd_nap(int, char **);
-
+// Shell commands handlers.
+//i2c commands
 static int cmd_i2c_if(int, char **);
 static int cmd_i2c_clock(int, char **);
-static int cmd_i2c(int, char **);
+static int cmd_i2c_up(int, char **);
+static int cmd_i2c_down(int, char **);
+static int cmd_i2c_read(int, char **);
+static int cmd_i2c_write(int, char **);
+static int cmd_i2c_scan(int, char **);
 
+// uart commands
 static int cmd_uart_if(int, char **);
 static int cmd_uart_baud(int, char **);
-static int cmd_uart(int, char **);
+static int cmd_uart_tap(int, char **);
+static int cmd_uart_up(int, char **);
+static int cmd_uart_down(int, char **);
+static int cmd_uart_read(int, char **);
+static int cmd_uart_write(int, char **);
+
 #if WITH_FS
+// filesystem commands
 static int cmd_files_if(int, char **);
 static int cmd_files_mount0(int, char **);
 static int cmd_files_mount(int, char **);
@@ -2110,16 +2100,31 @@ static int cmd_files_cat(int, char **);
 static int cmd_files_touch(int, char **);
 static int cmd_files_format(int, char **);
 #endif  //WITH_FS
-static int cmd_tty(int, char **);
+// automation
 static int cmd_echo(int, char **);
 
+// system 
 static int cmd_suspend(int, char **);
 static int cmd_resume(int, char **);
 static int cmd_kill(int, char **argv);
+static int cmd_cpu(int, char **);
+static int cmd_cpu_freq(int, char **);
+static int cmd_uptime(int, char **);
+static int cmd_mem(int, char **);
+static int cmd_mem_read(int, char **);
+static int NORETURN cmd_reload(int, char **);
+static int cmd_nap(int, char **);
 
+
+// pin-realated commands: pwm, pulse counter and pin
 static int cmd_pwm(int, char **);
 static int cmd_count(int, char **);
+static int cmd_pin(int, char **);
 
+// async command execution wrapper
+static int cmd_async(int, char **);  // "pin&" , "count&", ..
+
+// RMT sequences
 static int cmd_seq_if(int, char **);
 static int cmd_seq_eot(int argc, char **argv);
 static int cmd_seq_modulation(int argc, char **argv);
@@ -2129,17 +2134,26 @@ static int cmd_seq_bits(int argc, char **argv);
 static int cmd_seq_levels(int argc, char **argv);
 static int cmd_seq_show(int argc, char **argv);
 
+// sketch variables
 static int cmd_var(int, char **);
 static int cmd_var_show(int, char **);
 
+// generic "show" command
 static int cmd_show(int, char **);
 
-// specials
+// common entries
 static int cmd_exit(int, char **);
+#if WITH_HELP
+static int cmd_question(int, char **);
+#endif
+
+// hidden commands
 static int cmd_history(int, char **);
 #if WITH_COLOR
 static int cmd_colors(int, char **);
 #endif
+static int cmd_tty(int, char **);
+
 
 // suport for user-defined commands
 #ifdef EXTERNAL_PROTOTYPES
@@ -2154,43 +2168,43 @@ static const struct keywords_t keywords_uart[] = {
 
   KEYWORDS_BEGIN
 
-  { "up", cmd_uart, 3, 
-  HELP("% \"up RX TX BAUD\"\r\n"
+  { "up", cmd_uart_up, 3, 
+  HELPK("% \"up RX TX BAUD\"\r\n"
        "%\r\n"
        "% Initialize uart interface X on pins RX/TX,baudrate BAUD, 8N1 mode\r\n"
-       "% Ex.: up 18 19 115200 - Setup uart on pins rx=18, tx=19, at speed 115200"),"Initialize uart (pins/speed)" },
+       "% Ex.: up 18 19 115200 - Setup uart on pins rx=18, tx=19, at speed 115200"),HELPK("Initialize uart (pins/speed)") },
 
   { "baud", cmd_uart_baud, 1, 
-  HELP("% \"baud SPEED\"\r\n"
+  HELPK("% \"baud SPEED\"\r\n"
        "%\r\n"
        "% Set speed for the uart (uart must be initialized)\r\n"
-       "% Ex.: baud 115200 - Set uart baud rate to 115200"), "Set baudrate" },
+       "% Ex.: baud 115200 - Set uart baud rate to 115200"), HELPK("Set baudrate") },
 
-  { "down", cmd_uart, NO_ARGS, 
-  HELP("% \"down\"\r\n"
+  { "down", cmd_uart_down, NO_ARGS, 
+  HELPK("% \"down\"\r\n"
        "%\r\n"
-       "% Shutdown interface, detach pins"), "Shutdown" },
+       "% Shutdown interface, detach pins"), HELPK("Shutdown") },
 
-  { "read", cmd_uart, NO_ARGS,
-  HELP("% \"read\"\r\n"
+  { "read", cmd_uart_read, NO_ARGS,
+  HELPK("% \"read\"\r\n"
        "%\r\n"
-       "% Read bytes (available) from uart interface X"), "Read data from UART" },
+       "% Read bytes (available) from uart interface X"), HELPK("Read data from UART") },
 
-  { "tap", cmd_uart, NO_ARGS, 
-  HELP("% \"tap\\r\n"
+  { "tap", cmd_uart_tap, NO_ARGS, 
+  HELPK("% \"tap\\r\n"
        "%\r\n"
        "% Bridge the UART IO directly to/from shell\r\n"
        "% User input will be forwarded to uart X;\r\n"
-       "% Anything UART X sends back will be forwarded to the user"), "Talk to device connected" },
+       "% Anything UART X sends back will be forwarded to the user"), HELPK("Talk to device connected") },
 
-  { "write", cmd_uart, MANY_ARGS, 
-  HELP("% \"write TEXT\"\r\n"
+  { "write", cmd_uart_write, MANY_ARGS, 
+  HELPK("% \"write TEXT\"\r\n"
        "%\r\n"
        "% Send an ascii/hex string(s) to UART X\r\n"
        "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
        "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n"
        "%\r\n"
-       "% Ex.: \"write ATI\\n\\rMixed\\20Text and \\20\\21\\ff\""), "Send bytes over this UART" },
+       "% Ex.: \"write ATI\\n\\rMixed\\20Text and \\20\\21\\ff\""), HELPK("Send bytes over this UART") },
 
   KEYWORDS_END
 };
@@ -2204,40 +2218,40 @@ static const struct keywords_t keywords_i2c[] = {
 
   KEYWORDS_BEGIN
 
-  { "up", cmd_i2c, 3, 
-  HELP("% \"up SDA SCL CLOCK\"\r\n"
+  { "up", cmd_i2c_up, 3, 
+  HELPK("% \"up SDA SCL CLOCK\"\r\n"
        "%\r\n"
        "% Initialize I2C interface X, use pins SDA/SCL, clock rate CLOCK\r\n"
-       "% Ex.: up 21 22 100000 - enable i2c at pins sda=21, scl=22, 100kHz clock"), "initialize interface (pins and speed)" },
+       "% Ex.: up 21 22 100000 - enable i2c at pins sda=21, scl=22, 100kHz clock"), HELPK("Initialize interface (pins and speed)") },
 
   { "clock", cmd_i2c_clock, 1, 
-  HELP("% \"clock SPEED\"\r\n"
+  HELPK("% \"clock SPEED\"\r\n"
        "%\r\n"
        "% Set I2C master clock (i2c must be initialized)\r\n"
-       "% Ex.: clock 100000 - Set i2c clock to 100kHz"), "Set clock" },
+       "% Ex.: clock 100000 - Set i2c clock to 100kHz"), HELPK("Set clock") },
 
-
-  { "read", cmd_i2c, 2, 
-  HELP("% \"read ADDR SIZE\"\r\n"
+  { "scan", cmd_i2c_scan, NO_ARGS,
+  HELPK("% \"scan\"\r\n"
        "%\r\n"
-       "% Read SIZE bytes from a device at address ADDR\r\n"
-       "% Ex.: read 0x68 7 - read 7 bytes from device address 0x68"), "Read data from an I2C device" },
+       "% Scan I2C bus X for devices. Interface must be initialized!"), HELPK("Scan i2c bus for devices") },
 
-  { "down", cmd_i2c, NO_ARGS, 
-  HELP("% \"down\"\r\n"
-       "%\r\n"
-       "% Shutdown I2C interface X"), "Shutdown i2c interface" },
-
-  { "scan", cmd_i2c, NO_ARGS,
-  HELP("% \"scan\"\r\n"
-       "%\r\n"
-       "% Scan I2C bus X for devices. Interface must be initialized!"), "Scan i2c bus for devices" },
-
-  { "write", cmd_i2c, MANY_ARGS,
-  HELP("% \"write ADDR D1 [D2 ... Dn]\"\r\n"
+  { "write", cmd_i2c_write, MANY_ARGS,
+  HELPK("% \"write ADDR D1 [D2 ... Dn]\"\r\n"
        "%\r\n"
        "% Write bytes D1..Dn (hex values) to address ADDR on I2C bus X\r\n"
-       "% Ex.: write 0x57 0 0xff - write 2 bytes to address 0x57: 0 and 255"), "Send bytes to the device" },
+       "% Ex.: write 0x57 0 0xff - write 2 bytes to address 0x57: 0 and 255"), HELPK("Send bytes to the device") },
+
+  { "read", cmd_i2c_read, 2, 
+  HELPK("% \"read ADDR SIZE\"\r\n"
+       "%\r\n"
+       "% Read SIZE bytes from a device at address ADDR\r\n"
+       "% Ex.: read 0x68 7 - read 7 bytes from device address 0x68"), HELPK("Read data from an I2C device") },
+
+  { "down", cmd_i2c_down, NO_ARGS, 
+  HELPK("% \"down\"\r\n"
+       "%\r\n"
+       "% Shutdown I2C interface X"), HELPK("Shutdown i2c interface") },
+
 
   KEYWORDS_END
 };
@@ -2249,65 +2263,64 @@ static const struct keywords_t keywords_sequence[] = {
   KEYWORDS_BEGIN
 
   { "eot", cmd_seq_eot, 1, 
-  HELP("% \"eot high|low\"\r\n"
+  HELPK("% \"eot high|low\"\r\n"
        "%\r\n"
        "% End of transmission: pull the line high or low at the\r\n"
-       "% end of a sequence. Default is \"low\""), "End-of-Transmission pin state" },
+       "% end of a sequence. Default is \"low\""), HELPK("End-of-Transmission pin state") },
 
   { "tick", cmd_seq_tick, 1,
-  HELP("% \"tick TIME\"\r\n"
+  HELPK("% \"tick TIME\"\r\n"
        "%\r\n"
        "% Set the sequence tick time: defines a resolution of a pulse sequence.\r\n"
        "% Expressed in microseconds, can be anything between 0.0125 and 3.2\r\n"
-       "% Ex.: tick 0.1 - set resolution to 0.1 microsecond"),  "Set resolution" },
+       "% Ex.: tick 0.1 - set resolution to 0.1 microsecond"),  HELPK("Set resolution") },
 
   { "zero", cmd_seq_zeroone, 2,
-  HELP("% \"zero LEVEL/DURATION [LEVEL2/DURATION2]\"\r\n"
+  HELPK("% \"zero LEVEL/DURATION [LEVEL2/DURATION2]\"\r\n"
        "%\r\n"
        "% Define a logic \"0\"\r\n"
        "% Ex.: zero 0/50      - 0 is a level: LOW for 50 ticks\r\n"
-       "% Ex.: zero 1/50 0/20 - 0 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"), "Define a zero" },
+       "% Ex.: zero 1/50 0/20 - 0 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"), HELPK("Define a zero") },
 
   { "zero", cmd_seq_zeroone, 1, HIDDEN_KEYWORD },  //1 arg command
 
   { "one", cmd_seq_zeroone, 2, 
-  HELP("% \"one LEVEL/DURATION [LEVEL2/DURATION2]\"\r\n"
+  HELPK("% \"one LEVEL/DURATION [LEVEL2/DURATION2]\"\r\n"
        "%\r\n"
        "% Define a logic \"1\"\r\n"
        "% Ex.: one 1/50       - 1 is a level: HIGH for 50 ticks\r\n"
-       "% Ex.: one 1/50 0/20  - 1 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"), "Define an one" },
+       "% Ex.: one 1/50 0/20  - 1 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"), HELPK("Define an one") },
 
   { "one", cmd_seq_zeroone, 1, HIDDEN_KEYWORD },  //1 arg command
 
   { "bits", cmd_seq_bits, 1, 
-  HELP("% \"bits STRING\"\r\n"
+  HELPK("% \"bits STRING\"\r\n"
        "%\r\n"
        "% A bit pattern to be used as a sequence. STRING must contain only 0s and 1s\r\n"
        "% Overrides previously set \"levels\" command\r\n"
        "% See commands \"one\" and \"zero\" to define \"1\" and \"0\"\r\n"
        "%\r\n"
-       "% Ex.: bits 11101000010111100  - 17 bit sequence"),
-    "Set pattern to transmit" },
+       "% Ex.: bits 11101000010111100  - 17 bit sequence"), HELPK("Set pattern to transmit") },
 
   { "levels", cmd_seq_levels, MANY_ARGS, 
-  HELP("% \"levels L/D L/D ... L/D\"\r\n"
+  HELPK("% \"levels L/D L/D ... L/D\"\r\n"
        "%\r\n"
        "% A bit pattern to be used as a sequnce. L is either 1 or 0 and \r\n"
        "% D is the duration measured in ticks [0..32767] \r\n"
        "% Overrides previously set \"bits\" command\r\n"
        "%\r\n"
        "% Ex.: levels 1/50 0/20 1/100 0/500  - HIGH 50 ticks, LOW 20, HIGH 100 and 0 for 500 ticks\r\n"
-       "% Ex.: levels 1/32767 1/17233 0/32767 0/7233 - HIGH for 50000 ticks, LOW for 40000 ticks"),  "Set levels to transmit" },
+       "% Ex.: levels 1/32767 1/17233 0/32767 0/7233 - HIGH for 50000 ticks, LOW for 40000 ticks"),  HELPK("Set levels to transmit") },
 
   { "modulation", cmd_seq_modulation, 3,
-  HELP("% \"modulation FREQ [DUTY [low|high]]\"\r\n"
+  HELPK("% \"modulation FREQ [DUTY [low|high]]\"\r\n"
        "%\r\n"
        "% Enables/disables an output signal modulation with frequency FREQ\r\n"
        "% Optional parameters are: DUTY (from 0 to 1) and LEVEL (either high or low)\r\n"
        "%\r\n"
        "% Ex.: modulation 100         - modulate all 1s with 100Hz, 50% duty cycle\r\n"
        "% Ex.: modulation 100 0.3 low - modulate all 0s with 100Hz, 30% duty cycle\r\n"
-       "% Ex.: modulation 0           - disable modulation\r\n"),  "Enable/disable modulation" },
+       "% Ex.: modulation 0           - disable modulation\r\n"),  HELPK("Enable/disable modulation") },
 
   { "modulation", cmd_seq_modulation, 2, HIDDEN_KEYWORD },
   { "modulation", cmd_seq_modulation, 1, HIDDEN_KEYWORD },
@@ -2327,17 +2340,17 @@ static const struct keywords_t keywords_files[] = {
   KEYWORDS_BEGIN
 
   { "mount", cmd_files_mount, 2, 
-  HELP("% \"mount LABEL [/MOUNT_POINT]\"\r\n"
+  HELPK("% \"mount LABEL [/MOUNT_POINT]\"\r\n"
        "%\r\n"
        "% Mount a filesystem located on built-in SPI FLASH\r\n"
        "%\r\n"
        "% LABEL        - SPI FLASH partition label\r\n"
        "% /MOUNT_POINT - A path, starting with \"/\" where filesystem will be mounted.\r\n"
        "%\r\n"
-       "% Ex.: mount ffat /ffat - mount partition \"ffat\" at directory \"/ffat\""),"Mount partition/Show partition table" },
+       "% Ex.: mount ffat /ffat - mount partition \"ffat\" at directory \"/ffat\""),HELPK("Mount partition/Show partition table") },
   
   { "mount", cmd_files_mount0, NO_ARGS, 
-  HELP("% \"mount\"\r\n"
+  HELPK("% \"mount\"\r\n"
        "%\r\n"
        "% Command \"mount\" **without arguments** displays information about partitions\r\n"
        "% and mounted file systems (mount point, FS type, total/used counters)"), NULL },
@@ -2346,50 +2359,50 @@ static const struct keywords_t keywords_files[] = {
 
 
   { "unmount", cmd_files_unmount, 1, 
-  HELP("% \"unmount /MOUNT_POINT\"\r\n"
+  HELPK("% \"unmount /MOUNT_POINT\"\r\n"
        "%\r\n"
-       "% Unmount a file system\r\n"),"Unmount partition" },
+       "% Unmount a file system\r\n"),HELPK("Unmount partition") },
 
   { "unmount", cmd_files_unmount, NO_ARGS, HIDDEN_KEYWORD },
   { "umount", cmd_files_unmount, 1, HIDDEN_KEYWORD }, // for unix folks
   { "umount", cmd_files_unmount, NO_ARGS, HIDDEN_KEYWORD }, // for unix folks
 
   { "ls", cmd_files_ls, 1, 
-  HELP("% \"ls [PATH]\"\r\n"
+  HELPK("% \"ls [PATH]\"\r\n"
        "%\r\n"
        "% Show directory listing at PATH given\r\n"
-       "% If PATH is omitted then current directory list is shown"),"List directory" },
+       "% If PATH is omitted then current directory list is shown"),HELPK("List directory") },
 
   { "ls", cmd_files_ls, 0, HIDDEN_KEYWORD },
 
   { "cd", cmd_files_cd, MANY_ARGS, 
-  HELP("% \"cd [PATH|..]\"\r\n"
+  HELPK("% \"cd [PATH|..]\"\r\n"
        "%\r\n"
        "% Change current directory. Paths having .. (i.e \"../dir/\") are not supported\r\n"
        "%\r\n"
        "% Ex.: \"cd\"            - change current directory to filesystem's root\r\n"
        "% Ex.: \"cd ..\"         - go one directory up\r\n"
        "% Ex.: \"cd /ffat/test/  - change to \"/ffat/test/\"\r\n"
-       "% Ex.: \"cd test2/test3/ - change to \"/ffat/test/test2/test3\"\r\n"),"Change directory" },
+       "% Ex.: \"cd test2/test3/ - change to \"/ffat/test/test2/test3\"\r\n"),HELPK("Change directory") },
   
   { "rm", cmd_files_rm, MANY_ARGS, 
-  HELP("% \"rm PATH1 [PATH2 PATH3 ... PATHn]\"\r\n"
+  HELPK("% \"rm PATH1 [PATH2 PATH3 ... PATHn]\"\r\n"
        "%\r\n"
        "% Remove files or a directories with files.\r\n"
-       "% When removing directories: removed with files and subdirs"), "Delete files/dirs" },
+       "% When removing directories: removed with files and subdirs"), HELPK("Delete files/dirs") },
 
   { "mv", cmd_files_mv, 2, 
-  HELP("% \"mv SOURCE DESTINATION\\r\n"
+  HELPK("% \"mv SOURCE DESTINATION\\r\n"
        "%\r\n"
        "% Move or Rename file or directory SOURCE to DESTINATION\r\n"
        "%\r\n"
        "% Ex.: \"mv /ffat/dir1 /ffat/dir2\"             - rename directory \"dir1\" to \"dir2\"\r\n"
        "% Ex.: \"mv /ffat/fileA.txt /ffat/fileB.txt\"   - rename file \"fileA.txt\" to \"fileB.txt\"\r\n"
        "% Ex.: \"mv /ffat/dir1/file1 /ffat/dir2\"       - move file to directory\r\n"
-       "% Ex.: \"mv /ffat/fileA.txt /spiffs/fileB.txt\" - move file between filesystems\r\n"), "Move/rename files and/or directories" },
+       "% Ex.: \"mv /ffat/fileA.txt /spiffs/fileB.txt\" - move file between filesystems\r\n"), HELPK("Move/rename files and/or directories") },
 
   { "cp", cmd_files_cp, 2, 
-  HELP("% \"cp SOURCE DESTINATION\\r\n"
+  HELPK("% \"cp SOURCE DESTINATION\\r\n"
        "%\r\n"
        "% Copy file SOURCE to file DESTINATION.\r\n"
        "% Files SOURCE and DESTINATION can be on different filesystems\r\n"
@@ -2397,51 +2410,51 @@ static const struct keywords_t keywords_files[] = {
        "% Ex.: \"cp /ffat/test.txt /ffat/test2.txt\"       - copy file to file\r\n"
        "% Ex.: \"cp /ffat/test.txt /ffat/dir/\"            - copy file to directory\r\n"
        "% Ex.: \"cp /ffat/dir_src /ffat/dir/\"             - copy directory to directory\r\n"
-       "% Ex.: \"cp /spiffs/test.txt /ffat/dir/test2.txt\" - copy between filesystems\r\n"), "Copy files/dirs" },
+       "% Ex.: \"cp /spiffs/test.txt /ffat/dir/test2.txt\" - copy between filesystems\r\n"), HELPK("Copy files/dirs") },
 
   { "write", cmd_files_write, MANY_ARGS, 
-  HELP("% \"write FILENAME [TEXT]\"\r\n"
+  HELPK("% \"write FILENAME [TEXT]\"\r\n"
        "%\r\n"
        "% Write an ascii/hex string(s) to file\r\n"
        "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
        "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n"
        "%\r\n"
-       "% Ex.: \"write /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""), "Write strings/bytes to the file" },
+       "% Ex.: \"write /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""), HELPK("Write strings/bytes to the file") },
 
   { "append", cmd_files_append, MANY_ARGS, 
-  HELP("% \"append FILENAME [TEXT]\"\r\n"
+  HELPK("% \"append FILENAME [TEXT]\"\r\n"
        "%\r\n"
        "% Append an ascii/hex string(s) to file\r\n"
        "% Escape sequences & ascii codes are accepted just as in \"write\" command\r\n"
        "%\r\n"
-       "% Ex.: \"append /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""),"Append strings/bytes to the file" },
+       "% Ex.: \"append /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""),HELPK("Append strings/bytes to the file") },
 
   { "insert", cmd_files_insdel, MANY_ARGS, 
-  HELP("% \"insert FILENAME LINE_NUM [TEXT]\"\r\n"
+  HELPK("% \"insert FILENAME LINE_NUM [TEXT]\"\r\n"
        "% Insert TEXT to file FILENAME before line LINE_NUM\r\n"
        "% \"\\n\" is appended to the string being inserted, \"\\r\" is not\r\n"
        "% Escape sequences & ascii codes accepted just as in \"write\" command\r\n"
        "% Lines are numbered starting from 0. Use \"cat\" command to find out line numbers\r\n"
        "%\r\n"
-       "% Ex.: \"insert 0 /ffat/test.txt Hello World!\""), "Insert lines to text file" },
+       "% Ex.: \"insert 0 /ffat/test.txt Hello World!\""), HELPK("Insert lines to text file") },
 
   { "delete", cmd_files_insdel, 3, 
-  HELP("% \"delete FILENAME LINE_NUM [COUNT]\"\r\n"
+  HELPK("% \"delete FILENAME LINE_NUM [COUNT]\"\r\n"
        "% Delete line LINE_NUM from a text file FILENAME\r\n"
        "% Optionsl COUNT argument is the number of lines to remove (default is 1)"
        "% Lines are numbered starting from 1. Use \"cat -n\" command to find out line numbers\r\n"
        "%\r\n"
-       "% Ex.: \"delete 10 /ffat/test.txt\" - remove line #10 from \"/ffat/test.txt\""), "Delete lines from a text file" },
+       "% Ex.: \"delete 10 /ffat/test.txt\" - remove line #10 from \"/ffat/test.txt\""), HELPK("Delete lines from a text file") },
 
   { "delete", cmd_files_insdel, 2, HIDDEN_KEYWORD },
 
   { "mkdir", cmd_files_mkdir, MANY_ARGS,
-  HELP("% \"mkdir PATH1 [PATH2 PATH3 ... PATHn]\"\r\n"
+  HELPK("% \"mkdir PATH1 [PATH2 PATH3 ... PATHn]\"\r\n"
        "%\r\n"
-       "% Create empty directories PATH1 ... PATHn\r\n"),"Create directory" },
+       "% Create empty directories PATH1 ... PATHn\r\n"),HELPK("Create directories") },
 
   { "cat", cmd_files_cat, MANY_ARGS, 
-  HELP("% \"cat [-n|-b] PATH [START [COUNT]] [uart NUM]\"\r\n"
+  HELPK("% \"cat [-n|-b] PATH [START [COUNT]] [uart NUM]\"\r\n"
        "%\r\n"
        "% Display (or send by UART) a binary or text file PATH\r\n"
        "% -n : display line numbers\r\n"
@@ -2460,18 +2473,18 @@ static const struct keywords_t keywords_files[] = {
        "% cat -b file 0x1234    - display binary file starting from offset 0x1234\r\n"
        "% cat -b file 999 0x400 - 999 bytes starting from offset 1024 of binary file\r\n"
        "% cat file uart 1       - transmit a text file over UART1, strip \"\\r\" if any\r\n"
-       "% cat -b file uart 1    - transmit file over UART1 \"as-is\" byte by byte"),"Display/transmit text/binary file" },
+       "% cat -b file uart 1    - transmit file over UART1 \"as-is\" byte by byte"),HELPK("Display/transmit text/binary file") },
 
   { "touch", cmd_files_touch, MANY_ARGS, 
-  HELP("% \"touch PATH1 [PATH2 PATH3 ... PATHn]\"\r\n"
+  HELPK("% \"touch PATH1 [PATH2 PATH3 ... PATHn]\"\r\n"
        "%\r\n"
-       "% Ceate new files or \"touch\" existing\r\n"), "Create/touch files" },
+       "% Ceate new files or \"touch\" existing\r\n"), HELPK("Create/touch files") },
 
   { "format", cmd_files_format, 1, 
-  HELP("% \"format [LABEL]\"\r\n"
+  HELPK("% \"format [LABEL]\"\r\n"
        "%\r\n"
        "% Format partition LABEL. If LABEL is omitted then current working\r\n"
-       "% directory is used to determine partition label"), "Erase old & create new filesystem" },
+       "% directory is used to determine partition label"), HELPK("Erase old & create new filesystem") },
 
   { "format", cmd_files_format, 0, HIDDEN_KEYWORD },
 
@@ -2486,34 +2499,34 @@ static const struct keywords_t keywords_main[] = {
   KEYWORDS_BEGIN
 
   { "uptime", cmd_uptime, NO_ARGS, 
-  HELP("% \"uptime\" - Shows time passed since last boot"), "System uptime" },
+  HELPK("% \"uptime\" - Shows time passed since last boot"), "System uptime" },
 
   // System commands
   { "cpu", cmd_cpu_freq, 1, 
-  HELP("% \"cpu FREQ\" : Set CPU frequency to FREQ Mhz"), "Set/show CPU parameters" },
+  HELPK("% \"cpu FREQ\" : Set CPU frequency to FREQ Mhz"), "Set/show CPU parameters" },
 
   { "cpu", cmd_cpu, NO_ARGS, 
-  HELP("% \"cpu\" : Show CPUID and CPU/XTAL/APB frequencies"), NULL },
+  HELPK("% \"cpu\" : Show CPUID and CPU/XTAL/APB frequencies"), NULL },
 
   { "suspend", cmd_suspend, NO_ARGS, 
-  HELP("% \"suspend\" : Suspend main loop()\r\n"), "Suspend sketch execution" },
+  HELPK("% \"suspend\" : Suspend main loop()\r\n"), "Suspend sketch execution" },
 
   { "resume", cmd_resume, NO_ARGS, 
-  HELP("% \"resume\" : Resume main loop()\r\n"), "Resume sketch execution" },
+  HELPK("% \"resume\" : Resume main loop()\r\n"), "Resume sketch execution" },
 
   { "kill", cmd_kill, 1, 
-  HELP("% \"kill TASK_ID\" : Stop and delete task TASK_ID\r\n% CAUTION: wrong id will crash whole system :(\r\n% For use with \"pin&\" and \"count&\" tasks only!"), "Kill tasks" },
+  HELPK("% \"kill TASK_ID\" : Stop and delete task TASK_ID\r\n% CAUTION: wrong id will crash whole system :(\r\n% For use with \"pin&\" and \"count&\" tasks only!"), "Kill tasks" },
 
   { "kill", cmd_kill, 2, HIDDEN_KEYWORD },  //undocumented "kill TASK_ID terminate"
 
   { "reload", cmd_reload, NO_ARGS, 
-  HELP("% \"reload\" - Restarts CPU"), "Reset CPU" },
+  HELPK("% \"reload\" - Restarts CPU"), "Reset CPU" },
 
   { "mem", cmd_mem, NO_ARGS, 
-  HELP("% \"mem\"\r\n% Shows memory usage info & availability, no arguments"),"Memory commands" },
+  HELPK("% \"mem\"\r\n% Shows memory usage info & availability, no arguments"),"Memory commands" },
 
   { "mem", cmd_mem_read, 2, 
-  HELP("% \"mem ADDR [LENGTH]\"\r\n"
+  HELPK("% \"mem ADDR [LENGTH]\"\r\n"
        "% Display LENGTH bytes of memory starting from address ADDR\r\n"
        "% Address is either decimal or hex (with or without leading \"0x\")\r\n%\r\n"
        "% LENGTH is optional and its default value is 256 bytes. Can be decimal or hex\r\n"
@@ -2522,55 +2535,54 @@ static const struct keywords_t keywords_main[] = {
   { "mem", cmd_mem_read, 1, HIDDEN_KEYWORD },
 
   { "nap", cmd_nap, 1, 
-  HELP("% \"nap SEC\"\r\n%\r\n% Put the CPU into light sleep mode for SEC seconds."), "CPU sleep" },
+  HELPK("% \"nap SEC\"\r\n%\r\n% Put the CPU into light sleep mode for SEC seconds."), "CPU sleep" },
 
   { "nap", cmd_nap, NO_ARGS, 
-  HELP("% \"nap\"\r\n%\r\n% Put the CPU into light sleep mode, wakeup by console"), NULL },
+  HELPK("% \"nap\"\r\n%\r\n% Put the CPU into light sleep mode, wakeup by console"), NULL },
 
   // Interfaces (UART,I2C, RMT, FileSystem..)
   { "iic", cmd_i2c_if, 1, 
-  HELP("% \"iic X\" \r\n%\r\n"
+  HELPK("% \"iic X\" \r\n%\r\n"
        "% Enter I2C interface X configuration mode \r\n"
        "% Ex.: iic 0 - configure/use interface I2C 0"), "I2C commands" },
 
   { "uart", cmd_uart_if, 1,
-  HELP("% \"uart X\"\r\n"
+  HELPK("% \"uart X\"\r\n"
        "%\r\n"
        "% Enter UART interface X configuration mode\r\n"
        "% Ex.: uart 1 - configure/use interface UART 1"), "UART commands" },
 
   { "sequence", cmd_seq_if, 1, 
-  HELP("% \"sequence X\"\r\n"
+  HELPK("% \"sequence X\"\r\n"
        "%\r\n"
        "% Create/configure a sequence\r\n"
        "% Ex.: sequence 0 - configure Sequence0"),"Sequence configuration" },
 
 #if WITH_FS
   { "files", cmd_files_if, NO_ARGS, 
-  HELP("% \"files\"\r\n"
+  HELPK("% \"files\"\r\n"
        "%\r\n"
        "% Enter files & file system operations mode"), "File system access" },
 #endif
 
   // Show funcions (more will be added)
   { "show", cmd_show, 2, 
-  HELP("% \"show sequence X\" - display sequence X\r\n"), "Display information" },
+  HELPK("% \"show sequence X\" - display sequence X\r\n"), "Display information" },
 
   // Shell input/output settings
   { "tty", cmd_tty, 1, HIDDEN_KEYWORD },
-  //HELP("% \"tty X\" Use uart X for command line interface"), "IO redirect" },
 
   { "echo", cmd_echo, 1,
-  HELP("% \"echo on|off|silent\" Echo user input on/off (default is on)"), "Enable/Disable user input echo" },
+  HELPK("% \"echo on|off|silent\" Echo user input on/off (default is on)"), "Enable/Disable user input echo" },
 
   { "echo", cmd_echo, NO_ARGS, HIDDEN_KEYWORD },  //hidden command, displays echo status
 
   // Generic pin commands
   { "pin", cmd_pin, 1, 
-  HELP("% \"pin X\" - Show pin X configuration.\r\n% Ex.: \"pin 2\" - show GPIO2 information"), "Pins (GPIO) commands" },
+  HELPK("% \"pin X\" - Show pin X configuration.\r\n% Ex.: \"pin 2\" - show GPIO2 information"), "Pins (GPIO) commands" },
 
   { "pin", cmd_pin, MANY_ARGS,
-  HELP("% \"pin X (hold|release|up|down|out|in|open|high|low|save|load|read|aread|delay|loop|pwm|seq)...\"\r\n"
+  HELPK("% \"pin X (hold|release|up|down|out|in|open|high|low|save|load|read|aread|delay|loop|pwm|seq)...\"\r\n"
        "% Multifunction command which can:\r\n"
        "%  1. Set/Save/Load pin configuration and settings\r\n"
        "%  2. Enable/disable PWM and pattern generation on pin\r\n"
@@ -2593,7 +2605,7 @@ static const struct keywords_t keywords_main[] = {
 
   // PWM generation
   { "pwm", cmd_pwm, 3,
-  HELP("% \"pwm X [FREQ [DUTY]]\"\r\n"
+  HELPK("% \"pwm X [FREQ [DUTY]]\"\r\n"
        "%\r\n"
        "% Start PWM generator on pin X, frequency FREQ Hz and duty cycle of DUTY\r\n"
        "% Maximum frequency is 312000Hz, and DUTY is in range [0..1] with 0.123 being\r\n"
@@ -2611,7 +2623,7 @@ static const struct keywords_t keywords_main[] = {
 
   // Pulse counting
   { "count", cmd_count, 3,
-  HELP("% \"count PIN [DURATION [neg|pos|both]]\"\r\n%\r\n"
+  HELPK("% \"count PIN [DURATION [neg|pos|both]]\"\r\n%\r\n"
        "% Count pulses (negative/positive edge or both) on pin PIN within DURATION time\r\n"
        "% Time is measured in milliseconds, optional. Default is 1000\r\n"
        "% Pulse edge type is optional. Default is \"pos\"\r\n"
@@ -2630,7 +2642,7 @@ static const struct keywords_t keywords_main[] = {
 
 
   { "var", cmd_var, 2,
-  HELP("% \"var [VARIABLE_NAME] [NUMBER]\"\r\n%\r\n"
+  HELPK("% \"var [VARIABLE_NAME] [NUMBER]\"\r\n%\r\n"
        "% Set/display sketch variable \r\n"
        "% VARIABLE_NAME is the variable name, optional argument\r\n"
        "% NUMBER can be integer or float point values, positive or negative, optional argument\r\n"
@@ -2660,11 +2672,33 @@ static const struct keywords_t keywords_main[] = {
   KEYWORDS_END
 };
 
+// enable/disable history saving. mostly for memory leaks detection
+static void
+rl_history_enable(bool enable) {
+  if (!enable) {
+    if (rl_history) {
+      int i;
+      for (i = 0; i < H.Size; i++) {
+        if (H.Lines[i]) {
+          q_free(H.Lines[i]);
+          H.Lines[i] = NULL;
+        }
+      }
+      H.Size = H.Pos = 0;
+      rl_history = false;
+      HELP(q_printf("%% Command history purged, history is disabled\r\n"));
+    }
+  } else {
+    if (!rl_history) {
+      rl_history = true;
+    HELP(q_printf("%% Command history is enabled\r\n"));
+    }
+  }
+}
 
 //TAG:keywords
 //current keywords list to use
 static const struct keywords_t *keywords = keywords_main;
-
 
 
 // Called by cmd_uart_if, cmd_i2c_if,cmd_seq_if, cam_settings and cmd_files_if to
@@ -2675,14 +2709,11 @@ static const struct keywords_t *keywords = keywords_main;
 // /text/    - text to be displayed when switching command directory
 //
 static void change_command_directory(unsigned int context, const struct keywords_t *dir, const char *prom, const char *text) {
-
   Context = context;
   keywords = dir;
   prompt = prom;
-#if WITH_HELP
-  q_printf("%% Entering %s mode. Ctrl+Z or \"exit\" to return\r\n", text);
-  q_print("% Hint: Main commands are still avaiable (but not visible in \"?\" command list)\r\n");
-#endif
+  HELP(q_printf("%% Entering %s mode. Ctrl+Z or \"exit\" to return\r\n", text));
+  HELP(q_print("% Hint: Main commands are still avaiable (but not visible in \"?\" command list)\r\n"));
 }
 
 
@@ -2717,6 +2748,9 @@ void digitalForceWrite(int pin, unsigned char level) {
 
 
 
+// ESP32 Arduino Core as of version 3.0.5 (latest I use) defines pin OUTPUT flag as both INPUT and OUTPUT
+#define OUTPUT_ONLY (OUTPUT & ~INPUT)
+
 // same as pinMode() but calls IDF directly bypassing
 // PeriMan's pin deinit/init. As a result it allows flags manipulation on
 // reserved pins without crashing & rebooting
@@ -2727,17 +2761,13 @@ void digitalForceWrite(int pin, unsigned char level) {
 void pinMode2(unsigned int pin, unsigned int flags) {
 
   // set ARDUINO flags to the pin using ESP-IDF functions
-  if ((flags & PULLUP) == PULLUP) gpio_ll_pullup_en(&GPIO, pin);
-  else gpio_ll_pullup_dis(&GPIO, pin);
-  if ((flags & PULLDOWN) == PULLDOWN) gpio_ll_pulldown_en(&GPIO, pin);
-  else gpio_ll_pulldown_dis(&GPIO, pin);
-  if ((flags & OPEN_DRAIN) == OPEN_DRAIN) gpio_ll_od_enable(&GPIO, pin);
-  else gpio_ll_od_disable(&GPIO, pin);
-  if ((flags & INPUT) == INPUT) gpio_ll_input_enable(&GPIO, pin);
-  else gpio_ll_input_disable(&GPIO, pin);
+  if ((flags & PULLUP) == PULLUP) gpio_ll_pullup_en(&GPIO, pin); else gpio_ll_pullup_dis(&GPIO, pin);
+  if ((flags & PULLDOWN) == PULLDOWN) gpio_ll_pulldown_en(&GPIO, pin); else gpio_ll_pulldown_dis(&GPIO, pin);
+  if ((flags & OPEN_DRAIN) == OPEN_DRAIN) gpio_ll_od_enable(&GPIO, pin); else gpio_ll_od_disable(&GPIO, pin);
+  if ((flags & INPUT) == INPUT) gpio_ll_input_enable(&GPIO, pin); else gpio_ll_input_disable(&GPIO, pin);
 
   // not every esp32 gpio is capable of OUTPUT
-  if ((flags & OUTPUT) == OUTPUT) {
+  if ((flags & OUTPUT_ONLY) == OUTPUT_ONLY) {
     if (!pin_is_input_only_pin(pin))
       gpio_ll_output_enable(&GPIO, pin);
   } else
@@ -2769,7 +2799,7 @@ static bool pin_exist(int pin) {
               q_print(", except pins: ");
             } else
               q_print(", ");
-            q_printf("%s<w>%d</>",mask ? "" : "and ", pin);
+            q_printf("%s<e>%d</>",mask ? "" : "and ", pin);
           }
         }
     
@@ -2785,7 +2815,7 @@ static bool pin_exist(int pin) {
       for (pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++)
         if (esp_gpio_is_pin_reserved(pin)) {
           informed--;
-          q_printf("%s<w>%d</>", informed ? ", " : " and ",pin);
+          q_printf("%s<e>%d</>", informed ? ", " : " and ",pin);
         }
     }
 
@@ -2984,7 +3014,7 @@ static int seq_compile(int seq) {
       if (!i)
         return -2;
 
-      s->seq = (rmt_data_t *)q_malloc(sizeof(rmt_data_t) * i, MEM_RMT);
+      s->seq = (rmt_data_t *)q_malloc(sizeof(rmt_data_t) * i, MEM_SEQUENCE);
       if (!s->seq)
         return -3;
       s->seq_len = i;
@@ -3015,13 +3045,11 @@ static int seq_compile(int seq) {
         s->bits = r;
         s->bits[i + 0] = s->bits[i - 1];
         s->bits[i + 1] = '\0';
-#if WITH_HELP        
-        q_printf("%% Bit string was padded with one extra \"%c\" (must be even number bits)\r\n",s->bits[i]);
-#endif        
+        HELP(q_printf("%% Bit string was padded with one extra \"%c\" (must be even number bits)\r\n",s->bits[i]));
         i++;
       }
       s->seq_len = i / 2;
-      s->seq = (rmt_data_t *)q_malloc(sizeof(rmt_data_t) * s->seq_len,MEM_RMT);
+      s->seq = (rmt_data_t *)q_malloc(sizeof(rmt_data_t) * s->seq_len,MEM_SEQUENCE);
 
       if (!s->seq)
         return -6;
@@ -3187,14 +3215,12 @@ static int cmd_show(int argc, char **argv) {
 static int cmd_seq_if(int argc, char **argv) {
 
   unsigned char seq;
-  static char prom[16];
+  static char prom[MAX_PROMPT_LEN];
   if (argc < 2)
     return -1;
 
   if ((seq = q_atol(argv[1], SEQUENCES_NUM)) >= SEQUENCES_NUM) {
-#if WITH_HELP    
-    q_printf("%% <e>Sequence numbers are 0..%d</>\r\n", SEQUENCES_NUM - 1);
-#endif    
+    HELP(q_printf("%% <e>Sequence numbers are 0..%d</>\r\n", SEQUENCES_NUM - 1));
     return 1;
   }
 
@@ -3241,9 +3267,7 @@ static int cmd_seq_modulation(int argc, char **argv) {
 
   freq = q_atol(argv[1],0);
   if (!freq || freq > 40000000) {
-#if WITH_HELP
-    q_print("% Frequency must be between 1 and 40 000 000 Hz\r\n"); //TODO: find out real boundaries
-#endif
+    HELP(q_print("% Frequency must be between 1 and 40 000 000 Hz\r\n")); //TODO: find out real boundaries
     return 1;
   }
 
@@ -3255,9 +3279,7 @@ static int cmd_seq_modulation(int argc, char **argv) {
     duty = q_atof(argv[2],2.0f);
 
     if (duty < 0.0f || duty > 1.0f) {
-#if WITH_HELP
-      q_print("% <e>Duty cycle is a number in range [0..1] (0.01 means 1% duty)</>\r\n");
-#endif
+      HELP(q_print("% <e>Duty cycle is a number in range [0..1] (0.01 means 1% duty)</>\r\n"));
       return 2;
     }
   }
@@ -3349,8 +3371,6 @@ static int cmd_seq_zeroone(int argc, char **argv) {
 // is 0.0125 microsecond/tick which corresponds to RMT hardware
 // frequency of 80MHz
 static int cmd_seq_tick(int argc, char **argv) {
-
-
   if (argc < 2)
     return -1;
 
@@ -3360,9 +3380,7 @@ static int cmd_seq_tick(int argc, char **argv) {
   sequences[Context].tick = atof(argv[1]);
 
   if (sequences[Context].tick < 0.0125 || sequences[Context].tick > 3.2f) {
-#if WITH_HELP
-    q_print("% <e>Tick must be in range 0.0125..3.2 microseconds</>\r\n");
-#endif
+    HELP(q_print("% <e>Tick must be in range 0.0125..3.2 microseconds</>\r\n"));
     return 1;
   }
 
@@ -3442,7 +3460,7 @@ static int cmd_seq_levels(int argc, char **argv) {
 
 
   s->seq_len = i / 2;
-  s->seq = (rmt_data_t *)q_malloc(sizeof(rmt_data_t) * s->seq_len,MEM_RMT);
+  s->seq = (rmt_data_t *)q_malloc(sizeof(rmt_data_t) * s->seq_len,MEM_SEQUENCE);
 
   if (!s->seq)
     return -1;
@@ -3546,7 +3564,7 @@ static int cmd_count(int argc, char **argv) {
 
   // user has provided second argument?
   if (argc > 2) {
-    if ((wait = q_atol(argv[2], 0xffffffff)) == 0xffffffff)
+    if ((wait = q_atol(argv[2], DEF_BAD)) == DEF_BAD)
       return 2;
 
     //user has provided 3rd argument?
@@ -3566,10 +3584,8 @@ static int cmd_count(int argc, char **argv) {
   }
 
   q_printf("%% Counting pulses on GPIO%d...", pin);
-#if WITH_HELP
   if (is_foreground_task())
-    q_print("(press <Enter> to stop counting)");
-#endif
+    HELP(q_print("(press <Enter> to stop counting)"));
   q_print(CRLF);
 
 
@@ -3580,6 +3596,7 @@ static int cmd_count(int argc, char **argv) {
   pcnt_isr_register(pcnt_interrupt, NULL, 0, NULL);
   pcnt_intr_enable(PCNT_UNIT_0);
 
+  // reset & start counting for /wait/ milliseconds
   count_overflow = 0;
   pcnt_counter_resume(PCNT_UNIT_0);
   wait = delay_interruptible(wait);
@@ -3618,7 +3635,6 @@ static void count_async_task(void *arg) {
 static int cmd_var_show(int argc, char **argv) {
 
   int len;
-  bool found_one = false;
 
   // composite variable value.
   // had to use union because of variables different sizeof()
@@ -3636,16 +3652,26 @@ static int cmd_var_show(int argc, char **argv) {
   if (argc < 2) {
     struct convar *var = var_head;
 
-#if WITH_HELP    
+
     if (!var)
-      q_print(VarOops);
+      HELP(q_print(VarOops));
     else
-#endif
-      q_print("% Registered variables:\r\n");
+      q_print("%   Sketch variables (use \"var NAME\" to see variable values)    \r\n<r>"
+              "% Variable X name | sizeof(X) |     typeof(X)    |                </>\r\n"
+              "%-----------------+-----------+------------------+----------------\r\n");
 
     while (var) {
 #pragma GCC diagnostic ignored "-Wformat"
-      q_printf("%% \"<i>% 16s</>\", %d bytes long (likely of <i>%s</> type)\r\n", var->name, var->size, var->size == 4 ? "float or int" : (var->size == 2 ? "short int" : "char"));
+      q_printf("%%<i>% 16s</> | % 9u | % 16s |\r\n", 
+                var->name, 
+                var->size, 
+                var->isf ? "float" :
+                          var->isp ? "pointer / array" :
+                                    (var->size == 4 ? "[un]signed int" : 
+                                                    (var->size == 2 ? "[un]signed short" : 
+                                                                      (var->size == 1 ? "[un]signed char" :
+                                                                                        "array"))));
+
 #pragma GCC diagnostic warning "-Wformat"            
       var = var->next;
     }
@@ -3657,10 +3683,9 @@ static int cmd_var_show(int argc, char **argv) {
   //
   if (argc < 3) {
     unsigned int unumber;
-    signed int inumber;
-    float fnumber;
+      signed int inumber;
+           float fnumber;
     // argv[n] is at least 2 bytes long (1 symbol + '\0')
-
     // Octal, Binary or Hex number?
     if (argv[1][0] == '0') {
       if (argv[1][1] == 'x')
@@ -3672,82 +3697,77 @@ static int cmd_var_show(int argc, char **argv) {
       memcpy(&fnumber, &unumber, sizeof(fnumber));
       memcpy(&inumber, &unumber, sizeof(inumber));
     } else {
-      // Integer (signed or unsigned) or floating point number?
-      if (isnum(argv[1])) {
-        if (argv[1][0] == '-') {
-          inumber = atoi(argv[1]);
-          memcpy(&unumber, &inumber, sizeof(unumber));
-        } else {
-          unumber = atol(argv[1]);
-          memcpy(&inumber, &unumber, sizeof(inumber));
-        }
-        memcpy(&fnumber, &unumber, sizeof(fnumber));
-      } else 
-      if (isfloat(argv[1])) {
+    // Integer (signed or unsigned) or floating point number?
+    if (isnum(argv[1])) {
+      if (argv[1][0] == '-') {
+        inumber = atoi(argv[1]);
+        memcpy(&unumber, &inumber, sizeof(unumber));
+      } else {
+        unumber = atol(argv[1]);
+        memcpy(&inumber, &unumber, sizeof(inumber));
+      }
+      memcpy(&fnumber, &unumber, sizeof(fnumber));
+    } else 
+    // Floating point number maybe?
+    if (isfloat(argv[1])) {
         fnumber = atof(argv[1]);
         memcpy(&unumber, &fnumber, sizeof(unumber));
         memcpy(&inumber, &fnumber, sizeof(inumber));
-      } else
-        // no brother, this defenitely not a number
-        goto process_as_variable_name;
-    }
+    } else
+    // No brother, this defenitely not a number.
+    goto process_as_variable_name;
+  }
 
-    // display a number in hex, octal, binary, integer or float representation
-    q_printf("%% \"%s\" is a number, which can be written as\r\n"
-             "%% unsigned : %u\r\n"
-             "%%   signed : %i\r\n"
-             "%% FP number: %f\r\n"
-             "%% hex      : 0x%x\r\n"
-             "%% oct      : 0%o\r\n"
-             "%% bin      : \"0b", argv[1], unumber, inumber, fnumber, unumber, unumber);
+  // display a number in hex, octal, binary, integer or float representation
+  q_printf("%% \"%s\" is a number, which can be written as\r\n"
+           "%% unsigned : %u\r\n"
+           "%%   signed : %i\r\n"
+           "%% FP number: %f\r\n"
+           "%% hex      : 0x%x\r\n"
+           "%% oct      : 0%o\r\n"
+           "%% bin      : \"0b", argv[1], unumber, inumber, fnumber, unumber, unumber);
 
     // display binary form with leading zeros omitted
-    // TODO: use gcc's __builtin_ function to count leading zeros
-    for (inumber = 0; inumber < 32; inumber++) {
-      if (unumber & 0x80000000) {
-        q_print("1");
-        found_one = true;
-      } else if (found_one)
-        q_print("0");
-      unumber <<= 1;
-    }
+    if (unumber == 0)
+      q_print("00000000");
+    else
+      for (inumber = __builtin_clz(unumber); inumber < 32; inumber++)
+          q_print((unumber & (0x80000000 >> inumber)) ? "1" : "0" );
+     
     q_print(CRLF);
-
     return 0;
 
 process_as_variable_name:
 
     char *fullname;
-    bool isf;
-    if ((len = convar_get(argv[1], &u, &fullname, &isf)) == 0) {
-#if WITH_HELP
-      q_printf("%% \"%s\" : No such variable\r\n",argv[1]);
-      return 0;
-#else
+    bool isf,isp;
+    if ((len = convar_get(argv[1], &u, &fullname, &isf,&isp)) == 0) {
+      HELP(q_printf("%% <e>\"%s\" : No such variable. (use \"var\" to display variables list)</>\r\n",argv[1]));
       return 1;
-#endif      
     }
     switch (len) {
-      case 1: 
-        q_printf("%% // 0x%x in hex\r\n",u.uchar);
-        q_printf("%% unsigned char %s = %u;\r\n"
-                 "%%   signed char %s = %d;\r\n", fullname, u.uchar, fullname, u.ichar); 
+      // char or unsigned char?
+      case sizeof(char): 
+        q_printf("%% // 0x%x in hex\r\n"
+                 "%% unsigned char <i>%s</> = <3>%u</>; // unsigned or ...\r\n"
+                 "%%   signed char <i>%s</> = <3>%d</>; // ... signed\r\n", u.uchar, fullname, u.uchar, fullname, u.ichar); 
         break;
-      case 2: 
-        q_printf("%% // 0x%x in hex\r\n",u.ush);
-        q_printf("%% unsigned short %s = %u;\r\n"
-                 "%%   signed short %s = %d;\r\n", fullname, u.ush, fullname, u.ish); 
+      // short or unsigned short?
+      case sizeof(short): 
+        q_printf("%% // 0x%x in hex\r\n"
+                 "%% unsigned short <i>%s</> = <3>%u</>; // unsigned or ...\r\n"
+                 "%%   signed short <i>%s</> = <3>%d</>; // ... signed\r\n", u.ush, fullname, u.ush, fullname, u.ish); 
         break;
-      case 4: 
-        q_printf("%% // 0x%x in hex\r\n",u.uval);
-        if (isf)
-          q_printf("%% float %s = %ff;\r\n",fullname,u.fval);
-        else
-          q_printf("%% unsigned int %s = %u;\r\n"
-                   "%%   signed int %s = %d;\r\n", fullname, u.uval, fullname, u.ival); 
+      case sizeof(int):
+        // signed or unsigned int, float or pointer?
+        if (!isp) q_printf("%% // 0x%x in hex\r\n",u.uval);
+        if (isf)  q_printf("%% float <i>%s</> = <3>%f</>f;\r\n",fullname,u.fval); else 
+        if (isp)  q_printf("%% void *<i>%s</> = (void *) <3>0x%x</>; // pointer\r\n",fullname,u.uval);else
+        q_printf("%% unsigned int <i>%s</> = <3>%u</>; // unsigned or ...\r\n%%   signed int <i>%s</> = <3>%d</>; // ... signed \r\n", fullname, u.uval, fullname, u.ival); 
         break;
+      // ??
       default: 
-        q_printf("%% FIXME: Variable \"%s\" has unsupported size of %d bytes\r\n", fullname, len);
+        HELP(q_printf("%% <e>Variable \"%s\" has unsupported size of %d bytes</>\r\n", fullname, len));
         return 1;
     };
     return 0;
@@ -3755,12 +3775,14 @@ process_as_variable_name:
   return -1;
 }
 
-// "var"
-// "var X"
-// "var X NUMBER"
+// "var"           -- bypassed to cmd_var_show()
+// "var X"         -- bypassed to cmd_var_show()
+// "var X NUMBER"  -- set variable X to the value NUMBER
+//
 static int cmd_var(int argc, char **argv) {
 
   int len;
+
   union {
     unsigned char uchar;
     signed char ichar;
@@ -3773,39 +3795,37 @@ static int cmd_var(int argc, char **argv) {
 
   // no variables were registered but user invoked "var" command:
   // give them a hint
-
   if (var_head == NULL) {
-#if WITH_HELP    
-    q_print(VarOops);
-#endif  //WITH_HELP    
+    HELP(q_print(VarOops));
     return 0;
   }
 
-  // "var": display variables list if no arguments were given
+  // "var"           : display variables list if no arguments were given
+  // "var VAR_NAME"  : display variable value
+  // "var NUMBER"    : display NUMBER in different bases
   if (argc < 3)
     return cmd_var_show(argc, argv);
 
   // Set variable
   // does variable exist? get its size
   char *fullname;
-  bool isf;
-  if ((len = convar_get(argv[1], &u, &fullname,&isf)) == 0)
+  bool isf, isp;
+  if ((len = convar_get(argv[1], &u, &fullname,&isf, &isp)) == 0)
     return 1;
 
   if (isf) {
     if (isfloat(argv[2])) {
       // floating point number
-      //q_print("% Floating point number\r\n");
       u.fval = q_atof(argv[2],0);
     } else {
-      q_printf("%% Variable \"%s\" has type \"float\" and expects floating point argument\r\n",fullname);
+      HELP(q_printf("%% <e>Variable \"%s\" has type \"float\" and expects floating point argument</>\r\n",fullname));
       return 2;
     }   
   } else
+  // integers & pointer values
   if (isnum(argv[2]) || (argv[2][0] == '0' && argv[2][0] == 'x')) {
     bool sign = argv[2][0] == '-';
     if (sign) {
-      //q_print("% Signed integer\r\n");
       u.ival = -q_atol(&(argv[2][1]),0);
       if (len == sizeof(char)) u.ichar = u.ival; else 
       if (len == sizeof(short)) u.ish = u.ival;
@@ -3871,31 +3891,24 @@ static int cmd_pwm(int argc, char **argv) {
   if (argc > 2) {
     if ((freq = q_atol(argv[2],0)) == 0)
       return 2;    
-#if WITH_HELP
+
     if (freq > MAGIC_FREQ)
-      q_print("% Frequency will be adjusted to its maximum which is " xstr(MAGIC_FREQ) "] Hz\r\n");
-#endif
+      HELP(q_print("% Frequency will be adjusted to its maximum which is " xstr(MAGIC_FREQ) "] Hz\r\n"));
+
   }
 
   // duty is the third argument (optional)
   if (argc > 3) {
     duty = q_atof(argv[3],-1);
     if (duty < 0 || duty > 1) {
-#if WITH_HELP
-      q_print("% <e>Duty cycle is a number in range [0..1] (0.01 means 1% duty)</>\r\n");
-#endif
+      HELP(q_print("% <e>Duty cycle is a number in range [0..1] (0.01 means 1% duty)</>\r\n"));
       return 3;
     }
   }
 
-  // FIXME: TODO: evil hack. for unknown reason sometimes on fresh boot the first call to pwm_enable()
-  //              has no effect. No errors reported also even at Verbose level. So we just call this function twice every time
-  pwm_enable(pin, freq, duty);
-  if (freq && pwm_enable(pin, freq, duty) < 0) {
-#if WITH_HELP
-    q_print(Failed);
-#endif
-  }
+  if (freq && pwm_enable(pin, freq, duty) < 0)
+    HELP(q_print(Failed));
+  
   return 0;
 }
 
@@ -3951,7 +3964,7 @@ static void pin_load(int pin) {
 
       // restore digital value
       if ((Pins[pin].flags & OUTPUT) && (Pins[pin].bus_type == ESP32_BUS_TYPE_GPIO))
-        digitalWrite(pin, Pins[pin].value ? HIGH : LOW);
+        digitalForceWrite(pin, Pins[pin].value ? HIGH : LOW);
     } else {
       // unfortunately this will not work with Arduino :(
       if (Pins[pin].flags & OUTPUT)
@@ -3972,27 +3985,23 @@ static bool pin_is_input_only_pin(int pin) {
 
 
 // strapping pins as per Technical Reference
-// TODO: add more targets
 //
 static bool pin_is_strapping_pin(int pin) {
   switch (pin) {
 #ifdef CONFIG_IDF_TARGET_ESP32
     case 0: case 2: case 5: case 12: case 15: return true;
-#endif
-#ifdef CONFIG_IDF_TARGET_ESP32S2
+#elif defined(CONFIG_IDF_TARGET_ESP32S2)
     case 0: case 45: case 46: return true;
-#endif
-#ifdef CONFIG_IDF_TARGET_ESP32S3
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
     case 0: case 3: case 45: case 46: return true;
-#endif
-#ifdef CONFIG_IDF_TARGET_ESP32C3
+#elif defined(CONFIG_IDF_TARGET_ESP32C3)
     case 2: case 8: case 9: return true;
-#endif
-#ifdef CONFIG_IDF_TARGET_ESP32C6
+#elif defined(CONFIG_IDF_TARGET_ESP32C6)
     case 8: case 9: case 12: case 14: case 15: return true;
-#endif
-#ifdef CONFIG_IDF_TARGET_ESP32H2
+#elif defined(CONFIG_IDF_TARGET_ESP32H2)
     case 8: case 9: case 25: return true;
+#else
+#  warning "Unsupported target, pin_is_strapping_pin() is disabled"
 #endif
     default: return false;
   }
@@ -4155,9 +4164,9 @@ static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][5] = {
   { "GPIO45", "GPIO45", "2", "3", "4" },
   { "GPIO46", "GPIO46", "2", "3", "4" },
 #else
+#  warning "Unsupported target, using dummy IO_MUX function name table"
 static const char *io_mux_func_name[13][6] = {
 // unknown/unsupported target. make array big enough (6 functions)
-#warning "Using dummy IO_MUX function name table"
   { "0", "1", "2", "3", "4", "5" },
   { "0", "1", "2", "3", "4", "5" },
   { "0", "1", "2", "3", "4", "5" },
@@ -4213,10 +4222,9 @@ static const char *io_mux_func_name[13][6] = {
 #endif  // CONFIG_IDF_TARGET...
 };      //static const char *io_mux_func_name[][] = {
 
-// called by "pin X"
-// moved to a separate function to offload giant cmd_pin() a bit
-//
+// "pin X"
 // Display pin information: function, direction, mode, pullup/pulldown etc
+//
 static int pin_show(int argc, char **argv) {
 
   unsigned int pin, informed = 0;
@@ -4252,7 +4260,6 @@ static int pin_show(int argc, char **argv) {
       q_print("<i>configured as GPIO</>\r\n");
     else
       q_printf("used as \"<i>%s</>\"\r\n", perimanGetTypeName(type));
-    
   }
 
   gpio_ll_get_io_config(&GPIO, pin, &pu, &pd, &ie, &oe, &od, &drv, &fun_sel, &sig_out, &sleep_sel);
@@ -4333,6 +4340,7 @@ static int pin_show(int argc, char **argv) {
   return 0;
 }
 
+
 // "pin NUM arg1 arg2 .. argn"
 // "pin NUM"
 // Big fat "pin" command. Processes multiple arguments
@@ -4341,14 +4349,12 @@ static int cmd_pin(int argc, char **argv) {
 
   unsigned int flags = 0;
   unsigned int i = 2, pin;
+  bool informed = false;
 
   // repeat whole "pin ..." command "count" times.
   // this number can be changed by "loop" keyword
   unsigned int count = 1;
-
-#if WITH_HELP
-  bool informed = false;
-#endif
+  
   if (argc < 2) return -1;  //missing argument
 
   //first argument must be a decimal number: a GPIO number
@@ -4368,9 +4374,7 @@ static int cmd_pin(int argc, char **argv) {
       //1. "seq NUM" keyword found:
       if (!q_strcmp(argv[i], "sequence")) {
         if ((i + 1) >= argc) {
-#if WITH_HELP
-          q_print("% <e>Sequence number expected after \"seq\"</>\r\n");
-#endif
+          HELP(q_printf("%% <e>Sequence number expected after \"%s\"</>\r\n",argv[i]));
           return i;
         }
         i++;
@@ -4378,10 +4382,8 @@ static int cmd_pin(int argc, char **argv) {
         int seq, j;
 
         // enable RMT sequence 'seq' on pin 'pin'
-        if (seq_isready((seq = q_atol(argv[i],999)))) {
-#if WITH_HELP
-          q_printf("%% Sending sequence %u over GPIO %u\r\n", seq, pin);
-#endif
+        if (seq_isready((seq = q_atol(argv[i],DEF_BAD)))) {
+          HELP(q_printf("%% Sending sequence %u over GPIO %u\r\n", seq, pin));
           if ((j = seq_send(pin, seq)) < 0)
             q_printf("%% <e>Failed. Error code is: %d</>\r\n", j);
 
@@ -4397,36 +4399,29 @@ static int cmd_pin(int argc, char **argv) {
         float duty;
         // make sure that there are 2 extra arguments after "pwm" keyword
         if ((i + 2) >= argc) {
-#if WITH_HELP
-          q_print("% <e>Frequency and duty cycle are both expected</>\r\n");
-#endif
+
+          HELP(q_print("% <e>Frequency and duty cycle are both expected</>\r\n"));
+
           return i;
         }
-
         i++;
 
         // frequency must be an integer number and duty must be a float point number
         if ((freq = q_atol(argv[i++], MAGIC_FREQ+1)) > MAGIC_FREQ) {
-#if WITH_HELP
-          q_print("% <e>Frequency must be in range [1.." xstr(MAGIC_FREQ) "] Hz</>\r\n");
-#endif
+          HELP(q_print("% <e>Frequency must be in range [1.." xstr(MAGIC_FREQ) "] Hz</>\r\n"));
           return i - 1;
         }
 
         duty = q_atof(argv[i], -1.0f);
         if (duty < 0 || duty > 1) {
-#if WITH_HELP
-          q_print("% <e>Duty cycle is a number in range [0..1] (0.01 means 1% duty)</>\r\n");
-#endif
+          HELP(q_print("% <e>Duty cycle is a number in range [0..1] (0.01 means 1% duty)</>\r\n"));
           return i;
         }
 
         // enable/disable tone on given pin. if freq is 0 then tone is
         // disabled
         if (pwm_enable(pin, freq, duty) < 0) {
-#if WITH_HELP
-          q_print(Failed);
-#endif
+          HELP(q_print(Failed));
           return 0;
         }
       } else 
@@ -4435,24 +4430,23 @@ static int cmd_pin(int argc, char **argv) {
       if (!q_strcmp(argv[i], "delay")) {
         int duration;
         if ((i + 1) >= argc) {
-#if WITH_HELP
-          q_print("% <e>Delay value expected after keyword \"delay\"</>\r\n");
-#endif
+          HELP(q_print("% <e>Delay value expected after keyword \"delay\"</>\r\n"));
           return i;
         }
         i++;
         if ((duration = q_atol(argv[i],-1)) < 0)
           return i;
-#if WITH_HELP
+
+        // Display a hint for the first time when delay is longer than 5 seconds
         if (!informed && (duration > 4999)) {
           informed = true;
           if (is_foreground_task())
-            q_print("% Hint: Press <Enter> to interrupt the command\r\n");
+            HELP(q_print("% <3>Hint: Press <Enter> to interrupt the command</>\r\n"));
         }
-#endif
-        // was interrupted by keypress or by "kill" command ? abort whole command
+
+        // Was interrupted by keypress or by "kill" command? Abort whole command.
         if (delay_interruptible(duration) != duration) {
-          q_print("% Aborted\r\n");
+          HELP(q_printf("%% Command \"%s\" has been interrupted\r\n",argv[0]));
           return 0;
         }
       } else 
@@ -4466,9 +4460,9 @@ static int cmd_pin(int argc, char **argv) {
       // 12. "pin X in"
       if (!q_strcmp(argv[i], "in")) { flags |= INPUT; pinMode2(pin, flags);} else 
       // 13. "pin X out"
-      if (!q_strcmp(argv[i], "out")) {flags |= OUTPUT; pinMode2(pin, flags); } else 
+      if (!q_strcmp(argv[i], "out")) {flags |= OUTPUT_ONLY; pinMode2(pin, flags); } else 
       // 11. "pin X open"
-      if (!q_strcmp(argv[i], "open")) {flags |= OPEN_DRAIN;pinMode2(pin, flags); } else 
+      if (!q_strcmp(argv[i], "open")) {flags |= OPEN_DRAIN; pinMode2(pin, flags); } else 
         // 14. "pin X low" keyword. only applies to I/O pins, fails for input-only pins
       if (!q_strcmp(argv[i], "low")) {
         if (pin_is_input_only_pin(pin)) {
@@ -4508,32 +4502,28 @@ abort_if_input_only:
        if (!q_strcmp(argv[i], "loop")) {
         //must have an extra argument (loop count)
         if ((i + 1) >= argc) {
-#if WITH_HELP
-          q_print("% <e>Loop count expected after keyword \"loop\"</>\r\n");
-#endif
+          HELP(q_print("% <e>Loop count expected after keyword \"loop\"</>\r\n"));
           return i;
         }
         i++;
 
         // loop must be the last keyword, so we can strip it later
         if ((i + 1) < argc) {
-#if WITH_HELP
-          q_print("% <e>\"loop\" must be the last keyword</>\r\n");
-#endif
+          HELP(q_print("% <e>\"loop\" must be the last keyword</>\r\n"));
           return i + 1;
         }
         if ((count = q_atol(argv[i],0)) == 0)
           return i;
         argc -= 2;  //strip "loop NUMBER" keyword
-#if WITH_HELP
+
         if (!informed) {
           informed = true;
-          q_printf("%% Repeating %u times", count);
+          HELP(q_printf("%% Repeating %u times", count));
           if (is_foreground_task())
-            q_print(", press <Enter> to abort");
-            q_print(CRLF);
+            HELP(q_print(", press <Enter> to abort"));
+          q_print(CRLF);
         }
-#endif
+
       } else
       //"X" keyword. when we see a number we use it as a pin number
       //for subsequent keywords. must be valid GPIO number.
@@ -4550,9 +4540,7 @@ abort_if_input_only:
     //give a chance to cancel whole command
     // by anykey press
     if (anykey_pressed()) {
-#if WITH_HELP
-      q_print("% Key pressed, aborting..\r\n");
-#endif
+      HELP(q_print("% Key pressed, aborting..\r\n"));
       break;
     }
   } while (--count > 0);  // repeat if "loop X" command was found
@@ -4630,7 +4618,7 @@ static int cmd_async(int argc, char **argv) {
 //
 static int cmd_mem(UNUSED int argc, UNUSED char **argv) {
 
-  q_print("% -- Memory information --\r\n%\r\n"
+  q_print("% -- Heap information --\r\n%\r\n"
           "% For \"malloc()\" (default allocator))\":\r\n");
   
   q_printf("%% <i>%u</> bytes total, <i>%u</> available, %u max per allocation\r\n%%\r\n", heap_caps_get_total_size(MALLOC_CAP_DEFAULT), heap_caps_get_free_size(MALLOC_CAP_DEFAULT), heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT));
@@ -4646,7 +4634,7 @@ static int cmd_mem(UNUSED int argc, UNUSED char **argv) {
              "%% Total <i>%u</>Mbytes, free: <i>%u</> bytes\r\n", total / 1024, heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
   
 #if MEMTEST
-  q_memleaks("-- Memory currently used by ESPShell --");
+  q_memleaks(" -- Entries allocated by ESPShell --");
 #endif  
   return 0;
 }
@@ -4656,19 +4644,18 @@ static int cmd_mem(UNUSED int argc, UNUSED char **argv) {
 //
 static int cmd_mem_read(int argc, char **argv) {
 
-  unsigned long length = 256;
+  unsigned int   length = 256;
   unsigned char *address;
 
   if (argc < 2)
     return -1;
-
-  address = (unsigned char *)(hex2uint32(argv[1]));
-  if (address == NULL)
+  
+  if ((address = (unsigned char *)(hex2uint32(argv[1]))) == NULL)
     return 1;
 
   if (argc > 2)
     length = q_atol(argv[2],length);
-  
+  HELP(q_printf("%% Memory@ %p content, %u bytes:\r\n",address,length));
   q_printhex(address, length);
 
   return 0;
@@ -4677,38 +4664,34 @@ static int cmd_mem_read(int argc, char **argv) {
 //TAG:nap
 //"nap NUM"
 //"nap"
+// Put cpu into light sleep
+//
 static int cmd_nap(int argc, char **argv) {
 
   static bool isen = false;
   // "nap" command: sleep until we receive at least 3 positive edges on UART pin
   // (press any key for a wakeup)
-  if (argc == 1) {
+  if (argc < 2) {
     esp_sleep_enable_uart_wakeup(uart);  // wakeup by uart
     isen = true;
     uart_set_wakeup_threshold(uart, 3);  // 3 positive edges on RX pin to wake up ('spacebar' button two times)
   } else
-    // "nap NUM" command: sleep NUM seconds. Wakeup by a timer
-    if (argc == 2) {
-      unsigned long sleep;
-      if (isen) {
-        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_UART);  //disable wakeup by uart
-        isen = false;
-      }
-      if ((sleep = q_atol(argv[1],0xffffffff)) == 0xffffffff) {
-#if WITH_HELP
-        q_printf("%% <e>Sleep time in seconds expected, instead of \"%s\"</>\r\n",argv[1]);
-#endif        
-        return 1;
-      }
-      esp_sleep_enable_timer_wakeup(1000000UL * (unsigned long)sleep);
+  // "nap NUM" command: sleep NUM seconds. Wakeup by a timer
+  if (argc < 3) {
+    unsigned long sleep;
+    if (isen) {
+      esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_UART);  //disable wakeup by uart
+      isen = false;
     }
-#if WITH_HELP
-  q_print("% Light sleep..");
-#endif
+    if ((sleep = q_atol(argv[1],DEF_BAD)) == DEF_BAD) {
+      HELP(q_printf("%% <e>Sleep time in seconds expected, instead of \"%s\"</>\r\n",argv[1]));
+      return 1;
+    }
+    esp_sleep_enable_timer_wakeup(1000000UL * (unsigned long)sleep);
+  }
+  HELP(q_print("% z-z-Z-Z-ZZZ\r\n"));
   esp_light_sleep_start();
-#if WITH_HELP
-  q_print("Resuming\r\n");
-#endif
+  HELP(q_print("%% Good morning :)\r\n"));
   return 0;
 }
 
@@ -4733,15 +4716,13 @@ static inline bool i2c_isup(unsigned char iic) {
 static int cmd_i2c_if(int argc, char **argv) {
 
   unsigned int iic;
-  static char prom[16];
+  static char prom[MAX_PROMPT_LEN];
 
   if (argc < 2)
     return -1;
 
   if ((iic = q_atol(argv[1],SOC_I2C_NUM)) >= SOC_I2C_NUM) {
-#if WITH_HELP
-    q_printf("%% <e>Valid I2C interface numbers are 0..%d</>\r\n", SOC_I2C_NUM - 1);
-#endif
+    HELP(q_printf("%% <e>Valid I2C interface numbers are 0..%d</>\r\n", SOC_I2C_NUM - 1));
     return 1;
   }
 
@@ -4764,9 +4745,7 @@ static int cmd_i2c_clock(int argc, char **argv) {
 
   if (!i2c_isup(iic)) {
     q_printf("%% <e>I2C%u is not initialized</>\r\n", iic);
-#if WITH_HELP
-    q_printf("%% Use command \"up\" to initialize</>\r\n");
-#endif
+    HELP(q_printf("%% Use command \"up\" to initialize</>\r\n"));
     return 0;
   }
 
@@ -4777,210 +4756,144 @@ static int cmd_i2c_clock(int argc, char **argv) {
   return 0;
 }
 
-// i2c commands handler, processes following commands in esp32-i2c#> category:
-//"SDA SCL CLOCK"
-//"down"
-//"scan"
-//"write ADDR A1 A2 A3 ... AN"
-//"read ADDR NUM_BYTES"
 #define I2C_RXTX_BUF 1024
 
-static int cmd_i2c(int argc, char **argv) {
+//"up SDA SCL CLOCK"
+// initialize i2c interface
+//
+static int cmd_i2c_up(int argc, char **argv) {
 
-  unsigned char iic = (unsigned char)Context, sda, scl, addr;
+  unsigned char iic = (unsigned char)Context, sda, scl;
   unsigned int clock = 0;
-  int i,size;
 
-  //"up" keyword: initialize i2c driver
-  // on given pins with givent clockrate
-  if (!q_strcmp(argv[0], "up")) {
+  if (argc < 4)      return -1;
+  if (i2c_isup(iic)) return 0;
+  if (!pin_exist((sda = q_atol(argv[1],255)))) return 1;
+  if (!pin_exist((scl = q_atol(argv[2],255)))) return 2;
+  if ((clock = q_atol(argv[3],0)) == 0)        return 3;
+  if (ESP_OK != i2cInit(iic, sda, scl, clock)) q_print(Failed);
 
-    if (argc < 4)
-      return -1;
+  return 0;
+}
 
-    if (i2c_isup(iic)) {
-#if WITH_HELP
-      q_printf("%% <e>I2C%d is already initialized</>\r\n", iic);
-#endif
-      return 0;
-    }
+//
+static int cmd_i2c_down(int argc, char **argv) {
 
-    
-    if (!pin_exist((sda = q_atol(argv[1],999)))) return 1;  // SDA
-    if (!pin_exist((scl = q_atol(argv[2],999)))) return 2;  // SCL
-    if ((clock = q_atol(argv[3],0)) == 0)         return 3;  // CLOCK
-
-    if (ESP_OK != i2cInit(iic, sda, scl, clock))
-      q_print(Failed);
-  } else if (!q_strcmp(argv[0], "down")) {
-    if (!i2c_isup(iic))
-      goto noinit;
+  unsigned char iic = (unsigned char)Context;
+  if (i2c_isup(iic))
     i2cDeinit(iic);
+  return 0;
+}
+
+//
+static int cmd_i2c_read(int argc, char **argv) {
+
+  unsigned char iic = (unsigned char)Context, addr;
+  int size;
+  size_t got = 0;
+
+  if (argc < 3) return -1;
+  if ((addr = q_atol(argv[1],0)) == 0) return 1;
+  if ((size = q_atol(argv[2],I2C_RXTX_BUF+1)) > I2C_RXTX_BUF) { size = I2C_RXTX_BUF; q_printf("%% Size adjusted to the maxumum: %u bytes\r\n", size); }
+
+  unsigned char data[size];
+
+  if (!i2c_isup(iic))
+    goto noinit;
+
+  if (i2cRead(iic, addr, data, size, 2000, &got) != ESP_OK)
+    q_print(Failed);
+  else {
+    if (got != size) {
+      q_printf("%% <e>Requested %d bytes but read %d</>\r\n", size, got);
+      got = size;
+    }
+    q_printf("%% I2C%d received %d bytes:\r\n", iic, got);
+    q_printhex(data, got);
   }
-  // "write ADDR byte1 byte2 ... byteN" keyword
-  // send data to device address ADDR
-  else if (!q_strcmp(argv[0], "write")) {  //write 4B 1 2 3 4
-
-    // at least 1 but not more than 255 bytes
-    if (argc < 3 || argc > I2C_RXTX_BUF)
-      return -1;
-
-    unsigned char data[argc];
-
-    if (!i2c_isup(iic))
-      goto noinit;
-
-    // get i2c slave address
-    if ((addr = q_atol(argv[1],0)) == 0)
-      return 1;
-
-    // read all bytes to the data buffer
-    for (i = 2, size = 0; i < argc; i++) {
-      if (!ishex2(argv[i]))
-        return i;
-      data[size++] = hex2uint8(argv[i]);
-    }
-    // send over
-    q_printf("%% Sending %d bytes over I2C%d\r\n", size, iic);
-    if (ESP_OK != i2cWrite(iic, addr, data, size, 2000))
-      q_print(Failed);
-  }
-  // "read ADDR LENGTH" keyword:
-  // read data from i2c device on address ADDR, request LENGTH
-  // bytes to read
-  else if (!q_strcmp(argv[0], "read")) {  //read 68 7
-
-    size_t got;
-
-    if (argc < 3) return -1;
-    if ((addr = q_atol(argv[1],0)) == 0) return 1;
-    // second parameter: requested size
-    if ((size = q_atol(argv[2],I2C_RXTX_BUF+1)) > I2C_RXTX_BUF) {
-      size = I2C_RXTX_BUF;
-#if WITH_HELP
-      q_printf("%% Size adjusted to the maxumum: %u bytes\r\n", size);
-#endif
-    }
-
-    got = 0;
-    unsigned char data[size];
-
-    if (i2cRead(iic, addr, data, size, 2000, &got) != ESP_OK)
-      q_print(Failed);
-    else {
-      if (got != size) {
-        q_printf("%% <e>Requested %d bytes but read %d</>\r\n", size, got);
-        got = size;
-      }
-      q_printf("%% I2C%d received %d bytes:\r\n", iic, got);
-      q_printhex(data, got);
-    }
-  }
-  // "scan" keyword
-  //
-  else if (!q_strcmp(argv[0], "scan")) {
-    if (!i2c_isup(iic)) {
-#if WITH_HELP
-      q_printf("%% <e>I2C %d is not initialized</>\r\n", iic);
-#endif
-      return 0;
-    }
-
-    q_printf("%% Scanning I2C bus %d...\r\n", iic);
-
-    for (addr = 1, i = 0; addr < 128; addr++) {
-      unsigned char b;
-      if (ESP_OK == i2cWrite(iic, addr, &b, 0, 500)) {
-        i++;
-        q_printf("%% Device found at <i>address %02X</>\r\n", addr);
-      }
-    }
-
-    if (!i)
-      q_print("% Nothing found\r\n");
-    else
-      q_printf("%% <i>%d</> devices found\r\n", i);
-  } else return 0;
-
   return 0;
 noinit:
-  // love gotos
-#if WITH_HELP
-  q_printf("%% <e>I2C %d is not initialized</>\r\n", iic);
-#endif
+  q_printf("%% I2C%u bus is not initialized. Use command \"up\" to initialize\r\n", iic);
   return 0;
 }
 
+//
+static int cmd_i2c_write(int argc, char **argv) {
 
-//defined in HardwareSerial and must be kept in sync
-//unfortunately HardwareSerial.h can not be included directly in a .c code
-#define SERIAL_8N1 0x800001c
+  unsigned char iic = (unsigned char)Context, addr;
+  int i,size;
 
-//check if UART has its driver installed
-static inline bool uart_isup(unsigned char u) {
+  // at least 1 byte but not too much
+  if (argc < 3 || argc > I2C_RXTX_BUF)
+      return -1;
 
-  return u >= SOC_UART_NUM ? false : uart_is_driver_installed(u);
-}
+  unsigned char data[argc];
 
-// Change to uart command tree
-// "uart X"
-static int cmd_uart_if(int argc, char **argv) {
+  if (!i2c_isup(iic))
+    goto noinit;
 
-  unsigned int u;
-  static char prom[16];
-
-  if (argc < 2)
-    return -1;
-
-  if ((u = q_atol(argv[1],SOC_UART_NUM)) >= SOC_UART_NUM) {
-#if WITH_HELP
-    q_printf("%% <e>Valid UART interface numbers are 0..%d</>\r\n", SOC_UART_NUM - 1);
-#endif
+  // get i2c slave address
+  if ((addr = q_atol(argv[1],0)) == 0)
     return 1;
+
+  // read all bytes to the data buffer
+  for (i = 2, size = 0; i < argc; i++) {
+    if (!ishex2(argv[i]))
+      return i;
+    data[size++] = hex2uint8(argv[i]);
   }
-#if WITH_HELP
-  if (uart == u)
-    q_print("% <w>You are configuring Serial interface shell is running on!</> BE CAREFUL :)\r\n");
-#endif
-
-  sprintf(prom,PROMPT_UART,u);
-  change_command_directory(u, keywords_uart, prom, "UART configuration");
-  return 0;
-}
-
-
-//TAG:baud
-static int cmd_uart_baud(int argc, char **argv) {
-
-  unsigned char u = Context;
-
-  if (argc < 2)
-    return -1;
-
-  if (!uart_isup(u)) {
-    q_printf("%% <e>uart%u is not initialized</>\r\n", u);
-#if WITH_HELP
-    q_print("%% Use command \"up\" to initialize</>\r\n");
-#endif
-    return 0;
-  }
-  // set baud rate to 115200 if atol() fails
-  if (ESP_OK != uart_set_baudrate(u, q_atol(argv[1],115200)))
+  // send over
+  HELP(q_printf("%% Sending %d bytes over I2C%d\r\n", size, iic));
+  if (ESP_OK != i2cWrite(iic, addr, data, size, 2000))
     q_print(Failed);
-
   return 0;
+
+noinit:
+  q_printf("%% I2C%u bus is not initialized. Use command \"up\" to initialize\r\n", iic);
+  return 0;  
 }
 
+//
+static int cmd_i2c_scan(int argc, char **argv) {
 
-//TAG:tap
+  unsigned char iic = (unsigned char)Context, addr;
+  int i;
+
+  if (!i2c_isup(iic))
+      goto noinit;
+
+  HELP(q_printf("%% Scanning I2C bus %d...\r\n", iic));
+
+  for (addr = 1, i = 0; addr < 128; addr++) {
+    unsigned char b;
+    if (ESP_OK == i2cWrite(iic, addr, &b, 0, 500)) {
+      i++;
+      q_printf("%% Device found at <i>address 0x%02x</>\r\n", addr);
+    }
+  }
+  if (!i)
+    q_print("% Nothing found\r\n");
+  else
+    q_printf("%% <i>%d</> devices found\r\n", i);
+  return 0;
+noinit:
+  q_printf("%% I2C%u bus is not initialized. Use command \"up\" to initialize\r\n", iic);
+  return 0;  
+} 
+
+//TAG:uart
+// -- UART interface commands --
+// baud, read, write, up, down and tap commands down below
+
+#define SERIAL_8N1 0x800001c
+#define BREAK_KEY       3              // Keycode of an "Exit" key: CTRL+C to exit uart "tap" mode
+#define DEF_BAUDRATE 115200
+
 // create uart-to-uart bridge between user's serial and "remote"
 // everything that comes from the user goes to "remote" and
 // vice versa
 //
 // returns  when BREAK_KEY is pressed
-
-#define BREAK_KEY       3              // Keycode of an "Exit" key: CTRL+C to exit uart "tap" mode
-
 static void
 uart_tap(int remote) {
 
@@ -4988,20 +4901,15 @@ uart_tap(int remote) {
   size_t av;
 
   while (1) {
-
     // 1. read all user input and send it to remote
     while (1) {
-
       // fails when interface is down. must not happen.
       if ((av = console_available()) <= 0)
         break;
-
       // must not happen unless UART FIFO sizes were changed in ESP-IDF
       if (av > UART_RXTX_BUF)
         av = UART_RXTX_BUF;
-
       char buf[av];
-
       console_read_bytes(buf, av, portMAX_DELAY);
       // CTRL+C. most likely sent as a single byte (av == 1), so get away with
       // just checking if buf[0] == CTRL+C
@@ -5013,15 +4921,11 @@ uart_tap(int remote) {
 
     // 2. read all the data from remote uart and echo it to the user
     while (1) {
-
       // return here or we get flooded by driver messages
       if (ESP_OK != uart_get_buffered_data_len(remote, &av)) {
-#if WITH_HELP
-        q_printf("%% <e>UART%d is not initialized</>\r\n", remote);
-#endif
+        HELP(q_printf("%% <e>UART%d is not initialized</>\r\n", remote));
         return;
       }
-
       if (av > UART_RXTX_BUF)
         av = UART_RXTX_BUF;
       else if (!av)
@@ -5036,109 +4940,159 @@ uart_tap(int remote) {
   }
 }
 
-//TAG:uart
-//"down"
-//"up RX TX BAUD"
-//"write TEXT"
-//"read"
-//"tap"
-//TODO: split to separate functions
-static int cmd_uart(int argc, char **argv) {
+//check if UART has its driver installed
+static inline bool uart_isup(unsigned char u) {
+  return u >= SOC_UART_NUM ? false : uart_is_driver_installed(u);
+}
 
-  int sent = 0;
+// "uart X"
+// Change to uart command tree
+//
+static int cmd_uart_if(int argc, char **argv) {
+
+  unsigned int u;
+  static char prom[MAX_PROMPT_LEN];
+
+  if (argc < 2)
+    return -1;
+
+  if ((u = q_atol(argv[1],SOC_UART_NUM)) >= SOC_UART_NUM) {
+    HELP(q_printf("%% <e>Valid UART interface numbers are 0..%d</>\r\n", SOC_UART_NUM - 1));
+    return 1;
+  }
+
+  if (uart == u)
+    HELP(q_print("% <i>You are about to configure the Serial espshell is running on. Be careful</>\r\n"));
+
+  sprintf(prom,PROMPT_UART,u);
+  change_command_directory(u, keywords_uart, prom, "UART configuration");
+  return 0;
+}
+
+
+//"baud SPEED"
+// Set UART speed
+//
+static int cmd_uart_baud(int argc, char **argv) {
+
   unsigned char u = Context;
 
+  if (argc < 2)
+    return -1;
 
-  // 1. "tap" command
-  if (!q_strcmp(argv[0], "tap")) {
-    if (uart == u) {
-      //do not tap to the same uart we are running on
-      q_print("% <e>Can not bridge to itself</>\r\n");
-      return 0;
-    }
-
-    if (!uart_isup(u))
-      goto noinit;
-
-    q_printf("%% Tapping to UART%d, CTRL+C to exit\r\n", u);
-    uart_tap(u);
-    q_print("\r\n% Ctrl+C, exiting\r\n");
-    return 0;
-  } else
-  // 2. "up" command
-  if (!q_strcmp(argv[0], "up")) {  //up RX TX SPEED
-
-    unsigned int rx, tx, speed;
-    if (argc < 4)
-      return -1;
-
-    // sanity checks for arguments
-    if (!pin_exist((rx = q_atol(argv[1],999)))) return 1;
-    if (!pin_exist((tx = q_atol(argv[2],999)))) return 2;
-    if ((speed = q_atol(argv[3],0)) == 0)    return 3;
-
-    if (NULL == uartBegin(u, speed, SERIAL_8N1, rx, tx, 256, 0, false, 112))
+  if (uart_isup(u)) {
+    if (ESP_OK != uart_set_baudrate(u, q_atol(argv[1],DEF_BAUDRATE)))
       q_print(Failed);
-#if WITH_HELP
-    else
-      q_printf("%% UART%u is initialized (RX=pin%u, TX=pin%u, speed=%u, bits: 8N1)\r\n",u,rx,tx,speed);
-#endif      
   } else
-    // "down" command
-  if (!q_strcmp(argv[0], "down")) {  // down
-    if (!uart_isup(u))
-      goto noinit;
-    else
-      uartEnd(u);
+    q_printf("%% UART%u is down. Use command \"up\" to initialize it\r\n",u);
+
+  return 0;
+}
+
+
+//"up RX TX BAUD"
+// Initialize UART interface (RX/TX, no hw flowcontrol) baudrate BAUD
+static int cmd_uart_up(int argc, char **argv) {
+
+  unsigned char u = Context;
+  unsigned int rx, tx, speed;
+
+  if (argc < 4)                               return -1;
+  if (!pin_exist((rx = q_atol(argv[1],999)))) return  1;
+  if (!pin_exist((tx = q_atol(argv[2],999)))) return  2;
+  if ((speed = q_atol(argv[3],0)) == 0)       return  3;
+  if (NULL != uartBegin(u, speed, SERIAL_8N1, rx, tx, 256, 0, false, 112))
+    q_printf("%% UART%u is initialized (RX=pin%u, TX=pin%u, speed=%u, bits: 8N1)\r\n",u,rx,tx,speed);
+  else
+    q_printf("%% UART%u failed to initialize\r\n",u);
+
+  return 0;
+}
+
+// "down"
+// shutdown uart interface
+//
+static int cmd_uart_down(UNUSED int argc, UNUSED char **argv) {
+  if (uart_isup(Context)) {
+    HELP(q_printf("%% Shutting down UART%u\r\n",Context));
+    uartEnd(Context);
+  }
+  return 0;
+}
+
+// "read"
+// Read bytes which are currently received (are in FIFO)
+//
+static int cmd_uart_read(UNUSED int argc, UNUSED char **argv) {
+
+  unsigned char u = Context;
+  size_t available = 0, tmp = 0;
+
+  if (uart_isup(u)) {
+    if (ESP_OK == uart_get_buffered_data_len(u, &available)) {
+      tmp = available;
+      while (available--) {
+        unsigned char c;
+        if (uart_read_bytes(u, &c, 1, portMAX_DELAY /* TODO: make short delay! */) == 1) {
+          if (c >= ' ' || c == '\r' || c == '\n' || c == '\t')
+            q_printf("%c", c);
+          else
+            q_printf("\\x%02x", c);
+        }
+      }
+    }
   } else
-    // "write TEXT" command
-  if (!q_strcmp(argv[0], "write")) {
-    int size;
-    char *out = NULL;          
+    q_printf("%% UART%u is down. Use command \"up\" to initialize it\r\n",u);
 
-    if (argc < 2)
-      return -1;
+  q_printf("\r\n%% EOF (%d bytes)\r\n", tmp);
+  return 0;
+}
 
-    if (!uart_isup(u))
-      goto noinit;
+// "write TEXT"
+// Send arbitrary text and/or bytes
+//
+static int cmd_uart_write(int argc, char **argv) {
 
-    size = text2buf(argc,argv,1,&out);
-          
-    if (size > 0)
+  int sent = 0, size;
+  unsigned char u = Context;
+  char *out = NULL;          
+
+  if (argc < 2)
+    return -1;
+  if (uart_isup(u)) {
+    if ((size = text2buf(argc,argv,1,&out)) > 0)
       if ((size = uart_write_bytes(u, out, size)) > 0)
         sent+=size;
     if (out)
       q_free(out);
-
-    q_printf("%% %u bytes sent\r\n", sent);
   } else
-  // "read" command
-  if (!q_strcmp(argv[0], "read")) {
-    size_t available = 0, tmp;
-    if (ESP_OK != uart_get_buffered_data_len(u, &available))
-      goto noinit;
-    tmp = available;
-    while (available--) {
-      unsigned char c;
-      if (uart_read_bytes(u, &c, 1, portMAX_DELAY /* TODO: make short delay! */) == 1) {
-        if (c >= ' ' || c == '\r' || c == '\n' || c == '\t')
-          q_printf("%c", c);
-        else
-          q_printf("\\x%02x", c);
-      }
-    }
-    q_printf("\r\n%% %d bytes read\r\n", tmp);
-  }
-  return 0;
-noinit:
-  q_printf("%% <e>UART%d is not initialized</>\r\n", u);
+    q_printf("%% UART%u is down. Use command \"up\" to initialize it\r\n",u);
+  q_printf("%% %u bytes sent\r\n", sent);
   return 0;
 }
 
+//"tap"
+// uart-to-console bridge
+//
+static int cmd_uart_tap(int argc, char **argv) {
+  unsigned char u = Context;
+  if (uart != u) {
+    if (uart_isup(u)) {
+      q_printf("%% Tapping to UART%d, CTRL+C to exit\r\n", u);
+      uart_tap(u); //TODO: inline it here
+      q_print("\r\n% Ctrl+C, exiting\r\n");
+    } else
+      q_printf("%% UART%u is down. Use command \"up\" to initialize it\r\n",u);
+  } else
+    q_print("% <e>Can not bridge to itself</>\r\n");
+  return 0;
+}
+  
 //TAG:tty
 //"tty NUM"
 //
 // Set UART (or USBCDC) to use by this shell.
+// this command is hidden to not confuse users
 static int cmd_tty(int argc, char **argv) {
 
   unsigned char tty;
@@ -5149,9 +5103,7 @@ static int cmd_tty(int argc, char **argv) {
   if ((tty = q_atol(argv[1],100)) < 100) {
     // if not USB then check if requested UART is up & running
     if ((tty == 99) || ((tty < 99) && uart_isup(tty))) {
-#if WITH_HELP
-      q_print("% See you there\r\n");
-#endif
+      HELP(q_print("% See you there\r\n"));
       console_here(tty);
       return 0;
     }
@@ -5160,9 +5112,7 @@ static int cmd_tty(int argc, char **argv) {
 
   if (tty < 99) {
     q_printf("%% <e>UART%u is not initialized</>.\r\n", tty);
-#if WITH_HELP
-    q_printf("%% Use commands \" uart %u\" and \"up\" commands to initialize it\r\n", tty);
-#endif    
+    HELP(q_printf("%% Use commands \" uart %u\" and \"up\" commands to initialize it\r\n", tty));
   }
   return 0;
 }
@@ -5287,9 +5237,7 @@ static int cmd_cpu_freq(int argc, char **argv) {
   unsigned int freq;
   
   if ((freq = q_atol(argv[1],0)) == 0) {
-#if WITH_HELP
-    q_print("% Numeric value is expected (e.g. 240): frequency in MHz\r\n");
-#endif
+    HELP(q_print("% Numeric value is expected (e.g. 240): frequency in MHz\r\n"));
     return 1;
   }
 
@@ -5299,14 +5247,14 @@ static int cmd_cpu_freq(int argc, char **argv) {
 
     if ((freq == xtal) || (freq == xtal / 2)) break;
     if ((xtal >= 40) && (freq == xtal / 4)) break;
-#if WITH_HELP
+
     q_print("% Supported frequencies are: 240, 160, 120, 80, ");
 
     if (xtal >= 40)
       q_printf("%u, %u and %u\r\n", xtal, xtal / 2, xtal / 4);
     else
       q_printf("%u and %u\r\n", xtal, xtal / 2);
-#endif
+
     return 1;
   }
 
@@ -5334,28 +5282,23 @@ cmd_uptime(UNUSED int argc, UNUSED char **argv) {
   const char *rr;
 
   switch (esp_reset_reason()) {
-    case ESP_RST_POWERON: rr = "Board power-on"; break;
-
+    case ESP_RST_POWERON: rr = "<i>Board power-on"; break;
     case ESP_RST_SW: rr = "<i>reload command"; break;
     case ESP_RST_DEEPSLEEP: rr = "<i>returned from a deep sleep"; break;
-
-    case ESP_RST_SDIO: rr = "<1>SDIO event"; break;
-    case ESP_RST_USB: rr = "<1>USB event"; break;
-    case ESP_RST_JTAG: rr = "<1>JTAG event"; break;
-        
+    case ESP_RST_SDIO: rr = "<i>SDIO event"; break;
+    case ESP_RST_USB: rr = "<i>USB event"; break;
+    case ESP_RST_JTAG: rr = "<i>JTAG event"; break;
 
     case ESP_RST_PANIC: rr = "<w>panic() called :-("; break;
     case ESP_RST_INT_WDT: rr = "<w>an interrupt watchdog"; break;
     case ESP_RST_TASK_WDT: rr = "<w>a task watchdog"; break;
     case ESP_RST_WDT: rr = "<w>an unspecified watchdog"; break;
+    case ESP_RST_CPU_LOCKUP: rr = "<w>lockup (double exception)"; break;
 
-    case ESP_RST_BROWNOUT: rr = "<2>brownout"; break;
-    case ESP_RST_PWR_GLITCH: rr = "<2>power glitch"; break;
-
-    case ESP_RST_EFUSE: rr = "<3>eFuse errors"; break;
-    case ESP_RST_CPU_LOCKUP: rr = "<3>lockup (double exception)"; break;
-
-    default: rr = "<e>no idea</>";
+    case ESP_RST_BROWNOUT: rr = "<e>brownout"; break;
+    case ESP_RST_PWR_GLITCH: rr = "<e>power glitch"; break;
+    case ESP_RST_EFUSE: rr = "<e>eFuse errors"; break;
+    default: rr = "<e>no idea";
   };
 
   q_print("% Last boot was ");
@@ -5415,9 +5358,7 @@ static int cmd_kill(int argc, char **argv) {
 
   unsigned int taskid = hex2uint32(argv[1]);
   if (taskid == 0) {
-#if WITH_HELP
-    q_print("% Task id is a hex number, something like \"3fff0030\" or \"0x40005566\"\r\n");
-#endif
+    HELP(q_print("% Task id is a hex number, something like \"3fff0030\" or \"0x40005566\"\r\n"));
     return 1;
   }
 
@@ -5437,9 +5378,7 @@ static int cmd_kill(int argc, char **argv) {
   if (argc > 2) {
     if (!q_strcmp(argv[2], "terminate")) {
       vTaskDelete(handle);
-#if WITH_HELP
-      q_printf("%% Terminated: \"%p\"\r\n", handle);
-#endif
+      HELP(q_printf("%% Terminated: \"%p\"\r\n", handle));
     }
   }
   return 0;
@@ -5566,7 +5505,7 @@ static const char *files_set_cwd(const char *cwd) {
     }
     if (cwd)
       if ((len = strlen(cwd)) > 0)
-        if ((Cwd = (char *)q_malloc(len + 2,MEM_CWD)) != NULL) {
+        if ((Cwd = (char *)q_malloc(len + 2,MEM_PATH)) != NULL) {
           strcpy(Cwd, cwd);
           len--;
           if (Cwd[len] != '/' && cwd[len] != '\\')
@@ -5900,14 +5839,10 @@ free_and_exit:
 // This callback gets called for every FILE that needs to be removed
 static int remove_file_callback(const char *path) {
   if (0 != unlink(path)) {
-#if WITH_HELP    
-    q_printf("%% <e>Failed to delete: \"%s\"</>\r\n",path);
-#endif    
+    HELP(q_printf("%% <e>Failed to delete: \"%s\"</>\r\n",path));
     return 0;
   }
-#if WITH_HELP  
-  q_printf("%% Deleted file: \"<3>%s</>\"\r\n",path);
-#endif  
+  HELP(q_printf("%% Deleted file: \"<3>%s</>\"\r\n",path));
   return 1;
 }
 
@@ -5915,14 +5850,10 @@ static int remove_file_callback(const char *path) {
 // This callback gets called for every DIRECTORY that needs to be removed
 static int remove_dir_callback(const char *path) {
   if (rmdir(path) == 0) {
-#if WITH_HELP        
-    q_printf("%% Directory removed: \"<i>%s</>\"\r\n",path);
-#endif        
+    HELP(q_printf("%% Directory removed: \"<i>%s</>\"\r\n",path));
     return 1;
   }
-#if WITH_HELP  
-  q_printf("%% <e>Failed to delete: \"%s\"</>\r\n",path);
-#endif  
+  HELP(q_printf("%% <e>Failed to delete: \"%s\"</>\r\n",path));
   return 0;
 }
 
@@ -5980,9 +5911,7 @@ static unsigned int files_size(const char *path) {
   if (files_path_exist(p, true))
     return files_dirwalk(path,size_file_callback, NULL, DIR_RECURSION_DEPTH);
 
-#if WITH_HELP
-  q_printf("%% <e>Path \"%s\" does not exist\r\n",p);
-#endif
+  HELP(q_printf("%% <e>Path \"%s\" does not exist\r\n",p));
   return 0;
 }
 
@@ -6006,7 +5935,7 @@ static int files_cat_binary(const char *path, unsigned int line, unsigned int co
     if (line < size) {
       if (size < plen)
         plen = size;
-      if ((p = (unsigned char *)q_malloc(plen + 1,MEM_CAT)) != NULL) {
+      if ((p = (unsigned char *)q_malloc(plen + 1,MEM_TMP)) != NULL) {
         if ((f = fopen(path,"rb")) != NULL) {
           if (line) {
             if (fseek(f, line, SEEK_SET) != 0) {
@@ -6024,9 +5953,9 @@ static int files_cat_binary(const char *path, unsigned int line, unsigned int co
               sent += r;
             }
           }
-#if WITH_HELP          
-          q_printf("%% EOF (%u bytes)\r\n",sent);
-#endif          
+
+          HELP(q_printf("%% EOF (%u bytes)\r\n",sent));
+
 fail:          
           fclose(f);
         } else q_printf("%% <e>Failed to open \"%s\" for reading</>\r\n",path);
@@ -6115,14 +6044,10 @@ static int files_create_dirs(const char *path0, bool last_is_file) {
           if (!files_path_exist(buf,true)) {
             if (mkdir(buf,0777) != 0) {
               ret = -1;
-#if WITH_HELP
-              q_printf("%% <e>Failed to create directory \"%s\"</>\r\n",buf);
-#endif              
+              HELP(q_printf("%% <e>Failed to create directory \"%s\"</>\r\n",buf));
               goto fail;
             }
-#if WITH_HELP            
-            q_printf("%% Created directory: \"<i>%s\"</>\r\n",buf);
-#endif
+            HELP(q_printf("%% Created directory: \"<i>%s\"</>\r\n",buf));
             created++;
           }
         }
@@ -6231,9 +6156,9 @@ static int cmd_files_unmount(int argc, char **argv) {
   }
 
 finalize_unmount:
-#if WITH_HELP
-  q_printf("%% Unmounted %s partition \"%s\"\r\n", files_subtype2text(mountpoints[i].type), mountpoints[i].mp);
-#endif
+
+  HELP(q_printf("%% Unmounted %s partition \"%s\"\r\n", files_subtype2text(mountpoints[i].type), mountpoints[i].mp));
+
 #if WITH_FAT
   mountpoints[i].wl_handle = WL_INVALID_HANDLE;
 #endif  
@@ -6247,9 +6172,7 @@ finalize_unmount:
   return 0;
 
 failed_unmount:
-#if WITH_HELP
-  q_printf("%% <e>Unmount failed, error code is \"0x%x\"</>\r\n", err);
-#endif
+  HELP(q_printf("%% <e>Unmount failed, error code is \"0x%x\"</>\r\n", err));
   return 0;
 }
 
@@ -6276,18 +6199,14 @@ static int cmd_files_mount(int argc, char **argv) {
   if (argc > 2) {
     mp = argv[2];
     if (mp[0] != '/') {
-#if WITH_HELP      
-      q_print("% <e>Mount point must start with \"/\"</>\r\n");
-#endif      
+      HELP(q_print("% <e>Mount point must start with \"/\"</>\r\n"));
       return 2;
     }
   } else {
     // mountpoint is not specified: use partition label and "/"
     // to make a mountpoint
     if (strlen(argv[1]) >= sizeof(mp0)) {
-#if WITH_HELP      
-      q_print("% <e>Invalid partition name (too long)</>\r\n");
-#endif      
+      HELP(q_print("% <e>Invalid partition name (too long)</>\r\n"));
       return 1;
     }
 
@@ -6299,9 +6218,7 @@ static int cmd_files_mount(int argc, char **argv) {
 
   files_strip_trailing_slash(mp); // or mount fails :-/
   if (!*mp) {
-#if WITH_HELP    
-    q_print("% <e>Directory name required: can't mount to \"/\"</>\r\n");
-#endif    
+    HELP(q_print("% <e>Directory name required: can't mount to \"/\"</>\r\n"));
     return 2;
   }
   
@@ -6341,9 +6258,7 @@ static int cmd_files_mount(int argc, char **argv) {
 
         // check if selected mount point is not used
         if ((tmp = files_mountpoint_by_path(mp,false)) >= 0) {
-#if WITH_HELP  
-          q_printf("%% <e>Mount point \"%s\" is already used by partition \"%s\"</>\r\n", mp, mountpoints[tmp].label);
-#endif    
+          HELP(q_printf("%% <e>Mount point \"%s\" is already used by partition \"%s\"</>\r\n", mp, mountpoints[tmp].label));
           goto mount_failed;
         }
 
@@ -6427,7 +6342,7 @@ finalize_mount:
   if (it)
     esp_partition_iterator_release(it);
 
-  if ((mountpoints[i].mp = q_strdup(mp,MEM_MOUNTPOINT)) == NULL)
+  if ((mountpoints[i].mp = q_strdup(mp,MEM_PATH)) == NULL)
     q_print(Failed);
   else {
     mountpoints[i].type = part->subtype;
@@ -6488,13 +6403,13 @@ static int cmd_files_mount0(int argc, char **argv) {
     }
     it = esp_partition_next(it);
   }
-#if WITH_HELP
+
   q_print("%\r\n");
   if (!usable)
-    q_print("% <2>No usable partitions were found. Use (Tools->Partition Scheme) in Arduino IDE</>\r\n");
+    HELP(q_print("% <e>No usable partitions were found. Use (Tools->Partition Scheme) in Arduino IDE</>\r\n"));
   else
-    q_printf("%% <i>%u</> mountable partition%s found. (+) - mountable partition\r\n", usable, usable == 1 ? "" : "s");
-#endif  //WITH_HELP
+    HELP(q_printf("%% <i>%u</> mountable partition%s found. (+) - mountable partition\r\n", usable, usable == 1 ? "" : "s"));
+
   if (it)
     esp_partition_iterator_release(it);
   return 0;
@@ -6530,10 +6445,8 @@ static int cmd_files_cd(int argc, char **argv) {
     return 0;
   }
 
-#if WITH_HELP
   //"cd Path With Spaces"
-  if (argc > 2) { q_print(SpacesInPath); return 0; }
-#endif  
+  if (argc > 2) { HELP(q_print(SpacesInPath)); return 0; }
 
   int i;
   // just in case. 
@@ -6739,10 +6652,7 @@ static int cmd_files_ls(int argc, char **argv) {
 static int cmd_files_rm(int argc, char **argv) {
   
   if (argc < 2) return -1;
-#if WITH_HELP  
-  if (argc > 2)
-    q_print(MultipleEntries);
-#endif  
+  if (argc > 2) HELP(q_print(MultipleEntries));
   
   int i, num;
   for (i = 1, num = 0; i < argc; i++) {
@@ -6803,9 +6713,7 @@ static int cmd_files_write(int argc, char **argv) {
         goto free_and_exit;
       }
     }
-#if WITH_HELP
-  q_print("%% <e>Failed to create file or path component</>\r\n");
-#endif  
+  HELP(q_print("%% <e>Failed to create file or path component</>\r\n"));
 free_and_exit:
   if (out && (out != empty))
     q_free(out);
@@ -6842,23 +6750,17 @@ static int cmd_files_insdel(int argc, char **argv) {
     return -1;
 
   if ((line = q_atol(argv[2],(unsigned int)(-1))) == (unsigned int)(-1)) {
-#if WITH_HELP
-    q_printf("%% Line number expected instead of \"%s\"\r\n",argv[2]);
-#endif
+    HELP(q_printf("%% Line number expected instead of \"%s\"\r\n",argv[2]));
     return 2;
   }
 
   if (!files_path_exist((path = files_full_path(argv[1], true)), false)) {
-#if WITH_HELP
-    q_printf("%% <e>Path \"%s\" does not exist</>\r\n",path);  //TODO: Path does not exist is a common string.
-#endif    
+    HELP(q_printf("%% <e>Path \"%s\" does not exist</>\r\n",path));  //TODO: Path does not exist is a common string.
     return 1;
   }
 
   if ((f = fopen(path,"rb")) == NULL) {
-#if WITH_HELP
-    q_printf("%% <e>File \"%s\" does exist but failed to open</>\r\n",path);
-#endif    
+    HELP(q_printf("%% <e>File \"%s\" does exist but failed to open</>\r\n",path));
     return 0;
   }
 
@@ -6873,9 +6775,7 @@ static int cmd_files_insdel(int argc, char **argv) {
   path[tmp-1] = '\0'; // remove "~""
 
   if ((t = fopen(upath,"wb")) == NULL) {
-#if WITH_HELP
-    q_printf("%% <e>Failed to create temporary file \"<3>%s\"</>\r\n",upath);
-#endif    
+    HELP(q_printf("%% <e>Failed to create temporary file \"<3>%s\"</>\r\n",upath));
     goto free_memory_and_return;
   }
 
@@ -6900,9 +6800,7 @@ static int cmd_files_insdel(int argc, char **argv) {
       cline++;
       if (cline == line) {
         if (!insert) {
-#if WITH_HELP
-          q_printf("%% Line %u deleted\r\n",line);
-#endif
+          HELP(q_printf("%% Line %u deleted\r\n",line));
           if (--count > 0)
             line++;
           continue;
@@ -6910,9 +6808,7 @@ static int cmd_files_insdel(int argc, char **argv) {
         fwrite(text,1,tlen,t);
         if (text != empty)
           fwrite("\n",1,1,t); // Add \n only if it was not empty string
-#if WITH_HELP        
-        q_printf("%% Line %u inserted\r\n",line);
-#endif        
+        HELP(q_printf("%% Line %u inserted\r\n",line));
       }
       fwrite(p,1,r,t);
       fwrite("\n",1,1,t);
@@ -6945,10 +6841,10 @@ static int cmd_files_mkdir(int argc, char **argv) {
 
   int i, failed = 0;
   if (argc < 2) return -1;
-#if WITH_HELP  
+
   if (argc > 2)
-    q_print(MultipleEntries);
-#endif  
+    HELP(q_print(MultipleEntries));
+
 
   for (i = 1; i < argc; i++) {
     files_strip_trailing_slash(argv[i]);
@@ -6957,10 +6853,10 @@ static int cmd_files_mkdir(int argc, char **argv) {
     if (files_create_dirs(argv[i],false) < 0)
       failed++;
   }
-#if WITH_HELP  
+
   if (failed)
-    q_printf("%% <e>There were errors during directory creation. (%d fails)</>\r\n",failed);
-#endif  
+    HELP(q_printf("%% <e>There were errors during directory creation. (%d fails)</>\r\n",failed));
+
   return 0;
 }
 
@@ -6972,10 +6868,10 @@ static int cmd_files_touch(int argc, char **argv) {
   int fd,i;
 
   if (argc < 2) return -1;
-#if WITH_HELP  
+
   if (argc > 2)
-    q_print(MultipleEntries);
-#endif  
+    HELP(q_print(MultipleEntries));
+
 
   for (i = 1; i < argc; i++) {
 
@@ -6989,9 +6885,7 @@ static int cmd_files_touch(int argc, char **argv) {
     // try to open file, creating it if it doesn't exist
     if ((fd = open(argv[i], O_CREAT | O_WRONLY, 0666)) > 0) {
       close(fd);
-#if WITH_HELP
-      q_printf("%% Touched \"<3>%s</>\"\r\n",argv[i]);
-#endif      
+      HELP(q_printf("%% Touched \"<3>%s</>\"\r\n",argv[i]));
     }
     else
       q_printf("%% <e>Failed to create file \"%s\", error code is %d</>\r\n",argv[i],errno);
@@ -7054,9 +6948,9 @@ static int cmd_files_format(int argc, char **argv) {
   // handle shortened label names
   label = part->label;
 
-#if WITH_HELP
-  q_printf("%% Formatting partition \"%s\", file system type is \"%s\"\r\n",label,files_subtype2text(part->subtype));
-#endif
+
+  HELP(q_printf("%% Formatting partition \"%s\", file system type is \"%s\"\r\n",label,files_subtype2text(part->subtype)));
+
   switch (part->subtype) {
 #if WITH_FAT    
     case ESP_PARTITION_SUBTYPE_DATA_FAT: sprintf(path0,"/%s",label); err = esp_vfs_fat_spiflash_format_rw_wl(path0,label); break;
@@ -7134,12 +7028,8 @@ static int cmd_files_cat(int argc, char **argv) {
     return -1;
     
   if (!files_path_exist((path = files_full_path(argv[i],true)), false)) {
-#if WITH_HELP
-    q_printf("%% File not found:\"<e>%s</>\"\r\n",path);
-    return 0;
-#else
+    HELP(q_printf("%% File not found:\"<e>%s</>\"\r\n",path));
     return 1;
-#endif
   }
   i++;
 
@@ -7152,33 +7042,25 @@ static int cmd_files_cat(int argc, char **argv) {
       else if (count == (unsigned int)(-1))
         count = q_atol(argv[i],0xffffffff);
       else {
-#if WITH_HELP        
-        q_print("% Unexpected 3rd numeric argument\r\n");
-#endif        
+        HELP(q_print("% Unexpected 3rd numeric argument\r\n"));
         return i;
       }
     } else 
     // "uart" keyword? must be a valid uart interface number in the next argument then
     if (!q_strcmp(argv[i],"uart")) {
       if (i + 1 >= argc) {
-#if WITH_HELP        
-        q_print("% <e>UART number is missing</>\r\n");
-#endif        
+        HELP(q_print("% <e>UART number is missing</>\r\n"));
         return i;
       }
       i++;
       if (!isnum(argv[i])) {
-#if WITH_HELP        
-        q_print("% <e>Numeric value (UART number) is expected</>\r\n");
-#endif        
+        HELP(q_print("% <e>Numeric value (UART number) is expected</>\r\n"));
         return i;
       }
       
       if (!uart_isup((device = atol(argv[i])))) {
-        q_printf("%% <e>UART%d is not initialized</>\r\n",device);
-#if WITH_HELP
-        q_printf("%% Configure it by command \"uart %d\"</>\r\n",device);
-#endif        
+        q_printf("%% <e>UART%d is not initialized</>\r\n",device); // TODO: common string
+        HELP(q_printf("%% Configure it by command \"uart %d\"</>\r\n",device));
         return 0;
       }
     } else
@@ -7236,10 +7118,6 @@ static int help_keys(UNUSED int argc, UNUSED char **argv) {
 // "? pinout"
 // display some known interfaces pin numbers
 static int help_pinout(UNUSED int argc, UNUSED char **argv) {
-  //TODO: basic pin numvers are in pins_arduino.h.
-  //      problems with pins_arduino.h: it is a bunch of static const unsigned chars, not #defines;
-  //      there are only basic pins, no pins for 2nd UART or I2C or SPI.
-  //      Looks like I have to go through all TechRefs :(. Next time.
   q_print("% Sorry brother, not yet implemented\r\n");
   return 0;
 }
@@ -7363,7 +7241,7 @@ static int cmd_question(int argc, char **argv) {
 // String p - is the user input as returned by readline()
 //
 // returns 0 on success
-
+//TAG:exec
 static int
 espshell_command(char *p) {
 
@@ -7376,12 +7254,10 @@ espshell_command(char *p) {
   if (!p) goto early_fail;
   if (!p[0]) goto early_fail;
 
-#if WITH_HISTORY
   //make a history entry
   // TODO: strip leading and trailing whitespace
   if (rl_history)
     rl_add_history(p);
-#endif  
 
   //tokenize user input
   if ((aa = userinput_tokenize(p)) == NULL)
@@ -7458,10 +7334,10 @@ one_more_try:
         q_printf("%% <e>\"%s\": command not found</>\r\n", argv[0]);
       
     }
-#if WITH_HELP
+
     if (!found)
-      q_print("% <e>Type \"?\" to show the list of commands available</>\r\n");
-#endif
+      HELP(q_print("% <e>Type \"?\" to show the list of commands available</>\r\n"));
+
   }
 
   // free memory associated wih user input
@@ -7496,6 +7372,7 @@ bool espshell_exec_finished() {
 // only one shell task can be started!
 // this task started from espshell_start()
 //
+//TAG:task
 static void espshell_task(const void *arg) {
 
   // arg is not NULL - first time call: start a task and return immediately
@@ -7519,17 +7396,13 @@ static void espshell_task(const void *arg) {
     while (!console_isup())
       delay(1000);
 
-#if WITH_HELP
-    q_print("% ESPShell. Type \"?\" and press <Enter> for help\r\n% Press <Ctrl>+L to clear the screen and to enable colors\r\n");
-#endif
+    HELP(q_print("% ESPShell. Type \"?\" and press <Enter> for help\r\n% Press <Ctrl>+L to clear the screen and to enable colors\r\n"));
 
     while (!Exit) {
       espshell_command(readline(prompt));
       delay(1);
     }
-#if WITH_HELP
-    q_print("% Bye!\r\n");
-#endif
+    HELP(q_print("% Bye!\r\n"));
     Exit = false;
     vTaskDelete((shell_task = NULL));
   }
