@@ -115,12 +115,12 @@ void espshell_varadd(const char *name, void *ptr, int size, bool isf, bool isp);
 // 
 // Special value 99 means USB console port for boards with USB-OTG
 // support
-// In:
+//
 // /port/ - 0, 1 or 2 for UART interfaces or 99 for native USB console 
 //          interface. If /port/ is negative number then this function 
 //          returns port number which currently in use by ESPShell.
-// Out:
-// Number of port which is now used
+// 
+// returns number of port which is now used
 //
 int console_attach2port(int port);
 
@@ -146,11 +146,10 @@ void digitalForceWrite(int pin, unsigned char level);
 
 // 8) Discussion: https://github.com/espressif/arduino-esp32/issues/10370
 // 
-// pinMode() is a heavy machinery: setting a pin INPUT or OUTPUT dors not just
+// pinMode() is a heavy machinery: setting a pin INPUT or OUTPUT does not just
 // change pin modes: it also calls init/deinit functions of a driver associated 
-// with pins. As a result, pinMode(3, OUTPU) (pin 3 is an UART0 TX pin on most ESP32's)
-// breaks UART0 completely: it call deinit code for the pin, reconfigures pin to be "a GPIO"
-// and only then sets pin to OUTPUT.
+// with pins. As a result, pinMode(3, OUTPUT) (pin 3 is an UART0 TX pin on most ESP32's)
+// breaks UART0 completely.
 //
 // Another big drawback is that setting any pin to OUTPUT or INPUT automatically turns it into 
 // GPIO Matrix pin, even if it was at correct IO_MUX function. As a result we can not have
@@ -163,8 +162,12 @@ void digitalForceWrite(int pin, unsigned char level);
 // calling pinMode(6,...) will likely crash your ESP32, pinMode2() - not
 //
 // /pin/    - pin (GPIO) number
-// /flags/  - flags as per pinMode()
+// /flags/  - flags as per pinMode(): INPUT, OUTPUT, OPEN_DRAIN,PULL_UP, PULL_DOWN and OUTPUT_ONLY
+//          - NOTE: On ESP32 OUTPUT is defined as INPUT and OUTPUT. You can use flag OUTPUT_ONLY if you don't want
+//            INPUT to be automatically set.
 //
+#define OUTPUT_ONLY ((OUTPUT) & ~(INPUT))
+
 void pinMode2(unsigned int pin, unsigned int flags);
 
 
