@@ -61,7 +61,8 @@ Now input our sequence:
 Command "levels" takes arguments in form LEVEL/LENGTH_IN_TICKS where LEVEL
 is either "1" or "0" and LENGTH_IN_TICKS tells how long this level must be
 held (1..32767 ticks). Using command "show" one can check the sequence total
-length in ticks and microseconds
+length in ticks and microseconds. Hint: use "/" as an alias to 32767: "1//"
+is the same as "1/32767"
 
 Now we have configured sequence number 0. Lets send it on GPIO2:
 
