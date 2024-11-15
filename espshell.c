@@ -357,12 +357,12 @@ static INLINE int console_here(int i) { return i < 0 ? uart : (i > UART_NUM_MAX 
 
 
 //  Command status codes.
-typedef enum { CSdone, CSeof, CSmove, CSdispatch, CSstay, CSsignal } STATUS;
+typedef enum { CSdone, CSeof, CSmove, CSdispatch, CSstay, CSsignal } EL_STATUS;
 
 //  Key to command mapping.
 typedef struct {
   unsigned char Key;
-  STATUS (*Function)();
+  EL_STATUS (*Function)();
 } KEYMAP;
 
 
@@ -401,27 +401,27 @@ static int Echo = DO_ECHO;  // Runtime echo flag: -1=silent,0=off,1=on
 
 static unsigned char *editinput();
 
-static STATUS ring_bell();
-static STATUS inject_exit();
-static STATUS inject_suspend();
-static STATUS tab_pressed();
-static STATUS home_pressed();
-static STATUS end_pressed();
-static STATUS kill_line();
-static STATUS enter_pressed();
-static STATUS left_pressed();
-static STATUS del_pressed();
-static STATUS right_pressed();
-static STATUS backspace_pressed();
-static STATUS bk_kill_word();
-static STATUS bk_word();
+static EL_STATUS ring_bell();
+static EL_STATUS inject_exit();
+static EL_STATUS inject_suspend();
+static EL_STATUS tab_pressed();
+static EL_STATUS home_pressed();
+static EL_STATUS end_pressed();
+static EL_STATUS kill_line();
+static EL_STATUS enter_pressed();
+static EL_STATUS left_pressed();
+static EL_STATUS del_pressed();
+static EL_STATUS right_pressed();
+static EL_STATUS backspace_pressed();
+static EL_STATUS bk_kill_word();
+static EL_STATUS bk_word();
 
-static STATUS h_next();
-static STATUS h_prev();
-static STATUS h_search();
-static STATUS redisplay();
-static STATUS clear_screen();
-static STATUS meta();
+static EL_STATUS h_next();
+static EL_STATUS h_prev();
+static EL_STATUS h_search();
+static EL_STATUS redisplay();
+static EL_STATUS clear_screen();
+static EL_STATUS meta();
 
 static const KEYMAP Map[] = {
   //Key       Callback                 Action
@@ -608,7 +608,7 @@ reposition() {
 }
 
 static void
-left(STATUS Change) {
+left(EL_STATUS Change) {
   TTYback();
   if (Point) {
     if (ISCTL(Line[Point - 1]))
@@ -619,13 +619,13 @@ left(STATUS Change) {
 }
 
 static void
-right(STATUS Change) {
+right(EL_STATUS Change) {
   TTYshow(Line[Point]);
   if (Change == CSmove)
     Point++;
 }
 
-static STATUS
+static EL_STATUS
 ring_bell() {
   TTYput('\07');
   TTYflush();
@@ -633,22 +633,22 @@ ring_bell() {
 }
 
 // Ctrl+Z hanlder: send "exit" commnd
-static STATUS
+static EL_STATUS
 inject_exit() {
   TTYqueue("exit\n");
   return CSstay;
 }
 
 // Ctrl+C handler: sends "suspend"
-static STATUS
+static EL_STATUS
 inject_suspend() {
   TTYqueue("suspend\n");
   return CSstay;
 }
 
 
-static STATUS
-do_forward(STATUS move) {
+static EL_STATUS
+do_forward(EL_STATUS move) {
   int i;
   unsigned char *p;
 
@@ -700,7 +700,7 @@ clear_line() {
   Line[0] = '\0';
 }
 
-static STATUS
+static EL_STATUS
 insert_string(unsigned char *p) {
   unsigned int len;
   int i;
@@ -730,7 +730,7 @@ insert_string(unsigned char *p) {
   return Point == End ? CSstay : CSmove;
 }
 
-static STATUS
+static EL_STATUS
 redisplay() {
   const unsigned char *nl = (const unsigned char *)"\r\n";
   TTYputs(nl);
@@ -741,7 +741,7 @@ redisplay() {
 }
 
 
-static STATUS
+static EL_STATUS
 do_insert_hist(unsigned char *p) {
   if (p == NULL)
     return ring_bell();
@@ -752,7 +752,7 @@ do_insert_hist(unsigned char *p) {
   return insert_string(p);
 }
 
-static STATUS
+static EL_STATUS
 do_hist(unsigned char *(*move)()) {
   unsigned char *p;
   int i;
@@ -768,8 +768,8 @@ do_hist(unsigned char *(*move)()) {
 static unsigned char *next_hist() { return H.Pos >= H.Size - 1 ? NULL : H.Lines[++H.Pos];}
 static unsigned char *prev_hist() { return H.Pos == 0 ? NULL : H.Lines[--H.Pos];}
 
-static STATUS h_next() { return do_hist(next_hist);}
-static STATUS h_prev() { return do_hist(prev_hist);}
+static EL_STATUS h_next() { return do_hist(next_hist);}
+static EL_STATUS h_prev() { return do_hist(prev_hist);}
 
 /*
 **  Return zero if pat appears as a substring in text.
@@ -826,7 +826,7 @@ search_hist(unsigned char *search, unsigned char *(*move)()) {
 
 // CTRL+R : reverse history search
 // start typing partial command and press <Enter>
-static STATUS h_search() {
+static EL_STATUS h_search() {
 
   static int Searching;
   const char *old_prompt;
@@ -862,7 +862,7 @@ static STATUS h_search() {
   return do_insert_hist(p);
 }
 
-static STATUS
+static EL_STATUS
 right_pressed() {
   int i = 0;
   do {
@@ -874,7 +874,7 @@ right_pressed() {
 }
 
 
-static STATUS
+static EL_STATUS
 delete_string(int count) {
   int i;
   unsigned char *p;
@@ -907,7 +907,7 @@ delete_string(int count) {
   return CSmove;
 }
 
-static STATUS
+static EL_STATUS
 left_pressed() {
   int i;
 
@@ -922,13 +922,13 @@ left_pressed() {
 }
 
 
-static STATUS
+static EL_STATUS
 clear_screen() {
   q_print("\033[H\033[2J");
   return redisplay();
 }
 
-static STATUS
+static EL_STATUS
 kill_line() {
   int i;
 
@@ -951,9 +951,9 @@ kill_line() {
   return CSstay;
 }
 
-static STATUS
+static EL_STATUS
 insert_char(int c) {
-  STATUS s;
+  EL_STATUS s;
   unsigned char buff[2];
   unsigned char *p;
   unsigned char *q;
@@ -979,7 +979,7 @@ insert_char(int c) {
 // ESC received. Arrows are encoded as ESC[A, ESC[B etc
 // ESC+digits are decoded as character with code
 //
-static STATUS
+static EL_STATUS
 meta() {
   unsigned int c;
   const KEYMAP *kp;
@@ -1024,9 +1024,9 @@ meta() {
   return ring_bell();
 }
 
-static STATUS
+static EL_STATUS
 emacs(unsigned int c) {
-  STATUS s;
+  EL_STATUS s;
   const KEYMAP *kp;
 
   for (kp = Map; kp->Function; kp++)
@@ -1039,7 +1039,7 @@ emacs(unsigned int c) {
   return s;
 }
 
-static STATUS
+static EL_STATUS
 TTYspecial(unsigned int c) {
   if (ISMETA(c))
     return CSdispatch;
@@ -1153,12 +1153,12 @@ static void rl_add_history(char *p) {
 
 
 
-static STATUS
+static EL_STATUS
 del_pressed() {
   return delete_string(Repeat == NO_ARG ? 1 : Repeat);
 }
 
-static STATUS
+static EL_STATUS
 backspace_pressed() {
   int i;
 
@@ -1172,7 +1172,7 @@ backspace_pressed() {
   return delete_string(i);
 }
 
-static STATUS
+static EL_STATUS
 home_pressed() {
   if (Point) {
     Point = 0;
@@ -1181,7 +1181,7 @@ home_pressed() {
   return CSstay;
 }
 
-static STATUS
+static EL_STATUS
 end_pressed() {
   if (Point != End) {
     Point = End;
@@ -1190,7 +1190,7 @@ end_pressed() {
   return CSstay;
 }
 
-static STATUS
+static EL_STATUS
 enter_pressed() {
   Line[End] = '\0';
   
@@ -1201,7 +1201,7 @@ enter_pressed() {
   return CSdone;
 }
 
-static STATUS
+static EL_STATUS
 bk_word() {
   int i;
   unsigned char *p;
@@ -1221,7 +1221,7 @@ bk_word() {
   return CSstay;
 }
 
-static STATUS
+static EL_STATUS
 bk_kill_word() {
   (void)bk_word();
   if (OldPoint != Point)
@@ -2746,10 +2746,10 @@ void digitalForceWrite(int pin, unsigned char level) {
   gpio_set_level((gpio_num_t)pin, level == HIGH ? 1 : 0);
 }
 
-
-
 // ESP32 Arduino Core as of version 3.0.5 (latest I use) defines pin OUTPUT flag as both INPUT and OUTPUT
-#define OUTPUT_ONLY (OUTPUT & ~INPUT)
+#ifndef OUTPUT_ONLY
+#  define OUTPUT_ONLY ((OUTPUT) & ~(INPUT))
+#endif
 
 // same as pinMode() but calls IDF directly bypassing
 // PeriMan's pin deinit/init. As a result it allows flags manipulation on
@@ -2778,13 +2778,12 @@ void pinMode2(unsigned int pin, unsigned int flags) {
 // checks if pin (GPIO) number is in valid range.
 // display a message if pin is out of range
 static bool pin_exist(int pin) {
-
-  uint64_t mask = ~SOC_GPIO_VALID_GPIO_MASK;
-
   // pin number is in range and is a valid GPIO number?
   if ((pin < SOC_GPIO_PIN_COUNT) && (((uint64_t)1 << pin) & SOC_GPIO_VALID_GPIO_MASK))
     return true;
+#if WITH_HELP    
   else {
+    uint64_t mask = ~SOC_GPIO_VALID_GPIO_MASK;
     int informed = 0;
     // pin number is incorrect, display help
     q_printf("%% Available pin numbers are 0..%d", SOC_GPIO_PIN_COUNT - 1);
@@ -2802,8 +2801,6 @@ static bool pin_exist(int pin) {
             q_printf("%s<e>%d</>",mask ? "" : "and ", pin);
           }
         }
-    
-
     // the function is not in .h files.
     // moreover its name has changed in recent ESP IDF
     for (pin = informed = 0; pin < SOC_GPIO_PIN_COUNT; pin++)
@@ -2818,8 +2815,8 @@ static bool pin_exist(int pin) {
           q_printf("%s<e>%d</>", informed ? ", " : " and ",pin);
         }
     }
-
     q_print(CRLF);
+#endif // WITH_HELP    
     return false;
   }
 }
@@ -2948,7 +2945,8 @@ static void seq_dump(unsigned int seq) {
 
 // convert a level string to numerical values:
 // "1/500" gets converted to level=1 and duration=500
-// level is either 0 or 1, duration 0..32767
+// level is either 0 or 1, duration 0..32767. If duration is / then
+// it is set to the maximum value of 32767
 //
 // called with first two arguments set to NULL performs
 // syntax check on arguments only
@@ -2957,13 +2955,14 @@ static void seq_dump(unsigned int seq) {
 //
 
 static int seq_atol(int *level, int *duration, char *p) {
-  unsigned int d;
-  if (p && (p[0] == '0' || p[0] == '1') && (p[1] == '/' || p[1] == '\\'))
-    if (isnum(p + 2) && ((d = atol(p + 2)) <= 32767)) {
-      if (level) *level = *p - '0';
-      if (duration) *duration = d;
-      return 0;
-    }
+  if (p && (p[0] == '0' || p[0] == '1') && (p[1] == '/' || p[1] == '\\')) {
+    unsigned int d;
+    if (p[2] == p[1])       d = 32767; else
+    if (isnum(p + 2)) {if ((d = atol(p + 2)) > 32767) d = 32767; } else return -1;
+    if (level) *level = *p - '0';
+    if (duration) *duration = d;
+    return 0;
+  }
   return -1;
 }
 
@@ -3963,7 +3962,7 @@ static void pin_load(int pin) {
       gpio_pad_select_gpio(pin);
 
       // restore digital value
-      if ((Pins[pin].flags & OUTPUT) && (Pins[pin].bus_type == ESP32_BUS_TYPE_GPIO))
+      if ((Pins[pin].flags & OUTPUT_ONLY) && (Pins[pin].bus_type == ESP32_BUS_TYPE_GPIO))
         digitalForceWrite(pin, Pins[pin].value ? HIGH : LOW);
     } else {
       // unfortunately this will not work with Arduino :(
@@ -4600,7 +4599,7 @@ static int cmd_async(int argc, char **argv) {
   userinput_ref(aa_current);
 
   // Start async task
-  if (pdPASS != xTaskCreatePinnedToCore(cmd, "Pin Async", STACKSIZE, aa_current, tskIDLE_PRIORITY, &ignored, shell_core)) {
+  if (pdPASS != xTaskCreatePinnedToCore(cmd, "Async", STACKSIZE, aa_current, tskIDLE_PRIORITY, &ignored, shell_core)) {
     q_print("% <e>Can not start a new task. Resources low?</>\r\n");
     userinput_unref(aa_current);
   }
@@ -5384,15 +5383,15 @@ static int cmd_kill(int argc, char **argv) {
   return 0;
 }
 
-//            -- Filesystem --
-// Filesystems support. So far ESPShell supports FAT, LittleFS and SPIFFS file systems
-// Code below (within #if WITH_FS .. #endif) is all about that.
-//  Command handlers names start with "cmd_files_...", utility & helper functions are
-// all have names which start with "files_"
+//                                          -- File Manager --
+// Minimalistic file manager: supports FAT, LittleFS and SPIFFS file systems (WITH_SPIFFS,WITH_FAT,WITH_LITTLEFS and WITH_FS controls
+// which part of the filemanager code should be compiled in); aimed to be intuitive for Linux shell prompt users: mimics "ls","cat","mkdir" etc commands
 //
+// Command handlers names start with "cmd_files_...", utility & helper functions are all have names which start with "files_"
+// TAG:fs
 
 #if WITH_FS
-static char *Cwd = NULL;  // Current working directory. Must end with "/"
+static char *Cwd = NULL;  // Current working directory. Must start and end with "/"
 
 // espshell allows for simultaneous mounting up to MOUNTPOINTS_NUM partitions
 // mountpoints[] holds information about mounted filesystems.
@@ -5406,15 +5405,13 @@ static struct {
 #endif  
 } mountpoints[MOUNTPOINTS_NUM] = { 0 };
 
-// remove trailing path separators
+
+// remove trailing path separators, if any
 static void files_strip_trailing_slash(char *p) {
-  if (p && *p) {
-    int i = strlen(p);
-    if (p[i - 1] == '\\' || p[i - 1] == '/') {
-      p[i - 1] = '\0';
-      files_strip_trailing_slash(p);
-    }
-  }
+  int i;
+  if (p && *p && ((i = strlen(p) - 1) >= 0))
+    while( (i >= 0) && (p[i] == '/' || p[i] == '\\'))
+      p[i--] = '\0';
 }
 
 // is path == "/" ?
@@ -5422,13 +5419,18 @@ static INLINE bool files_path_is_root(const char *path) {
   return (path && (path[0] == '/' || path[0] == '\\') && (path[1] == '\0'));
 }
 
-// read lines from a text file
-// \n is the line separator, (\r and \n arediscarded).
+// read complete lines (all bytes until \n symbol) from a text file.
+// \n is the line separator, \r and \n are discarded).
 //
-// returns number of bytes read (0 means end of file is reached)
+// /buf/ - Pointer to a variable, which value must be set to 0 on the first call
+//         to files_getline() : function then allocates and manages string buffer.
+//         On a next call the previously allocated buffer is reused/adjusted
+//         
+//         caller must q_free(buf) if buf is not NULL
+// /size/- buf size (see above). set and managed by files_getline()
+// /fp/  - File opened in binary mode for reading
 //
-// on the first call set buf = NULL, don't change buf & size on subsequent
-// calls to files_getline(). When done, free(buf) if it is non-zero
+// returns number of bytes valid in /buf/ or -1 on error 
 //
 static int files_getline(char **buf, unsigned int *size, FILE *fp) {
 
@@ -5479,7 +5481,7 @@ static int files_getline(char **buf, unsigned int *size, FILE *fp) {
   }
 }
 
-// convert time_t to "Jun-10-2022 10:40:07"
+// convert time_t to char * "Jun-10-2022 10:40:07"
 // not reentrant
 static char *files_time2text(time_t t) {
   static char buf[32];
@@ -5489,9 +5491,8 @@ static char *files_time2text(time_t t) {
   return buf;
 }
 
-// set CWD
-// path must include a mountpoint as well: "/ffat/my_dir" if
-// one wishes to read/write files
+// Set current working directory (CWD)
+// /cwd/ - absolute path (starts with "/")
 //
 static const char *files_set_cwd(const char *cwd) {
 
@@ -5508,13 +5509,12 @@ static const char *files_set_cwd(const char *cwd) {
         if ((Cwd = (char *)q_malloc(len + 2,MEM_PATH)) != NULL) {
           strcpy(Cwd, cwd);
           len--;
+          // append "/" if not there
           if (Cwd[len] != '/' && cwd[len] != '\\')
             strcat(Cwd, "/");
         }
   }
-
   sprintf(prom,PROMPT_FILES, (Color ? esc_i : ""),  (Cwd ? Cwd : "?"), (Color ? esc_n : ""));
-
   prompt = prom;
 
   return Cwd;
@@ -5569,14 +5569,15 @@ static const char *files_subtype2text(unsigned char subtype) {
 // These are represented by mountpoints[MOUNTPOINTS_NUM] global array which contains mount point path,
 // partition label name and some other information
 //
-// Mountpoints are referenced by their index rather than pointers.
+// Mountpoints are referenced by their **index** rather than pointers.
 
 
-
-// Find a mountpoint (index) by partition label (accepts shortened label names)
-// If /label/ is NULL, then this function returns first unused entry in mountpoints[] array
-// If there is no mountpoint which serves partition /label/ then -1 is returned
-// On success the mountpoint index returned
+// Find a mountpoint (index in mountpoints[] array) by partition label (accepts shortened label names)
+//
+// /label/ - partition label name, may be shortened (e.g. "ff" instead of "ffat")
+//           If /label/ is NULL, then this function returns first unused entry in mountpoints[] array.
+//
+// returns mountpoint index on success or -1 on failure
 //
 static int files_mountpoint_by_label(const char *label) {
   int i;
@@ -5588,8 +5589,12 @@ static int files_mountpoint_by_label(const char *label) {
 }
 
 // Find mountpoint index by arbitrary path.
-// Path must include mount point (be absolute)
-// Similar to files_mountpoint_by_label()
+//
+// /path/     must be absolute (starts with "/")
+// /reverse/  if set to true, then this function tries to resolve mountpoint even if supplied path 
+//            is shorter than mountpoint path length. This can happen if "shortened" arguments are 
+//            used for "unmount"
+// returns index to mountpoints[] array or -1 on failure
 //
 static int files_mountpoint_by_path(const char *path, bool reverse) {
   int i;
@@ -6045,7 +6050,7 @@ static int files_create_dirs(const char *path0, bool last_is_file) {
             if (mkdir(buf,0777) != 0) {
               ret = -1;
               HELP(q_printf("%% <e>Failed to create directory \"%s\"</>\r\n",buf));
-              goto fail;
+              goto fail; // more readable than "break" (both compile to the same code)
             }
             HELP(q_printf("%% Created directory: \"<i>%s\"</>\r\n",buf));
             created++;
@@ -6066,7 +6071,7 @@ fail:
 //
 // In file manager mode try to perform basic autocomplete (TODO: not implemented yet)
 //
-static STATUS tab_pressed() {
+static EL_STATUS tab_pressed() {
 
   if (Point < End)
     return do_forward(CSmove);
@@ -6080,14 +6085,14 @@ static STATUS tab_pressed() {
 }
 
 // "files"
-// FileManager commands subtree
+// switch to FileManager commands subtree
 //
 static int cmd_files_if(int argc, char **argv) {
 
   // file manager actual prompt is set by files_set_cwd()
   change_command_directory(0, keywords_files, PROMPT, "filesystem");
 
-  //initialize CWD if not initialized previously. update user prompt.
+  //initialize CWD if not initialized previously. (updates user prompt)
   files_set_cwd(files_get_cwd()); 
   return 0;
 }
@@ -6102,7 +6107,7 @@ static int cmd_files_unmount(int argc, char **argv) {
   int i;
   esp_err_t err = -1;
   char *path;
-  char path0[512];
+  char path0[MAX_PATH + 16];
 
   // no mountpoint provided:
   // use CWD to find out mountpoint
@@ -6177,6 +6182,7 @@ failed_unmount:
 }
 
 // "mount LABEL [/MOUNTPOINT"]
+// TODO: "mount sdmmc PIN_CMD, PIN_CLK, "
 // mount a filesystem. filesystem type is defined by its label (see partitions.csv file).
 // supported filesystems: fat, littlefs, spiffs
 //
@@ -7086,6 +7092,56 @@ static int cmd_files_cat(int argc, char **argv) {
 #endif  //WITH_FS
 
 #if WITH_HELP
+static const char *Hints[] = {
+  "% Press <TAB> repeatedly to cycle cursor through command arguments.\r\n"
+  "% This is faster than using arrows <-- -->",
+  "% <HOME> and <END> keys are not working? Use Ctrl+A instead of <HOME> and\r\n"
+  "% Ctrl+E instead of <END>. Read help page on keys used in ESPShell: \"? keys\"",
+  "% Press <ESC> then type a number and press <ESC> again to enter symbol by\r\n"
+  "% its code: <ESC>, 32, <ESC> sends \"space\" (code 32)",
+  "% Pressing <ESC> and then <BACKSPACE> removes one word instead of single symbol",
+  "% Use command \"colors off\" if your terminal does not support ANSI colors",     
+  "% Use command \"history off\" to disable history and remove history entries",
+  "% Command \"uptime\" also shows the last reboot (crash) cause",
+  "% Command \"suspend\" (or Ctrl+C) pauses sketch execution. Resume with \"resume\"",
+  "% You can use Ctrl+Z as a hotkey for \"exit\" command",
+  "% You can shorten command names and its arguments: \"suspend\" can be \"su\" or\r\n"
+  "% even \"p 2 i o op\" instead of \"pin 2 in out open\"",
+  "% To mount a filesystem on partition \"FancyName\" one can type \"mount F\".\r\n"
+  "% Shortening also works for \"unmout\" arguments",
+  "% Command \"unmount\" has alias \"umount\"",
+  "% \"mkdir\" creates all missing directories in given path",
+  "% \"touch\" creates all missing directories in given path before file creation",
+  "% Use \"var fast_ls 1\" to disable directory size counting by \"ls\" command",
+  "% To use spaces in filenames, replace spasces with asteriks (*): \"mkdir A*Path\"",
+  "% Main commands are available in every command subdirectory: one can execute\r\n"
+  "% command \"pin\" while in UART configuration mode, without need to \"exit\")",
+  "% You can send files over UARTs with filesystem's \"cat\" command",
+  "% Press Ctrl+R to search through the commands history: start typing and press\r\n"
+  "% <Enter> to find a matched command entered previously",
+  "% Use \"^\" symbol when history searching (Ctrl+R) to emphasize that search\r\n"
+  "% pattern is matched from the beginning of the string (i.e. regexp-like \"^\")",
+  "% Press Ctrl+L to clear the screen and enable terminal colors"
+};
+
+#include <pins_arduino.h> // get A0 and A1 values
+
+static const char *random_hint() {
+  static unsigned tick = 0;
+  bool first = true;
+
+  if (first) {
+    q_print("% Seeding RNG\r\n");
+    pinMode2(A0,INPUT | OPEN_DRAIN);
+    for (int i = 0; i < 1000; i++)
+      tick += analogRead(A0);
+    if (tick != 0)
+      first = false;
+  }
+
+  return Hints[(tick++) % 20];
+}
+
 // "? keys"
 // display keyboard usage help page
 static int help_keys(UNUSED int argc, UNUSED char **argv) {
@@ -7396,7 +7452,7 @@ static void espshell_task(const void *arg) {
     while (!console_isup())
       delay(1000);
 
-    HELP(q_print("% ESPShell. Type \"?\" and press <Enter> for help\r\n% Press <Ctrl>+L to clear the screen and to enable colors\r\n"));
+    HELP(q_printf("%% ESPShell. Type \"?\" and press <Enter> for help\r\n%% Tip of the day:\r\n<3>%s</>\r\n", random_hint()));
 
     while (!Exit) {
       espshell_command(readline(prompt));
