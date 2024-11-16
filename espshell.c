@@ -5499,6 +5499,7 @@ static const char *files_set_cwd(const char *cwd) {
   int len;
   static char prom[MAX_PATH + MAX_PROMPT_LEN] = { 0 };
 
+  // TODO: allocate Cwd buffer once. Set its size to MAX_PATH+16
   if (Cwd != cwd) {
     if (Cwd) {
       q_free(Cwd);
@@ -5514,10 +5515,13 @@ static const char *files_set_cwd(const char *cwd) {
             strcat(Cwd, "/");
         }
   }
-  sprintf(prom,PROMPT_FILES, (Color ? esc_i : ""),  (Cwd ? Cwd : "?"), (Color ? esc_n : ""));
+
+  const char *tmp = Cwd ? (const char *)Cwd : "/";
+
+  sprintf(prom,PROMPT_FILES, (Color ? esc_i : ""),  tmp, (Color ? esc_n : ""));
   prompt = prom;
 
-  return Cwd;
+  return tmp;
 }
 
 // return current working directory or NULL if there
@@ -5635,6 +5639,8 @@ const esp_partition_t *files_partition_by_label(const char *label) {
 // returns pointer to a buffer (extendable up to 16 bytes) with full path or "/" if
 // errors happened
 //
+#define PROCESS_ASTERIKS true
+#define IGNORE_ASTERIKS false
 static char *files_full_path(const char *path, bool do_asteriks) {
 
   static char out[MAX_PATH+16];
@@ -5700,9 +5706,12 @@ static bool files_path_exist(const char *path, bool directory) {
     closedir(d);
     return true;
   }
-
   return false;
 }
+
+#define files_path_exist_file(X) files_path_exist((X), false)
+#define files_path_exist_dir(X) files_path_exist((X), true)
+
 
 // return total bytes available on mounted filesystem index i (index in mountpoints[i])
 //
@@ -5795,14 +5804,14 @@ static unsigned int files_dirwalk(const char *path0, files_walker_t files_cb, fi
     return 0;
 
   // figure out full path, if needed
-  if ((path = q_strdup256(files_full_path(path0, true), MEM_PATH)) == NULL)
+  if ((path = q_strdup256(files_full_path(path0, PROCESS_ASTERIKS), MEM_PATH)) == NULL)
     return 0;
 
   if ((len = strlen(path)) < 1) 
     goto free_and_exit;
 
   // directory exists?
-  if (files_path_exist(path,true)) {
+  if (files_path_exist_dir(path)) {
 
     // append "/"" to the path if it was not there already
     if (path[len-1] != '\\' && path[len-1] != '/') {
@@ -5874,11 +5883,11 @@ static int files_remove(const char *path0, int depth) {
     return 0;
 
   // make a copy of full path as files_full_path()'s buffer is not reentrant (static)
-  strcpy(path,files_full_path(path0, true));
+  strcpy(path,files_full_path(path0, PROCESS_ASTERIKS));
   
-  if (files_path_exist(path,false))     // a file?
+  if (files_path_exist_file(path))     // a file?
     return unlink(path) == 0 ? 1 : 0;
-  else if (files_path_exist(path,true)) // a directory?
+  else if (files_path_exist_dir(path)) // a directory?
     return files_dirwalk(path,remove_file_callback, remove_dir_callback, DIR_RECURSION_DEPTH);
   else                                  // bad path
     q_printf("%% <e>File/directory \"%s\" does not exist</>\r\n",path);
@@ -5902,10 +5911,10 @@ static unsigned int files_size(const char *path) {
 
   struct stat st;
   char p[MAX_PATH+16];
-  strcpy(p,files_full_path(path, true));
+  strcpy(p,files_full_path(path, PROCESS_ASTERIKS));
 
   // size of file requested
-  if (files_path_exist(p, false)) {
+  if (files_path_exist_file(p)) {
     if (stat(p,&st) == 0)
       return st.st_size;
     q_printf("files_size() : stat() failed on an existing file \"%s\"\r\n",p);
@@ -5913,7 +5922,8 @@ static unsigned int files_size(const char *path) {
   }
 
   // size of a directory requested
-  if (files_path_exist(p, true))
+  // TODO: make it to be optional (disable/enable dir sizes)
+  if (files_path_exist_dir(p))
     return files_dirwalk(path,size_file_callback, NULL, DIR_RECURSION_DEPTH);
 
   HELP(q_printf("%% <e>Path \"%s\" does not exist\r\n",p));
@@ -6023,15 +6033,20 @@ static int files_cat_text(const char *path,unsigned int line,unsigned int count,
 // /path0/         - relative or absolute path
 // /last_is_file/  - if /true/ then last component of the path will be ignored
 //
+#define PATH_HAS_FILENAME true
+#define PATH_HAS_ONLY_DIRS false
 static int files_create_dirs(const char *path0, bool last_is_file) {
 
   int argc, len, i, ret = 0, created = 0;
   char **argv = NULL, *path;
   char buf[MAX_PATH+16] = { 0 };
   
-  if ((len = strlen((path = files_full_path(path0,false)))) > 0) {
+  // don't process asteriks now: this will interfere with argify() as argify() uses spaces
+  // as toen separator. Convert asteriks later.
+  if ((len = strlen((path = files_full_path(path0,IGNORE_ASTERIKS)))) > 0) {
+
     // replace all path separators with spaces: this way we can use argify()
-    // to split it to components. FIXME: this will screw "space in path" up
+    // to split it to components.
     for (i = 0; i < len; i++)
       if (path[i] == '/' || path[i] == '\\')
         path[i] = ' ';
@@ -6046,7 +6061,7 @@ static int files_create_dirs(const char *path0, bool last_is_file) {
           strcat(buf,"/");
           files_asteriks2spaces(argv[i]);
           strcat(buf,argv[i]);
-          if (!files_path_exist(buf,true)) {
+          if (!files_path_exist_dir(buf)) {
             if (mkdir(buf,0777) != 0) {
               ret = -1;
               HELP(q_printf("%% <e>Failed to create directory \"%s\"</>\r\n",buf));
@@ -6125,7 +6140,7 @@ static int cmd_files_unmount(int argc, char **argv) {
   files_strip_trailing_slash(path);
 
   // expand name if needed
-  path = files_full_path(path, true);
+  path = files_full_path(path, PROCESS_ASTERIKS);
 
   // find a corresponding mountpoint
   if ((i = files_mountpoint_by_path(path,true)) < 0) {
@@ -6172,7 +6187,7 @@ finalize_unmount:
   mountpoints[i].label[0] = '\0';
 
   // adjust our CWD after unmount: our working directory may be not existent anymore
-  if (!files_path_exist(files_get_cwd(),true))
+  if (!files_path_exist_dir(files_get_cwd()))
     files_set_cwd("/");
   return 0;
 
@@ -6182,7 +6197,7 @@ failed_unmount:
 }
 
 // "mount LABEL [/MOUNTPOINT"]
-// TODO: "mount sdmmc PIN_CMD, PIN_CLK, "
+// TODO: "mount sdmmc PIN_CMD PIN_CLK PIN_D0
 // mount a filesystem. filesystem type is defined by its label (see partitions.csv file).
 // supported filesystems: fat, littlefs, spiffs
 //
@@ -6485,7 +6500,7 @@ static int cmd_files_cd(int argc, char **argv) {
       // repeat "cd .."" until we reach path that exists.
       // partition can be mounted under /a/b/c but /a, /a/b are not exist so
       // "cd .." from "/a/b/c/" should not end up at "/a/b/"
-      if (!files_path_exist(Cwd, true))
+      if (!files_path_exist_dir(Cwd))
         return cmd_files_cd(argc,argv);
     }
     files_set_cwd(Cwd); //update prompt
@@ -6510,7 +6525,7 @@ static int cmd_files_cd(int argc, char **argv) {
   // Path is absolute: check if it exists and
   // store it as current working directory
   if (argv[1][0] == '/') {
-    if (files_path_exist(argv[1], true)) {
+    if (files_path_exist_dir(argv[1])) {
       files_set_cwd(argv[1]);
       return 0;
     }
@@ -6543,7 +6558,7 @@ static int cmd_files_cd(int argc, char **argv) {
   }
 
   // Set new CWD if path exists
-  if (files_path_exist(tmp, true)) {
+  if (files_path_exist_dir(tmp)) {
     if (files_set_cwd(tmp))
       return 0;
     else
@@ -6561,7 +6576,7 @@ static int cmd_files_ls(int argc, char **argv) {
   char path[MAX_PATH+16],*p;
   int plen;
   
-  p = (argc > 1) ? files_full_path(argv[1], true) : files_full_path(Cwd, false);
+  p = (argc > 1) ? files_full_path(argv[1], PROCESS_ASTERIKS) : files_full_path(Cwd, IGNORE_ASTERIKS);
 
   if ((plen = strlen(p)) == 0)
     return 0;
@@ -6597,7 +6612,7 @@ static int cmd_files_ls(int argc, char **argv) {
   }
   
   // real directory listing
-  if (!files_path_exist(path,true))
+  if (!files_path_exist_dir(path))
     q_printf("%% <e>Path \"%s\" does not exist</>\r\n",path);
   else {
     unsigned int total_f = 0, total_d = 0, total_fsize = 0;
@@ -6669,6 +6684,10 @@ static int cmd_files_rm(int argc, char **argv) {
   if (num)
     q_printf("%% <i>%d</> files/directories were deleted\r\n",num);
 
+  if (!files_path_exist_dir(files_get_cwd())) {
+    //TODO: this is temporary. have to change cwd to the mountpoint rather than to a "/"
+    files_set_cwd("/");
+  }
   return 0;
 }
 
@@ -6683,7 +6702,7 @@ static int cmd_files_write(int argc, char **argv) {
 
   if (argc < 2) return -1;
 
-  path = files_full_path(argv[1], true);
+  path = files_full_path(argv[1], PROCESS_ASTERIKS);
 
   if (argc > 2)
     size = text2buf(argc,argv,2,&out);
@@ -6702,11 +6721,11 @@ static int cmd_files_write(int argc, char **argv) {
 
   if (size > 0)
     // create path components (if any)
-    if (files_create_dirs(path,true) >= 0) {
+    if (files_create_dirs(path,PATH_HAS_FILENAME) >= 0) {
 
       // files_create_dirs() destroys /path/ as it is static buffer of files_full_path
       // instead of q_strdup just reevaluate it
-      path = files_full_path(argv[1], true);
+      path = files_full_path(argv[1], PROCESS_ASTERIKS);
 
       // ceate file and write TEXT
       if ((fd = open(path,flags)) > 0) {
@@ -6760,7 +6779,7 @@ static int cmd_files_insdel(int argc, char **argv) {
     return 2;
   }
 
-  if (!files_path_exist((path = files_full_path(argv[1], true)), false)) {
+  if (!files_path_exist_file((path = files_full_path(argv[1], PROCESS_ASTERIKS)))) {
     HELP(q_printf("%% <e>Path \"%s\" does not exist</>\r\n",path));  //TODO: Path does not exist is a common string.
     return 1;
   }
@@ -6856,7 +6875,7 @@ static int cmd_files_mkdir(int argc, char **argv) {
     files_strip_trailing_slash(argv[i]);
     if (argv[i][0] == '\0')
       return i;
-    if (files_create_dirs(argv[i],false) < 0)
+    if (files_create_dirs(argv[i],PATH_HAS_ONLY_DIRS) < 0)
       failed++;
   }
 
@@ -6881,12 +6900,12 @@ static int cmd_files_touch(int argc, char **argv) {
 
   for (i = 1; i < argc; i++) {
 
-    if (files_create_dirs(argv[i],true) < 0)  {
+    if (files_create_dirs(argv[i],PATH_HAS_FILENAME) < 0)  {
       q_print("%% <e>Failed to create path for a file</>\r\n");
       return 0;
     }
 
-    argv[i] = files_full_path(argv[i], true);
+    argv[i] = files_full_path(argv[i], PROCESS_ASTERIKS);
 
     // try to open file, creating it if it doesn't exist
     if ((fd = open(argv[i], O_CREAT | O_WRONLY, 0666)) > 0) {
@@ -6976,7 +6995,7 @@ static int cmd_files_format(int argc, char **argv) {
     q_print("% done\r\n");
   
   // update CWD if we were formatting current filesystem
-  if (!files_path_exist(files_get_cwd(), true))
+  if (!files_path_exist_dir(files_get_cwd()))
     files_set_cwd(reset_dir);
   
   return 0;
@@ -7013,7 +7032,7 @@ static int cmd_files_cp(int argc, char **argv) {
 //
 static int cmd_files_cat(int argc, char **argv) {
 
-  bool binary = false, numbers = false;
+  int binary = 0, numbers = 0;
   char *path;
   int i =1;
   unsigned int line = (unsigned int)(-1), count = (unsigned int)(-1);
@@ -7021,19 +7040,16 @@ static int cmd_files_cat(int argc, char **argv) {
 
   if (argc < 2) return -1;
   
-  // -b & -n options
-  if (!strcmp("-b",argv[i])) {
-    binary = true;
-    i++;
-  } else if (!strcmp("-n",argv[i])) {
-    numbers = true;
-    i++;
-  }
+  // -b & -n options; -b here is for "binary", not for "number only non-blank lines"
+  if (!strcmp("-b",argv[i]))
+    binary = ++i;
+  else if (!strcmp("-n",argv[i]))
+    numbers = ++i;
 
   if (i >= argc)
     return -1;
     
-  if (!files_path_exist((path = files_full_path(argv[i],true)), false)) {
+  if (!files_path_exist_file((path = files_full_path(argv[i],PROCESS_ASTERIKS)))) {
     HELP(q_printf("%% File not found:\"<e>%s</>\"\r\n",path));
     return 1;
   }
@@ -7077,6 +7093,7 @@ static int cmd_files_cat(int argc, char **argv) {
     i++;
   }
 
+  // line number (or file offset) was omitted?
   if (line == (unsigned int)(-1))
     line = 0;
 
