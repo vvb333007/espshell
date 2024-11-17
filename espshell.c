@@ -82,6 +82,12 @@
 //
 // c) Default (human-friendly) mode ("echo on"): user input echoed back, all screen output is enabled. Equivalent of 
 //    the "ATE1" modem command
+#define SERIAL_8N1    0x800001c
+#define BREAK_KEY     3              // Keycode of an "Exit" key: CTRL+C to exit uart "tap" mode
+#define DEF_BAUDRATE  115200
+#define UART_RXTX_BUF 512
+#define I2C_RXTX_BUF  1024
+
 
 
 //TAG:prompts
@@ -164,11 +170,21 @@
 #endif // WITH_FS
 
 // Pickup compile-time setting overrides if any from "espshell.h" or "extra/espshell.h"
+// Pickup convar_add() definition or provide our own
 #if __has_include("espshell.h")
 #  include "espshell.h"
 #elif __has_include("extra/espshell.h")
 #  include "extra/espshell.h"
-#endif
+#else
+   extern float dummy_float;
+   extern void *dummy_pointer;
+#  define convar_add( VAR ) \
+          espshell_varadd( #VAR, &VAR, sizeof(VAR), \
+          (__builtin_classify_type(VAR) == __builtin_classify_type(dummy_float)), \
+          (__builtin_classify_type(VAR) == __builtin_classify_type(dummy_pointer)))
+#endif // has espshell.h ?
+
+
 
 // Compile basic AiThinker ESP32Cam support: ESPCam commands are arranged as "external"
 // commands and their source code is in "extra/" folder. These are used for a side project
@@ -177,17 +193,12 @@
 #  if defined(EXTERNAL_PROTOTYPES) || defined(EXTERNAL_KEYWORDS) || defined(EXTERNAL_HANDLERS)
 #    error "EXTERNAL_KEYWORDS and ESPCAM are both set"
 #  endif
-#  if __has_include("esp32cam_prototypes.h")
-#    define EXTERNAL_PROTOTYPES "esp32cam_prototypes.h"
-#    define EXTERNAL_KEYWORDS "esp32cam_keywords.c"
-#    define EXTERNAL_HANDLERS "esp32cam_handlers.c"
-#  elif __has_include("extra/esp32cam_prototypes.h")
+#  if __has_include("extra/esp32cam_prototypes.h")
 #    define EXTERNAL_PROTOTYPES "extra/esp32cam_prototypes.h"
 #    define EXTERNAL_KEYWORDS "extra/esp32cam_keywords.c"
 #    define EXTERNAL_HANDLERS "extra/esp32cam_handlers.c"
 #  else
-#    warning "ESPCAM is defined, but no ESP32Cam source files were found"
-#    warning "Disabling ESPCam support"
+#    warning "ESPCAM is defined, but no ESP32Cam source files were found. Disabling ESPCam support"
 #    undef ESPCAM
 #  endif  // Have esp32cam_* sources?
 #endif  // ESPCAM?
@@ -921,10 +932,17 @@ left_pressed() {
   return CSstay;
 }
 
+// called by Ctrl+L
+// clears terminal window by ansi sequence, displays TipOfTheDay
+//
+static const char *random_hint();
 
 static EL_STATUS
 clear_screen() {
   q_print("\033[H\033[2J");
+#if WITH_HELP  
+  q_printf("%% Tip of the day:\r\n%s\r\n",random_hint());
+#endif  
   return redisplay();
 }
 
@@ -1337,7 +1355,8 @@ typedef struct {
   int    ref;       // reference counter. normally 1 but async commands can increase it
   int    argc;      // number of tokens
   char **argv;      // tokenized input string (array of pointers to various locations withn userinput)
-  char  *userinput; //original input string with '\0's inserted by tokenizer
+  char  *userinput; // original input string with '\0's inserted by tokenizer
+  int  (*gpp)(int, char **);
 } argcargv_t;
 
 // Mutex to protect reference counters of argcargv_t structure.
@@ -2093,7 +2112,6 @@ static int cmd_files_rm(int, char **);
 static int cmd_files_mv(int, char **);
 static int cmd_files_cp(int, char **);
 static int cmd_files_write(int, char **);
-static int cmd_files_append(int, char **);
 static int cmd_files_insdel(int, char **);
 static int cmd_files_mkdir(int, char **);
 static int cmd_files_cat(int, char **);
@@ -2421,7 +2439,7 @@ static const struct keywords_t keywords_files[] = {
        "%\r\n"
        "% Ex.: \"write /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""), HELPK("Write strings/bytes to the file") },
 
-  { "append", cmd_files_append, MANY_ARGS, 
+  { "append", cmd_files_write, MANY_ARGS, 
   HELPK("% \"append FILENAME [TEXT]\"\r\n"
        "%\r\n"
        "% Append an ascii/hex string(s) to file\r\n"
@@ -2601,7 +2619,7 @@ static const struct keywords_t keywords_main[] = {
        "% (see \"docs/Pin_Commands.txt\" for more details & examples)\r\n"),  NULL },
 
   // "pin&"" async (background) "pin" command
-  { "pin&", cmd_async, MANY_ARGS, HIDDEN_KEYWORD },
+  { "pin&", cmd_pin, MANY_ARGS, HIDDEN_KEYWORD },
 
   // PWM generation
   { "pwm", cmd_pwm, 3,
@@ -2635,9 +2653,9 @@ static const struct keywords_t keywords_main[] = {
 
   { "count", cmd_count, 2, HIDDEN_KEYWORD },   //hidden "count" with 2 args
   { "count", cmd_count, 1, HIDDEN_KEYWORD },   //hidden with 1 arg
-  { "count&", cmd_async, 3, HIDDEN_KEYWORD },  //hidden "count&" with 3 args
-  { "count&", cmd_async, 2, HIDDEN_KEYWORD },  //hidden "count&" with 2 args
-  { "count&", cmd_async, 1, HIDDEN_KEYWORD },  //hidden "count&" with 1 arg
+  { "count&", cmd_count, 3, HIDDEN_KEYWORD },  //hidden "count&" with 3 args
+  { "count&", cmd_count, 2, HIDDEN_KEYWORD },  //hidden "count&" with 2 args
+  { "count&", cmd_count, 1, HIDDEN_KEYWORD },  //hidden "count&" with 1 arg
 
 
 
@@ -3611,24 +3629,6 @@ static int cmd_count(int argc, char **argv) {
   return 0;
 }
 
-
-// To execute async version of the "count" command ("count&") we
-// start a separate task which calls cmd_count()
-//
-static void count_async_task(void *arg) {
-
-  argcargv_t *aa = (argcargv_t *)arg;
-  if (aa != NULL) {
-    int ret = cmd_count(aa->argc, aa->argv);
-    userinput_unref(aa);
-    if (ret != 0)
-      q_print(Failed);
-  }
-  vTaskDelete(NULL);
-}
-
-
-
 // "var"     - display registered variables list
 // "var X"   - display variable X value
 static int cmd_var_show(int argc, char **argv) {
@@ -4546,33 +4546,31 @@ abort_if_input_only:
   return 0;
 }
 
-// async version of the "pin" command: "pin&"
+// Task which runs (cmd_...) commands in a background. Task is started by cmd_async() which can be used
+// as generic handler for any command
 //
-// use with caution: here are no mutexes or refcoun on shared resources:
-// running async "pin 2 seq 0" and simultaneous deletion of the sequence#0
-// will result in undefined behaviour, most likely crash
-//
-
-
-// To execute async version of the "pin" command ("pin&") we
-// start a separate task which calls cmd_pin()
-//
-static void pin_async_task(void *arg) {
+static void espshell_async_task(void *arg) {
 
   argcargv_t *aa = (argcargv_t *)arg;
   if (aa != NULL) {
-    int ret = cmd_pin(aa->argc, aa->argv);
+    int ret = -1;
+    if (aa->gpp)
+      ret = (*(aa->gpp))(aa->argc, aa->argv);
     userinput_unref(aa);
     if (ret != 0)
       q_print(Failed);
   }
+  q_print("% Task finished and deleted\r\n");
   vTaskDelete(NULL);
 }
 
-// "pin& ARG1 ARG2 .. ARGn"
-// "count& ... "
-// and other async commands (commands which ends with "&")
+// "KEYWORD& ARG1 ARG2 .. ARGn"
 //
+// Executes commands in a background (commands which names end with "&"). This handler is NEVER used in keywords[] array despite
+// its name starting from "cmd_". Instead this handler called directly by espshell command processor whenever espshell detects
+// "&" in command names: once detected, cmd_async() is called which in turn calls original command handler from another task
+//
+// Symbol "&" is used in Linux Bash shell to execute commands in a background (syntax is a bit different tho)
 static int cmd_async(int argc, char **argv) {
 
   TaskHandle_t ignored;
@@ -4580,32 +4578,17 @@ static int cmd_async(int argc, char **argv) {
   if (aa_current == NULL)  //must not happen
     abort();
 
-  TaskFunction_t cmd;
-
-  // which command was called as async?
-  if (!q_strcmp(argv[0], "pin&"))
-    cmd = (TaskFunction_t)pin_async_task;
-  else if (!q_strcmp(argv[0], "count&"))
-    cmd = (TaskFunction_t)count_async_task;
-  else {
-    
-    q_printf("%% <e>Don't know how to run \"%s\" in background</>\r\n", argv[0]);
-    
-    return 0;
-  }
-
   //increase refcount on argcargv (tokenized user input) because it will be used by async task and
   // we dont want this memory to be freed immediately after this command finishes
   userinput_ref(aa_current);
 
   // Start async task
-  if (pdPASS != xTaskCreatePinnedToCore(cmd, "Async", STACKSIZE, aa_current, tskIDLE_PRIORITY, &ignored, shell_core)) {
-    q_print("% <e>Can not start a new task. Resources low?</>\r\n");
+  if (pdPASS != xTaskCreatePinnedToCore((TaskFunction_t)espshell_async_task, "Async", STACKSIZE, aa_current, tskIDLE_PRIORITY, &ignored, shell_core)) {
+    q_print("% <e>Can not start a new task. Resources low? Adjust STACKSIZE macro</>\r\n");
     userinput_unref(aa_current);
-  }
-
+  } else
   //Hint user on how to stop bg command
-  q_printf("%% Background task started\r\n%% Copy/paste \"kill %x\" command to stop execution\r\n", (unsigned int)ignored);
+    q_printf("%% Background task started\r\n%% Copy/paste \"kill 0x%x\" command to stop execution\r\n", (unsigned int)ignored);
 
   return 0;
 }
@@ -4755,7 +4738,7 @@ static int cmd_i2c_clock(int argc, char **argv) {
   return 0;
 }
 
-#define I2C_RXTX_BUF 1024
+
 
 //"up SDA SCL CLOCK"
 // initialize i2c interface
@@ -4807,7 +4790,7 @@ static int cmd_i2c_read(int argc, char **argv) {
       q_printf("%% <e>Requested %d bytes but read %d</>\r\n", size, got);
       got = size;
     }
-    q_printf("%% I2C%d received %d bytes:\r\n", iic, got);
+    HELP(q_printf("%% I2C%d received %d bytes:\r\n", iic, got));
     q_printhex(data, got);
   }
   return 0;
@@ -4884,10 +4867,6 @@ noinit:
 // -- UART interface commands --
 // baud, read, write, up, down and tap commands down below
 
-#define SERIAL_8N1 0x800001c
-#define BREAK_KEY       3              // Keycode of an "Exit" key: CTRL+C to exit uart "tap" mode
-#define DEF_BAUDRATE 115200
-
 // create uart-to-uart bridge between user's serial and "remote"
 // everything that comes from the user goes to "remote" and
 // vice versa
@@ -4895,8 +4874,6 @@ noinit:
 // returns  when BREAK_KEY is pressed
 static void
 uart_tap(int remote) {
-
-#define UART_RXTX_BUF 512
   size_t av;
 
   while (1) {
@@ -4934,7 +4911,7 @@ uart_tap(int remote) {
 
       uart_read_bytes(remote, buf, av, portMAX_DELAY);
       console_write_bytes(buf, av);
-      delay(1);  //TODO: yield() ?
+      yield();
     }
   }
 }
@@ -5066,7 +5043,7 @@ static int cmd_uart_write(int argc, char **argv) {
       q_free(out);
   } else
     q_printf("%% UART%u is down. Use command \"up\" to initialize it\r\n",u);
-  q_printf("%% %u bytes sent\r\n", sent);
+  HELP(q_printf("%% %u bytes sent\r\n", sent));
   return 0;
 }
 
@@ -5481,13 +5458,16 @@ static int files_getline(char **buf, unsigned int *size, FILE *fp) {
   }
 }
 
-// convert time_t to char * "Jun-10-2022 10:40:07"
+// convert time_t to char * "31-01-2024 10:40:07"
 // not reentrant
 static char *files_time2text(time_t t) {
   static char buf[32];
   struct tm *info;
   info = localtime( &t );
+  
   sprintf(buf,"%u-%02u-%02u %02u:%02u:%02u",info->tm_year + 1900, info->tm_mon + 1,info->tm_mday, info->tm_hour,info->tm_min,info->tm_sec);
+  //strftime(buf, sizeof(buf), "%b %d %Y", info);
+	//strftime(buf, sizeof(buf), "%b %d %H:%M", info);  
   return buf;
 }
 
@@ -5497,7 +5477,7 @@ static char *files_time2text(time_t t) {
 static const char *files_set_cwd(const char *cwd) {
 
   int len;
-  static char prom[MAX_PATH + MAX_PROMPT_LEN] = { 0 };
+  static char prom[MAX_PATH + MAX_PROMPT_LEN] = { 0 }; // TODO: make it dynamic, it is too big
 
   // TODO: allocate Cwd buffer once. Set its size to MAX_PATH+16
   if (Cwd != cwd) {
@@ -5516,17 +5496,16 @@ static const char *files_set_cwd(const char *cwd) {
         }
   }
 
+  // regenerate prompt, return CWD or "/" if there is no CWD
   const char *tmp = Cwd ? (const char *)Cwd : "/";
-
   sprintf(prom,PROMPT_FILES, (Color ? esc_i : ""),  tmp, (Color ? esc_n : ""));
   prompt = prom;
 
   return tmp;
 }
 
-// return current working directory or NULL if there
-// were memory allocation errors
-//
+// return current working directory or "/" if there were memory allocation errors
+// pointer returned is always valid.
 static inline const char *files_get_cwd() {
   return Cwd ? Cwd : files_set_cwd("/");
 }
@@ -6572,6 +6551,8 @@ path_does_not_exist:
 // "ls [PATH]"
 // Directory listing for current working directory or PATH if specified
 //
+static int ls_show_dir_size = true;
+
 static int cmd_files_ls(int argc, char **argv) {
   char path[MAX_PATH+16],*p;
   int plen;
@@ -6640,7 +6621,7 @@ static int cmd_files_ls(int argc, char **argv) {
 
         if (0 == stat(path0,&st)) {
           if (ent->d_type == DT_DIR) {
-            unsigned int dir_size = files_size(path0);
+            unsigned int dir_size = ls_show_dir_size ? files_size(path0) : 0;
             total_d++;
             total_fsize += dir_size;
 #pragma GCC diagnostic ignored "-Wformat"            
@@ -6680,13 +6661,14 @@ static int cmd_files_rm(int argc, char **argv) {
     files_asteriks2spaces(argv[i]);
     num += files_remove(argv[i],DIR_RECURSION_DEPTH);
   }
-
   if (num)
-    q_printf("%% <i>%d</> files/directories were deleted\r\n",num);
+    HELP(q_printf("%% <i>%d</> files/directories were deleted\r\n",num));
 
   if (!files_path_exist_dir(files_get_cwd())) {
-    //TODO: this is temporary. have to change cwd to the mountpoint rather than to a "/"
+    
     files_set_cwd("/");
+    //TODO: this is temporary. have to change cwd to the mountpoint rather than to a "/". sort of:
+    //espshell_exec("cd .."); // "cd .." continues until reaches directory which exists
   }
   return 0;
 }
@@ -6696,20 +6678,15 @@ static int cmd_files_rm(int argc, char **argv) {
 //
 static int cmd_files_write(int argc, char **argv) {
 
-  int fd,size;
-  char *path, *out = NULL;
+  int fd,size = 1;
   char empty[] = { '\n' , '\0' };
+  char *path, *out = empty;
 
-  if (argc < 2) return -1;
-
-  path = files_full_path(argv[1], PROCESS_ASTERIKS);
+  if (argc < 2)
+    return -1;
 
   if (argc > 2)
     size = text2buf(argc,argv,2,&out);
-  else {
-    out = empty;
-    size = 1;
-  }
 
   unsigned flags = O_CREAT|O_WRONLY;
 
@@ -6721,7 +6698,7 @@ static int cmd_files_write(int argc, char **argv) {
 
   if (size > 0)
     // create path components (if any)
-    if (files_create_dirs(path,PATH_HAS_FILENAME) >= 0) {
+    if (files_create_dirs(argv[1],PATH_HAS_FILENAME) >= 0) {
 
       // files_create_dirs() destroys /path/ as it is static buffer of files_full_path
       // instead of q_strdup just reevaluate it
@@ -6746,17 +6723,11 @@ free_and_exit:
   return 0;
 }
 
-// "append FILENAME TEXT"
-// same as "write" but appends text to the end of the file
-//
-static int cmd_files_append(int argc, char **argv) {
-  return cmd_files_write(argc,argv);
-}
-
 // "insert FILENAME LINE_NUMBER [TEXT]"
 // "delete FILENAME LINE_NUMBER [COUNT]"
-// insert TEXT before line number LINE_NUMBER
 //
+// insert TEXT before line number LINE_NUMBER
+// delete lines LINE_NUMBER..LINE_NUMBER+COUNT
 static int cmd_files_insdel(int argc, char **argv) {
 
   char *path, *upath = NULL;
@@ -7112,51 +7083,58 @@ static int cmd_files_cat(int argc, char **argv) {
 static const char *Hints[] = {
   "% Press <TAB> repeatedly to cycle cursor through command arguments.\r\n"
   "% This is faster than using arrows <-- -->",
+
   "% <HOME> and <END> keys are not working? Use Ctrl+A instead of <HOME> and\r\n"
   "% Ctrl+E instead of <END>. Read help page on keys used in ESPShell: \"? keys\"",
+
   "% Press <ESC> then type a number and press <ESC> again to enter symbol by\r\n"
   "% its code: <ESC>, 32, <ESC> sends \"space\" (code 32)",
+
   "% Pressing <ESC> and then <BACKSPACE> removes one word instead of single symbol",
+
   "% Use command \"colors off\" if your terminal does not support ANSI colors",     
+
   "% Use command \"history off\" to disable history and remove history entries",
+
   "% Command \"uptime\" also shows the last reboot (crash) cause",
+
   "% Command \"suspend\" (or Ctrl+C) pauses sketch execution. Resume with \"resume\"",
+
   "% You can use Ctrl+Z as a hotkey for \"exit\" command",
+
   "% You can shorten command names and its arguments: \"suspend\" can be \"su\" or\r\n"
   "% even \"p 2 i o op\" instead of \"pin 2 in out open\"",
+
   "% To mount a filesystem on partition \"FancyName\" one can type \"mount F\".\r\n"
   "% Shortening also works for \"unmout\" arguments",
+
   "% Command \"unmount\" has alias \"umount\"",
+
   "% \"mkdir\" creates all missing directories in given path",
+
   "% \"touch\" creates all missing directories in given path before file creation",
-  "% Use \"var fast_ls 1\" to disable directory size counting by \"ls\" command",
+
+  "% Use \"var ls_show_dir_size 0\" to disable dirs size counting by \"ls\" command",
+
   "% To use spaces in filenames, replace spasces with asteriks (*): \"mkdir A*Path\"",
+
   "% Main commands are available in every command subdirectory: one can execute\r\n"
   "% command \"pin\" while in UART configuration mode, without need to \"exit\")",
+
   "% You can send files over UARTs with filesystem's \"cat\" command",
+
   "% Press Ctrl+R to search through the commands history: start typing and press\r\n"
   "% <Enter> to find a matched command entered previously",
+
   "% Use \"^\" symbol when history searching (Ctrl+R) to emphasize that search\r\n"
   "% pattern is matched from the beginning of the string (i.e. regexp-like \"^\")",
+
   "% Press Ctrl+L to clear the screen and enable terminal colors"
 };
 
-#include <pins_arduino.h> // get A0 and A1 values
-
 static const char *random_hint() {
   static unsigned tick = 0;
-  bool first = true;
-
-  if (first) {
-    q_print("% Seeding RNG\r\n");
-    pinMode2(A0,INPUT | OPEN_DRAIN);
-    for (int i = 0; i < 1000; i++)
-      tick += analogRead(A0);
-    if (tick != 0)
-      first = false;
-  }
-
-  return Hints[(tick++) % 20];
+  return Hints[(tick++) % 21];
 }
 
 // "? keys"
@@ -7374,7 +7352,20 @@ one_more_try:
           // if nonzero value is returned then it is an index of the "failed" argument (value of 3 means argv[3] was bad (for values > 0))
           // value of zero means successful execution, return code <0 means argument number was wrong (missing argument)
           if (key[i].cb) {
-            bad = key[i].cb(argc, argv);
+
+            int l;
+            if ((l = strlen(argv[0]) - 1) < 0)
+              abort(); //Must no thappen TODO: make something better than abort() for every "must not happen" through the code
+
+            // save command handler (cmd_async() will need it)
+            aa->gpp = key[i].cb; 
+
+            // Check if command (i.e. argv[0]) has "&" at the end. If this is the case then run corresponding command handler in background
+            if (argv[0][l] == '&')
+              bad = cmd_async(argc, argv);   // cmd_async() handler called instead (which calls aa->gpp)
+            else
+              bad = key[i].cb(argc, argv);
+
             // keywords[i] is not a valid pointer anymore as cb() can change the keywords pointer
             // keywords[0] is always valid
             if (bad > 0)
@@ -7454,8 +7445,6 @@ static void espshell_task(const void *arg) {
       q_print("% ESPShell is started already\r\n");
       return;
     }
-
-    
     // on multicore processors use another core: if Arduino uses Core1 then
     // espshell will be on core 0.
     shell_core = xPortGetCoreID();
@@ -7469,7 +7458,7 @@ static void espshell_task(const void *arg) {
     while (!console_isup())
       delay(1000);
 
-    HELP(q_printf("%% ESPShell. Type \"?\" and press <Enter> for help\r\n%% Tip of the day:\r\n<3>%s</>\r\n", random_hint()));
+    HELP(q_printf("\033[H\033[2J\n%% ESPShell. Type \"?\" and press <Enter> for help\r\n%% Press <Ctrl+L> to clear the screen and enable colors\r\n")) ;
 
     while (!Exit) {
       espshell_command(readline(prompt));
@@ -7492,10 +7481,12 @@ void STARTUP_HOOK espshell_start() {
 #else
 void espshell_start() {
 #endif
-  if (!argv_mux) argv_mux = xSemaphoreCreateMutex();
+  if (!argv_mux)
+    argv_mux = xSemaphoreCreateMutex();
 #if MEMTEST
   q_meminit();
 #endif
+  convar_add(ls_show_dir_size);   // TODO: it will duplicate on shell start/stop cycles, which is not what we want
   seq_init(); 
   espshell_task((const void *)1);
 }
