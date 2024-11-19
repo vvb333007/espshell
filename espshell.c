@@ -1367,7 +1367,7 @@ static xSemaphoreHandle argv_mux = NULL;
 // but asyn commands do not. This one is used by async tasks to get argc/argv values
 static argcargv_t *aa_current = NULL;
 
-// Increase refcounter on argcargv structure.
+// Increase refcounter on argcargv structure. a == NULL is ok
 static void userinput_ref(argcargv_t *a) {
 
   if (xSemaphoreTake(argv_mux, portMAX_DELAY)) {
@@ -1379,12 +1379,12 @@ static void userinput_ref(argcargv_t *a) {
 
 // Decrease refcounter
 // When refcounter hits zero the whole argcargv gets freed
-//
+// a == NULL is ok
 static void userinput_unref(argcargv_t *a) {
 
   if (xSemaphoreTake(argv_mux, portMAX_DELAY)) {
     if (a) {
-      if (a->ref < 1)  //must not happen
+      if (a->ref < 1)  //TODO: must not happen
         abort();
       a->ref--;
       // ref dropped to zero: delete everything
@@ -1418,7 +1418,7 @@ static argcargv_t *userinput_tokenize(char *userinput) {
         if (a->argv)
           q_free(a->argv);
         q_free(a);
-        //q_free(userinput);
+        //q_free(userinput); It gets released by espshell_command() processor
         a = NULL;
       }
     }
@@ -1782,14 +1782,14 @@ static void q_printhex(const unsigned char *p, unsigned int len) {
   char ascii[16 + 1];
   unsigned int space = 1;
 
-  q_print("       0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F  |0123456789ABCDEF\r\n");
-  q_print("----------------------------------------------------------+----------------\r\n");
+  q_print("<r>       0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F  |0123456789ABCDEF</>\r\n");
+  q_print("<r>----</>------------------------------------------------------+----------------\r\n");
 
   for (unsigned int i = 0, j = 0; i < len; i++) {
     // add offset at the beginning of every line. it doesnt hurt to have it.
     // and it is useful when exploring eeprom contens
     if (!j)
-      q_printf("%04x: ", i);
+      q_printf("<r>%04x:</> ", i);
 
     //print hex byte value
     q_printf("%02x ", p[i]);
@@ -1799,8 +1799,8 @@ static void q_printhex(const unsigned char *p, unsigned int len) {
       q_print(" ");
 
     //add printed byte to ascii representation
-    //dont print anything with codes less than 32
-    ascii[j++] = (p[i] < ' ') ? '.' : p[i];
+    //dont print anything with codes less than 32 and higher than 127
+    ascii[j++] = (p[i] < ' ' || p[i] > '~') ? '.' : p[i];
 
     // one complete line could be printed:
     // we had 16 bytes or we reached end of the buffer
@@ -4552,15 +4552,20 @@ abort_if_input_only:
 static void espshell_async_task(void *arg) {
 
   argcargv_t *aa = (argcargv_t *)arg;
-  if (aa != NULL) {
-    int ret = -1;
-    if (aa->gpp)
-      ret = (*(aa->gpp))(aa->argc, aa->argv);
-    userinput_unref(aa);
-    if (ret != 0)
-      q_print(Failed);
+  int ret = -1;
+
+  // aa->gpp points to actual command handler (e.g. cmd_pin for command "pin" and "pin&"); aa->gpp is set up
+  // by command processor (espshell_command()) according to first keyword (argv[0])
+  if (aa && aa->gpp) {
+    ret = (*(aa->gpp))(aa->argc, aa->argv);
+    q_printf("%% Background task %p (\"%s\") %s\r\n", xTaskGetCurrentTaskHandle(), aa->argv[0], ret == 0 ? "is finished" : "<e>has failed</>");
+    if (ret < 0)
+      q_print("% <e>Wrong number of arguments</>\r\n");
+    else if (ret > 0 && ret < aa->argc)
+      q_printf("%% <e>Invalid argument \"%s\"</>\r\n",aa->argv[ret]);
   }
-  q_print("% Task finished and deleted\r\n");
+  // its ok to unref null pointer
+  userinput_unref(aa);
   vTaskDelete(NULL);
 }
 
@@ -5620,6 +5625,9 @@ const esp_partition_t *files_partition_by_label(const char *label) {
 //
 #define PROCESS_ASTERIKS true
 #define IGNORE_ASTERIKS false
+
+// TODO: process ".." in the path
+//
 static char *files_full_path(const char *path, bool do_asteriks) {
 
   static char out[MAX_PATH+16];
@@ -5634,21 +5642,18 @@ static char *files_full_path(const char *path, bool do_asteriks) {
       return out;
 
   len = strlen(path);
-
-  // path is absolute. nothing to do - just return a copy
-  if (path[0] == '/' || path[0] == '\\') {
+  
+  if (path[0] == '/' || path[0] == '\\') { // path is absolute. nothing to do - just return a copy
     if (len < sizeof(out))
       strcpy(out, path);
-    goto done;
+  } else {                                 // path is relative. add CWD
+    cwd_len = strlen(Cwd);
+    if ((len + cwd_len) < sizeof(out)) {
+      strcpy(out, Cwd);
+      strcat(out, path);
+    }
   }
 
-  // path is relative. add CWD
-  cwd_len = strlen(Cwd);
-  if ((len + cwd_len) < sizeof(out)) {
-    strcpy(out, Cwd);
-    strcat(out, path);
-  }
-done:
   if (do_asteriks)
     files_asteriks2spaces(out);
   return out;
@@ -5901,7 +5906,6 @@ static unsigned int files_size(const char *path) {
   }
 
   // size of a directory requested
-  // TODO: make it to be optional (disable/enable dir sizes)
   if (files_path_exist_dir(p))
     return files_dirwalk(path,size_file_callback, NULL, DIR_RECURSION_DEPTH);
 
@@ -6176,7 +6180,9 @@ failed_unmount:
 }
 
 // "mount LABEL [/MOUNTPOINT"]
-// TODO: "mount sdmmc PIN_CMD PIN_CLK PIN_D0
+// TODO: "mount sdmmc PIN_CMD PIN_CLK PIN_D0 [D1 D2 D3]
+// TODO: "mount [sdspi|spi] PIN_MISO PIN_MOSI PIN_CLK PIN_CS
+//
 // mount a filesystem. filesystem type is defined by its label (see partitions.csv file).
 // supported filesystems: fat, littlefs, spiffs
 //
@@ -6435,7 +6441,8 @@ static int cmd_files_cd(int argc, char **argv) {
   if (files_get_cwd() == NULL)
     return 0;
 
-  //"cd" no args, go to the mountpoint
+  //"cd" no args, go to the mountpoint. 
+  // IMPORTANT: argv pointer CAN be zero here in case cmd_files_cd() is called from cmd_files_rm()
   if (argc < 2) {
     int i;
     if ((i = files_mountpoint_by_path(files_get_cwd(), false)) < 0)
@@ -6596,6 +6603,8 @@ static int cmd_files_ls(int argc, char **argv) {
   if (!files_path_exist_dir(path))
     q_printf("%% <e>Path \"%s\" does not exist</>\r\n",path);
   else {
+
+    // TODO: use scandir() with alphasort
     unsigned int total_f = 0, total_d = 0, total_fsize = 0;
     DIR *dir;
 
@@ -6664,12 +6673,11 @@ static int cmd_files_rm(int argc, char **argv) {
   if (num)
     HELP(q_printf("%% <i>%d</> files/directories were deleted\r\n",num));
 
-  if (!files_path_exist_dir(files_get_cwd())) {
-    
-    files_set_cwd("/");
-    //TODO: this is temporary. have to change cwd to the mountpoint rather than to a "/". sort of:
-    //espshell_exec("cd .."); // "cd .." continues until reaches directory which exists
-  }
+  // change to the maintpoint dir if path we had as CWD does not exist anymore
+  if (!files_path_exist_dir(files_get_cwd()))
+    //espshell_exec("cd ..");
+    cmd_files_cd(1, NULL);
+  
   return 0;
 }
 
