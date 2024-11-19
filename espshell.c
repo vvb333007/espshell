@@ -84,11 +84,14 @@
 //    the "ATE1" modem command
 #define SERIAL_8N1    0x800001c
 #define BREAK_KEY     3              // Keycode of an "Exit" key: CTRL+C to exit uart "tap" mode
-#define DEF_BAUDRATE  115200
-#define UART_RXTX_BUF 512
-#define I2C_RXTX_BUF  1024
 
-
+//TAG:limits
+#define MAX_PROMPT_LEN 16       // Prompt length ( except for PROMPT_FILES), max length of a prompt (see TAG:prompts).
+#define MAX_PATH       256      // max path len
+#define MAX_FILENAME   MAX_PATH // max filename len (equal to MAX_PATH for now)
+#define DEF_BAUDRATE   115200   
+#define UART_RXTX_BUF  512
+#define I2C_RXTX_BUF   1024
 
 //TAG:prompts
 // Prompts used by command subdirectories
@@ -96,10 +99,8 @@
 #define PROMPT_I2C    "esp32-i2c%u>"     // i2c prompt
 #define PROMPT_UART   "esp32-uart%u>"    // uart prompt   
 #define PROMPT_SEQ    "esp32-seq%u>"     // Sequence subtree prompt
-#define PROMPT_FILES  "esp32#(%s%s%s)>"  // File manager prompt (color tag, path, color tag)
+#define PROMPT_FILES  "esp32-(%s%s%s)>"  // File manager prompt (color tag, path, color tag)
 #define PROMPT_SEARCH "Search: "         // History search prompt
-
-#define MAX_PROMPT_LEN 16                // except for PROMPT_FILES, max length of a prompt
 
 //TAG:includes
 #include <stdio.h>
@@ -110,37 +111,24 @@
 #include <errno.h>
 #include <time.h>
 #include <assert.h>
-
 #include <Arduino.h>
-
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-
 #include <soc/soc_caps.h>
 #include <soc/gpio_struct.h>
 #include <soc/pcnt_struct.h>
 #include <soc/efuse_reg.h>
-
 #include <hal/gpio_ll.h>
-
 #include <driver/gpio.h>
 #include <driver/pcnt.h>
 #include <driver/uart.h>
-
 #include <rom/gpio.h>
-
 #include <esp_timer.h>
 #include <esp_chip_info.h>
-
 #include <esp32-hal-periman.h>
 #include <esp32-hal-ledc.h>
 #include <esp32-hal-rmt.h>
 #include <esp32-hal-uart.h>
-
-// Support files for LittleFS, FAT and SPIFFS filesystems
-#define MAX_PATH     256   // max path len
-#define MAX_FILENAME 256   // max filename len (equal to MAX_PATH for now)
-
 #if WITH_FS
 #  include <sys/unistd.h>
 #  include <sys/stat.h>
@@ -233,22 +221,17 @@
 #define esc_3 "\033[92m"                // Hint[3] bright green
 
 
-
-// Autostart/start espshell.
-// Called automatically by C runtime startup code if AUTOSTART == 1 (Default)
-// otherwhise it is up to user sketch to call espshell_start().
-#if AUTOSTART
-void STARTUP_HOOK espshell_start();
-#else
-void espshell_start();
-#endif
-
 // Miscellaneous forwards
 // TAG:forwards
 static inline bool uart_isup(unsigned char u);       // Check if UART u is up and operationg (is driver installed?)
 static int q_strcmp(const char *, const char *);     // loose strcmp
 static int PRINTF_LIKE q_printf(const char *, ...);  // printf()
 static int q_print(const char *);                    // puts()
+#if AUTOSTART
+void STARTUP_HOOK espshell_start();
+#else
+void espshell_start();
+#endif
 
 // -- Memory allocation wrappers --
 // If MEMTEST is set to 0 (the default value) then q_malloc is simply malloc(), 
@@ -262,6 +245,7 @@ static int q_print(const char *);                    // puts()
 // ENUM /Memory type/: a number from 0 to 15 to identify newly allocated memory block intended 
 // usage. Newly allocated memory is assigned one of the types below. Command "mem" invokes 
 // q_memleaks() function to dump memory allocation information. Only works #if MEMTEST == 1
+
 enum {
   MEM_TMP = 0,       // tmp buffer. must not appear on q_memleaks() report
   MEM_STATIC,        // memory allocated once, never freed: sketch variables is an example
@@ -1640,21 +1624,21 @@ static inline float q_atof(const char *p, float def) {
 
 
 
-// strcmp() which deoes partial match. It us used
-// to match commands and parameters which are incomplete
+// Loose strcmp() which deoes partial match. It is used to match commands and parameters which are shortened:
+// e.g. user typed "seq" instead of "sequence" or "m w" instead of "mount wwwroot"
 //
-// partial - string which expected to be incomplete
-// full    - full string
+// /partial/ - string which expected to be incomplete/shortened
+// /full/    - full string to compare against
+//
 // q_strcmp("seq","sequence") == 0
 // q_strcmp("sequence","seq") == 1
 //
 static int q_strcmp(const char *partial, const char *full) {
-
-  int plen = strlen(partial);
-
-  if (plen > strlen(full))
-    return 1;
-  return strncmp(partial, full, plen);
+  int plen;
+  if (partial && full && (*partial == *full))        // quick reject
+    if ((plen = strlen(partial)) <= strlen(full))   //     OR
+      return strncmp(partial, full, plen);         //  full test 
+  return 1;
 }
 
 static inline const char *q_findchar(const char *str, char sym) {
