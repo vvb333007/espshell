@@ -571,19 +571,17 @@ TTYget() {
     Pushed = 0;
     return PushBack;
   }
-try_again:
-  // read byte from a priority queue if any.
-  portENTER_CRITICAL(&Input_mux);
-  if (*Input)
-    c = *Input++;
-  portEXIT_CRITICAL(&Input_mux);
-  if (c)
-    return c;
 
-  // read 1 byte from user. we use timeout to enable Input processing if it was set
-  // mid console_read_bytes() call: i.e. Input polling happens every 500ms
-  if (console_read_bytes(&c, 1, pdMS_TO_TICKS(500)) < 1)
-    goto try_again;
+  do {
+    // read byte from a priority queue if any.
+    portENTER_CRITICAL(&Input_mux);
+    if (*Input) c = *Input++;
+    portEXIT_CRITICAL(&Input_mux);
+    if (c) return c;
+
+    // read 1 byte from user. we use timeout to enable Input processing if it was set
+    // mid console_read_bytes() call: i.e. Input polling happens every 500ms
+   } while (console_read_bytes(&c, 1, pdMS_TO_TICKS(500)) < 1);
 
 #if WITH_COLOR
   // Trying to be smart:
@@ -1671,8 +1669,8 @@ static inline const char *q_findchar(const char *str, char sym) {
 
 
 // adopted from esp32-hal-uart.c Arduino Core
-// TODO: remake to either use non-static buffer OR use sync objects
-//
+// TODO: remake to either use non-static buffer OR use sync objects because we have async tasks which dp q_printf
+//       thus reusing internal 128 bytes buffer
 static int __printfv(const char *format, va_list arg) {
 
   static char buf[128 + 1]; // TODO: Mystery#2. Crashes without /static/. 
@@ -1783,7 +1781,7 @@ static void q_printhex(const unsigned char *p, unsigned int len) {
   unsigned int space = 1;
 
   q_print("<r>       0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F  |0123456789ABCDEF</>\r\n");
-  q_print("<r>----</>------------------------------------------------------+----------------\r\n");
+  q_print("<r>-----</>-----------------------------------------------------+----------------\r\n");
 
   for (unsigned int i = 0, j = 0; i < len; i++) {
     // add offset at the beginning of every line. it doesnt hurt to have it.
@@ -1808,8 +1806,9 @@ static void q_printhex(const unsigned char *p, unsigned int len) {
 
       // end of buffer but less than 16 bytes:
       // pad line with spaces
+      // TODO: one space is lost somewhere when dumping sizes like 251
       if (j < 16) {
-        unsigned char spaces = (16 - j) * 3 + (j <= 4 ? 3 : (j <= 8 ? 2 : (j <= 12 ? 1 : 0)));  // fully agreed :-|
+        unsigned char spaces = (16 - j) * 3 + (j <= 4 ? 3 : (j <= 8 ? 2 : (j <= 12 ? 1 : 0)));  // fully agreed, a nightmare :-|
         char tmp[spaces + 1];
         memset(tmp, ' ', spaces);
         tmp[spaces] = '\0';
@@ -2505,6 +2504,8 @@ static const struct keywords_t keywords_files[] = {
        "% directory is used to determine partition label"), HELPK("Erase old & create new filesystem") },
 
   { "format", cmd_files_format, 0, HIDDEN_KEYWORD },
+  { "format&", cmd_files_format, 1, HIDDEN_KEYWORD },
+  { "format&", cmd_files_format, 0, HIDDEN_KEYWORD },
 
   KEYWORDS_END
 };
@@ -2527,10 +2528,10 @@ static const struct keywords_t keywords_main[] = {
   HELPK("% \"cpu\" : Show CPUID and CPU/XTAL/APB frequencies"), NULL },
 
   { "suspend", cmd_suspend, NO_ARGS, 
-  HELPK("% \"suspend\" : Suspend main loop()\r\n"), "Suspend sketch execution" },
+  HELPK("% \"suspend\" : Suspend sketch execution (Hotkey: Ctrl+C). Resume with \"resume\"\r\n"), "Suspend sketch execution" },
 
   { "resume", cmd_resume, NO_ARGS, 
-  HELPK("% \"resume\" : Resume main loop()\r\n"), "Resume sketch execution" },
+  HELPK("% \"resume\" : Resume sketch execution\r\n"), "Resume sketch execution" },
 
   { "kill", cmd_kill, 1, 
   HELPK("% \"kill TASK_ID\" : Stop and delete task TASK_ID\r\n% CAUTION: wrong id will crash whole system :(\r\n% For use with \"pin&\" and \"count&\" tasks only!"), "Kill tasks" },
@@ -4785,22 +4786,19 @@ static int cmd_i2c_read(int argc, char **argv) {
 
   unsigned char data[size];
 
-  if (!i2c_isup(iic))
-    goto noinit;
-
-  if (i2cRead(iic, addr, data, size, 2000, &got) != ESP_OK)
-    q_print(Failed);
-  else {
-    if (got != size) {
-      q_printf("%% <e>Requested %d bytes but read %d</>\r\n", size, got);
-      got = size;
+  if (i2c_isup(iic)) {
+    if (i2cRead(iic, addr, data, size, 2000, &got) != ESP_OK)
+      q_print(Failed);
+    else {
+      if (got != size) {
+        q_printf("%% <e>Requested %d bytes but read %d</>\r\n", size, got);
+        got = size;
+      }
+      HELP(q_printf("%% I2C%d received %d bytes:\r\n", iic, got));
+      q_printhex(data, got);
     }
-    HELP(q_printf("%% I2C%d received %d bytes:\r\n", iic, got));
-    q_printhex(data, got);
-  }
-  return 0;
-noinit:
-  q_printf("%% I2C%u bus is not initialized. Use command \"up\" to initialize\r\n", iic);
+  } else
+    q_printf("%% I2C%u bus is not initialized. Use command \"up\" to initialize\r\n", iic);
   return 0;
 }
 
@@ -4816,27 +4814,23 @@ static int cmd_i2c_write(int argc, char **argv) {
 
   unsigned char data[argc];
 
-  if (!i2c_isup(iic))
-    goto noinit;
+  if (i2c_isup(iic)) {
+    // get i2c slave address
+    if ((addr = q_atol(argv[1],0)) == 0)
+      return 1;
 
-  // get i2c slave address
-  if ((addr = q_atol(argv[1],0)) == 0)
-    return 1;
-
-  // read all bytes to the data buffer
-  for (i = 2, size = 0; i < argc; i++) {
-    if (!ishex2(argv[i]))
-      return i;
-    data[size++] = hex2uint8(argv[i]);
-  }
-  // send over
-  HELP(q_printf("%% Sending %d bytes over I2C%d\r\n", size, iic));
-  if (ESP_OK != i2cWrite(iic, addr, data, size, 2000))
-    q_print(Failed);
-  return 0;
-
-noinit:
-  q_printf("%% I2C%u bus is not initialized. Use command \"up\" to initialize\r\n", iic);
+    // read all bytes to the data buffer
+    for (i = 2, size = 0; i < argc; i++) {
+      if (!ishex2(argv[i]))
+        return i;
+      data[size++] = hex2uint8(argv[i]);
+    }
+    // send over
+    HELP(q_printf("%% Sending %d bytes over I2C%d\r\n", size, iic));
+    if (ESP_OK != i2cWrite(iic, addr, data, size, 2000))
+      q_print(Failed);
+  } else
+    q_printf("%% I2C%u bus is not initialized. Use command \"up\" to initialize\r\n", iic);
   return 0;  
 }
 
@@ -4846,25 +4840,22 @@ static int cmd_i2c_scan(int argc, char **argv) {
   unsigned char iic = (unsigned char)Context, addr;
   int i;
 
-  if (!i2c_isup(iic))
-      goto noinit;
+  if (i2c_isup(iic)) {
+    HELP(q_printf("%% Scanning I2C bus %d...\r\n", iic));
 
-  HELP(q_printf("%% Scanning I2C bus %d...\r\n", iic));
-
-  for (addr = 1, i = 0; addr < 128; addr++) {
-    unsigned char b;
-    if (ESP_OK == i2cWrite(iic, addr, &b, 0, 500)) {
-      i++;
-      q_printf("%% Device found at <i>address 0x%02x</>\r\n", addr);
+    for (addr = 1, i = 0; addr < 128; addr++) {
+      unsigned char b;
+      if (ESP_OK == i2cWrite(iic, addr, &b, 0, 500)) {
+        i++;
+        q_printf("%% Device found at <i>address 0x%02x</>\r\n", addr);
+      }
     }
-  }
-  if (!i)
-    q_print("% Nothing found\r\n");
-  else
-    q_printf("%% <i>%d</> devices found\r\n", i);
-  return 0;
-noinit:
-  q_printf("%% I2C%u bus is not initialized. Use command \"up\" to initialize\r\n", iic);
+    if (!i)
+      q_print("% Nothing found\r\n");
+    else
+      q_printf("%% <i>%d</> devices found\r\n", i);
+  } else
+    q_printf("%% I2C%u bus is not initialized. Use command \"up\" to initialize\r\n", iic);
   return 0;  
 } 
 
@@ -5338,8 +5329,8 @@ static int cmd_kill(int argc, char **argv) {
     return -1;
 
   unsigned int taskid = hex2uint32(argv[1]);
-  if (taskid == 0) {
-    HELP(q_print("% Task id is a hex number, something like \"3fff0030\" or \"0x40005566\"\r\n"));
+  if (taskid < 0x3ff00000) {
+    HELP(q_print("% Task id is a hex number, something like \"3ffb0030\" or \"0x40005566\"\r\n"));
     return 1;
   }
 
@@ -5791,43 +5782,40 @@ static unsigned int files_dirwalk(const char *path0, files_walker_t files_cb, fi
   if ((path = q_strdup256(files_full_path(path0, PROCESS_ASTERIKS), MEM_PATH)) == NULL)
     return 0;
 
-  if ((len = strlen(path)) < 1) 
-    goto free_and_exit;
-
-  // directory exists?
-  if (files_path_exist_dir(path)) {
-
-    // append "/"" to the path if it was not there already
-    if (path[len-1] != '\\' && path[len-1] != '/') {
-      path[len++] = '/';
-      path[len] = '\0';
-    }
-
-    // Walk through the directory, entering all subdirs in recursive way
-    if ((dir = opendir(path)) != NULL) {
-      struct dirent *de;
-      while((de = readdir(dir)) != NULL) {
-
-        // path buffer has 256 bytes extra space
-        if (strlen(de->d_name) < MAX_FILENAME) {
-          path[len] = '\0';        // cut off previous addition
-          strcat(path,de->d_name); // add entry name to our path
-
-          // if its a directory - call recursively
-          if (de->d_type == DT_DIR)
-            processed += files_dirwalk(path,files_cb,dirs_cb, depth - 1);
-          else 
-            if (files_cb)
-              processed += files_cb(path);
-        }
+  if ((len = strlen(path)) > 0) {
+    // directory exists?
+    if (files_path_exist_dir(path)) {
+      // append "/"" to the path if it was not there already
+      if (path[len-1] != '\\' && path[len-1] != '/') {
+        path[len++] = '/';
+        path[len] = '\0';
       }
-      closedir(dir);
-      path[len] = '\0';
-      if (dirs_cb)
-        processed += dirs_cb(path);
+
+      // Walk through the directory, entering all subdirs in recursive way
+      if ((dir = opendir(path)) != NULL) {
+        struct dirent *de;
+        while((de = readdir(dir)) != NULL) {
+
+          // path buffer has 256 bytes extra space
+          if (strlen(de->d_name) < MAX_FILENAME) {
+            path[len] = '\0';        // cut off previous addition
+            strcat(path,de->d_name); // add entry name to our path
+
+            // if its a directory - call recursively
+            if (de->d_type == DT_DIR)
+              processed += files_dirwalk(path,files_cb,dirs_cb, depth - 1);
+            else 
+              if (files_cb)
+                processed += files_cb(path);
+          }
+        }
+        closedir(dir);
+        path[len] = '\0';
+        if (dirs_cb)
+          processed += dirs_cb(path);
+      }
     }
   }
-free_and_exit:
   if (path)
     q_free(path);
   return processed;
@@ -5938,7 +5926,7 @@ static int files_cat_binary(const char *path, unsigned int line, unsigned int co
           if (line) {
             if (fseek(f, line, SEEK_SET) != 0) {
               q_printf("%% <e>Can't position to offset %u (0x%x)\r\n",line,line);
-              goto fail;
+              goto fail; //TODO: rewrite
             }
           }
           while (!feof(f) && (count > 0)) {
@@ -6155,8 +6143,12 @@ static int cmd_files_unmount(int argc, char **argv) {
       // FALLTHRU
 #endif      
     default:
-      goto failed_unmount;
+      // FALLTHRU
   }
+
+failed_unmount:
+  q_printf("%% <e>Unmount failed, error code is \"0x%x\"</>\r\n", err);
+  return 0;
 
 finalize_unmount:
 
@@ -6174,9 +6166,6 @@ finalize_unmount:
     files_set_cwd("/");
   return 0;
 
-failed_unmount:
-  HELP(q_printf("%% <e>Unmount failed, error code is \"0x%x\"</>\r\n", err));
-  return 0;
 }
 
 // "mount LABEL [/MOUNTPOINT"]
@@ -6264,7 +6253,7 @@ static int cmd_files_mount(int argc, char **argv) {
 
         // check if selected mount point is not used
         if ((tmp = files_mountpoint_by_path(mp,false)) >= 0) {
-          HELP(q_printf("%% <e>Mount point \"%s\" is already used by partition \"%s\"</>\r\n", mp, mountpoints[tmp].label));
+          q_printf("%% <e>Mount point \"%s\" is already used by partition \"%s\"</>\r\n", mp, mountpoints[tmp].label);
           goto mount_failed;
         }
 
@@ -6355,7 +6344,7 @@ finalize_mount:
     static_assert(sizeof(mountpoints[0].label) >= sizeof(part->label), "Increase mountpoints[].label array size");
     strcpy(mountpoints[i].label, part->label);
 
-    q_printf("%% %s on partition \"%s\" is mounted under \"%s\"\r\n", files_subtype2text(part->subtype), part->label, mp);
+    HELP(q_printf("%% %s on partition \"%s\" is mounted under \"%s\"\r\n", files_subtype2text(part->subtype), part->label, mp));
   }
   return 0;
 }
@@ -6412,7 +6401,7 @@ static int cmd_files_mount0(int argc, char **argv) {
 
   q_print("%\r\n");
   if (!usable)
-    HELP(q_print("% <e>No usable partitions were found. Use (Tools->Partition Scheme) in Arduino IDE</>\r\n"));
+    q_print("% <e>No usable partitions were found. Use (Tools->Partition Scheme) in Arduino IDE</>\r\n");
   else
     HELP(q_printf("%% <i>%u</> mountable partition%s found. (+) - mountable partition\r\n", usable, usable == 1 ? "" : "s"));
 
@@ -6671,19 +6660,29 @@ static int cmd_files_rm(int argc, char **argv) {
     num += files_remove(argv[i],DIR_RECURSION_DEPTH);
   }
   if (num)
-    HELP(q_printf("%% <i>%d</> files/directories were deleted\r\n",num));
+    q_printf("%% <i>%d</> files/directories were deleted\r\n",num);
+  else
+    HELP(q_print("% No changes to the filesystem were made\r\n"));
 
-  // change to the maintpoint dir if path we had as CWD does not exist anymore
+  // change to the maintpoint dir if path we had as CWD does not exist anymore.
+  // TODO: may be it is better to change up until existing directory is reached?
   if (!files_path_exist_dir(files_get_cwd()))
-    //espshell_exec("cd ..");
-    cmd_files_cd(1, NULL);
+#if 0  
+    espshell_exec("cd .."); // "go to the first existing dir" strategy
+#else    
+    cmd_files_cd(1, NULL);    // "go to the mountpoint" startegy
+#endif    
   
   return 0;
 }
 
-// "write FILENAME TEXT"
-// Write TEXT to file FILENAME. File is created if does not exist
+// "write FILENAME [TEXT]"
+// "append FILENAME [TEXT]"
 //
+// Write/append TEXT to file FILENAME. For the "write" command file is created if does not exist
+// while "append" requires file to be created before. If TEXT is omitted then single \n byte is
+// written 
+// 
 static int cmd_files_write(int argc, char **argv) {
 
   int fd,size = 1;
@@ -6716,9 +6715,9 @@ static int cmd_files_write(int argc, char **argv) {
       if ((fd = open(path,flags)) > 0) {
         size = write(fd,out,size);
         if (size < 0)
-          q_printf("%% <e>Write to file \"%s\" failed, code %d</>\r\n",path,errno);
+          q_printf("%% <e>Write to file \"%s\" has failed, errno is %d</>\r\n",path,errno);
         else
-          q_printf("%% <i>%u</> bytes written to <3>%s</>\r\n",size,path);
+          HELP(q_printf("%% <i>%u</> bytes written to <3>%s</>\r\n",size,path));
         close(fd);
         goto free_and_exit;
       }
@@ -6738,20 +6737,18 @@ free_and_exit:
 // delete lines LINE_NUMBER..LINE_NUMBER+COUNT
 static int cmd_files_insdel(int argc, char **argv) {
 
-  char *path, *upath = NULL;
+  char *path, *upath = NULL, *text = NULL, empty[] = { '\n', '\0' };
   FILE *f = NULL, *t = NULL;
   unsigned char *p = NULL;
-  char *text = NULL;
   unsigned int   plen, tlen = 0, cline = 0, line;
   bool insert = true; // default action is insert
   int count = 1;
-  char empty[] = { '\n', '\0' };
-
-  if (!q_strcmp(argv[0],"delete"))
-    insert = false;
 
   if (argc < 3)
     return -1;
+
+  // insert or delete?
+  insert = q_strcmp(argv[0],"delete");
 
   if ((line = q_atol(argv[2],(unsigned int)(-1))) == (unsigned int)(-1)) {
     HELP(q_printf("%% Line number expected instead of \"%s\"\r\n",argv[2]));
@@ -6779,7 +6776,7 @@ static int cmd_files_insdel(int argc, char **argv) {
   path[tmp-1] = '\0'; // remove "~""
 
   if ((t = fopen(upath,"wb")) == NULL) {
-    HELP(q_printf("%% <e>Failed to create temporary file \"<3>%s\"</>\r\n",upath));
+    q_printf("%% <e>Failed to create temporary file \"<3>%s\"</>\r\n",upath);
     goto free_memory_and_return;
   }
 
@@ -6794,17 +6791,18 @@ static int cmd_files_insdel(int argc, char **argv) {
       text = empty;
     }
   } else
-    count = q_atol(argv[3],1);
+    count = q_atol(argv[3],1); //TODO: check if argc > 3
 
   while (!feof(f)) {
-    int r = files_getline((char **)&p,&plen,f);
-    if (r >= 0) {
-      if ((r == 0) && feof(f))
-        break;
-      cline++;
-      if (cline == line) {
+    int r;
+    if ((r = files_getline((char **)&p,&plen,f)) >= 0) {
+      // end of file reached?
+      if ((r == 0) && feof(f)) break;
+      // current line is what user looking for?
+      if (++cline == line) {
         if (!insert) {
           HELP(q_printf("%% Line %u deleted\r\n",line));
+          // line range is processed?
           if (--count > 0)
             line++;
           continue;
@@ -6818,12 +6816,14 @@ static int cmd_files_insdel(int argc, char **argv) {
       fwrite("\n",1,1,t);
     }
   }
+  // have to close files so unlink() and rename() could do their job
   fclose(f);
   fclose(t);
   t = f = NULL;
 
   unlink(path);
   if (rename(upath,path) == 0) {
+    q_printf("%% Failed to rename files. File saved as \"%s\", rename it\r\n",upath);
     q_free(upath);
     upath = NULL;
   }
@@ -7029,7 +7029,7 @@ static int cmd_files_cat(int argc, char **argv) {
     return -1;
     
   if (!files_path_exist_file((path = files_full_path(argv[i],PROCESS_ASTERIKS)))) {
-    HELP(q_printf("%% File not found:\"<e>%s</>\"\r\n",path));
+    q_printf("%% File not found:\"<e>%s</>\"\r\n",path);
     return 1;
   }
   i++;
@@ -7489,12 +7489,16 @@ void STARTUP_HOOK espshell_start() {
 #else
 void espshell_start() {
 #endif
-  if (!argv_mux)
-    argv_mux = xSemaphoreCreateMutex();
+  if (!argv_mux) {
+    if ((argv_mux = xSemaphoreCreateMutex()) == NULL) {
+      q_print("% ESPShell init failed: semaphore\r\n");
+      return ;
+    }
+    convar_add(ls_show_dir_size);
+  }
 #if MEMTEST
   q_meminit();
 #endif
-  convar_add(ls_show_dir_size);   // TODO: it will duplicate on shell start/stop cycles, which is not what we want
   seq_init(); 
   espshell_task((const void *)1);
 }
