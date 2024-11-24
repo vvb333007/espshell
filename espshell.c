@@ -2781,7 +2781,7 @@ static const struct keywords_t keywords_main[] = {
   { "colors", cmd_colors, 0, HIDDEN_KEYWORD },
 #endif
 #ifdef EXTERNAL_KEYWORDS
-#include EXTERNAL_KEYWORDS
+#  include EXTERNAL_KEYWORDS
 #endif
 
   KEYWORDS_END
@@ -2863,7 +2863,7 @@ void digitalForceWrite(int pin, unsigned char level) {
 
 // ESP32 Arduino Core as of version 3.0.5 (latest I use) defines pin OUTPUT flag as both INPUT and OUTPUT
 #ifndef OUTPUT_ONLY
-#define OUTPUT_ONLY ((OUTPUT) & ~(INPUT))
+#  define OUTPUT_ONLY ((OUTPUT) & ~(INPUT))
 #endif
 
 // same as pinMode() but calls IDF directly bypassing
@@ -3652,8 +3652,8 @@ static int cmd_seq_show(int argc, char **argv) {
 
 
 
-#define PULSE_WAIT 1000
-#define PCNT_OVERFLOW 20000
+#define PULSE_WAIT 1000          // default counting time, 1000ms
+#define PCNT_OVERFLOW 20000      // PCNT interrupt every 20000 pulses
 
 
 // PCNT interrupt handler. Called every 20 000 pulses 2 times :).
@@ -3669,6 +3669,9 @@ static void IRAM_ATTR pcnt_interrupt(void *arg) {
 //TAG:count
 //"count PIN [DELAY_MS [pos|neg|both]]"
 //
+static int pcnt_channel = PCNT_CHANNEL_0;
+static int pcnt_unit = PCNT_UNIT_0;
+
 static int cmd_count(int argc, char **argv) {
 
   pcnt_config_t cfg = { 0 };
@@ -3679,8 +3682,8 @@ static int cmd_count(int argc, char **argv) {
     return 1;
 
   cfg.ctrl_gpio_num = -1;  // don't use "control pin" feature
-  cfg.channel = PCNT_CHANNEL_0;
-  cfg.unit = PCNT_UNIT_0;
+  cfg.channel = pcnt_channel;
+  cfg.unit = pcnt_unit;
   cfg.pos_mode = PCNT_COUNT_INC;
   cfg.neg_mode = PCNT_COUNT_DIS;
   cfg.counter_h_lim = PCNT_OVERFLOW;
@@ -7811,8 +7814,15 @@ void espshell_start() {
       q_print("% ESPShell init failed: semaphore\r\n");
       return;
     }
-    convar_add(ls_show_dir_size);
+    // add internal variables
+    convar_add(ls_show_dir_size);  // enable/disable dir size counting for "ls" command
+    convar_add(pcnt_channel);      // PCNT channel which is used by "count" command
+    convar_add(pcnt_unit);         // PCNT unit which is used by "count" command
+    convar_add(pcnt_unit);         // PCNT unit which is used by "count" command
+    convar_add(bypass_qm);         // enable/disable "?" as context help hotkey
   }
+
+  // inits below are safe to be called multiple times
 #if MEMTEST
   q_meminit();
 #endif
