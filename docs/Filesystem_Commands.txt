@@ -10,6 +10,21 @@ There is sample "partitions.csv" file which defines all three filesystems,
 for testing purposes. This file being placed in the sketch directory will be 
 used when firmware upload starts
 
+Following common storage media are supported:
+
+  1. Internal flash memory: this is where your sketch gets uploaded. 
+     Limited space: memory chips are usually between 4 and 16 megabytes
+
+  2. SD card connected to SDMMC interface (1 or 4 bit)
+
+  3. SD card on SPI interface
+
+  4. Generic SPI FLASH chip 
+
+SDMMC with full 4 bits (datalines) is the fastest way to read/write SD cards,
+however many devboards have only 1 data line connected (ESP32Cam is an example).
+SDMMC in 1-bit mode is still faster than SD card on SPI interface
+
 
 ESPShell File Manager purpose
 -----------------------------
@@ -204,6 +219,10 @@ Example: display directory /wwwroot/index/ content:
   esp32#(/)>
 
 The PATH argument must be directory path, with or without trailing "/"
+
+IMPORTANT: by default "ls" command displays directory sizes counting their size recursively: it
+might take time and consume memory. If this is an issue, then "ls" behaviour could be changed
+in runtime: command "var ls_show_dir_size 0" will disable directory size reporting by "ls" command
 
 
 "cd [PATH|..]" : Change directory
