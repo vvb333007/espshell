@@ -58,6 +58,16 @@ anyone to type command "sequence": "seq" is more than enough.
 Same about command arguments - any command or command argument can be shortened
 
 
+CONTEXT HELP
+------------
+
+Normally one can read help pages for commands by entering a question mark "?" 
+followed by keyword: either shortened or full. If, however, you would like to
+see help page during command entering (e.g. you forgot what next argument should 
+be) then just press "?" and help page will be displayed. You can try to type
+"cou" and press "?" to see "count" command help page
+
+
 ESPSHELL COMMANDS AND THEIR DESCRIPTION
 ---------------------------------------
 
