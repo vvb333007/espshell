@@ -1,44 +1,47 @@
+BIG FAT WARNING: Documentation is a bit outdated in the part related to installation.
+                 Docs are up to date (I hope so) in parts related to commands and
+                 general use. Recently the code structure was changed (moved from single
+                 file to library)
+
+
 ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
 
 <br>
-  Русская документация находится тут: https://github.com/vvb333007/espshell/tree/main/docs/ru_RU/
+  Р СѓСЃСЃРєР°СЏ РґРѕРєСѓРјРµРЅС‚Р°С†РёСЏ РЅР°С…РѕРґРёС‚СЃСЏ С‚СѓС‚: https://github.com/vvb333007/espshell/tree/main/docs/ru_RU/
  
 
 
 WHAT IS THIS:
 -------------
  This is a debugging/development tool for use with Arduino projects on
- ESP32 hardware. It comes in the form of Arduino Library and can be installed
-to your "<SketchesFolder>/libraries/ESP32Shell".
+ ESP32 hardware. 
 
  Provides a command line interface (CLI) on serial port running in parallel 
  to your Arduino sketch. It is not standalone program - this tool attaches
  to the user sketch (at compile time) and enchances any sketch (even empty one)
  with a shell.
 
+
  User can enter and execute commands (there are many built-in commands) in a way 
  similar to Linux shell while their sketch is running. ESPShell can be used either
  from Arduino IDE Serial Monitor or any other communication software like PuTTY
  or TeraTerm.
 
+
  It can be useful for developers who are interfacing new I2C or UART devices
  as espshell has commands to create/delete hardware interfaces, send/receive
  data. Interfacing GPS (uart-based) chips or GSM modems, making libraries for
- I2C devices; ESPShell simplifies file transfer between ESP32 and host PC by
- providing an FTP access along with generic linux-like file utilities
+ I2C devices
+ 
  
  
 HOW TO USE IT IN ARDUINO PROJECT:
 ---------------------------------
  This tool DOES NOT REQUIRE user to do ANY changes to their existing
- sketch/project, except for adding 
-
-  "#include "espshell.h" 
-
- somewhere in your sketch: once this is done ESPShell starts automatically 
- when your sketch starts. You can interact with ESPShell using either Arduino 
- IDE's Serial Monitor but for better experience a proper terminal software is 
- reccomended
+ sketch/project, except for adding "#include "espshell.h" somewhere in your
+ sketch: once this is done ESPShell starts automatically when your sketch 
+ starts. You can interact with ESPShell using either Arduino IDE's Serial 
+ Monitor but for better experience a proper terminal software is reccomended
 
 
 SHELL BRIEF DESCRIPTION
