@@ -1,0 +1,99 @@
+ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
+
+Squarewave generation and pulse counting
+----------------------------------------
+
+
+ESPShell includes ability to generate a squarewave signal on any pin with
+user configurable frequency and duty cycle. Frequency can be set from 1Hz
+up to 312 kHz with duty cycle ranging from 0 (=0%) to 1 (=100%). Default
+value for the duty cycle is 0.5 which means 50% duty cycle. LEDC driver is
+used for this squarewave generator.
+
+SQUAREWAVE GENERATOR
+--------------------
+
+Command "pwm" starts squarewave output on given pin:
+
+esp32#>pwm 2 1
+
+The command above starts a 1Hz squarewave on pin 2 (duty cycle is 50%)
+
+
+The duty cycle parameter can be set as third parameter to the "pwm" 
+command: set frequency on pin 2 to 5Hz, duty cycle around 10%:
+
+esp32#>pwm 2 5 0.1
+
+To stop squarewave generator on given pin use "pwm" command with just one 
+parameter. Example below shows how to stop squarewave generation on pin 2
+
+
+esp32#>pwm 2
+
+NOTE: some boards refuse to execute "pwm" commands soon after startup. The
+workaround is to execute the same command again :). working on it.
+
+
+PULSE COUNTER
+-------------
+
+Command "count" is used to count pulses in given pin. It takes up to 3 
+parameters: pin to count pulses on, which pulse edge to count (positive,
+negative or both) and a time interval during which pulses are counted.
+Command can be used with just one parameter - pin on which measurement are
+made. In that case time interval defaults to 1000 milliseconds and counter
+looks for positive pulse edges
+
+Command syntax is: "count PIN [TIME_MS [pos|neg|both]]" where PIN is a pin number, 
+"pos", "neg" and "both" are pulse edge types which we want to count and TIME_MS
+is the time during which measurements are made (default is 1000 ms). Last two
+parameters can be omitted. Their default values are "pos" and "1000".
+
+Pulse counting can be interrupted at any moment by pressing <Enter> in either 
+termianl software or in Arduino IDE Serial Monitor.
+
+Lets connect pin2 and pin4 with a jumper. Start a squarewave generator on pin2 
+and count pulses on pin4:
+
+esp32#>pwm 2 10
+esp32#>count 4
+% Counting pulses on GPIO4.. 10 pulses (1.000 sec)
+esp32#>
+
+
+COUNTING PULSES IN BACKGROUND (ASYNC "COUNT")
+---------------------------------------------
+
+"Count" is a blocking command: it blocks user from executing next commands until
+this one finishes. It is ok for most of use cases but sometimes we want to count 
+irregular pulses for a long period of time but still be able to use espshell command 
+line. 
+
+Typical scenario is to count pulses for indefinite long time and being able to read 
+the counter at any time and execute other commands. I.e. running "count" command in
+a background.
+
+One of such examples is counting pulses from the "door open/door closed" sensor: we don't
+know how often pulses will arrive, we don't know for how long we need to count it.
+
+Good news: it is possible to run "count" command in background: just use "count&" instead of 
+"count". This async command can be interrupted at any time with "kill" command. When 
+interrupted via "kill" command it will print its current pulses/timer measurements:
+
+
+  esp32#>count& 4 100000                               <-- start counting
+  % Async "count" command task ID is 3ffb8fdc
+  % Use "kill 3ffb8fdc" to stop command execution
+  % Counting pulses on GPIO4 (any key to abort)..
+  esp32#>
+  esp32#>kill 3ffb8fdc                                 <-- stop counting
+  34 pulses in 17.250 sec
+
+Note you can use your mouse to copy/paste "kill 3ffb8fdc" command
+
+
+
+NOTE: Use "pin X save" and "pin X load" to save/restore pin state. Configuring
+pin as a squarewave generator rewrites pin settings so previous settings can be
+lost. On "pin save" and "pin load" please refer to Pin_Commands.txt

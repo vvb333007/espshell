@@ -1,0 +1,295 @@
+ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
+
+
+ESP32 PINS (GPIOs)
+------------------
+
+ESP32 has many pins (GPIO) which can be configured to be either a
+general purpose pin (GPIO) or to bear some function: be a TX pin of
+a hardware UART interface or be a CLOCK line for an I2C interface
+for example.
+
+Some pins have system functions: so called "bootstrapping" pins.
+Their function is to tell the bootloader what to do on boot and
+how to initialize the hardware. It is ok to use them as long as 
+it does not interfere with booting process
+
+Some pins are reserved for internal use: for example pins 6-11 on
+most ESP32 Dev boards are used to access internal flash: you can play
+with these pins only if your program is fully in processor cache 
+(be within 64kb which is impossible when using espshell)
+
+Some pins are configured to be INPUT only and this can not be changed
+
+
+PURPOSE
+-------
+In ESPShell one can play with GPIOs using "pin" command which is used
+both for displaying pin information and configuring. Turning pin high
+or low, sending various pulse patterns through pins, setting pin direction 
+etc can be done without need to recompile user sketch
+
+ESPShell is able to read digital value on any GPIO: unlike digitalRead() which
+does not work with pins which are used as hardware interface pins (for example 
+one can not digitalRead() I2C lines). ESPShell uses low level access to pin
+values so it is completely ok to read values of actively working PWM pin for
+example. Command "pin NUM read" does this.
+
+ESPShell provides commands for
+
+  * Displaying pin information: mode (INPUT or OUTPUT), pull-up/pull-down
+    configuration, digital and analog pin value and some extra information
+  * Changing pin configuration, saving/restoring pin configuration
+  * Setting pin HIGH or LOW (including simple HIGH/LOW sequences)
+
+
+DISPLAYING PIN INFORMATION
+--------------------------
+To display informaton on arbitrary pin type "pin" followed by pin number.
+Example below displays GPIO 0,8,1 and 4 basic information:
+
+  esp32#>pin 0
+  % Pin 0 is strapping pin, available, not configured
+  % Mode: INPUT, PULL_UP,
+  % Input is routed through IO MUX
+  % Maximum current is 20 milliamps
+
+
+  esp32#>pin 8
+  % Pin 8 is **RESERVED**, available, not configured
+  % Mode: INPUT, OUTPUT, PULL_UP,
+  % Output via GPIO matrix, provides path for signal ID: 2
+  % Input via GPIO matrix, provides path for signal IDs: 2,
+  % Maximum current is 20 milliamps
+
+  esp32#>pin 1
+  % Pin 1 is used as "UART_TX"
+  % Mode: INPUT,  input is floating!
+  % Input is routed through IO MUX
+  % Maximum current is 20 milliamps
+
+  esp32#>pin 4
+  % Pin 4 is available, not configured
+  % Maximum current is 20 milliamps
+
+
+Note that there are **RESERVED** pins: these are used by SoC for its function.
+It could be FLASH memory access pins, or pins controlling external PSRAM.
+Manipulating these pins will likely crash your sketch and reboot ESP32a
+
+
+To get information on pin numbers and their availability one can try to
+display information on non-existing pin (pin 999 as an example):
+
+  esp32#>pin 999
+  % Available pin numbers are are 0..39, except 24,28,29,30,31,
+  % Invalid argument "999" ("? pin" for help)
+  esp32#>
+
+Output above tells the pin range and shows pins which simply do not 
+exists in this hardware 24,28,29,30,31
+
+
+SETTING PIN MODE, READING/WRITING PIN VALUES
+--------------------------------------------
+
+(No time to read? Scroll to Examples below!)
+
+Command "pin" takes multiple argumens which are processed in order
+from left to right. The first argument is a pin number and the rest
+of arguments are keywords to execute. One can think of arguments as
+of simple program to execute on given pin. 
+
+For example "pin 2 save out high load" is a valid command with 4 
+argument.
+
+Here is the full list of allowed keywords:
+
+ X       - A pin number to work with (see Example 7)
+out      - Set pin to be output (i.e. pinMode(OUTPUT))
+in       - Set pin to be input
+up       - Set weak internal pull-up (~45 kOhm)
+down     - Set weak internal pull-down
+open     - Set pin "open drain" option
+
+high     - Write logic "1" to the pin (digitalWrite(pin,HIGH)). Also sets OUTPUT
+           flag for the pin.
+low      - Write logic "0" to the pin. Also sets OUTPUT flag for the pin.
+seq X    - Send sequence number X over the pin. See documentation file
+          "docs/Pulse_Generator" on sequences and how to use them
+pwm X Y  - Enable frequency generator on fiven pin. X is the frequency in Hertz
+          and Y is the duty. Both parameters are mandatory. Setting frequency to 0
+          disables frequency generator. Y (duty) is a floating point number in
+          range (0..1)
+
+read    - Digital read.OUTPUT-only pin will be switched to INPUT-and-OUTPUT
+          automatically. Unlike noram digitalRead() this command is able to
+          read any GPIO regardless of its configuration and usage. Like this one
+          can read values from UART or I2C lines while they are actively used
+
+aread   - Analog read*
+
+delay X - Make a delay of X milliseconds before executing next
+          keyword. (see Example 5. below)
+
+save    - Save pin configuration. Each save rewrites previous save
+load    - Load pin configuration. reads previously saved data. reading does not
+          erase saved data.
+
+
+hold    - "freeze" pin state and output value. Frozen pin remains frozen after
+          reboot (as long as power to the chip is provided. rebooting via 
+          POWERUP unfreezes pin) See NOTE1 at the end of this document.
+release - "unfreeze" pin which was "frozen" by "pin X hold" See NOTE1 at the 
+          end of this document
+
+loop X  - repeat whole command X times. The "loop X" keyword must be the last
+          argument of the command. Pressing anykey in your terminal software
+          or sending any character from Arduino IDE Serial Monitor interrupts
+          loop
+
+Multiple keywords can be used in single "pin" command (separated by spaces):
+"pin 2 out open up" is a valid command, executing 3 keywords in sequence.
+Just like that you can think of "pin" command like it is a "sequence of commands
+for the pin". 
+
+
+Lets go through some simple examples which show the use of "pin" command: 
+it is much easier to learn from examples that just reading countless tables 
+and descriptions.
+
+
+Example 1. Dsiplay GPIO4 information:
+-------------------------------------
+
+   esp32#>pin 4
+
+
+Example 2. Set pin 33 to OUTPUT and INPUT, PULL_UP, and HIGH:
+------------------------------------------------------------------------
+
+   esp32#>pin 33 out in up high
+
+
+Example 3. Save pin state, configure it to OUTPUT, HIGH, then restore pin state:
+--------------------------------------------------------------------------------
+
+   esp32#>pin 33 save out high
+   esp32#>pin 33 load
+
+   NOTE: setting pin "low" or "high" implies pin is OUTPUT, so internally
+   "high" actually expanded to "out high", and above command can be written
+   as
+ 
+   esp32#>pin 33 save high
+   esp32#>pin 33 load
+
+
+Example 4. Read analog value from pin 33:
+-----------------------------------------
+   esp32#>pin 33 aread
+
+   NOTE: analog read command ("aread") is implemented via analogRead() call which
+   writes new configuration to the pin in the process of reading. In other words, 
+   after "pin 18 aread" command is executed  pin 18 gets reconfigured (does not
+   respond to digitalRead() afterwards). Use "save" and "load" keywords to 
+   preserve pin state:
+
+   esp32#>pin 33 read save aread load
+
+   Arguments are processed left to right: the command above perform a digitalRead()
+   on the pin, then saves its state, performs analogRead and restores pin state.
+
+
+Example 5, Save pin state, configure it for OUTPUT, set pin HIGH for 250 
+           milliseconds then set it LOW for 100ms, then HIGH again for 50ms and 
+           finally restore the pin configuration:
+-------------------------------------------------------------------------------
+
+  esp32#>pin 33 save high delay 250 low delay 100 high delay 50 load
+  
+  NOTE: although you can create simple signal patters with "delay" it is normally 
+        used for something simple, like relay control. Complex signal sequences 
+        could be configured with use of Pulse Generator see documentation files
+        "docs/Pulse_Generator.txt" and "docs/Tone_Generator_And_Counter.txt"
+
+  NOTE: Command "pin" can be interrupted during long (>5seconds) delays
+        by pressing any key in your terminal or sending any character in your
+        Arduino IDE Serial Monitor. Delays shorter than that are not interruptible
+        so one have to wait until delay is finished
+
+
+Example 7: Set pin 2 high, pin 3 low, wait for 1 second and invert pin values
+-----------------------------------------------------------------------------
+
+  esp32#>pin 2 high 3 low delay 1000 2 low 3 high
+
+
+Example 8: Blink LED on GPIO2 with 500ms delay, for 20 times
+------------------------------------------------------------
+
+  esp32#>pin 2 high delay 500 low delay 500 loop 20
+
+  NOTE: whenever "loop" keyword is used the "pin" commands become interruptible:
+        by pressing any key in your terminal or sending any character in your
+        Arduino IDE Serial Monitor you can abort the current command.
+
+
+Example 9: blink a led on GPIO2 with of its 30% brightness 
+----------------------------------------------------------
+
+
+  Here we need to adjust brightness so we need to use PWM (set the frequency 
+  to 5kHz and duty cycle to 30%):
+
+  esp32#>pin 2 pwm 5000 0.3 delay 500 pwm 0 0 delay 500 loop 999
+
+
+
+As you might notice from examples above, sometimes "pin" commands takes long time
+to execute: for example, when your command has "loop" or "delay" with big values 
+it might take tens of seconds or even minutes to complete. Of course this command
+can be interrupted at any time simple by pressing <Enter> (either in your terminal
+software or Arduino IDE Serial Monitor). 
+
+But what if we don't want it to be interrupted?
+What if we just want this command to execute in background? 
+
+Yes, it is possible: just use "pin&" instead of "pin". The "pin&" command executes 
+in background. Below is the simple example of a "blinking led": pin 2 toggled HIGH 
+and LOW every 100ms for quite long time.
+
+  esp32#>pin& 2 low de 100 high de 100 loop 999999
+  % Async "pin" command task ID is 3ffb9038
+  % Use "kill 3ffb9038" to stop command execution
+  esp32#>% Repeating 999999 times, press <Enter> to abort
+
+  esp32#>  
+
+You may notice from the example above, that command "pin" is started as a /separate task/
+which either finish by itself or can be finished manually with "kill" command. Just copy
+and paste this "kill 3ffb9038" line and press <Enter> to stop the task.
+
+NOTE: using command "kill" outside this scope is dangerous: wrong argument (a task ID) will
+cause immediate system crash.
+
+
+Some more examples:
+
+pin 12 in up                - are equivalent of pinMode(12, INPUT_PULLUP)
+pin 12 read save aread load - read digital and analog values of a pin
+pin 12 hold                 - make pin to freeze its configuration & output value
+pin 12 release              - unfreeze pin
+
+
+(*)
+Keyword "hold" makes pin to hold its state & output level until it 
+release either by POWERDOWN or "pin release" command. When pin is frozen all 
+attempts to write or configure it will be ignored by hardware. However when 
+pin is released then it rereads last configuration issued:
+
+Lets say we freeze pin 2 and then write 1 to it: since pin is frozen, it will
+not change it walue from 0 to 1. However when we release the pin it immediately
+becomes "logic 1" as if writing of an "1" was queued
+
+
