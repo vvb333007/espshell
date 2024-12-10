@@ -285,20 +285,22 @@ one_more_try:
             // save command handler (exec_in_background() will need it)
             aa->gpp = key[i].cb;
 
-            // Check if command (i.e. argv[0]) has "&" at the end. If this is the case then run corresponding command handler in background
+            // Check if command (i.e. argv[0]) has "&" at the end. 
+            // If this is the case then run corresponding command handler in background
+            bad = (argv[0][l] == '&') ? exec_in_background(aa) : key[i].cb(argc, argv);
+#if 0
             if (argv[0][l] == '&')
               bad = exec_in_background(aa); // call via wrapper (starts separate task)
             else
               bad = key[i].cb(argc, argv);  // call directly
-
-            // keywords[i] is not a valid pointer anymore as cb() can change the keywords pointer
-            // keywords[0] is always valid
+#endif
             if (bad > 0)
-              q_printf("%% <e>Invalid %u%s argument \"%s\" (\"? %s\" for help)</>\r\n",bad, number_english_ending(bad),argv[bad], argv[0]);
+              q_printf("%% <e>Invalid %u%s argument \"%s\" (\"? %s\" for help)</>\r\n",bad, number_english_ending(bad), bad < argc ? argv[bad] : "FIXME", argv[0]);
             else if (bad < 0)
               q_printf("%% <e>One or more arguments missing(\"? %s\" for help)</>\r\n", argv[0]);
             else
-              i = 0;  // make sure keywords[i] is a valid pointer
+              // make sure keywords[i] is a valid pointer (change_command_directory() changes keywords list so keywords[i] might be invalid pointer)
+              i = 0;  
             break;
           }  // if callback is provided
         }    // if argc matched
