@@ -6,40 +6,54 @@
  * Feel free to use it as your wish, however credits would be greatly appreciated.
  */
 
+  // !! READ ME FIRST !!
+ //
+ // 1) Inclusion of this file will enable CLI automatically
+ // 2) No functions need to be called in order to use the shell
+ // 3) There are Compile Time Settings below to tweak ESP32Shell behaviour
+ // 4) Console on USB (Serial is of USBCDC class) is not supported yet
+ // 5) Using CompileTimeSettings section below disable code which is not needed to decrease the memory footprint
+
 #ifndef espshell_h
 #define espshell_h
 
 
 // -- Compile-time ESPShell settings --
-//#define SERIAL_IS_USB           // Not yet
-//#define ESPCAM                  // Include ESP32CAM commands (read extra/README.md).
+//
+//#define SERIAL_IS_USB          // Not yet
+
 #define AUTOSTART 1              // Set to 0 for manual shell start via espshell_start().
-#define WITH_COLOR 1             // Enable terminal colors support
-#define AUTO_COLOR 1             // Let ESPShell decide wheither to enable coloring or not
+#define STACKSIZE (5 * 1024)     // Shell task stack size
+
 #define WITH_HELP 1              // Set to 0 to save some program space by excluding help strings/functions
 #define WITH_HISTORY 1           // Set to 0 to when looking for memory leaks
 #define HIST_SIZE 20             // History buffer size (number of commands to remember)
-#define WITH_FS 1                // Filesystems (fat/spiffs/littlefs) support (cp,mv,insert and delete are not implemented yet)
+
+#define WITH_ESPCAM 0            // Include AiThinker ESP32CAM commands
+
+#define STARTUP_PORT UART_NUM_0  // Uart number (or 99 for USBCDC) where shell will be deployed at startup
+#define STARTUP_ECHO 1           // echo mode at espshell startup (-1=blackhole, 0=no echo or 1=echo)
+#define WITH_COLOR 1             // Enable terminal colors support 
+#define AUTO_COLOR 1             // Let ESPShell decide wheither to enable coloring or not. Command "color on|off|auto" is about that
+
+#define WITH_FS 1                // Filesystems (fat/spiffs/littlefs) support
+#define MOUNTPOINTS_NUM 5        // Max number of simultaneously mounted filesystems
 #define WITH_SPIFFS 1            // support SPIF filesystem
 #define WITH_LITTLEFS 1          //   --    LittleFS
-#define WITH_FAT 1               //   --    FAT
+#define WITH_FAT 1               //   --    FAT (enable it if you want to enable WITH_SD below )
 #define WITH_SD 1                // Support FAT filesystem on SD/TF card over SPI
-#define STARTUP_PORT UART_NUM_0  // Uart number (or 99 for USBCDC) where shell will be deployed at startup
-#define SEQUENCES_NUM 10         // Max number of sequences available for command "sequence"
-#define MOUNTPOINTS_NUM 5        // Max number of simultaneously mounted filesystems
-#define STACKSIZE (5 * 1024)     // Shell task stack size
 #define DIR_RECURSION_DEPTH 127  // Max directory depth TODO: make a test with long "/a/a/a/.../a" path
-#define MEMTEST 1                // hunt for espshell's memory leaks
-#define DO_ECHO 1                // echo mode at espshell startup.
+
+#define SEQUENCES_NUM 10         // Max number of sequences available for command "sequence"
+
+#define MEMTEST 0                // hunt for espshell's memory leaks
 
 // -- ESPShell public API --
-// 1) Access sketch variables from ESPShell while sketch is running
-//    Yes it is possible, you just need to /register/ your variable by using
-//    "convar_add(VAR)"" macro. Once registered, variables are available for 
-//    read/write access (via "var" command). Variable types supported: pointers,
-//    integers and floating point types both signed and unsigned
+// 1) Access sketch variables from ESPShell while sketch is running.   Yes it is possible, you just need to /register/ your variable by using
+//    "convar_add(VAR)" macro. Once registered, variables are available for read/write access (via "var" command). Variable types supported: 
+//    pointers, integers and floating point types both signed and unsigned
 // 
-//    Example: register two sketch variables in ESPShell
+//    Example: register 3 sketch variables in ESPShell
 //    ...
 //    int some_variable;
 //    const char *ptr;
@@ -65,7 +79,7 @@
 extern "C" {
 #endif
 
-// 2) Start ESPShell manually.
+// 2) Start ESPShell manually (case when AUTOSTART is 0).
 // By default espshell shell autostarts. If AUTOSTART is set to 0 in espshell.h then
 // user sketch must call espshell_start() to manually start the shell. Regardless of AUTOSTART:
 // a shell which was closed by "exit ex" command it is ok to call this function to restart the shell
@@ -74,7 +88,7 @@ extern "C" {
 void espshell_start();
 #endif
 
-// 3) Execute an arbitrary shell command (\n are allowed for multiline).
+// 3) Execute an arbitrary shell command (\n are allowed for multiline, i.e. multiple commands at once).
 // This function injects its argument to espshell's input stream as if it was typed by user. 
 // It is an asyn call, returns immediately. Next call can be done only after espshell_exec_finished() 
 // returns /true/
