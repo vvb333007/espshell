@@ -32,8 +32,8 @@ static int pwm_enable(unsigned int pin, unsigned int freq, float duty) {
   if (duty > 1.0f) duty = 1.0f;
   if (freq < 78722) resolution = 10;  //higher duty parameter resolution on frequencies below 78 kHz
 
-  pinMode2(pin, OUTPUT);
-  ledcDetach(pin);
+  pinMode(pin, OUTPUT);
+  //ledcDetach(pin);
 
   if (freq) {
     ledcAttach(pin, freq, resolution);
