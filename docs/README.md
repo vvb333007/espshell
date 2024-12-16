@@ -7,7 +7,7 @@ BIG FAT WARNING: Documentation is a bit outdated in the part related to installa
 ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
 
 <br>
-  Русская документация находится тут: https://github.com/vvb333007/espshell/tree/main/docs/ru_RU/
+  Р СѓСЃСЃРєР°СЏ РґРѕРєСѓРјРµРЅС‚Р°С†РёСЏ РЅР°С…РѕРґРёС‚СЃСЏ С‚СѓС‚: https://github.com/vvb333007/espshell/tree/main/docs/ru_RU/
  
 
 
