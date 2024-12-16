@@ -8,10 +8,16 @@
 
 #if COMPILING_ESPSHELL
 
-// -- Shell commands handlers --
-// These are called by espshell_command() processor in order to execute commands. Function names are pretty selfdescriptive
+// Shell commands handlers.
+//
+// These are called by espshell_command() processor in order to execute commands. Function names are pretty selfdescriptive:
+// command handler function names always start with "cmd_" and then follows with either command name (e.g. cmd_pin) or command 
+// directory + command name (e.g. cmd_files_write()).
+//
+// Handlers have access to user input via argc/argv mechanism. Return value is 0 if it was success, or contains an index of a failed
+// argument. return value of -1 means "not enough/too many arguments"
 
-#if ESPCAM
+#if WITH_ESPCAM
 static int cmd_cam(int, char **);
 #endif
 
@@ -112,7 +118,6 @@ static int cmd_tty(int, char **);
 
 // Custom uart commands (uart subderictory or uart command tree)
 // Those displayed after executing "uart 2" (or any other uart interface)
-// TAG:keywords_uart
 //
 static const struct keywords_t keywords_uart[] = {
 
@@ -705,25 +710,23 @@ static const struct keywords_t keywords_main[] = {
   { "pwm", cmd_pwm, 1, HIDDEN_KEYWORD },
 
   // Pulse counting/frequency meter
-  { "count", cmd_count, 3,
-    HELPK("% \"<*>count PIN [DURATION [neg|pos|both]]</>\"\r\n%\r\n"
-          "% Count pulses (negative/positive edge or both) on pin PIN within DURATION time\r\n"
-          "% Time is measured in milliseconds, optional. Default is 1000\r\n"
-          "% Pulse edge type is optional. Default is \"pos\"\r\n"
+  { "count", cmd_count, 2,
+    HELPK("% \"<*>count PIN</> [<1>DURATION</>]\"\r\n%\r\n"
+          "% Count pulses on pin PIN within DURATION time, time is measured in \r\n"
+          "% milliseconds, optional. Default is 1000\r\n"
           "%\r\n"
-          "% Ex.: \"count 4\"           - count positive edges on pin 4 for 1000ms\r\n"
-          "% Ex.: \"count 4 2000\"      - count pulses (falling edge) on pin 4 for 2 sec.\r\n"
-          "% Ex.: \"count 4 2000 both\" - count pulses (falling and rising edge) on pin 4 for 2 sec.\r\n%\r\n"
+          "% Ex.: \"count 4\"         - Count pulses & measure frequency on pin4 for 1000ms\r\n"
+          "% Ex.: \"count 4 2000\"    - Same as above but measurement time is 2 seconds\r\n"
+          "% Ex.: \"count& 4 999999\" - Count pulses in background for 1000 seconds\r\n%\r\n"
+          "% Ex.: \"count 4 clear\"   - Set counter to 0 (running or stopped are ok)\r\n%\r\n"
           "% Use \"<i>count&</>\" instead of \"<i>count</>\" to execute in background\r\n"),
     "Pulse counter" },
 
-  { "count", cmd_count, 2, HIDDEN_KEYWORD },   //hidden "count" with 2 args
   { "count", cmd_count, 1, HIDDEN_KEYWORD },   //hidden with 1 arg
-  { "count&", cmd_count, 3, HIDDEN_KEYWORD },  //hidden "count&" with 3 args
   { "count&", cmd_count, 2, HIDDEN_KEYWORD },  //hidden "count&" with 2 args
   { "count&", cmd_count, 1, HIDDEN_KEYWORD },  //hidden "count&" with 1 arg
 
-#if ESPCAM
+#if WITH_ESPCAM
   { "camera", cmd_cam, 1, 
     HELPK("% \"camera up|down|settings|capture|filesize|transfer\" - Camera commands:\n\r" \
           "%\n\r" \
@@ -774,7 +777,7 @@ static const struct keywords_t *keywords = keywords_main;
 // Called by cmd_uart_if, cmd_i2c_if,cmd_seq_if, cam_settings and cmd_files_if to
 // set new command list (command directory) and displays user supplied text
 // /Context/ - arbitrary number which will be stored
-// /dir/     - new keywords list (one of keywords_main[], keywords_uart[] tc)
+// /dir/     - new keywords list (one of keywords_main[], count"[] tc)
 // /prom/    - prompt to use
 // /text/    - text to be displayed when switching command directory
 //
