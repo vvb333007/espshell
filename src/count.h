@@ -6,89 +6,322 @@
  * Feel free to use it as your wish, however credits would be greatly appreciated.
  */
 
+
+ // -- Pulse Counter (PCNT) --
+//
+ // ESP32 has 8 pulse counter units each of which is equipped with 2 channels. We use only channel #0 on every unit.
+ // ESPShell selects first available unit for its operations: it checks for units in range [pcnt_unit .. PCNT_UNITS_MAX]
+ // By default /pcnt_unit/ is set to PCNT_UNIT_0 which allows ESPShell to use any of PCNT units. In case user skript uses 
+ // some units , the pcnt_unit value can be adjusted to prevent ESPShell from using these reserved PCNT's.
+ //
+ // There is a background version of "count" command so we have to use locking when accessing shared objects: count_lock() and count_unlock()
+ // arer just for that
+
 #if COMPILING_ESPSHELL
 
-#define PULSE_WAIT 1000      // default counting time, 1000ms
+#define PULSE_WAIT     1000  // Default counting time, 1000ms
 #define PCNT_OVERFLOW 20000  // PCNT interrupt every 20000 pulses
+#define UNUSED_PIN       -1  // Pin number when we don't need the function
+
+static int               pcnt_channel = PCNT_CHANNEL_0;  // Channel to use (always channel0), convar, 
+static int               pcnt_unit = PCNT_UNIT_0;        // First PCNT unit which is allowed to use by ESPShell,convar (accessible thru "var" command)
+static int               pcnt_counters = 0;                   // Number of counters currently running. Protected by count_lock()
+static xSemaphoreHandle  pcnt_mux = NULL;                // counters & ,in_use lock
+
+// Counter structure. Each element corresponds to separate PCNT unit
+// (i.e. entry 5 corresponds to PCNT unit5). Counters currently running have their in_use set to 1. 
+// When counter stops its information is filled in this structure: number of pulses received, pin number, measurement interval and so on
+// NOTE: /overflow/ member is incremented in ISR 
+static volatile struct {
+
+  volatile unsigned int  overflow;  // incremented on every PCNT_OVERFLOW pulses
+  volatile unsigned int  count;              // Pulses counted (only valid for stopped counters) 
+  volatile unsigned int  interval;           // Measurement interval in milliseconds
+  volatile unsigned char pin;                // Pin where pulses were counted
+  volatile unsigned char in_use;             // non-zero means pcnt unit is used by ESPShell
+  volatile unsigned int  tsta;               // millis() just before counting starts
+  volatile unsigned int  taskid;             // ID of the task responsible for counting
+} units[PCNT_UNIT_MAX] = { 0 };
 
 
-// PCNT interrupt handler. Called every 20 000 pulses 2 times :).
-// i do not know why. should read docs better
-static unsigned int count_overflow = 0;
+// Failsafe locking
+#define count_lock()   do { if (pcnt_mux) xSemaphoreTake(pcnt_mux, portMAX_DELAY); } while( 0 )
+#define count_unlock() do { if (pcnt_mux) xSemaphoreGive(pcnt_mux); } while( 0 )
 
-static void IRAM_ATTR pcnt_interrupt(void *arg) {
-  count_overflow++;
-  PCNT.int_clr.val = BIT(PCNT_UNIT_0);
+// This must be called from main espshell's "initonce", at least once
+// TODO: should it be constructor function?
+//
+static void count_init() {
+
+  // Attempt to create mutex.
+  if (!pcnt_mux)
+    if ((pcnt_mux = xSemaphoreCreateMutex()) == NULL)
+      q_print("% WARNING: PCNT module failed to fully initialize\r\n");
 }
 
 
-//TAG:count
-//"count PIN [DELAY_MS [pos|neg|both]]"
+// Per unit service ISR. I were not able to get global ISR version working: two counters
+// running in parallel behave chaotically. Interrupts are generated only by unit#0. 
+//Per unit version works as intended
 //
-static int pcnt_channel = PCNT_CHANNEL_0;
-static int pcnt_unit = PCNT_UNIT_0;
+static void IRAM_ATTR pcnt_unit_interrupt(void *arg) {
+  pcnt_unit_t unit = (unsigned int )arg;
+  units[unit].overflow++;
+  PCNT.int_clr.val = BIT(unit);
+ // pcnt_counter_clear(unit); //TODO: check if we need to clear the counter
+}
 
+
+// Find first unused entry in units[] array. This is used to initialize & start new counter.
+// Entries are searched from beginning to the end (from PCNT0 to PCNT7), however entries which
+// number is equal or less than /pcnt_unit/ convar are ignored. This 'offset' is required for cases
+// when ESPShell interferes with sketch's PCNT code
+//
+// It alo increments global active counters count. When it hits "1" then the global ISR is installed.
+// Once it reaches 0 the global PCNT ISR get uninstalled
+static int count_claim_unit() {
+  pcnt_unit_t i;
+
+  count_lock();
+  for (i = pcnt_unit; i < PCNT_UNIT_MAX; i++) {
+    if (!units[i].in_use) {
+
+      // found one. mark it as /used/ and clear its counters
+      units[i].in_use = 1;
+      units[i].count = units[i].overflow = units[i].interval = units[i].pin = units[i].tsta = 0;
+      units[i].taskid = current_task_id();
+      pcnt_counters++;
+      count_unlock();
+      return (int)i;
+    }
+  }
+  // Nothing found. 
+  count_unlock();
+  q_printf("%% All PCNT units are in use (units %u .. %u)\r\n", pcnt_unit, PCNT_UNIT_MAX - 1);
+  if (pcnt_unit != PCNT_UNIT_0)
+    HELP(q_print("% Try to decrease \"pcnt_unit\" variable: (\"var pcnt_unit 0\")\r\n"));
+  return -1;
+}
+
+// Mark PCNT unit as /unused/
+static void count_release_unit(int unit) {
+  count_lock();
+  if (unit < PCNT_UNIT_MAX && unit >= 0 && units[unit].in_use) {
+    units[unit].in_use = 0;
+    units[unit].taskid = 0;
+    --pcnt_counters;
+  }
+  count_unlock();
+}
+
+// must be called before pcnt_unit_release();
+// disables events and interrupts on unit. If it was the last unit used then global ISR handler
+// is unregistered too
+//
+static void count_release_interrupt(pcnt_unit_t unit) {
+  count_lock();
+  pcnt_event_disable(unit, PCNT_EVT_H_LIM);
+
+  q_printf("%% Removing ISR for PCNT unit%u\r\n",unit);
+  pcnt_isr_handler_remove(unit);
+
+  if (pcnt_counters < 2) {
+    q_print("% Last counter is stopped: unregistering PCNT service ISR\r\n");
+    pcnt_isr_service_uninstall();
+  }
+  count_unlock();
+}
+
+// Enable H_LIM event & enable interrupts on unit
+// If it is the first counter used by ESPShell then global PCNT ISR handler is registered
+// 
+static void count_claim_interrupt(pcnt_unit_t unit) {
+  count_lock();
+  pcnt_event_enable(unit, PCNT_EVT_H_LIM);
+  pcnt_event_disable(unit, PCNT_EVT_ZERO);
+  if (pcnt_counters == 1) {
+    q_print("% Registering PCNT service ISR\r\n");
+    pcnt_isr_service_install(0);
+  }
+  q_printf("%% Adding ISR handler for unit %u\r\n",unit);
+  pcnt_isr_handler_add(unit, pcnt_unit_interrupt, (void *)unit);
+  count_unlock();
+}
+
+// For stopped counters exact value is returned
+// For running counters an approximate value is returned
+// Read pulses count, calculates frequency and returns time interval during which measurement were made
+//
+static unsigned int count_read_counter(int unit, unsigned int *freq, unsigned int *interval) {
+
+  int16_t count = 0;
+  unsigned int cnt, tsta;
+
+  if (unit < 0  && unit >= PCNT_UNIT_MAX)
+    abort(); //must not happen
+
+  // Find out number of pulses counted so far & frequency
+  //count_lock();
+  // 1) Counter is running; reading a live counter will result of approximate values
+  if (units[unit].in_use) {
+    pcnt_get_counter_value(unit, &count);                               // current counter value ([0 .. 20000])
+    cnt = units[unit].overflow * PCNT_OVERFLOW + (unsigned int)count;   // counter total
+    tsta = millis() - units[unit].tsta;                                 // milliseconds elapsed so far (for the frequency calculation)
+  } else {
+    // 2) Counter is stopped; values are already in units[]
+    cnt = units[unit].count;                                  // Pulse count is calculated already for stopped counters
+    tsta = units[unit].interval;                              // Total time spent by command is stored in units[unit].interval
+  }
+  //count_unlock();
+
+  if (freq)
+    *freq = tsta ? (uint32_t)((uint64_t)cnt * 1000ULL / (uint64_t)tsta) : 0; // TODO: should probably use uint64_t here
+
+  if (interval)
+    *interval = tsta;
+
+  return cnt;
+}
+
+// Used by "count PIN clear" to clear counters for given pin
+// Clears all counters (running or stopped) which were associated with given pin
+// or are associated now
+//
+static int count_clear_counter(int pin) {
+  int unit;
+  count_lock();
+  for (unit = pcnt_unit; unit < PCNT_UNIT_MAX; unit++) {
+    if (units[unit].pin == pin) {
+      if (units[unit].in_use)
+        pcnt_counter_pause(unit);
+      pcnt_counter_clear(unit);
+      units[unit].count = units[unit].overflow = units[unit].interval = 0;
+      if (units[unit].in_use) {
+        pcnt_counter_resume(unit);
+        units[unit].tsta = millis();
+      } else {
+        // its ok to clear pin,taskid & tsta on stopped counter
+        units[unit].pin = units[unit].taskid = units[unit].tsta = 0;
+      }
+      q_printf("%% %s counter#%u has been cleared\r\n",units[unit].in_use ? "Running" : "Stopped",unit);
+    }
+  }
+  count_unlock();
+  return 0;
+}
+
+// Display counters (stopped or running. information is retained on stopped counters)
+// This one is called from cmd_show(...)
+//
+static int count_show_counters() {
+
+  int i;
+  unsigned int cnt, interval;
+  unsigned int freq;
+  const char *st;
+
+  q_print("<r>"
+          "%PCNT|GPIO#|  Status |   TaskID   | Pulse count | Time, msec | Frequency  </>\r\n"
+          "%----+-----+---------+------------+-------------+------------+------------\r\n");
+
+  count_lock();
+  for (i = 0; i < PCNT_UNIT_MAX; i++) {
+    cnt = count_read_counter(i,&freq,&interval);
+    if (units[i].in_use) st = "<i>Running</>"; else
+    if (units[i].count || units[i].overflow || units[i].pin) st = "<1>Stopped</>"; else st = "Unused!";
+  #pragma GCC diagnostic ignored "-Wformat"
+    q_printf("%%  %d | % 3u | %s | 0x%08x | % 11u | % 10u | % 8u Hz\r\n", i, units[i].pin, st, units[i].taskid, cnt, interval, freq);
+  #pragma GCC diagnostic warning "-Wformat"
+  }
+
+  if (pcnt_counters) {
+    q_printf("%% %u counter%s is currently in use\r\n",pcnt_counters,pcnt_counters == 1 ? "" : "s");
+    HELP(q_print("% Use command \"<i>kill TASK_ID</>\" to stop a running counter\r\n"));
+  }
+  else
+    q_print("% All counters are stopped\r\n");
+  count_unlock();
+  return 0;
+}
+
+//TAG:count
+//"count PIN [DELAY_MS]"
+// Count pulses on given pin
+//
 static int cmd_count(int argc, char **argv) {
 
   pcnt_config_t cfg = { 0 };
   unsigned int pin, wait = PULSE_WAIT;
   int16_t count;
+  int unit;
+  
+  if (argc < 2)
+    return -1;
 
-  if (!pin_exist((cfg.pulse_gpio_num = pin = q_atol(argv[1], 999))))
+  if (!pin_exist((pin = q_atol(argv[1], 999))))
     return 1;
 
-  cfg.ctrl_gpio_num = -1;  // don't use "control pin" feature
-  cfg.channel = pcnt_channel;
-  cfg.unit = pcnt_unit;
-  cfg.pos_mode = PCNT_COUNT_INC;
-  cfg.neg_mode = PCNT_COUNT_DIS;
-  cfg.counter_h_lim = PCNT_OVERFLOW;
+  // "count X clear" command?
+  if (argc > 2)
+    if (!q_strcmp(argv[2],"clear"))
+        return count_clear_counter(pin);
 
-  // user has provided second argument?
-  if (argc > 2) {
-    if ((wait = q_atol(argv[2], DEF_BAD)) == DEF_BAD)
-      return 2;
-
-    //user has provided 3rd argument?
-    if (argc > 3) {
-      if (!q_strcmp(argv[3], "pos")) { /* default*/
-      } else if (!q_strcmp(argv[3], "neg")) {
-        cfg.pos_mode = PCNT_COUNT_DIS;
-        cfg.neg_mode = PCNT_COUNT_INC;
-      } else if (!q_strcmp(argv[3], "both")) {
-        cfg.pos_mode = PCNT_COUNT_INC;
-        cfg.neg_mode = PCNT_COUNT_INC;
-      } else
-        return 3;
-    }
+  // Allocate new counter unit
+  if ((unit = count_claim_unit()) < 0) {
+    q_print(Failed);
+    return 0;
   }
 
+  // Configure counting unit
+  cfg.pulse_gpio_num = pin;          // pin where we count pulses
+  cfg.ctrl_gpio_num = UNUSED_PIN;    // don't use "control pin" feature
+  cfg.channel = pcnt_channel;        // Normally CHANNEL_0 but can be changed via convar
+  cfg.unit = unit;                   // Counter unit number. From 0 to 7 on ESP32
+  cfg.pos_mode = PCNT_COUNT_INC;     // Increase counter on positive edge
+  cfg.neg_mode = PCNT_COUNT_DIS;     // Do nothing on negative edge
+  cfg.counter_h_lim = PCNT_OVERFLOW; // Higher limit is 20000 pulses and then an interrupt is generated
+
+  // Has user provided second argument? Must be valid pin number
+  if (argc > 2)
+    if ((wait = q_atol(argv[2], DEF_BAD)) == DEF_BAD) {
+      count_release_unit(unit);
+      return 2;
+    }
+
+  units[unit].pin = pin;
+  units[unit].interval = wait; // store planned time, update it with real one later
+  
   q_printf("%% Counting pulses on GPIO%d...", pin);
   if (is_foreground_task())
     HELP(q_print("(press <Enter> to stop counting)"));
   q_print(CRLF);
 
-
+  // Configure selected PCNT unit, stop and clear it
   pcnt_unit_config(&cfg);
-  pcnt_counter_pause(PCNT_UNIT_0);
-  pcnt_counter_clear(PCNT_UNIT_0);
-  pcnt_event_enable(PCNT_UNIT_0, PCNT_EVT_H_LIM);
-  pcnt_isr_register(pcnt_interrupt, NULL, 0, NULL);
-  pcnt_intr_enable(PCNT_UNIT_0);
+  pcnt_counter_pause(unit);
+  pcnt_counter_clear(unit);
 
-  // reset & start counting for /wait/ milliseconds
-  count_overflow = 0;
-  pcnt_counter_resume(PCNT_UNIT_0);
+  // Allocate & attach interrupt handler for the unit
+  count_claim_interrupt(unit);
+
+  // Start counting for /wait/ milliseconds
+  units[unit].tsta = millis(); // TODO: make our own q_millis()
+  pcnt_counter_resume(unit);
   wait = delay_interruptible(wait);
-  pcnt_counter_pause(PCNT_UNIT_0);
+  pcnt_counter_pause(unit);
 
-  pcnt_get_counter_value(PCNT_UNIT_0, &count);
+  pcnt_get_counter_value(unit, &count);
 
-  pcnt_event_disable(PCNT_UNIT_0, PCNT_EVT_H_LIM);
-  pcnt_intr_disable(PCNT_UNIT_0);
+  count_release_interrupt(unit);
+  units[unit].count = units[unit].overflow * PCNT_OVERFLOW + (unsigned int)count;
 
-  count_overflow = count_overflow / 2 * PCNT_OVERFLOW + count;
-  q_printf("%% %u pulses in %.3f seconds (%.1f Hz)\r\n", count_overflow, (float)wait / 1000.0f, count_overflow * 1000.0f / (float)wait);
+  // real value. it will be different from planned value if command "count" was interrupted
+  units[unit].interval = wait;
+
+  count_release_unit(unit);
+  q_printf("%% %u pulses in %.3f seconds (%.1f Hz, %u interrupts)\r\n", units[unit].count, (float)wait / 1000.0f, units[unit].count * 1000.0f / (float)wait,units[unit].overflow);
   return 0;
 }
+
+
 #endif // #if COMPILING_ESPSHELL
