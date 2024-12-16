@@ -25,6 +25,8 @@ static INLINE int is_foreground_task() {
   return shell_task == xTaskGetCurrentTaskHandle();
 }
 
+#define current_task_id() (unsigned int)(xTaskGetCurrentTaskHandle())
+
 // check if ESPShell's task is already created
 static INLINE bool espshell_started() {
   return shell_task != NULL;
