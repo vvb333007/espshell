@@ -6,6 +6,8 @@
  * Feel free to use it as your wish, however credits would be greatly appreciated.
  */
 
+//TODO: find an original copyright notice of EditLine library
+
 #if COMPILING_ESPSHELL
 
 
@@ -66,17 +68,12 @@ static int OldPoint;
 static int Point;
 static int PushBack;
 static int Pushed;
-static bool ColorAuto = AUTO_COLOR;
-static bool Color = false;      // Enable coloring
-static bool Exit = false;       // True == close the shell and kill its FreeRTOS task.
 static const char *Input = "";  // "Artificial input queue". if non empty then symbols are
                                 // fed to TTYget as if it was user input. used by espshell_exec()
 static unsigned int Length;
 static unsigned int ScreenCount;
 static unsigned int ScreenSize;
 static bool History = true;
-
-static int Echo = DO_ECHO;  // Runtime echo flag: -1=silent,0=off,1=on
 
 static unsigned char *editinput();
 
@@ -857,8 +854,9 @@ readline(const char *prompt) {
 
 
 // Add an arbitrary string p to the command history.
+// Repeating strings are discarded
 //
-static void rl_add_history(char *p) {
+static void history_add_entry(char *p) {
   if (p && *p)
     if (!H.Size || (H.Size && strcmp(p, (char *)H.Lines[H.Size - 1])))
       hist_add((unsigned char *)p);
