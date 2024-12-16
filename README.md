@@ -100,14 +100,4 @@ one can disable filesystem support (all, or unused only), disable command histor
 support, decrease number of available sequences or/and mountpoints
 
 
-NOTE:
------
-This shell is about hardware. Thats why ere are no commands like "ping" or any other
-higher level commands. There are million commands to implement but I only implement those
-i use in my debugging/development process. What commands I miss right now is triggers &
-pattern generation :). Also I try to keep it small: it is just 1 file and I want to
-keep it like that
-
-The shell itself is one single .c file; you can use supplied example_blink.ino sketch as an 
-example: it is a simple LED blink sketch.
 
