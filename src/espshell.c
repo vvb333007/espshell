@@ -9,7 +9,7 @@
 #define COMPILING_ESPSHELL 1  // dont touch this!
 
 
-//TAG:limits
+// Limits 
 #define MAX_PROMPT_LEN 16      // Prompt length ( except for PROMPT_FILES), max length of a prompt (see TAG:prompts).
 #define MAX_PATH 256           // max path len
 #define MAX_FILENAME MAX_PATH  // max filename len (equal to MAX_PATH for now)
@@ -19,7 +19,6 @@
 #define I2C_DEF_FREQ 100000
 #define ESPSHELL_MAX_INPUT_LENGTH 500
 
-//TAG:prompts
 // Prompts used by command subdirectories
 #define PROMPT "esp32#>"                // Main prompt
 #define PROMPT_I2C "esp32-i2c%u>"       // i2c prompt
@@ -29,6 +28,7 @@
 #define PROMPT_FILES "esp32#(%s%s%s)>"  // File manager prompt (color tag, path, color tag)
 #define PROMPT_SEARCH "Search: "        // History search prompt
 #define PROMPT_ESPCAM "esp32-cam>"      // ESPCam settings directory
+
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -73,12 +73,10 @@
 #if SOC_SDMMC_IO_POWER_EXTERNAL
 #  include <sd_pwr_ctrl_by_on_chip_ldo.h>
 #endif
-#if ESPCAM
-#  include <esp_camera.h>
-#endif
+#include <esp_camera.h>
 
-// Pickup compile-time setting overrides if any from "espshell.h" or "extra/espshell.h"
-// Pickup convar_add() definition or provide our own
+// Pickup compile-time setting
+// Pickup convar_add() definition
 #include "espshell.h"
 
 // GCC-specific stuff
@@ -191,32 +189,38 @@ static const char *VarOops = "<e>% Oops :-(\r\n"
 // Sooner or later it will be better 
 //
 
+
+// common macros used by keywords trees
 #include "keywords_defs.h"      
-#include "memory.h"         // memory leaks detection & memory-related commands
 
 // Console abstraction layer: provides generic read/write operation on UART or USBCDC device. Can be overriden with
 // any other implementation to support specific devices
 #include "console.h"
 
+
+#include "qlib.h"               // library used by espshell. various helpers.
 // Really old (but refactored) version of editline. Probably from 80's. Works well, rock solid :)
 #include "editline.h"
 #include "userinput.h"          // userinput tokenizer and reference counter
-#include "qlib.h"               // library used by espshell. various helpers.
+
 #include "convar.h"             // code for registering/accessing sketch variables
 #include "task.h"               // main shell task, async task helper, misc. task-related functions
 #include "keywords.h"           // all command trees
-#include "sequence.h"
-#include "pwm.h"
-#include "pin.h"
-#include "count.h"
-#include "i2c.h"
-#include "spi.h"
-#include "uart.h"
+#include "sequence.h"           // RMT component (sequencer)   
+#include "pwm.h"                // PWM component
+#include "pin.h"                // GPIO manipulation
+#include "count.h"              // Pulse counter / frequency meter
+#include "i2c.h"                // i2c generic interface
+#include "spi.h"                // spi generic interface
+#include "uart.h"               // uart generic interface
 #include "misc.h"               // misc command handlers
-#include "cpu.h"
-#include "filesystem.h"
-#include "show.h"
+#include "cpu.h"                // cpu-related command handlers  
+#include "filesystem.h"         // file manager
+#include "memory.h"             // memory component
+
+#include "show.h"               // "show KEYWORD [ARG1 ARG2 ... ARGn]" command
 #include "question.h"           // cmd_question(), context help handler and help pages
+
 
 // Parse & execute: split user input "p" to tokens, find an appropriate
 // entry in keywords[] array and execute coresponding callback.
@@ -235,9 +239,9 @@ espshell_command(char *p) {
   // got something to process? this "while" here is only for "break"
   if (p && *p) {
 
-    //make a history entry
+    //make a history entry, if enabled
     if (History)
-      rl_add_history(userinput_strip(p));
+      history_add_entry(userinput_strip(p));
 
     // tokenize user input
     // from now on /p/ is freed only by userinput_unref()!
@@ -351,18 +355,10 @@ bool espshell_exec_finished() {
   return ret;
 }
 
-
-
-// Start ESPShell
-// Normally (AUTOSTART==1) starts automatically. With autostart disabled EPShell can
-// be started by calling espshell_start().
-//
-// This function also cqan start the shell which was terminated by command "exit ex"
-//
-void STARTUP_HOOK espshell_start() {
+// Call functions which are intended to be called once. Things like convars & memory allocations.
+static  void espshell_initonce() {
 
   if (!argv_mux) {
-    //TAG:initonce
     // create sync objects
     if ((argv_mux = xSemaphoreCreateMutex()) == NULL)
       q_print("% WARNING: argv_mux failed to create. Please avoid background commands\r\n");
@@ -372,14 +368,25 @@ void STARTUP_HOOK espshell_start() {
     convar_add(pcnt_channel);      // PCNT channel which is used by "count" command
     convar_add(pcnt_unit);         // PCNT unit which is used by "count" command
     convar_add(bypass_qm);         // enable/disable "?" as context help hotkey
-    convar_add(tbl_min_len);      // buffers whose length is > printhex_tbl (def: 16) are printed as fancy tables
+    convar_add(tbl_min_len);       // buffers whose length is > printhex_tbl (def: 16) are printed as fancy tables
 
     // init subsystems
-#if MEMTEST
     q_meminit();
-#endif
     seq_init();
+    count_init();
   }
+
+}
+
+// Start ESPShell
+// Normally (AUTOSTART==1) starts automatically. With autostart disabled EPShell can
+// be started by calling espshell_start().
+//
+// This function also cqan start the shell which was terminated by command "exit ex"
+//
+void STARTUP_HOOK espshell_start() {
+
+  espshell_initonce();
   if (espshell_started())
     q_print("% ESPShell is started already\r\n");
   else
