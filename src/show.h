@@ -56,6 +56,10 @@ static int cmd_show(int argc, char **argv) {
     return memory_display_content(address,length);
   }
 
+  if (!q_strcmp(argv[1],"counters"))
+    return count_show_counters();
+
+
   return 1; //  keyword argv[1] is bad
 }
 #endif //#if COMPILING_ESPSHELL
