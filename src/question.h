@@ -207,6 +207,7 @@ static bool help_page_for_inputline(unsigned char *raw) {
     // have characters?
     if (*raw) {
       unsigned char *end = raw + 1;
+      char qm[] = {'?', '\0'};
 
       //find next whitespace (or string end)
       while (*end && !isspace(*end))
@@ -216,7 +217,7 @@ static bool help_page_for_inputline(unsigned char *raw) {
       // and replace it with \0; create fake argc/argv to call "? KEYWORD" handler
       unsigned char tmp = *end;
       *end = '\0';
-      char *argv[2] = { "?", (char *)raw };
+      char *argv[2] = { qm, (char *)raw };
       help_command(2, argv);
 
       // restore whitespace symbol
@@ -238,7 +239,7 @@ static int cmd_question(int argc, char **argv) {
 
   //"? arg"
   if (argc > 1) {
-    // use strcmp, not q_strcmp to distibuish from "? pin" command
+    // use strcmp, not q_strcmp to distinguish from "? pin" command
     //"? keys"
     if (!strcmp(argv[1], "keys"))
       return help_keys(argc, argv);
