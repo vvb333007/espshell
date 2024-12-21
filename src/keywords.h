@@ -124,33 +124,33 @@ static const struct keywords_t keywords_uart[] = {
   KEYWORDS_BEGIN
 
   { "up", cmd_uart_up, 3,
-    HELPK("% \"up RX TX BAUD\"\r\n"
+    HELPK("% \"<*>up RX TX BAUD</>\"\r\n"
           "%\r\n"
           "% Initialize uart interface X on pins RX/TX,baudrate BAUD, 8N1 mode\r\n"
-          "% Ex.: up 18 19 115200 - Setup uart on pins rx=18, tx=19, at speed 115200"),
+          "% Ex.: <*>up 18 19 115200</> - Setup uart on pins rx=18, tx=19, at speed 115200"),
     HELPK("Initialize uart (pins/speed)") },
 
   { "baud", cmd_uart_baud, 1,
-    HELPK("% \"baud SPEED\"\r\n"
+    HELPK("% \"<*>baud SPEED</>\"\r\n"
           "%\r\n"
           "% Set speed for the uart (uart must be initialized)\r\n"
-          "% Ex.: baud 115200 - Set uart baud rate to 115200"),
+          "% Ex.: <*>baud 115200</> - Set uart baud rate to 115200"),
     HELPK("Set baudrate") },
 
   { "down", cmd_uart_down, NO_ARGS,
-    HELPK("% \"down\"\r\n"
+    HELPK("% \"<*>down</>\"\r\n"
           "%\r\n"
           "% Shutdown interface, detach pins"),
     HELPK("Shutdown") },
 
   { "read", cmd_uart_read, NO_ARGS,
-    HELPK("% \"read\"\r\n"
+    HELPK("% \"<*>read</>\"\r\n"
           "%\r\n"
           "% Read bytes (available) from uart interface X"),
     HELPK("Read data from UART") },
 
   { "tap", cmd_uart_tap, NO_ARGS,
-    HELPK("% \"tap\\r\n"
+    HELPK("% \"<*>tap</>\\r\n"
           "%\r\n"
           "% Bridge the UART IO directly to/from shell\r\n"
           "% User input will be forwarded to uart X;\r\n"
@@ -158,13 +158,13 @@ static const struct keywords_t keywords_uart[] = {
     HELPK("Talk to device connected") },
 
   { "write", cmd_uart_write, MANY_ARGS,
-    HELPK("% \"write TEXT\"\r\n"
+    HELPK("% \"<*>write TEXT</>\"\r\n"
           "%\r\n"
-          "% Send an ascii/hex string(s) to UART X\r\n"
-          "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
+          "% Send an ascii/hex string(s) to UART interface\r\n"
+          "% <*>TEXT</> can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
           "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n"
           "%\r\n"
-          "% Ex.: \"write ATI\\n\\rMixed\\20Text and \\20\\21\\ff\""),
+          "% Ex.: \"<*>write ATI\\n\\rMixed\\20Text and \\20\\21\\ff\"</>"),
     HELPK("Send bytes over this UART") },
 
   KEYWORDS_END
@@ -180,41 +180,41 @@ static const struct keywords_t keywords_i2c[] = {
   KEYWORDS_BEGIN
 
   { "up", cmd_i2c_up, 3,
-    HELPK("% \"up SDA SCL CLOCK\"\r\n"
+    HELPK("% \"<*>up SDA SCL CLOCK</>\"\r\n"
           "%\r\n"
           "% Initialize I2C interface X, use pins SDA/SCL, clock rate CLOCK\r\n"
           "% Ex.: up 21 22 100000 - enable i2c at pins sda=21, scl=22, 100kHz clock"),
     HELPK("Initialize interface (pins and speed)") },
 
   { "clock", cmd_i2c_clock, 1,
-    HELPK("% \"clock SPEED\"\r\n"
+    HELPK("% \"<*>clock SPEED</>\"\r\n"
           "%\r\n"
           "% Set I2C master clock (i2c must be initialized)\r\n"
           "% Ex.: clock 100000 - Set i2c clock to 100kHz"),
     HELPK("Set clock") },
 
   { "scan", cmd_i2c_scan, NO_ARGS,
-    HELPK("% \"scan\"\r\n"
+    HELPK("% \"<*>scan</>\"\r\n"
           "%\r\n"
           "% Scan I2C bus X for devices. Interface must be initialized!"),
     HELPK("Scan i2c bus for devices") },
 
   { "write", cmd_i2c_write, MANY_ARGS,
-    HELPK("% \"write ADDR D1 [D2 ... Dn]\"\r\n"
+    HELPK("% \"<*>write ADDR D1 [D2 ... Dn]</>\"\r\n"
           "%\r\n"
           "% Write bytes D1..Dn (hex values) to address ADDR on I2C bus X\r\n"
-          "% Ex.: write 0x57 0 0xff - write 2 bytes to address 0x57: 0 and 255"),
+          "% Ex.: <*>write 0x57 0 0xff</> - write 2 bytes to address 0x57: 0 and 255"),
     HELPK("Send bytes to the device") },
 
   { "read", cmd_i2c_read, 2,
-    HELPK("% \"read ADDR SIZE\"\r\n"
+    HELPK("% \"<*>read ADDR SIZE</>\"\r\n"
           "%\r\n"
           "% Read SIZE bytes from a device at address ADDR\r\n"
           "% Ex.: read 0x68 7 - read 7 bytes from device address 0x68"),
     HELPK("Read data from an I2C device") },
 
   { "down", cmd_i2c_down, NO_ARGS,
-    HELPK("% \"down\"\r\n"
+    HELPK("% \"<*>down</>\"\r\n"
           "%\r\n"
           "% Shutdown I2C interface X"),
     HELPK("Shutdown i2c interface") },
@@ -269,70 +269,70 @@ static const struct keywords_t keywords_sequence[] = {
   KEYWORDS_BEGIN
 
   { "eot", cmd_seq_eot, 1,
-    HELPK("% \"eot high|low\"\r\n"
+    HELPK("% \"<*>eot</> <1>high|low</>\"\r\n"
           "%\r\n"
           "% End of transmission: pull the line high or low at the\r\n"
           "% end of a sequence. Default is \"low\""),
     HELPK("End-of-Transmission pin state") },
 
   { "tick", cmd_seq_tick, 1,
-    HELPK("% \"tick TIME\"\r\n"
+    HELPK("% \"<*>tick TIME</>\"\r\n"
           "%\r\n"
           "% Set the sequence tick time: defines a resolution of a pulse sequence.\r\n"
           "% Expressed in microseconds, can be anything between 0.0125 and 3.2\r\n"
-          "% Ex.: tick 0.1 - set resolution to 0.1 microsecond"),
+          "% Ex.: <*>tick 0.1</> - set resolution to 0.1 microsecond"),
     HELPK("Set resolution") },
 
   { "zero", cmd_seq_zeroone, 2,
-    HELPK("% \"zero LEVEL/DURATION [LEVEL2/DURATION2]\"\r\n"
+    HELPK("% \"<*>zero LEVEL/DURATION [LEVEL2/DURATION2]</>\"\r\n"
           "%\r\n"
           "% Define a logic \"0\"\r\n"
-          "% Ex.: zero 0/50      - 0 is a level: LOW for 50 ticks\r\n"
-          "% Ex.: zero 1/50 0/20 - 0 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"),
+          "% Ex.: <*>zero 0/50</>      - 0 is a level: LOW for 50 ticks\r\n"
+          "% Ex.: <*>zero 1/50 0/20</> - 0 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"),
     HELPK("Define a zero") },
 
   { "zero", cmd_seq_zeroone, 1, HIDDEN_KEYWORD },  //1 arg command
 
   { "one", cmd_seq_zeroone, 2,
-    HELPK("% \"one LEVEL/DURATION [LEVEL2/DURATION2]\"\r\n"
+    HELPK("% \"<*>one LEVEL/DURATION [LEVEL2/DURATION2]</>\"\r\n"
           "%\r\n"
           "% Define a logic \"1\"\r\n"
-          "% Ex.: one 1/50       - 1 is a level: HIGH for 50 ticks\r\n"
-          "% Ex.: one 1/50 0/20  - 1 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"),
+          "% Ex.: <*>one 1/50</>       - 1 is a level: HIGH for 50 ticks\r\n"
+          "% Ex.: <*>one 1/50 0/20</>  - 1 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"),
     HELPK("Define an one") },
 
   { "one", cmd_seq_zeroone, 1, HIDDEN_KEYWORD },  //1 arg command
 
   { "bits", cmd_seq_bits, 1,
-    HELPK("% \"bits STRING\"\r\n"
+    HELPK("% \"<*>bits STRING</>\"\r\n"
           "%\r\n"
           "% A bit pattern to be used as a sequence. STRING must contain only 0s and 1s\r\n"
           "% Overrides previously set \"levels\" command\r\n"
           "% See commands \"one\" and \"zero\" to define \"1\" and \"0\"\r\n"
           "%\r\n"
-          "% Ex.: bits 11101000010111100  - 17 bit sequence"),
+          "% Ex.: <*>bits 11101000010111100</>  - 17 bit sequence"),
     HELPK("Set pattern to transmit") },
 
   { "levels", cmd_seq_levels, MANY_ARGS,
-    HELPK("% \"levels L/D L/D ... L/D\"\r\n"
+    HELPK("% \"<*>levels L1/D1 L2/D2 ... Ln/Dn</>\"\r\n"
           "%\r\n"
           "% A bit pattern to be used as a sequnce. L is either 1 or 0 and \r\n"
           "% D is the duration measured in ticks [0..32767] \r\n"
           "% Overrides previously set \"bits\" command\r\n"
           "%\r\n"
-          "% Ex.: levels 1/50 0/20 1/100 0/500  - HIGH 50 ticks, LOW 20, HIGH 100 and 0 for 500 ticks\r\n"
-          "% Ex.: levels 1/32767 1/17233 0/32767 0/7233 - HIGH for 50000 ticks, LOW for 40000 ticks"),
+          "% Ex.: <*>levels 1/50 0/20 1/100 0/500<*>  - HIGH 50 ticks, LOW 20, HIGH 100 and 0 for 500 ticks\r\n"
+          "% Ex.: <*>levels 1/32767 1/17233 0/32767 0/7233</> - HIGH for 50000 ticks, LOW for 40000 ticks"),
     HELPK("Set levels to transmit") },
 
   { "modulation", cmd_seq_modulation, 3,
-    HELPK("% \"modulation FREQ [DUTY [low|high]]\"\r\n"
+    HELPK("% \"<*>modulation FREQ</> [<*>DUTY</> [<1>low|high</>]]\"\r\n"
           "%\r\n"
           "% Enables/disables an output signal modulation with frequency FREQ\r\n"
           "% Optional parameters are: DUTY (from 0 to 1) and LEVEL (either high or low)\r\n"
           "%\r\n"
-          "% Ex.: modulation 100         - modulate all 1s with 100Hz, 50% duty cycle\r\n"
-          "% Ex.: modulation 100 0.3 low - modulate all 0s with 100Hz, 30% duty cycle\r\n"
-          "% Ex.: modulation 0           - disable modulation\r\n"),
+          "% Ex.: <*>modulation 100</>         - modulate all 1s with 100Hz, 50% duty cycle\r\n"
+          "% Ex.: <*>modulation 100 0.3 low</> - modulate all 0s with 100Hz, 30% duty cycle\r\n"
+          "% Ex.: <*>modulation 0</>           - disable modulation\r\n"),
     HELPK("Enable/disable modulation") },
 
   { "modulation", cmd_seq_modulation, 2, HIDDEN_KEYWORD },
@@ -570,10 +570,13 @@ static const struct keywords_t keywords_main[] = {
   { "resume", cmd_resume, NO_ARGS,
     HELPK("% \"<*>resume</>\"\r\n% Resume sketch execution\r\n"), "Resume sketch execution" },
 
-  { "kill", cmd_kill, 1,
-    HELPK("% \"<*>kill TASK_ID</>\"\r\n% Stop and delete task TASK_ID\r\n% CAUTION: wrong id will crash whole system :(\r\n% For use with \"pin&\" and \"count&\" tasks only!"), "Kill tasks" },
+  { "kill", cmd_kill, 2,
+    HELPK("% \"<*>kill [-term|-kill|-9|-15] TASK_ID</>\"\r\n"
+          "% Send a signal to a task. Default is SIGTERM (safely stop)\r\n"
+          "% If -9 or -kill option is used then task is deleted (use with care!)"), 
+    "Kill tasks" },
 
-  { "kill", cmd_kill, 2, HIDDEN_KEYWORD },  //undocumented "kill TASK_ID terminate"
+  { "kill", cmd_kill, 1, HIDDEN_KEYWORD },
 
   { "reload", cmd_reload, NO_ARGS,
     HELPK("% \"<*>reload</>\"\r\n% Restarts CPU"), "Reset CPU" },
@@ -683,12 +686,8 @@ static const struct keywords_t keywords_main[] = {
           "% Ex.: pin 1 pwm 2000 0.3       -set 5kHz, 30% duty square wave output\r\n"
           "% Ex.: pin 1 pwm 0 0            -disable generation\r\n"
           "% Ex.: pin 1 high delay 500 low delay 500 loop 10 - Blink a led 10 times\r\n%\r\n"
-          "% Use \"<i>pin&</>\" instead of \"<i>pin</>\" to execute in background\r\n"
           "% (see \"docs/Pin_Commands.txt\" for more details & examples)\r\n"),
     NULL },
-
-  // "pin&"" async (background) "pin" command
-  { "pin&", cmd_pin, MANY_ARGS, HIDDEN_KEYWORD },
 
   // PWM generation
   { "pwm", cmd_pwm, 3,
@@ -710,21 +709,24 @@ static const struct keywords_t keywords_main[] = {
   { "pwm", cmd_pwm, 1, HIDDEN_KEYWORD },
 
   // Pulse counting/frequency meter
-  { "count", cmd_count, 2,
-    HELPK("% \"<*>count PIN</> [<1>DURATION</>]\"\r\n%\r\n"
-          "% Count pulses on pin PIN within DURATION time, time is measured in \r\n"
+  { "count", cmd_count, 3,
+    HELPK("% \"<*>count PIN clear</>]\"\r\n"
+          "% \"<*>count PIN</> [<1>DURATION</>] [<*>trigger</>]\"\r\n%\r\n"
+          "% Count pulses on pin PIN within DURATION time, time is measured in\r\n"
           "% milliseconds, optional. Default is 1000\r\n"
+          "% The \"trigger\" keyword is pauses the counter until pulses start to come\r\n"
           "%\r\n"
-          "% Ex.: \"count 4\"         - Count pulses & measure frequency on pin4 for 1000ms\r\n"
-          "% Ex.: \"count 4 2000\"    - Same as above but measurement time is 2 seconds\r\n"
-          "% Ex.: \"count& 4 999999\" - Count pulses in background for 1000 seconds\r\n%\r\n"
-          "% Ex.: \"count 4 clear\"   - Set counter to 0 (running or stopped are ok)\r\n%\r\n"
-          "% Use \"<i>count&</>\" instead of \"<i>count</>\" to execute in background\r\n"),
+          "% Ex.: \"<*>count 4</>\"         - Count pulses & measure frequency on pin4 for 1000ms\r\n"
+          "% Ex.: \"<*>count 4 2000</>\"    - Same as above but measurement time is 2 seconds\r\n"
+          "% Ex.: \"<*>count 4 999999 &</>\"- Count pulses in background for 1000 seconds\r\n"
+          "% Ex.: \"<*>count 4 trigger</>\" - Wait for the pulse, then start to count\r\n"
+          "% Ex.: \"<*>count 4 clear</>\"   - Set counter to 0 (running or stopped are ok)\r\n"
+          "% Ex.: \"<*>count 4 2000 trigger &</>\" - Wait for the pulse, then start to count for\r\n"
+          "%                                   2 seconds in a background"),
     "Pulse counter" },
 
+  { "count", cmd_count, 2, HIDDEN_KEYWORD },   //hidden with 2 arg
   { "count", cmd_count, 1, HIDDEN_KEYWORD },   //hidden with 1 arg
-  { "count&", cmd_count, 2, HIDDEN_KEYWORD },  //hidden "count&" with 2 args
-  { "count&", cmd_count, 1, HIDDEN_KEYWORD },  //hidden "count&" with 1 arg
 
 #if WITH_ESPCAM
   { "camera", cmd_cam, 1, 

@@ -8,10 +8,9 @@
 
 #define COMPILING_ESPSHELL 1  // dont touch this!
 
-
 // Limits 
-#define MAX_PROMPT_LEN 16      // Prompt length ( except for PROMPT_FILES), max length of a prompt (see TAG:prompts).
-#define MAX_PATH 256           // max path len
+#define MAX_PROMPT_LEN 16      // Prompt length ( except for PROMPT_FILES), max length of a prompt
+#define MAX_PATH 256           // max filesystem path len
 #define MAX_FILENAME MAX_PATH  // max filename len (equal to MAX_PATH for now)
 #define UART_DEF_BAUDRATE 115200
 #define UART_RXTX_BUF 512
@@ -21,14 +20,13 @@
 
 // Prompts used by command subdirectories
 #define PROMPT "esp32#>"                // Main prompt
-#define PROMPT_I2C "esp32-i2c%u>"       // i2c prompt
-#define PROMPT_SPI "esp32-spi%u>"       // i2c prompt
-#define PROMPT_UART "esp32-uart%u>"     // uart prompt
-#define PROMPT_SEQ "esp32-seq%u>"       // Sequence subtree prompt
-#define PROMPT_FILES "esp32#(%s%s%s)>"  // File manager prompt (color tag, path, color tag)
+#define PROMPT_I2C "esp32-i2c%u>"       // I2C prompt
+#define PROMPT_SPI "esp32-spi%u>"       // SPI prompt
+#define PROMPT_UART "esp32-uart%u>"     // UART prompt
+#define PROMPT_SEQ "esp32-seq%u>"       // Sequence (RMT) subtree prompt
+#define PROMPT_FILES "esp32#(%s%s%s)>"  // File manager prompt (format string is /color tag/, /current working directory/, /color tag/)
 #define PROMPT_SEARCH "Search: "        // History search prompt
 #define PROMPT_ESPCAM "esp32-cam>"      // ESPCam settings directory
-
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -108,7 +106,6 @@
 // coloring is auto-enabled upon reception of certain symbols from user: arrow keys,
 // <tab>, Ctrl+??? and such will enable syntax coloring
 //
-//TAG:esc
 #define esc_i   "\033[33;93m" // [I]important information (eye-catching bright yellow)
 #define esc_r   "\033[7m"     // Alternative reversal sequence
 #define esc_w   "\033[91m"    // [W]arning message ( bright red )
@@ -121,8 +118,9 @@
 #define esc_ast "\033[1;97m"  // Bold, bright white
 #define esc__   "\033[4;37m"  // Normal white, underlined
 
-// Miscellaneous forwards
-static INLINE int is_foreground_task();
+// Miscellaneous forwards. These can not be resolved by rearranging :-/
+static bool task_wait_for_signal(uint32_t *sig, uint32_t timeout_ms);
+static INLINE bool is_foreground_task();
 static inline bool uart_isup(unsigned char u);       // Check if UART u is up and operationg (is driver installed?)
 static int q_strcmp(const char *, const char *);     // loose strcmp
 static int PRINTF_LIKE q_printf(const char *, ...);  // printf()
@@ -161,8 +159,8 @@ static const char *i2cIsDown = "%% I2C%u bus is not initialized. Use command \"u
 static const char *uartIsDown = "%% UART%u is down. Use command \"up\" to initialize it\r\n";
 
 static const char *WelcomeBanner = "\033[H\033[2J%%\r\n"
-                                   "ESPShell. Type \"?\" and press <Enter> for help\r\n"
-                                   "%% Press <Ctrl+L> to clear the screen and enable colors and read tip of the day\r\n";
+                                   "%% ESP32Shell " ESPSHELL_VERSION ". Type \"?\" and press <Enter> for help\r\n"
+                                   "%% Press <Ctrl+L> to clear the screen, enable colors and show \"tip of the day\"\r\n";
 
 #if WITH_HELP
 static const char *Bye = "% Sayonara!\r\n";
@@ -176,7 +174,7 @@ static const char *MultipleEntries = "% Processing multiple paths.\r\n"
 static const char *VarOops = "<e>% Oops :-(\r\n"
                              "% No registered variables to play with</>\r\n"
                              "% Try this:\r\n"
-                             "%  <i>1. Add include \"extra/espshell.h\" to your sketch</>\r\n"
+                             "%  <i>1. Add include \"espshell.h\" to your sketch</>\r\n"
                              "%  <i>2. Use \"convar_add()\" macro to register your variables</>\r\n"
                              "%\r\n"
                              "% Once registered, variables can be manipulated by the \"var\" command\r\n"
@@ -222,64 +220,82 @@ static const char *VarOops = "<e>% Oops :-(\r\n"
 #include "question.h"           // cmd_question(), context help handler and help pages
 
 
-// Parse & execute: split user input "p" to tokens, find an appropriate
-// entry in keywords[] array and execute coresponding callback.
-// String p - is the user input as returned by readline()
+// Parse & execute: main ESPShell user input processor
+// 1. Split user input /p/ into tokens. Token #0 is a command, other tokens are command arguments.
+// 2. Find an appropriate entry in keywords[] array (command name and number of arguments must match)
+// 3. Execute coresponding callback, may be in a newly created task cotext (for commands ending with "&", like "count&")
 //
-// returns 0 on success
-//TAG:exec
+// asciiz /p/ - is the user input as returned by readline(). Must be writable memory!
+//
+// returns 0 on success, -1 if number of arguments doesn't match (missing argument) or >0 - the index in argv[] array
+//         pointing to failed/problematic argument. espshell_command() relies on code returned by underlying command handler (callback function)
+//
 static int
 espshell_command(char *p) {
 
   char **argv = NULL;
   int argc, i, bad;
-  bool found;
+  bool found, fg;
+
+  // argc/argv container. Normally free()-ed before this function returns except for the cases, when background commands are executed:
+  // background command is then resposible for container deletion.
   argcargv_t *aa = NULL;
 
-  // got something to process? this "while" here is only for "break"
+  // got something to process? this "while" here is only for "break" below. Was fighting with goto's
   if (p && *p) {
 
-    //make a history entry, if enabled
+    //make a history entry, if history enabled (default)
     if (History)
       history_add_entry(userinput_strip(p));
 
     // tokenize user input
-    // from now on /p/ is freed only by userinput_unref()!
     if ((aa = userinput_tokenize(p)) == NULL) {
       q_free(p);
       return -1;
     }
 
+    // /fg/ is /true/ for foreground commands. it is /false/ for background commands.
+    // TODO: char comparision is enough, q_strcmp is overkill
+    if ((fg = q_strcmp(aa->argv[aa->argc - 1],"&")) == false) {
+      //q_print("% A background exec is requested\r\n");
+      // strip last "&" argument
+      aa->argc--;
+    }
+
+    // from now on /p/ is deallocated only by userinput_unref(), as part of /aa/
+    // Handy shortcuts. GCC is smart enough to eliminate these.
     argc = aa->argc;
     argv = aa->argv;
 
-    // Process user input: first token is a command, the rest are arguments, keywords, parameters
-    //
-    // Find a corresponding entry in a keywords[] : match the name and the number of arguments.
-    // For commands executed in a command subdirectory both main command directory and current
-    // directory are searched.
-    // This allows all command from the main tree to be accessible while in sequence, uart or i2c
-    // subdirectory
 
-    const struct keywords_t *key = keywords;   // lets start from current command directory
+    // /keywords/ is a pointer to one of /keywords_main/, /keywords_uart/ ... etc keyword tables.
+    // It points at main tree at startup and then can be switched. Search this "current" command tree
+    const struct keywords_t *key = keywords;   
     found = false;
 
 one_more_try:
     i = 0;
     bad = -1;
+
+    // Go tthrough the keywords array till the end
     while (key[i].cmd) {
+
       // command name matches user input?
       if (!q_strcmp(argv[0], key[i].cmd)) {
+
+        // found a candidate
         found = true;
 
-        // command & user input match when both name & number of arguments match.
-        // one special case is command with argc < 0 : these are matched always
-        // (-1 == "take any number of arguments")
+        // Match number of arguments. There are many commands whose names are identical but number of arguments is different.
+        // One special case is keywords with their /.argc/ set to -1: these are "any number of argument" commands. These should be positioned
+        // carefully in keywords array to not shadow other entries which differs in number of arguments only
         if (((argc - 1) == key[i].argc) || (key[i].argc < 0)) {
 
-          // execute the command.
+          // Execute the command by calling a callback. It is only executed when not NULL. There are entries with /cb/ set to NULL: those
+          // are for help text only, as they are processed by "?" command/keypress
+          //
           // if nonzero value is returned then it is an index of the "failed" argument (value of 3 means argv[3] was bad (for values > 0))
-          // value of zero means successful execution, return code <0 means argument number was wrong (missing argument)
+          // value of zero means successful execution, return code <0 means argument number was wrong (missing argument, extra arguments)
           if (key[i].cb) {
 
             int l;
@@ -289,22 +305,15 @@ one_more_try:
             // save command handler (exec_in_background() will need it)
             aa->gpp = key[i].cb;
 
-            // Check if command (i.e. argv[0]) has "&" at the end. 
-            // If this is the case then run corresponding command handler in background
-            bad = (argv[0][l] == '&') ? exec_in_background(aa) : key[i].cb(argc, argv);
-#if 0
-            if (argv[0][l] == '&')
-              bad = exec_in_background(aa); // call via wrapper (starts separate task)
-            else
-              bad = key[i].cb(argc, argv);  // call directly
-#endif
+            bad = fg ? key[i].cb(argc, argv) : exec_in_background(aa);
+
             if (bad > 0)
               q_printf("%% <e>Invalid %u%s argument \"%s\" (\"? %s\" for help)</>\r\n",bad, number_english_ending(bad), bad < argc ? argv[bad] : "FIXME", argv[0]);
             else if (bad < 0)
               q_printf("%% <e>One or more arguments missing(\"? %s\" for help)</>\r\n", argv[0]);
             else
               // make sure keywords[i] is a valid pointer (change_command_directory() changes keywords list so keywords[i] might be invalid pointer)
-              i = 0;  
+              i = 0;
             break;
           }  // if callback is provided
         }    // if argc matched
@@ -312,23 +321,24 @@ one_more_try:
       i++;   // process next entry in keywords[]
     }        // until all keywords[] are processed
 
-    // reached the end of the list and didn't find any exact match?
+    // Reached the end of the list and didn't find any exact match?
     if (!key[i].cmd) {
 
-      // try keywords_main if we are currently in a subdirectory
-      // so we can execute "pin" command while are in uart config mode
+      // Lets try to search in /keywords_main/ (if we are currently in a subdirectory)
       if (key != keywords_main) {
         key = keywords_main;
         goto one_more_try;
       }
 
-      if (found)  //we had a name match but number of arguments was wrong
+      // If we get here, then we have problem:
+      if (found)  // we had a name match but number of arguments was wrong
         q_printf("%% <e>\"%s\": wrong number of arguments</> (\"? %s\" for help)\r\n", argv[0], argv[0]);
-      else
+      else        // no name match let alone arguments number
         q_printf("%% <e>\"%s\": command not found</>\r\n", argv[0]);
     }
 
     if (!found)
+      // Be helpful :)
       HELP(q_print("% <e>Type \"?\" to show the list of commands available</>\r\n"));
   }
 
@@ -339,8 +349,11 @@ one_more_try:
 
 
 // Execute an arbitrary shell command (\n are allowed for multiline).
-// it is an async call: it returns immediately. one can use espshell_exec_finished()
-// to check if actual shell command has finished its execution
+// Call returns immediately, but /p/ must remain valid memory until actual command finishes its execution.
+//
+// One can use espshell_exec_finished() to check when it is a time for another espshell_exec()
+// Currently used by editline hotkey processing to inject various shell commands in user input.
+
 void espshell_exec(const char *p) {
   TTYqueue(p);
 }
@@ -355,14 +368,18 @@ bool espshell_exec_finished() {
   return ret;
 }
 
-// Call functions which are intended to be called once. Things like convars & memory allocations.
+
+// This function may be called multiple times despite its name:
+// Call functions which are intended to be called once, things like convars & memory allocations.
+//
+static bool call_once = false;
+
 static  void espshell_initonce() {
 
-  if (!argv_mux) {
-    // create sync objects
-    if ((argv_mux = xSemaphoreCreateMutex()) == NULL)
-      q_print("% WARNING: argv_mux failed to create. Please avoid background commands\r\n");
-    
+  // main espshell mutex is created?
+  if (!call_once) {
+    call_once = true;
+
     // add internal variables ()
     convar_add(ls_show_dir_size);  // enable/disable dir size counting for "ls" command
     convar_add(pcnt_channel);      // PCNT channel which is used by "count" command
@@ -371,9 +388,7 @@ static  void espshell_initonce() {
     convar_add(tbl_min_len);       // buffers whose length is > printhex_tbl (def: 16) are printed as fancy tables
 
     // init subsystems
-    q_meminit();
     seq_init();
-    count_init();
   }
 
 }

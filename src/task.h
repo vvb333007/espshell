@@ -18,14 +18,81 @@ EXTERN TaskHandle_t loopTaskHandle;  // task handle of a task which calls Arduin
 static TaskHandle_t shell_task = 0;  // Main espshell task ID
 static int          shell_core = 0;  // CPU core number ESPShell is running on. For single core systems it is always 0
 
+#define taskid_self() xTaskGetCurrentTaskHandle()
+
+
+#define SIGNAL_TERM 0  // Request to terminate
+#define SIGNAL_GPIO 1  // Pin interrupt
+#define SIGNAL_KILL 2  // Force task deletion
+#define SIGNAL_HUP  3  // "Reinitialize/Re-read configuration"
+
+// Task signalling wrappers. qlib is used in a few different projects so I try to keep it easily convertible to other API
+// (POSIX for example). 
+
+// Send a signal (uin32_t arbitrary value) to the task.If task was blocking on task_signal_wait() the task will unblock
+// and receive signal value
+#define task_signal(_Handle, _Signal) xTaskNotify((TaskHandle_t)(_Handle), _Signal, eSetValueWithOverwrite)
+
+// Same as above but ISR-safe
+#define task_signal_from_isr(_Handle, _Signal) \
+  do { \
+    BaseType_t ignored; \
+    xTaskNotifyFromISR((TaskHandle_t)(_Handle), _Signal, eSetValueWithOverwrite, &ignored); \
+  } while (0)
+
+
+
+// Block until any signal is received but not longer than /timeout/ milliseconds. Value of 0 means "no timeout".
+// When current task receives a signal it unblocks, stores signal value in /*sig/ (if /sig/ is not NULL) and returns
+// 
+// Returns /true/ if signal was received
+// Returns /false/ if timeout has fired before any signal was received
+// Writes /*sig/ with signal received if /sig/ is a valid pointer
+//
+static bool task_wait_for_signal(uint32_t *sig, uint32_t timeout_ms) {
+
+  uint32_t value0;
+
+
+  timeout_ms = timeout_ms ? pdMS_TO_TICKS(timeout_ms) : portMAX_DELAY; 
+ 
+  if (NULL == sig)
+    sig = &value0;
+
+  // block until any notification or timeout
+  return xTaskNotifyWait(0, 0xffffffff, sig, timeout_ms ) == pdPASS;
+}
+
+
+// Can we perform commands on this taskid?
+//
+static bool taskid_good(unsigned int taskid) {
+
+  // Suspicously low address. Probably misstyped.
+  // TODO: This value is approximate. Need to go deeper on memory mapping in different ESP32 models
+  if (taskid < 0x3ff00000) {
+    HELP(q_print("% Task id is a hex number, something like \"3ffb0030\" or \"0x40005566\"\r\n"));
+    return false;
+  }
+  
+  // Ignore attempts to delete the main espshell task
+  if (shell_task == (TaskHandle_t )taskid) {
+    HELP(q_printf("%% Task <i>0x%x</> is the main ESPShell task\r\n%% To exit ESPShell use command \"exit ex\" instead\r\n",taskid));
+    return false;
+  }
+
+  return true;
+}
+
 // check if *this* task (a caller) is executed as separate (background) task
 // or it is executed in context of ESPShell
 //
-static INLINE int is_foreground_task() {
-  return shell_task == xTaskGetCurrentTaskHandle();
+static INLINE bool is_foreground_task() {
+  return shell_task == taskid_self();
 }
 
-#define current_task_id() (unsigned int)(xTaskGetCurrentTaskHandle())
+#define is_background_task() (!is_foreground_task())
+
 
 // check if ESPShell's task is already created
 static INLINE bool espshell_started() {
@@ -35,8 +102,8 @@ static INLINE bool espshell_started() {
 // Helper task, which runs (cmd_...) handlers in a background.
 //
 // Normally, when user inputs "pin" command, the corresponding handler (i.e. cmd_pin()) is called directly by espshell_command() parser
-// However, for commands which name ends with "&" (e.g. "pin&", "count&") cmd_sync() handler is called. This handler starts a task 
-// (espshell_async_task()) which executes "real" command handler.
+// However, for commands which ends with "&" (e.g. "pin 8 up high &", "count 4 &") cmd_sync() handler is called. This handler starts a task 
+// (espshell_async_task()) which executes "real" command handler stored in aa->gpp.
 //
 // The "&" syntax is inspired by Linux bash's "&" keyword
 //
@@ -49,7 +116,7 @@ static void espshell_async_task(void *arg) {
   // by command processor (espshell_command()) according to first keyword (argv[0])
   if (aa && aa->gpp) {
     ret = (*(aa->gpp))(aa->argc, aa->argv);
-    q_printf("%% Background task %p (\"%s\") %s\r\n", xTaskGetCurrentTaskHandle(), aa->argv[0], ret == 0 ? "is finished" : "<e>has failed</>");
+    q_printf("%% Background command \"%s\" has %s\r\n", aa->argv[0], ret == 0 ? "finished its job" : "<e>failed</>");
     // do the same job espshell_command() does: interpret error codes returned by the handler. Keep in sync with espshell_command() code
     if (ret < 0)
       q_print("% <e>Wrong number of arguments</>\r\n");
@@ -130,53 +197,67 @@ static void espshell_task(const void *arg) {
 
 
 //"suspend"
-// suspends the Arduino loop() task
+// suspends the Arduino task
 static int cmd_suspend(int argc, char **argv) {
-  vTaskSuspend(loopTaskHandle);
+
+  unsigned int taskid;
+  TaskHandle_t sus = loopTaskHandle;
+  if (argc > 1) {
+    taskid = hex2uint32(argv[1]);
+    if (taskid_good(taskid)) sus = (TaskHandle_t )taskid; else return 1;
+  }
+  vTaskSuspend(sus);
   return 0;
 }
 
 //"resume"
-// Resume previously suspended loop() task
+// Resume previously suspended task
+//
 static int cmd_resume(int argc, char **argv) {
-  vTaskResume(loopTaskHandle);
+  unsigned int taskid;
+  TaskHandle_t sus = loopTaskHandle;
+  if (argc > 1) {
+    taskid = hex2uint32(argv[1]);
+    if (taskid_good(taskid)) sus = (TaskHandle_t )taskid; else return 1;
+  }
+  vTaskResume(sus);
   return 0;
 }
 
-//"kill TASK_ID"
-// kill a espshell task.
-// TODO: make async tasks have their TASK_ID mapped to small numbers starting from 1.
+//"kill [-term|-kill|-9|-15] TASK_ID"
+// 1. Stop a background command
+// 2. Terminate arbitrary FreeRTOS task
+//
 static int cmd_kill(int argc, char **argv) {
 
+  unsigned int sig = SIGNAL_TERM, i = 1, taskid;
   if (argc < 2)
     return -1;
 
-  unsigned int taskid = hex2uint32(argv[1]);
-  if (taskid < 0x3ff00000) {
-    HELP(q_print("% Task id is a hex number, something like \"3ffb0030\" or \"0x40005566\"\r\n"));
-    return 1;
+  if (argv[i][0] == '-') { // an option, task id follows
+    q_tolower(argv[i],0);
+    if (!q_strcmp(argv[i],"-term") || !q_strcmp(argv[i],"-15")) sig = SIGNAL_TERM; else
+    if (!q_strcmp(argv[i],"-hup") ||  !q_strcmp(argv[i],"-1")) sig = SIGNAL_HUP; else
+    if (!q_strcmp(argv[i],"-kill") || !q_strcmp(argv[i],"-9"))  sig = SIGNAL_KILL; else return 1;
+    i++;
   }
 
-  TaskHandle_t handle = (TaskHandle_t)taskid;
-  // Sorry but no
-  if (shell_task == handle) {
-    q_print(Failed);
-    return 0;
-  }
+  if (i >= argc)
+    return -1;
 
-  // Try to finish the task via notification. This allows commands
-  // to print their intermediate results: one of examples is "count&" command:
-  // being killed it will print out packets count arrived so far
-  //
-  xTaskNotify(handle, 0, eNoAction);
-
-  //undocumented
-  if (argc > 2) {
-    if (!q_strcmp(argv[2], "terminate")) {
-      vTaskDelete(handle);
-      HELP(q_printf("%% Terminated: \"%p\"\r\n", handle));
-    }
-  }
+  if (taskid_good((taskid = hex2uint32(argv[i])))) {
+    // SIGNAL_KILL is never sent to a task. Instead, task is deleted.
+    if (sig == SIGNAL_KILL) {
+      vTaskSuspend((TaskHandle_t)taskid);
+      delay(1);
+      vTaskDelete((TaskHandle_t)taskid);
+      HELP(q_printf("%% Killed: \"0x%x\". Resources are not deallocated!\r\n", taskid));
+    } else
+      task_signal(taskid, sig);
+  } else
+    return i;
   return 0;
 }
 #endif
+
+

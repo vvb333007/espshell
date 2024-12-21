@@ -8,10 +8,39 @@
 
 
 // -- Q-Lib: helpful routines: ascii to number conversions, etc --
-//
 #if COMPILING_ESPSHELL
 
+// Bunch of handy macros:
+
+// gcc-specific size-optimization attempt ignored
+#undef likely
+#undef unlikely
+#define unlikely(_X)     __builtin_expect(!!(_X), 0)
+#define likely(X)     __builtin_expect(!!(_X), 1)
+
+// millis() & micros() inlined versions
+// TODO: may be use CCOUNT register for that? It will be super fast and it does not require any timer to be run
 #define q_millis() ((unsigned int )esp_timer_get_time() / 1000)
+#define q_micros() ((unsigned int )esp_timer_get_time())
+
+// Mutex manipulation: declare, initialize, grab and release macros
+#define MUTEX(_Name) xSemaphoreHandle _Name = NULL;   // e.g. static MUTEX(argv_mux);
+
+// Grab a mutex. Blocks forever
+#define mutex_lock(_Name) \
+  do { \
+    if (unlikely(_Name == NULL)) _Name = xSemaphoreCreateMutex(); \
+    if (likely(_Name != NULL))    xSemaphoreTake(_Name, portMAX_DELAY); \
+  } while( 0 )
+
+// Release
+#define mutex_unlock(_Name) \
+  do { \
+    if (likely(_Name != NULL)) \
+      xSemaphoreGive(_Name); \
+  } while( 0 )
+
+  // TODO: mutex_destroy(_Name)
 
 
 static bool ColorAuto = AUTO_COLOR;  // Autoenable coloring if terminal permits
@@ -47,7 +76,7 @@ enum {
   MEM_PATH,      // path (c-string)
   MEM_GETLINE,   // memory allocated by files_getline()
   MEM_SEQUENCE,  // sequence-related allocations
-  MEM_UNUSED11,
+  MEM_TASKID,    // Task remap entry
   MEM_UNUSED12,
   MEM_UNUSED13,
   MEM_UNUSED14,
@@ -92,7 +121,7 @@ static const char *memtags[] = {
   "PATH",
   "GETLINE",
   "SEQUENCE",
-  "UNUSED11",
+  "TASKID",
   "UNUSED12",
   "UNUSED13",
   "UNUSED14",
@@ -106,18 +135,8 @@ static memlog_t *head = NULL;
 static unsigned int allocated = 0, internal = 0;
 
 // memory logger mutex to access memory records list
-static xSemaphoreHandle mem_mux = NULL;
+static MUTEX(mem_mux);
 
-// lock/unlock memory records list
-#define memlog_lock()   do { if (mem_mux) xSemaphoreTake(mem_mux, portMAX_DELAY); } while( 0 )
-#define memlog_unlock() do { if (mem_mux) xSemaphoreGive(mem_mux); } while( 0 )
-
-static void q_meminit() {
-  if (!mem_mux)
-    if ((mem_mux = xSemaphoreCreateMutex()) == NULL)
-      // short print to keep q_print from allocating a memory buffer
-      q_print("% Memory usage tracking module failed to initialize (semaphore)\r\n% Memory usage statistic may be unreliable\r\n");
-}
 
 // memory allocated with extra 2 bytes: those are memory buffer overrun
 // markers. we check these at every q_free()
@@ -132,12 +151,16 @@ static void *q_malloc(size_t size, int type) {
         ml->ptr = p;
         ml->len = size;
         ml->type = type;
-        memlog_lock();
+        //memlog_lock();
+        mutex_lock(mem_mux);
         ml->li.next = (list_t *)head;
         head = ml;
         allocated += size;
         internal += sizeof(memlog_t) + 2;
-        memlog_unlock();
+        //memlog_unlock();
+        mutex_unlock(mem_mux);
+
+        // naive barrier. detects linear buffer overruns
         p[size + 0] = 0x55;
         p[size + 1] = 0xaa;
       }
@@ -154,7 +177,8 @@ static void q_free(void *ptr) {
   else {
     memlog_t *ml, *prev = NULL;
     const unsigned char *p = (const unsigned char *)ptr;
-    memlog_lock();
+    //memlog_lock();
+    mutex_lock(mem_mux);
     for (ml = head; ml != NULL; ml = (memlog_t *)(ml->li.next)) {
       if (ml->ptr == p) {
         if (prev)
@@ -167,7 +191,8 @@ static void q_free(void *ptr) {
       }
       prev = ml;
     }
-    memlog_unlock();
+    //memlog_unlock();
+    mutex_unlock(mem_mux);
     if (ml) {
       // check for memory buffer linear write overruns
       if (ml->ptr[ml->len + 0] != 0x55 || ml->ptr[ml->len + 1] != 0xaa)
@@ -198,19 +223,22 @@ static void *q_realloc(void *ptr, size_t new_size,UNUSED int type) {
 		return NULL;
 	}
 
-  memlog_lock();
+  //memlog_lock();
+  mutex_lock(mem_mux);
   for (ml = head; ml != NULL; ml = (memlog_t *)(ml->li.next))
     if (ml->ptr == (unsigned char *)ptr)
       break;
   
   if (!ml) {
-    memlog_unlock();
+    //memlog_unlock();
+    mutex_unlock(mem_mux);
     q_printf("<w>ERROR: q_realloc() : trying to realloc pointer %p which is not on the list</>\r\n",ptr);
     return NULL;
   }
 
 	if (new_size == ml->len) {
-    memlog_unlock();
+    //memlog_unlock();
+    mutex_unlock(mem_mux);
 		return ptr;
   }
 
@@ -228,7 +256,8 @@ static void *q_realloc(void *ptr, size_t new_size,UNUSED int type) {
     allocated += new_size;
   }
 
-  memlog_unlock();
+  //memlog_unlock();
+  mutex_unlock(mem_mux);
 	return nptr;
 }
 
@@ -243,11 +272,9 @@ static void *q_realloc(void *ptr, size_t new_size,UNUSED int type) {
 //
 static char *q_strdup(const char *ptr, int type) {
   char *p = NULL;
-  if (ptr != NULL) {
-    int len = strlen(ptr);
-    if ((p = (char *)q_malloc(len + 1,type)) != NULL)
+  if (ptr != NULL)
+    if ((p = (char *)q_malloc(strlen(ptr) + 1,type)) != NULL)
       strcpy(p,ptr);
-  }
   return p;
 }
 
@@ -295,7 +322,6 @@ static void q_memleaks(const char *text) {
 #  define q_strdup(_ptr, _type)             strdup((_ptr))
 #  define q_free(_ptr)                      free((_ptr))
 #  define q_memleaks(_X)                    do {} while(0)
-#  define q_meminit()                       do {} while(0) 
 #endif // MEMTEST
 
 
@@ -311,6 +337,24 @@ static char *q_strdup256(const char *ptr, int type) {
   return p;
 }
 
+
+// Convert ascii (8biit per char) string to lowercase.
+// Conversion is done for characters 'A'..'Z' by setting 5th bit
+//
+// /p/   - pointer to the string being converted (must be writeable memory)
+// /len/ - if < 1, then string length is calculated by q_tolower. If > 0, then the value
+//         is used as number of bytes to convert
+//
+static void q_tolower(char *p, int len) {
+  if (p && *p) {
+    if (len < 1)
+      len = strlen(p);
+    while (--len >= 0) {
+      if (p[len] >= 'A' && p[len] <= 'Z')
+        p[len] |= 1 << 5;
+    }
+  }
+}
 
 //check if given ascii string is a decimal number. Ex.: "12345", "-12"
 // "minus" sign is only accepted if first in the string
@@ -725,9 +769,9 @@ static int text2buf(int argc, char **argv, int i /* START */, char **out) {
             case 'n':              p++;              c = '\n';              break;
             case 'r':              p++;              c = '\r';              break;
             case 't':              p++;              c = '\t';              break;
-            case 'e':              p++;              c = '\e';              break;
+            //case 'e':              p++;              c = '\e';              break;  //interferes with \HEX numbers
             case 'v':              p++;              c = '\v';              break;
-            case 'b':              p++;              c = '\b';              break;
+            //case 'b':              p++;              c = '\b';              break;  //interferes with \HEX numbers
             default:
               if (ishex2(p)) {
                 c = hex2uint8(p);
@@ -760,46 +804,55 @@ static int text2buf(int argc, char **argv, int i /* START */, char **out) {
 
 
 // version of delay() which can be interrupted by user input (terminal
-// keypress) for delays longer than 5 seconds.
-//
-// for delays shorter than 5 seconds fallbacks to normal(delay)
+// keypress)or by a "kill" command
 //
 // `duration` - delay time in milliseconds
-//  returns duration if ok, <duration if was interrupted
-#define TOO_LONG 4999
+//  returns duration if everything was ok, 
+// returns !=duration if was interrupted (returns real time spent in delay_interruptible())
+//
+#define TOO_LONG 2999
 #define DELAY_POLL 250
 
 static unsigned int delay_interruptible(unsigned int duration) {
 
-  // if duration is longer than 4999ms split it in 250ms
-  // intervals and check for a keypress or task "kill" ntofication from the "kill" command
-  // in between
-  unsigned int delayed = 0;
+  
+  unsigned int now, duration0 = duration;
+
+  now = millis();
+
+  // Called from a background task? Wait for the signal from "kill" command, ignore keypresses
+  if (!is_foreground_task()) {
+    uint32_t note;
+    if (task_wait_for_signal(&note, duration) == true)
+      return millis() - now; // Interrupted 
+    return duration;         // Success!
+  }
+
+  // Called from the foreground task (i.e. called from main espshell task context)
+  // Only foreground task can be interrupted by a keypress
   if (duration > TOO_LONG) {
     while (duration >= DELAY_POLL) {
       duration -= DELAY_POLL;
-      delayed += DELAY_POLL;
-
-      // wait for the notify sent by "kill TASK_ID" command.
-      if (xTaskNotifyWait(0, 0xffffffff, NULL, pdMS_TO_TICKS(DELAY_POLL)) == pdPASS)
-        return delayed;  // interrupted by "kill" command
-
+      delay(DELAY_POLL);
       if (anykey_pressed())
-        return delayed;
+        return millis() - now;  // interrupted by a keypress
     }
   }
-  if (duration) {
-    unsigned int now = millis();
-    if (xTaskNotifyWait(0, 0xffffffff, NULL, pdMS_TO_TICKS(duration)) == pdPASS)
-      duration = millis() - now;  // calculate how long we were in waiting state before notification was received
-    delayed += duration;
-  }
-  return delayed;
+  delay(duration);
+
+  // Success! Return exactly requested time, not the real one. Don't change this behaviour or if you do examine all calls to delay_interruptible()
+  return duration0;
 }
 
 // return "st", "nd", "rd" ot "th" depending on number
 static __attribute__((const)) const char *number_english_ending(unsigned int n) {
   return n == 1 ? "st" : (n == 2 ? "nd" : (n == 3 ? "rd" : "th"));
 }
+
+
+
+
+
+
 
 #endif //#if COMPILING_ESPSHELL

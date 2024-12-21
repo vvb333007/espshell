@@ -177,13 +177,13 @@ static int cmd_var_show(int argc, char **argv) {
     }
 
     // display a number in hex, octal, binary, integer or float representation
-    q_printf("%% \"%s\" is a number, which can be written as\r\n"
+    q_printf("%% \"%s\" is a number, which can be written as:\r\n"
              "%% unsigned : %u\r\n"
              "%%   signed : %i\r\n"
-             "%% FP number: %f\r\n"
-             "%% hex      : 0x%x\r\n"
-             "%% oct      : 0%o\r\n"
-             "%% bin      : \"0b",
+             "%% float    : %f\r\n" 
+             "%% Hex      : 0x%x\r\n"
+             "%% Octal    : 0%o\r\n"
+             "%% Binary   : 0b",
              argv[1], unumber, inumber, fnumber, unumber, unumber);
 
     // display binary form with leading zeros omitted

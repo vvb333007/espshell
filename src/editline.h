@@ -6,8 +6,6 @@
  * Feel free to use it as your wish, however credits would be greatly appreciated.
  */
 
-//TODO: find an original copyright notice of EditLine library
-
 #if COMPILING_ESPSHELL
 
 

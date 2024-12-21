@@ -33,36 +33,36 @@ typedef struct {
 } argcargv_t;
 
 // Mutex to protect reference counters of argcargv_t structure.
-static xSemaphoreHandle argv_mux = NULL;
+static MUTEX(argv_mux);
 
 // Increase refcounter on argcargv structure. a == NULL is ok
 static void userinput_ref(argcargv_t *a) {
-  if (a)
-    if (xSemaphoreTake(argv_mux, portMAX_DELAY)) {
-      a->ref++;
-      xSemaphoreGive(argv_mux);
-    }
+  if (a) {
+    mutex_lock(argv_mux);
+    a->ref++;
+    mutex_unlock(argv_mux);
+  }
 }
 
 // Decrease refcounter
 // When refcounter hits zero the whole argcargv gets freed
 // a == NULL is ok
 static void userinput_unref(argcargv_t *a) {
-  if (a)
-    if (xSemaphoreTake(argv_mux, portMAX_DELAY)) {
-      if (a->ref < 1)  //TODO: must not happen
-        abort();
-      a->ref--;
+  if (a) {
+    mutex_lock(argv_mux);
+    if (a->ref < 1)  //TODO: must not happen
+      abort();
+    a->ref--;
       // ref dropped to zero: delete everything
-      if (a->ref == 0) {
-        if (a->argv)
-          q_free(a->argv);
-        if (a->userinput)
-          q_free(a->userinput);
-        q_free(a);
-      }
-      xSemaphoreGive(argv_mux);
+    if (a->ref == 0) {
+      if (a->argv)
+        q_free(a->argv);
+      if (a->userinput)
+        q_free(a->userinput);
+      q_free(a);
     }
+    mutex_unlock(argv_mux);
+  }
 }
 
 // strip leading and trailing whitespace.
@@ -95,13 +95,32 @@ static char *userinput_strip(char *p) {
 //
 static argcargv_t *userinput_tokenize(char *userinput) {
   argcargv_t *a = NULL;
+  // is user input non-empty string?
   if (userinput && *userinput) {
+
+    // allocate argcargv
     if ((a = (argcargv_t *)q_malloc(sizeof(argcargv_t), MEM_ARGCARGV)) != NULL) {
+
+      // use editline's argify() to extract tokens
       a->argv = NULL;
       a->argc = argify((unsigned char *)userinput, (unsigned char ***)&(a->argv));
       if (a->argc > 0) {
+        // successfully tokenized: we have at least 1 token (or more)
+        // Store userinput string because argv[] refers to memory within it. It is however not a single asciiz string: zeros were inserted in places
+        // of whitespace between arguments, so printf(userinput); will output only first token
         a->userinput = userinput;
         a->ref = 1;
+        // convert argv[0] (a command name) to lowercalse
+#if 0        
+        char *p = a->argv[0];
+        while(*p) {
+          if (*p >= 'A' && *p <= 'Z')
+            *p = *p - 'A' + 'a';
+          p++;
+        }
+#else
+        q_tolower(a->argv[0],0);
+#endif
       } else {
         if (a->argv)
           q_free(a->argv);
