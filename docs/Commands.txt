@@ -1,119 +1,241 @@
 ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
 
 
+WHAT IS THIS:
+-------------
+ This is a debugging/development tool **(a library for Arduino framework)** for use 
+ with Arduino projects on ESP32 hardware. 
 
-KEYS USED IN ESPSHELL FOR COMMAND LINE EDITING:
------------------------------------------------
+ Provides a command line interface (CLI) on serial port running in parallel to your 
+ Arduino sketch. It is not standalone program - this tool attaches to the user sketch 
+ (at compile time) and enchances any sketch (even empty one) with a shell.
 
-<ENTER>        : Execute command
+ User can enter and execute commands (there are many built-in commands) in a way 
+ similar to Linux shell while their sketch is running. There are commands to control
+ sketch execution (to some extent) : commands to suspend or resume sketch execution.
+ One can simply press Ctrl+C to suspend sketch while shell will continue to work. 
 
-<- -> /\  \/   : Arrows: move cursor left or right. Up and down arrows scroll 
-                 through command history.
-
-<DEL>          : As in Notepad
-
-<BACKSPACE>    : As in Notepad
-
-<HOME>, <END>  : Do not work! Use Ctrl+A instead of <HOME> and Ctrl+E as <END>
-
-<TAB>          : Quick jump from one word in the line to another. Fast switching
-                 between command arguments. Continously press to cycle through
-                 all arguments/words in line
-
-Ctrl+R         : History search. Press Ctrl+R and start typing. Press <ENTER> 
-                 to search for command executed before
-
-Ctrl+K         : Clear the line from cursor to the end
-
-Ctrl+L         : Clear the screen, keep user input
-
-Ctrl+Z         : Same as entering "exit" and pressing <ENTER>
-
-Ctrl+C         : Suspend sketch execution. Resume with "resume" command
+ ESPShell can be used either from Arduino IDE Serial Monitor or any other communication 
+ software like PuTTY, TeraTerm, Linux "cu" utility and many others. Developer of this 
+ library uses TeraTerm on Windows 10. Default settings for both Arduino IDE Serial 
+ Monitor and TeraTerm are shown on screenshots: "docs/TeraTerm_Default_Settings.jpg"
+ and "docs/Arduino_IDE_Serial_Monitor_Default_Settings.jpg".
 
 
-Please note that above list can be obtained by shell command "? keys". Also
-note that Ctrl+... sequences work on terminal software (TeraTerm, PuTTY, cu)
-but do not work in ArduinoIDE Serial Monitor as it lacks the ability to send
-Ctrl+... key sequences.
+ This library can be useful for developers who are interfacing new I2C or UART devices
+ as espshell has commands to create/delete hardware interfaces, send/receive
+ data. Interfacing GPS (uart-based) chips or GSM modems, making libraries for
+ I2C devices. 
 
-By entering "? keys" command one also can find the key combinations which
-can be used on "dumb" terminals: if for example arrow keys in your terminal
-are not working correctly you can use Ctrl+F or B as an alternative keys.
+ Developers, who do home automation: shell has commands to do whatever one wants with 
+ GPIO (check out "docs/Pin_Commands.txt"), so interfacing relays now don't even require 
+ you to write any code. There are PWM generator and a frequency meter, a pulse counter 
+ and a pulse pattern generator are available on any GPIO.
+ 
+ 
+HOW TO USE IT IN ARDUINO PROJECT:
+---------------------------------
+ This tool DOES NOT REQUIRE user to do ANY changes to their existing sketch/project, except 
+ one line of code: adding "#include "espshell.h" somewhere in the beginning of your sketch.
 
-Pressing <ESC>, then entering 1..3 digit decimal number and pressing <ESC> again
-is the way to enter arbitrary ascii symbol code: ESC, 3, ESC sends <Ctrl+C> for
-example
+ Once this is done, ESPShell starts automatically when your sketch starts, by intercepting
+ execution control and starting its own task. 
 
-
-AUTOCOMPLETION
---------------
-
-ESPShell won't autocomplete commands for you on pressing <TAB>: instead ESPShell
-simply accepts non-completed input. In linux shell one types "upt" and presses
-<TAB> to let the shell autocomplete the command to "uptime". In contrast in ESPShell
-one can simply type "upt" (or even "up") and press <Enter>. ESPShell does not require
-anyone to type command "sequence": "seq" is more than enough.
-
-Same about command arguments - any command or command argument can be shortened
+ User can interact with ESPShell using either Arduino IDE's Serial Monitor but for better 
+ experience a proper terminal software is recommended
 
 
-CONTEXT HELP
-------------
+
+KEYBOARD: KEYS USED AND THEIR MEANING IN ESPSHELL (COMMAND LINE EDITING)
+------------------------------------------------------------------------
+ Although works with any Serial Monitor, the ESPShell works best when dedicated terminal 
+ software is used. Arduino Serial Monitor is not a terminal programand that fact prevents 
+ some features of ESPShell to be used: syntax coloring, hotkeys, UART bridge and others.
+
+ Arduino Serial Monitor is not able to send Ctrl+C and Ctrl+Z which are essential
+ in GSM/LTE modems. TeraTerm and PuTTY are examples of proper terminal software.
+ Linux users can simply use "cu" command.
+
+ These keys are recognized by ESPShell:
+
+Key            | Meaning / Action performed
+---------------+---------------------------------------------------------------
+<ENTER>        | Execute commands, interrupt some running commands
+               |
+<- -> /\  \/   | Arrows: move cursor left or right. Up and down arrows scroll 
+               | through the command history.
+               |
+<DEL>          | As in Notepad
+               |
+<BACKSPACE>    | As in Notepad
+               |
+<HOME>, <END>  | The two do not work. Instead use Ctrl+A as <HOME> and Ctrl+E
+               | as <END>.
+               |
+<TAB>          | Quick jump from one word in the line to another. Fast switching
+               | between command arguments: continously press to cycle through
+               | all arguments/words in the command line
+               |
+Ctrl+R         | History search. Press Ctrl+R and start typing. Press <ENTER> 
+               | to search for command executed before
+               |
+Ctrl+K         | Clear the line from cursor to the end
+               |
+Ctrl+L         | Clear the screen, keep user input
+               |
+Ctrl+Z         | Same as entering "exit" and pressing <ENTER> : moves up one level
+               | in command hierarchy. There are main commands and commands that 
+               | are arranged as subdirectories. Command "exit" is used when in a
+               | command directory. See description of command "exit" below
+               |
+Ctrl+C         | Suspend sketch execution. Resume with "resume" command.
+
+
+ Please note that help page on key combinations can be obtained by executing 
+ shell command "? keys".
+
+ By entering "? keys" command one also can find the key combinations which
+ can be used on "dumb" terminals: if for example arrow keys in your terminal
+ are not working correctly you can use Ctrl+F or B as an alternative keys.
+
+ Pressing <ESC>, then entering 1..3 digit decimal number and pressing <ESC> again
+ is the way to enter arbitrary ascii symbol code: ESC, 3, ESC sends <Ctrl+C> for
+ example
+
+ Keys should be more or less intuitive for Linux shell users.
+
+
+AUTOCOMPLETION vs SHORTENING
+----------------------------
+
+ ESPShell won't autocomplete commands for you on pressing <TAB>: instead ESPShell
+ simply accepts non-completed input, i.e. commands and command arguments can be 
+ /shortened/, lets look at the difference:
+
+ In Linux shell one types "upt" and presses <TAB> to let the shell autocomplete
+ the command to "uptime". 
+
+ In contrast in ESPShell one can simply type "upt" (or even "up") and press 
+ <Enter>. ESPShell does not require anyone to type command "sequence": "seq" 
+ is more than enough.
+
+ Commands such as (for example) "pin 19 out high delay 500 low delay 100"
+ can be written as "p 19 o h d 500 l d 500" and it is stll syntaxically correct
+ ESPShell command with arguments
+
+And yes, filename / path autocompletion is missing as well
+
+
+BUILT-IN HELP SYSTEM
+--------------------
+
+ESPShell tries to be informative and has built-in help system which can do a few
+things - provide manual pages for commands and provide details & possible solutions 
+when errors and failures happen: attempt to use non existent pin will most likely
+result in a message about pin numbers available on given board.
 
 Normally one can read help pages for commands by entering a question mark "?" 
-followed by keyword: either shortened or full. If, however, you would like to
-see help page during command entering (e.g. you forgot what next argument should 
-be) then just press "?" and help page will be displayed. You can try to type
-"cou" and press "?" to see "count" command help page
+followed by keyword: either shortened or full. So, to read manual page on command
+"sequence" one can enter "? seq" and press <Enter>
+
+If, however, you would like to see help page during command entering (e.g. you 
+forgot what next argument should be) then just press "?" and help page will be 
+displayed. You can try to type "cou" and press "?" to see "count" command help 
+page.
+
+And yes, a question mark ("?") is a command on its own, and just as every other
+command it has its own manual page: type "? ?" and see what happens
+
+The "?" is a hotkey and this behaviour might be annoying in cases when you need
+to enter actual symbol "?" and not invoke help system instead. For example, you
+are writing "Hello World?" string into some file: pressing "?" will invoke help
+page and this is not what we want. Well, one of the solutions is to use <ESC>
+to enter an arbitrary ascii code or, disable "?" hotkey processing by executing
+"var bypass_qm 1" command
+
+In order to decrease the library memory footprint one can edit "espshell.h" file
+and change line "#define WITH_HELP 1" to "#define WITH_HELP 0". This will completely
+disble help & hint system, leaving only error/warning messages.
 
 
-ESPSHELL COMMANDS AND THEIR DESCRIPTION
----------------------------------------
+BACKGROUND EXECUTION
+--------------------
 
-List of commands can be obtained at any time by typing "?" and pressing <Enter>
-Commands can be entered in shortened form: "seq" or even "se" instead of 
-"sequence" or "rel" instead of "reload". ESPShell's parser does a partial match
-of the command name to user input allowing for shortening command names
+By default all ESPShell commands are blocking (well, most of them, not all). That
+means that the shell will wait for command execution before starting to accept new 
+input: commands executed in sequence, one by one. Sometimes however we would like
+to run a number of commands in parallel: lets say we want to run multiple "count"
+commands to measure frequency on number of pins.
 
+Adding "&" as very last argument to ANY command instructs ESPShell to execute this 
+command in separate task context, in parallel to other processes. This behaviour
+is well known to Linux users, where "&" is used in exactly same way: to run  
+commands in background.
 
-Same applies to command arguments:
-  For example, instead of entering "pin 2 out open high" one can type something
-  like "pi 2 ou h" to get the same result. If there is ambiguity happens then
-  parser just chooses first match:
+This option (background execution) is especially useful with commands "pin" and 
+"count" which may take long time to finish. Every running background command 
+allocates around 5000 bytes of stack memory which is freed after execution
 
-
-List of all supported command can be obtained by typing "?" and pressing <Enter>
-
-Help on a specific command can be obtained by typing "?" a space, command name 
-and pressing <Enter>: "? command_name"
-
-Here is the list of currently supported commands (main command tree):
-
-% Enter "? keys" to display the espshell keyboard help page
-%
-% "?"          : Commands list & help
-% "uptime"     : System uptime
-% "show"       : Display information
-% "pin"        : Pins (GPIO) commands
-% "cpu"        : Set/show CPU parameters
-% "reload"     : Reset CPU
-% "mem"        : Memory commands
-% "nap"        : CPU sleep
-% "iic"        : I2C commands
-% "uart"       : UART commands
-% "sequence"   : Sequence configuration
-% "files"      : Filesystem access
-% "echo"       : Enable/Disable user input echo
-% "suspend"    : Suspend sketch execution
-% "resume"     : Resume sketch execution
-% "kill"       : Kill tasks
-% "pwm"        : PWM output
-% "count"      : Pulse counter
-% "var"        : Sketch variables
-% "exit"       : Exit
+Background commands can be stopped by using command "kill" (see command list 
+below)
 
 
+ESPSHELL BUILT-IN COMMANDS
+--------------------------
+
+ List of all commands available at the moment can be obtained by typing "?" and 
+ pressing <Enter>. 
+
+ Commands can be entered in shortened form: "seq" or even "se" instead of "sequence" 
+ or "rel" instead of "reload". ESPShell's parser does partial match of the command 
+ name to user input allowing for shortening command names
+
+ Same applies to command arguments:
+
+ For example, instead of entering "pin 2 out open high" one can type something
+ like "pi 2 ou h" to get the same result. If there is ambiguity happens then
+ parser just chooses first match. Keep it in mind when adding new commands to the 
+ shell.
+
+
+ Here is the list of currently (version 0.99.1) supported commands. Throughout the
+ text it can be called either as "main command tree" or "main command directory".
+ Main command directory is not the only directory in ESPShell. Others are: Sequence,
+ UART, I2C and file manager. 
+
+ Executing command "uart 0" for example, switches current command directory to UART 
+ command directory. Pressing then "Ctrl+Z" or executing "exit" commands changes command
+ diewctory back to main.
+
+ When inside a command directory, commands from main command directory are available
+ and can be executed even if they don't show up on command list:
+
+ 1->  esp32#>uart 0
+      % You are about to configure the Serial espshell is running on. Be careful
+      % Entering UART configuration mode. Ctrl+Z or "exit" to return
+      % Hint: Main commands are still avaiable (but not visible in "?" command list)
+ 2->  esp32-uart0>?
+      % Enter "? command" to get details about specific command.
+      % Enter "? keys" to display the espshell keyboard help page
+      %
+      % "?"          : Commands list & help
+      % "up"         : Initialize uart (pins/speed)
+      % "baud"       : Set baudrate
+      % "down"       : Shutdown
+      % "read"       : Read data from UART
+      % "tap"        : Talk to device connected
+      % "write"      : Send bytes over this UART
+      % "exit"       : Exit
+ 3->  esp32-uart0>uptime
+      % Last boot was 17 seconds ago
+      % Restart reason was "Board power-on"
+      esp32-uart0>
+ 
+
+COMMANDS (MAIN COMMAND DIRECTORY)
+---------------------------------
+
+  
 "exit"     - Executed in a command subdirectory exits from that subdirectory; 
              executed in main command tree does nothing unless  it has 1 
              parameter, an optional keyword "exit": if this the case then 
@@ -180,7 +302,7 @@ Here is the list of currently supported commands (main command tree):
                esp32#>mem 3fff0000 21
                      0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F  |0123456789ABCDEF
               ----------------------------------------------------------+----------------
-              0000: 00 00 00 00  db d3 07 f8  da 22 1e 0c  20 81 01 00  |....??.??".. â€ž..
+              0000: 00 00 00 00  db d3 07 f8  da 22 1e 0c  20 81 01 00  |....??.??".. „..
               0010: 00 00 00 00  e9                                     |....?               
 
 "show seq X" - Shows information about signal pattern X. See documentation file
@@ -190,7 +312,7 @@ Here is the list of currently supported commands (main command tree):
                
 
 "reload"   - Reboots ESP32
-	     Hint: command "cpu" and "uptime" shows the last reboot cause: was
+             Hint: command "cpu" and "uptime" shows the last reboot cause: was
                    it caused by watchdog timer interrupt, or system crash etc
 
 "nap"      - Put CPU into light sleep. CPU wakes up by UART activity (press any
@@ -257,8 +379,9 @@ Here is the list of currently supported commands (main command tree):
 "resume"   - Resume execution of Arduino's loop() previously paused with
              "suspend" command
 
-"kill TASK_ID" - stop execution of task TASK_ID. The TASK_ID is either task id displayed
-                 upon executionf of background commands or generic FreeRTOS task id. If killing
+"kill [-TERM | -15 | -KILL | -9] TASK_ID"
+Stop execution of task TASK_ID. The TASK_ID is either task id displayed upon 
+executionf of background commands or generic FreeRTOS task id. If killing
                  an arbitrary FreeRTOS task one have to specify an extra keyword "terminate":
 
                 esp32#>kill 0x3fff0000 terminate      <------ to kill an arbitrary task

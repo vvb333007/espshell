@@ -255,11 +255,11 @@ software or Arduino IDE Serial Monitor).
 But what if we don't want it to be interrupted?
 What if we just want this command to execute in background? 
 
-Yes, it is possible: just use "pin&" instead of "pin". The "pin&" command executes 
-in background. Below is the simple example of a "blinking led": pin 2 toggled HIGH 
-and LOW every 100ms for quite long time.
+Yes, it is possible: just use "pin ... &" instead of "pin". The "pin ... &" command 
+executes in background. Below is the simple example of a "blinking led": pin 2 
+toggled HIGH and LOW every 100ms for quite long time.
 
-  esp32#>pin& 2 low de 100 high de 100 loop 999999
+  esp32#>pin 2 low de 100 high de 100 loop 999999 &
   % Async "pin" command task ID is 3ffb9038
   % Use "kill 3ffb9038" to stop command execution
   esp32#>% Repeating 999999 times, press <Enter> to abort

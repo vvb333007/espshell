@@ -1,20 +1,14 @@
-BIG FAT WARNING: Documentation is a bit outdated in the part related to installation.
-                 Docs are up to date (I hope so) in parts related to commands and
-                 general use. Recently the code structure was changed (moved from single
-                 file to library)
-
-
 ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
 
 <br>
-  –†—É—Å—Å–∫–∞—è –¥–æ–∫—É–º–µ–Ω—Ç–∞—Ü–∏—è –Ω–∞—Ö–æ–¥–∏—Ç—Å—è —Ç—É—Ç: https://github.com/vvb333007/espshell/tree/main/docs/ru_RU/
+ê„··™†Ô §Æ™„¨•≠‚†Ê®Ô ≠†ÂÆ§®‚·Ô ‚„‚: https://github.com/vvb333007/espshell/tree/main/docs/ru_RU/
  
 
 
 WHAT IS THIS:
 -------------
- This is a debugging/development tool for use with Arduino projects on
- ESP32 hardware. 
+ This is a debugging/development tool (a library for Arduino framework) for use 
+ with Arduino projects on ESP32 hardware. 
 
  Provides a command line interface (CLI) on serial port running in parallel 
  to your Arduino sketch. It is not standalone program - this tool attaches
@@ -77,13 +71,15 @@ SHELL BRIEF DESCRIPTION
 
  For pattern generation please read "docs/Pulse_Generator.txt"
 
- For ESP32Cam support read "extra/README.md"
+ For ESP32Cam support read "docs/ESPCAM_Commands.txt"
 
 Example session: initialize I2C interface and read I2C EEPROM by means of ESPShell:
 
   ![ESPShell I2C EEPROM example](https://github.com/vvb333007/espshell/blob/main/docs/Screenshot_EEPROM_I2C_Read.jpg?raw=true)
 
-MEMORY FOOTPRINT/OVERHEAD
+
+
+MEMORY FOOTPRINT/OVERHEAD **OUTDATED INFORMATION **
 -------------------------
 
 ESPShell uses about 60Kbytes of program memory and around 5Kbytes of variables 
@@ -98,16 +94,4 @@ saves about 2Kbytes by decreased code, and another 18Kbytes from removed help st
 There are other macro definition which can be used to further decrease memory usage:
 one can disable filesystem support (all, or unused only), disable command history
 support, decrease number of available sequences or/and mountpoints
-
-
-NOTE:
------
-This shell is about hardware. Thats why ere are no commands like "ping" or any other
-higher level commands. There are million commands to implement but I only implement those
-i use in my debugging/development process. What commands I miss right now is triggers &
-pattern generation :). Also I try to keep it small: it is just 1 file and I want to
-keep it like that
-
-The shell itself is one single .c file; you can use supplied example_blink.ino sketch as an 
-example: it is a simple LED blink sketch.
 

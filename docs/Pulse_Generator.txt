@@ -176,6 +176,11 @@ in this text. Explore them by typing "?" before command name and pressing
 <Enter>
 
 
+NOTE: by default, command which sends sequence ("pin X sequence Y") is blocking.
+      Use "&" flag as the very last argument to the "pin" command to make it 
+      non-blocking
+
+
 Summary:
 --------
 
