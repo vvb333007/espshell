@@ -136,6 +136,47 @@ save    - Save pin configuration. Each save rewrites previous save
 load    - Load pin configuration. reads previously saved data. reading does not
           erase saved data.
 
+iomux [NUMBER | gpio]
+        - Select IO_MUX function for the pin or route pin through GPIO Matrix.
+
+            Select IO_MUX function#0 for pin#0:
+
+              esp32#>pin 0 iomux 0
+
+            Display pin#0 information:
+
+              esp32#>pin 0
+              % Pin 0 (GPIO0) is strapping pin, available, and is not used by Arduino Core
+              % Mode: INPUT, OUTPUT,  input is floating
+              % Output is done via IO MUX, (function: GPIO0)    <------- 
+              % Input is done via IO MUX, (function: GPIO0)     <-------
+              % Maximum current is 20 milliamps
+              % Digital pin value is LOW (0)
+
+            Now, reconfigure pin to use GPIO Matrix:
+
+              esp32#>pin 0 iomux 2
+
+            Display pin0 configuration again:
+
+              esp32#>pin 0
+              % Pin 0 (GPIO0) is strapping pin, available, and is not used by Arduino Core
+              % Mode: INPUT, OUTPUT,  input is floating
+              % Output via GPIO matrix, simple GPIO output   <------------
+              % Input via GPIO matrix, simple GPIO input     <------------
+              % Maximum current is 20 milliamps
+              % Digital pin value is LOW (0)
+
+            If "gpio" keyword is used, then pin will be autorouted aither via IO_MUX or
+            GPIO Matrix
+
+            To see function number meaning one can use "show iomux" command which display
+            each function meaning (there are 5 or 6 functions per pin, depending on ESP32 model)
+
+            Arduino Core (as of v3.0.7) routes pins through the GPIO Matrix, with this IO_MUX -> GPIO Matrix
+            transition happening somewhere in Arduino's pinMode(...).
+
+            The "iomux" command allows for re-routing pins back through IO_MUX 
 
 hold    - "freeze" pin state and output value. Frozen pin remains frozen after
           reboot (as long as power to the chip is provided. rebooting via 

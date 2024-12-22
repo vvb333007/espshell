@@ -677,7 +677,7 @@ static const struct keywords_t keywords_main[] = {
     HELPK("Pins (GPIO) commands") },
 
   { "pin", cmd_pin, MANY_ARGS,
-    HELPK("% \"<*>pin X [hold|release|up|down|out|in|open|high|low|save|load|read|aread|delay|loop|pwm|seq]*</>...\"\r\n"
+    HELPK("% \"<*>pin X [hold|release|up|down|out|in|open|high|low|save|load|read|aread|delay|loop|pwm|seq|iomux]*</>...\"\r\n"
           "% Multifunction command which can:\r\n"
           "%  1. Set/Save/Load pin configuration and settings\r\n"
           "%  2. Enable/disable PWM and pattern generation on pin\r\n"

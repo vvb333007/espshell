@@ -57,7 +57,7 @@ static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][6] = {
   { "GPIO17", "1", "GPIO17", "HS1_DATA5", "U2TXD", "EMAC_CLK_180" },
   { "GPIO18", "VSPICLK", "GPIO18", "HS1_DATA7", "4", "5" },
   { "GPIO19", "VSPIQ", "GPIO19", "U0CTS", "4", "EMAC_TXD0" },
-  { "GPIO20", "GPIO20(1)", "GPIO20(2)", "GPIO20(3)", "GPIO20(4)", "GPIO20(5)" },
+  { "GPIO20", "GPIO20", "GPIO20", "GPIO20", "GPIO20", "GPIO20" },
   { "GPIO21", "VSPIHD", "GPIO21", "3", "4", "EMAC_TX_EN" },
   { "GPIO22", "VSPIWP", "GPIO22", "U0RTS", "4", "EMAC_TXD1" },
   { "GPIO23", "VSPID", "GPIO23", "HS1_STROBE", "4", "5" },
@@ -258,8 +258,22 @@ static int pin_show_mux_functions() {
   return 0;
 }
 
-static bool pin_set_iomux_function(unsigned int pin, unsigned int function) {
-  
+
+static bool pin_set_iomux_function(unsigned char pin, unsigned char function) {
+
+  int nfunc = 5;
+#ifdef CONFIG_IDF_TARGET_ESP32
+  ++nfunc;
+#endif
+  if (function > nfunc) 
+    return false;
+
+  // autoselect GPIO function from IO_MUX
+  if (function == (unsigned char)(-1))
+    gpio_pad_select_gpio(pin);
+  else
+    gpio_ll_func_sel(&GPIO, pin, function);
+  return true;
 }
 
 
@@ -410,6 +424,7 @@ static void pin_load(int pin) {
         digitalForceWrite(pin, Pins[pin].value ? HIGH : LOW);
     } else {
       // unfortunately this will not work with Arduino :(
+      // TODO: remove. Once lost, matrix connections can not be properly restored because of Periman's deinit, which uninstall drivers
       if (Pins[pin].flags & OUTPUT)
         gpio_matrix_out(pin, Pins[pin].sig_out, false, false);
       if (Pins[pin].flags & INPUT)
@@ -588,6 +603,7 @@ static int pin_show(int argc, char **argv) {
 }
 
 
+
 // "pin NUM arg1 arg2 .. argn"
 // "pin NUM"
 // Big fat "pin" command. Processes multiple arguments
@@ -760,6 +776,14 @@ abort_if_input_only:
         if (!q_strcmp(argv[i], "release")) gpio_hold_dis((gpio_num_t)pin); else
         // 6. "pin X load"
         if (!q_strcmp(argv[i], "load")) pin_load(pin); else
+        // 6.1 "pin X iomux [NUMBER | gpio]"
+        if (!q_strcmp(argv[i], "iomux")) {
+          unsigned char function = (unsigned char )(-1);
+          if ((i+1) < argc)
+            function = q_atol(argv[++i],((unsigned char )(-1))); // number-> number, "gpio" -> 0xff
+          pin_set_iomux_function(pin, function);
+        } else
+        
         //4. "loop" keyword
         if (!q_strcmp(argv[i], "loop")) {
           //must have an extra argument (loop count)
