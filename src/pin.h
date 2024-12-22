@@ -39,7 +39,7 @@ static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][6] = {
   // ESP32 pins can be assigned one of 6 functions via IO_MUX
   { "GPIO0", "CLK_OUT1", "GPIO0", "3", "4", "EMAC_TX_CLK" },
   { "U0TXD", "CLK_OUT3", "GPIO1", "3", "4", "EMAC_RXD2" },
-  { "GPIO2", "HSPIWP", "GPIO2", "HS2_DATA0", "SD_DATA0" },
+  { "GPIO2", "HSPIWP", "GPIO2", "HS2_DATA0", "SD_DATA0", "5" },
   { "U0RXD", "CLK_OUT2", "GPIO3", "3", "4", "5" },
   { "GPIO4", "HSPIHD", "GPIO4", "HS2_DATA1", "SD_DATA1", "EMAC_TX_ER" },
   { "GPIO5", "VSPICS0", "GPIO5", "HS1_DATA6", "4", "EMAC_RX_CLK" },
@@ -181,7 +181,7 @@ static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][5] = {
   { "GPIO46", "GPIO46", "2", "3", "4" },
 #else
 #warning "Unsupported target, using dummy IO_MUX function name table"
-static const char *io_mux_func_name[13][6] = {
+static const char *io_mux_func_name[52][6] = {
   // unknown/unsupported target. make array big enough (6 functions)
   { "0", "1", "2", "3", "4", "5" },
   { "0", "1", "2", "3", "4", "5" },
@@ -238,6 +238,30 @@ static const char *io_mux_func_name[13][6] = {
 #endif  // CONFIG_IDF_TARGET...
 };      //static const char *io_mux_func_name[][] = {
 
+static int pin_show_mux_functions() {
+  int pin;
+  int nfunc = 5;
+#ifdef CONFIG_IDF_TARGET_ESP32
+  ++nfunc;
+#endif
+  HELP(q_printf( "%% IO MUX has <i>%s%u</> function%s for every pin. The mapping is as follows:\r\n",nfunc < 6 ? "only " : "", nfunc, nfunc == 1 ? "" : "s"));
+  q_printf("%%Pin | Function<i>0</> | Function<i>1</> | Function<i>2</> | Function<i>3</> | Function<i>4</> | Function<i>5</>\r\n"
+           "%%----+-----------+-----------+-----------+-----------+-----------+-----------\r\n");
+  
+  for (pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++) {
+    q_printf( "%% %02u ",pin);
+    for (int i = 0; i < nfunc; i++) 
+      // 1-char long name means undefined function
+      q_printf("| % 9s ",io_mux_func_name[pin][i][1] ? io_mux_func_name[pin][i] : " -undef- ");
+    q_print(CRLF);
+  }
+  return 0;
+}
+
+static bool pin_set_iomux_function(unsigned int pin, unsigned int function) {
+  
+}
+
 
 // same as digitalRead() but reads all pins no matter what
 // exported (not static) to enable its use in user sketch
@@ -270,21 +294,17 @@ void digitalForceWrite(int pin, unsigned char level) {
 void pinMode2(unsigned int pin, unsigned int flags) {
 
   // set ARDUINO flags to the pin using ESP-IDF functions
-  if ((flags & PULLUP) == PULLUP) gpio_ll_pullup_en(&GPIO, pin);
-  else gpio_ll_pullup_dis(&GPIO, pin);
-  if ((flags & PULLDOWN) == PULLDOWN) gpio_ll_pulldown_en(&GPIO, pin);
-  else gpio_ll_pulldown_dis(&GPIO, pin);
-  if ((flags & OPEN_DRAIN) == OPEN_DRAIN) gpio_ll_od_enable(&GPIO, pin);
-  else gpio_ll_od_disable(&GPIO, pin);
-  if ((flags & INPUT) == INPUT) gpio_ll_input_enable(&GPIO, pin);
-  else gpio_ll_input_disable(&GPIO, pin);
+  if ((flags & PULLUP) == PULLUP)         gpio_ll_pullup_en(&GPIO, pin);    else gpio_ll_pullup_dis(&GPIO, pin);
+  if ((flags & PULLDOWN) == PULLDOWN)     gpio_ll_pulldown_en(&GPIO, pin);  else gpio_ll_pulldown_dis(&GPIO, pin);
+  if ((flags & OPEN_DRAIN) == OPEN_DRAIN) gpio_ll_od_enable(&GPIO, pin);    else gpio_ll_od_disable(&GPIO, pin);
+  if ((flags & INPUT) == INPUT)           gpio_ll_input_enable(&GPIO, pin); else gpio_ll_input_disable(&GPIO, pin);
 
-  // not every esp32 gpio is capable of OUTPUT
-  if ((flags & OUTPUT_ONLY) == OUTPUT_ONLY) {
-    if (!pin_is_input_only_pin(pin))
+  // Deal with OUTPUT flag.
+  if ((flags & OUTPUT_ONLY) != OUTPUT_ONLY)
+    gpio_ll_output_disable(&GPIO, pin); 
+  else
+    if (!pin_is_input_only_pin(pin)) 
       gpio_ll_output_enable(&GPIO, pin);
-  } else
-    gpio_ll_output_disable(&GPIO, pin);
 }
 
 

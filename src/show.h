@@ -15,6 +15,9 @@ static int cmd_show(int argc, char **argv) {
 
   if (argc < 2)
     return -1;
+    // show iomux
+if (!q_strcmp(argv[1],"iomux"))
+  return pin_show_mux_functions();
 
   // "show sequence NUMBER"
   if (!q_strcmp(argv[1], "sequence"))

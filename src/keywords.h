@@ -624,6 +624,12 @@ static const struct keywords_t keywords_main[] = {
 
   // Show funcions (more will be added)
   { "show", cmd_show, 2,
+    HELPK("% \"<*>show <i>iomux</>\"\r\n"
+          "%\r\n"
+          "% Display IO_MUX functions available for each pin\r\n"
+          "% \"show iomux\"  - display IOMUX function names"),"Display information"},
+
+  { "show", cmd_show, 2,
     HELPK("% \"<*>show <i>sequence</> NUMBER</>\"\r\n"
           "%\r\n"
           "% Display sequence configuration for given index:\r\n"
