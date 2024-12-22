@@ -1,6 +1,6 @@
 /* 
  * This file is a part of ESP32Shell for the Arduino Framework by vvb333007
- * Author: Viacheslav Burdzhanadze <vvb333007@gmail.com>, 
+ * Author: Viacheslav Logunov <vvb333007@gmail.com>, 
  *
  * Latest source code is at: https://github.com/vvb333007/espshell/
  * Feel free to use it as your wish, however credits would be greatly appreciated.
