@@ -16,7 +16,7 @@
 #undef likely
 #undef unlikely
 #define unlikely(_X)     __builtin_expect(!!(_X), 0)
-#define likely(X)     __builtin_expect(!!(_X), 1)
+#define likely(_X)     __builtin_expect(!!(_X), 1)
 
 // millis() & micros() inlined versions
 // TODO: may be use CCOUNT register for that? It will be super fast and it does not require any timer to be run
