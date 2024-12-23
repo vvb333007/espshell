@@ -31,41 +31,40 @@ parameter. Example below shows how to stop squarewave generation on pin 2
 
 esp32#>pwm 2
 
-NOTE: some boards refuse to execute "pwm" commands soon after startup. The
-workaround is to execute the same command again :). working on it.
-
-
 PULSE COUNTER
 -------------
 
-Command "count" is used to count pulses in given pin. It takes up to 3 
-parameters: pin to count pulses on, which pulse edge to count (positive,
-negative or both) and a time interval during which pulses are counted.
-Command can be used with just one parameter - pin on which measurement are
-made. In that case time interval defaults to 1000 milliseconds and counter
-looks for positive pulse edges
+ESP32 has built-in (hardware) pulse counting feature with 8 (original ESP32) or
+less (newer models) counters (PCNT unit, see ESP32 Technical Reference). These counters
+can be run in parallel providing up to 8 frequency meters.
 
-Command syntax is: "count PIN [TIME_MS [pos|neg|both]]" where PIN is a pin number, 
-"pos", "neg" and "both" are pulse edge types which we want to count and TIME_MS
-is the time during which measurements are made (default is 1000 ms). Last two
-parameters can be omitted. Their default values are "pos" and "1000".
+Counters are controlled via "count" and "show counters" commands
+
+Command "count" is used to count pulses in given pin. It takes up to 2 parameters: pin 
+to count pulses on and a time interval during which pulses are counted.
+
+Command can be used with just one parameter - pin on which measurement are
+made. In that case time interval defaults to 1000 milliseconds
+
+Command syntax is: "count PIN [TIME_MS] [trigger]" where PIN is a pin number and TIME_MS
+is the time during which measurements are made (default is 1000 ms). Keyword "trigger"
+can be used to instruct counter to "wait until first pulse and once captured, start counting"
 
 Pulse counting can be interrupted at any moment by pressing <Enter> in either 
-termianl software or in Arduino IDE Serial Monitor.
+termianl software or in Arduino IDE Serial Monitor. If command "count" was run in a 
+background mode, then the only way to stop such a counter is to use "kill" command.
 
 Lets connect pin2 and pin4 with a jumper. Start a squarewave generator on pin2 
 and count pulses on pin4:
 
-esp32#>pwm 2 10
-esp32#>count 4
-% Counting pulses on GPIO4.. 10 pulses (1.000 sec)
-esp32#>
+  esp32#>pwm 2 2
+  esp32#>count  4
+  % Counting pulses on GPIO4...(press <Enter> to abort)
+  % 2 pulses in 1.001 seconds (2.0 Hz, 0 interrupts)
+  esp32#>
 
 
-COUNTING PULSES IN BACKGROUND (ASYNC "COUNT")
----------------------------------------------
-
-"Count" is a blocking command: it blocks user from executing next commands until
+"count" is a blocking command: it blocks user from executing next commands until
 this one finishes. It is ok for most of use cases but sometimes we want to count 
 irregular pulses for a long period of time but still be able to use espshell command 
 line. 
@@ -81,17 +80,49 @@ Good news: it is possible to run "count" command in background: just use "count 
 instead of "count". This async command can be interrupted at any time with "kill" command. 
 When  interrupted via "kill" command it will print its current pulses/timer measurements:
 
-
-  esp32#>count 4 100000 &                              <-- start counting in a background
-  % Async "count" command task ID is 3ffb8fdc
-  % Use "kill 3ffb8fdc" to stop command execution
-  % Counting pulses on GPIO4 (any key to abort)..
+  esp32#>count  4  1000000 &     <------- start counting
+  % Background task started
+  % Copy/paste "kill 0x3ffb8ce4" command to stop execution
+  % Counting pulses on GPIO4...
   esp32#>
-  esp32#>kill 3ffb8fdc                                 <-- stop counting
-  34 pulses in 17.250 sec
+  esp32#>
+  esp32#>
+  esp32#>
+  esp32#>kill 0x3ffb8ce4          <------- stop counting
+  % 0 pulses in 11.895 seconds (0.0 Hz, 0 interrupts)
+  % Background command "count" has finished its job
+  esp32#>
+  
+  Hint:  use mouse to copy/paste "kill" command
 
-Note you can use your mouse to copy/paste "kill 3ffb8fdc" command
+To check counters value during counting process one can use "show" command with "counters"
+argument. Obviously counters must be run in background mode for user to be able to execute
+"show" command:
 
+  esp32#>sh co
+  %PCNT|GPIO#|  Status |   TaskID   | Pulse count | Time, msec | Frequency
+  %----+-----+---------+------------+-------------+------------+------------
+  %  0 |   4 | Running | 0x3ffb8ce4 |          51 |      25226 |        2 Hz
+  %  1 |  18 | Running | 0x3ffb9044 |           0 |      20803 |        0 Hz
+  %  2 |  19 | Stopped | 0x00000000 |           0 |       1001 |        0 Hz
+  %  3 |   0 | Unused! | 0x00000000 |           0 |          0 |        0 Hz
+  %  4 |   0 | Unused! | 0x00000000 |           0 |          0 |        0 Hz
+  %  5 |   0 | Unused! | 0x00000000 |           0 |          0 |        0 Hz
+  %  6 |   0 | Unused! | 0x00000000 |           0 |          0 |        0 Hz
+  %  7 |   0 | Unused! | 0x00000000 |           0 |          0 |        0 Hz
+  % 2 counters is currently in use
+  % Use command "kill TASK_ID" to stop a running counter
+  esp32#>
+
+"PCNT" column tells which PCNT hardware unit is allocated for counting, "Status" is one of
+3 possible states: "Trigger", "Running" and "Stopped". TaskID column can be used for "kill" command.
+It also can be used as argument to "suspend" or "resume" commands, but these commands only affect
+software, not hardware counters.
+
+"Time, msec" column keeps track of time (in milliseconds) which has passed since counting has started.
+For "trigger" counters, the measurement interval starts upon reception of a first pulse. Use "trigger"
+keyword in "count" command if you want Frequency column to be more precise. Don't use "trigger" keyword
+if you want only pulse count, not frequency value
 
 
 NOTE: Use "pin X save" and "pin X load" to save/restore pin state. Configuring
