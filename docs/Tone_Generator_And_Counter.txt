@@ -1,8 +1,8 @@
 ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
 
-Squarewave generation and pulse counting
-----------------------------------------
 
+SQUAREWAVE GENERATOR (PWM)
+--------------------------
 
 ESPShell includes ability to generate a squarewave signal on any pin with
 user configurable frequency and duty cycle. Frequency can be set from 1Hz
@@ -10,12 +10,10 @@ up to 312 kHz with duty cycle ranging from 0 (=0%) to 1 (=100%). Default
 value for the duty cycle is 0.5 which means 50% duty cycle. LEDC driver is
 used for this squarewave generator.
 
-SQUAREWAVE GENERATOR
---------------------
 
 Command "pwm" starts squarewave output on given pin:
 
-esp32#>pwm 2 1
+  esp32#>pwm 2 1
 
 The command above starts a 1Hz squarewave on pin 2 (duty cycle is 50%)
 
@@ -23,20 +21,30 @@ The command above starts a 1Hz squarewave on pin 2 (duty cycle is 50%)
 The duty cycle parameter can be set as third parameter to the "pwm" 
 command: set frequency on pin 2 to 5Hz, duty cycle around 10%:
 
-esp32#>pwm 2 5 0.1
+  esp32#>pwm 2 5 0.1
 
 To stop squarewave generator on given pin use "pwm" command with just one 
 parameter. Example below shows how to stop squarewave generation on pin 2
 
 
-esp32#>pwm 2
+  esp32#>pwm 2
 
-PULSE COUNTER
--------------
+This command is not blocking command, so it is not necessary to use "&" option
+to the command (background execution)
+
+
+NOTE: Current implementation does not allow for different frequencies on different
+      pins at the same time: the frequency will change on all pins instead of just
+      one. 
+
+
+
+PULSE COUNTER / FREQUENCY METER
+-------------------------------
 
 ESP32 has built-in (hardware) pulse counting feature with 8 (original ESP32) or
-less (newer models) counters (PCNT unit, see ESP32 Technical Reference). These counters
-can be run in parallel providing up to 8 frequency meters.
+less (newer models) counters (PCNT units, see ESP32 Technical Reference). These 
+counters can be run in parallel providing up to 8 frequency meters.
 
 Counters are controlled via "count" and "show counters" commands
 
@@ -123,6 +131,9 @@ software, not hardware counters.
 For "trigger" counters, the measurement interval starts upon reception of a first pulse. Use "trigger"
 keyword in "count" command if you want Frequency column to be more precise. Don't use "trigger" keyword
 if you want only pulse count, not frequency value
+
+One can clear any counter (stopped or running) by issuing "count PIN clear" command. Stopped counters
+(stopped)
 
 
 NOTE: Use "pin X save" and "pin X load" to save/restore pin state. Configuring
