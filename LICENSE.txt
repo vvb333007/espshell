@@ -1,6 +1,6 @@
 Modified MIT License
 
-Author: Copyright (c) 2024 Viacheslav Logunov <vvb333007@gmail.com>
+Author: Viacheslav Logunov <vvb333007@gmail.com> Copyright (c) 2024
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -9,13 +9,13 @@ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 copies of the Software, and to permit persons to whom the Software is
 furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+1. The above copyright notice and this permission notice shall be included in 
+   all copies or substantial portions of the Software.
 
-When used comercially (e.g. pre-installed on development boards), the person
-or organization wishing to use the Software must inform the author on their 
-intent. However, no permission from the Author is required to proceed with 
-commercial use of the Software. 
+2. No permission from the Author is required to for any commercial use of 
+   the Software. Howver, when used comercially (e.g. pre-installed on 
+   development boards), the person or organization who wish to use the 
+   Software in their commercial products should inform the author by e-mail. 
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
