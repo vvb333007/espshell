@@ -28,6 +28,7 @@
 #define PROMPT_SEARCH "Search: "        // History search prompt
 #define PROMPT_ESPCAM "esp32-cam>"      // ESPCam settings directory
 
+//
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -37,6 +38,7 @@
 #include <time.h>
 #include <assert.h>
 #include <Arduino.h>
+#include "sdkconfig.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <soc/soc_caps.h>
@@ -68,16 +70,22 @@
 #include <vfs_fat_internal.h>
 #include <wear_levelling.h>
 #include <sdmmc_cmd.h>
-#if SOC_SDMMC_IO_POWER_EXTERNAL
-#  include <sd_pwr_ctrl_by_on_chip_ldo.h>
-#endif
 #include <esp_camera.h>
 
-// Pickup compile-time setting
-// Pickup convar_add() definition
+// Espressif devteam has changed their core API once again
+#if __has_include("esp_private/esp_gpio_reserve.h")
+#  include "esp_private/esp_gpio_reserve.h"
+#elif __has_include("esp_gpio_reserve.h")
+#  include "esp_gpio_reserve.h"
+#else
+#  warning "esp_gpio_reserve.h is not found, lets see if it will compile at all"
+#endif
+
 #include "espshell.h"
 
-// GCC-specific stuff
+
+
+// Common macros used throughout the code, GCC-specific stuff
 #define UNUSED __attribute__((unused))
 #define INLINE inline __attribute__((always_inline))
 #define NORETURN __attribute__((noreturn))
@@ -92,7 +100,6 @@
 #else
 #  define STARTUP_HOOK
 #endif
-#pragma GCC diagnostic warning "-Wformat"  // enable -Wformat warnings. Turned off by Arduino IDE by default
 
 // gcc stringify which accepts macro names
 #define xstr(s) ystr(s)   
@@ -102,12 +109,12 @@
 #define SERIAL_8N1 0x800001c
 #define BREAK_KEY 3
 
+// enable -Wformat warnings. Turned off by Arduino IDE by default.
+#pragma GCC diagnostic warning "-Wformat"  
+
 // coloring macros.
-// coloring is auto-enabled upon reception of certain symbols from user: arrow keys,
-// <tab>, Ctrl+??? and such will enable syntax coloring
-//
 #define esc_i   "\033[33;93m" // [I]important information (eye-catching bright yellow)
-#define esc_r   "\033[7m"     // Alternative reversal sequence
+#define esc_r   "\033[7m"     // [R]everse video
 #define esc_w   "\033[91m"    // [W]arning message ( bright red )
 #define esc_e   "\033[95m"    // [E]rror message (bright magenta)
 #define esc_b   "\033[1;97m"  // [B]old bright white
@@ -119,31 +126,38 @@
 #define esc__   "\033[4;37m"  // Normal white, underlined
 
 // Miscellaneous forwards. These can not be resolved by rearranging :-/
-static bool task_wait_for_signal(uint32_t *sig, uint32_t timeout_ms);
-static INLINE bool is_foreground_task();
+static bool task_wait_for_signal(uint32_t *sig, uint32_t timeout_ms); // block current task, wait for signal from another task or from an ISR. Timeout value less than 1 means infinite timeout
+static INLINE bool is_foreground_task();             // are we running in espshell task context?
+
 static inline bool uart_isup(unsigned char u);       // Check if UART u is up and operationg (is driver installed?)
+
 static int q_strcmp(const char *, const char *);     // loose strcmp
 static int PRINTF_LIKE q_printf(const char *, ...);  // printf()
 static int q_print(const char *);                    // puts()
-void STARTUP_HOOK espshell_start();
+
 static bool pin_is_input_only_pin(int pin);
 static bool pin_exist(int pin);
+
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 3, 0) // TODO: rough approximate. Have to check what idf version is used by Core3.0.7
+EXTERN bool esp_gpio_is_pin_reserved(unsigned int gpio);
+#else
+static INLINE bool esp_gpio_is_pin_reserved(unsigned int gpio) {
+  return esp_gpio_is_reserved(1ULL << gpio);
+}
+#endif
+
+
+
+
+void STARTUP_HOOK espshell_start();
 static int espshell_command(char *p);
 
 
-
-// this is not in .h files of IDF so declare it here:
-// check if ESP32 pin is **reserved**. Pins used internally for external ram or flash memory access
-// are ** reserved **.
-//#define esp_gpio_is_pin_reserved esp_gpio_pin_reserved // New IDF
-EXTERN bool esp_gpio_is_pin_reserved(unsigned int gpio);  //TODO: is it unsigned char arg?
-
-
-// Context: an user-defined value (a number) which is set by change_command_directory()
-// when switching to new command subtree. This is how command "uart 1" passes its argument
-// (the number "1") to the subtree commands like "write" or "read". Used to store:
-// sequence number, uart,i2c interface number, probably something else
+// Globals & string constants
 //
+// "Context": an user-defined value (a number) which is set by change_command_directory() when switching to new command subtree. 
+// This is how command "uart 1" passes its argument  (the number "1") to the subtree commands like "write" or "read". 
+// Used to store: sequence number, uart,i2c interface number, probably something else
 static unsigned int Context = 0;
 
 // Currently used prompt
@@ -159,11 +173,13 @@ static const char *i2cIsDown = "%% I2C%u bus is not initialized. Use command \"u
 static const char *uartIsDown = "%% UART%u is down. Use command \"up\" to initialize it\r\n";
 
 static const char *WelcomeBanner = "\033[H\033[2J%%\r\n"
-                                   "%% ESP32Shell " ESPSHELL_VERSION ". Type \"?\" and press <Enter> for help\r\n"
+                                   "%% ESP32Shell " ESPSHELL_VERSION "\r\n"
+                                   "%% Type \"?\" and press <Enter> for help\r\n"
                                    "%% Press <Ctrl+L> to clear the screen, enable colors and show \"tip of the day\"\r\n";
 
 #if WITH_HELP
 static const char *Bye = "% Sayonara!\r\n";
+
 static const char *SpacesInPath = "<e>% Too many arguments.\r\n"
                                   "% If your path contains spaces, please enter spaces as \"*\":\r\n"
                                   "% Examples: \"cd Path*With*Spaces\",  \"rm /ffat/Program*Files\"</>\r\n";
@@ -182,12 +198,6 @@ static const char *VarOops = "<e>% Oops :-(\r\n"
 #endif //WITH_HELP
 
 
-// The reason why all these files are included directly and not built as normal library
-// is because it was a huge one single file which was cut in smaller pieces just recently
-// Sooner or later it will be better 
-//
-
-
 // common macros used by keywords trees
 #include "keywords_defs.h"      
 
@@ -195,10 +205,12 @@ static const char *VarOops = "<e>% Oops :-(\r\n"
 // any other implementation to support specific devices
 #include "console.h"
 
+// qLib : utility functions like q_printf(), string to number conversions, mutexes, memory management etc core functions
+// Must be included before anything else
+#include "qlib.h"
 
-#include "qlib.h"               // library used by espshell. various helpers.
 // Really old (but refactored) version of editline. Probably from 80's. Works well, rock solid :)
-#include "editline.h"
+#include "editline.h"           // editline library
 #include "userinput.h"          // userinput tokenizer and reference counter
 
 #include "convar.h"             // code for registering/accessing sketch variables
@@ -216,11 +228,14 @@ static const char *VarOops = "<e>% Oops :-(\r\n"
 #include "filesystem.h"         // file manager
 #include "memory.h"             // memory component
 
+// These two must be last entries
 #include "show.h"               // "show KEYWORD [ARG1 ARG2 ... ARGn]" command
 #include "question.h"           // cmd_question(), context help handler and help pages
 
 
-// Parse & execute: main ESPShell user input processor
+// Parse & execute: main ESPShell user input processor. User input, an asciiz string is passed to this processor as is.
+// The main task, which reads user input and calls this function is in task.h
+//
 // 1. Split user input /p/ into tokens. Token #0 is a command, other tokens are command arguments.
 // 2. Find an appropriate entry in keywords[] array (command name and number of arguments must match)
 // 3. Execute coresponding callback, may be in a newly created task cotext (for commands ending with "&", like "count&")
@@ -244,7 +259,7 @@ espshell_command(char *p) {
   // got something to process? this "while" here is only for "break" below. Was fighting with goto's
   if (p && *p) {
 
-    //make a history entry, if history enabled (default)
+    //make a history entry, if history is enabled (default)
     if (History)
       history_add_entry(userinput_strip(p));
 
@@ -269,7 +284,7 @@ espshell_command(char *p) {
 
 
     // /keywords/ is a pointer to one of /keywords_main/, /keywords_uart/ ... etc keyword tables.
-    // It points at main tree at startup and then can be switched. Search this "current" command tree
+    // It points at main tree at startup and then can be switched. 
     const struct keywords_t *key = keywords;   
     found = false;
 
@@ -277,7 +292,7 @@ one_more_try:
     i = 0;
     bad = -1;
 
-    // Go tthrough the keywords array till the end
+    // Go through the keywords array till the end
     while (key[i].cmd) {
 
       // command name matches user input?
@@ -390,20 +405,20 @@ static  void espshell_initonce() {
     // init subsystems
     seq_init();
   }
-
 }
 
 // Start ESPShell
 // Normally (AUTOSTART==1) starts automatically. With autostart disabled EPShell can
 // be started by calling espshell_start().
 //
-// This function also cqan start the shell which was terminated by command "exit ex"
+// This function can be used to restart the shell which was terminated by command "exit ex"
 //
 void STARTUP_HOOK espshell_start() {
 
   espshell_initonce();
   if (espshell_started())
-    q_print("% ESPShell is started already\r\n");
+    q_print("% ESPShell is started already, exiting\r\n");
   else
     espshell_task((const void *)1);
 }
+
