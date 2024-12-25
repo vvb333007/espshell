@@ -304,5 +304,4 @@ static int cmd_var(int argc, char **argv) {
   convar_set(fullname, &u);
   return 0;
 }
-
 #endif // #if COMPILING_ESPSHELL

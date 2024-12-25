@@ -421,6 +421,4 @@ release_hardware_and_exit:
   q_printf("%% %u pulses in %.3f seconds (%.1f Hz, %u interrupts)\r\n", units[unit].count, (float)wait / 1000.0f, units[unit].count * 1000.0f / (float)wait,units[unit].overflow);
   return 0;
 }
-
-
 #endif // #if COMPILING_ESPSHELL

@@ -259,5 +259,3 @@ static int cmd_kill(int argc, char **argv) {
   return 0;
 }
 #endif
-
-

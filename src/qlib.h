@@ -848,11 +848,5 @@ static unsigned int delay_interruptible(unsigned int duration) {
 static __attribute__((const)) const char *number_english_ending(unsigned int n) {
   return n == 1 ? "st" : (n == 2 ? "nd" : (n == 3 ? "rd" : "th"));
 }
-
-
-
-
-
-
-
 #endif //#if COMPILING_ESPSHELL
+

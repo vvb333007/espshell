@@ -255,3 +255,4 @@ static int cmd_question(int argc, char **argv) {
 }
 #endif  // WITH_HELP
 #endif //#if COMPILING_ESPSHELL
+

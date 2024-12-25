@@ -816,3 +816,4 @@ static int exit_command_directory(int argc, char **argv) {
   return 0;
 }
 #endif // #if COMPILING_ESPSHELL
+

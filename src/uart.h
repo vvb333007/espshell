@@ -211,4 +211,3 @@ static int cmd_uart_tap(int argc, char **argv) {
 }
 
 #endif //#if COMPILING_ESPSHELL
-

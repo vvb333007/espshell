@@ -63,3 +63,4 @@ static int cmd_spi_write(int argc, char **argv) { return 0; }
 #endif // is SPI supported by SoC?
 #endif
 #endif
+

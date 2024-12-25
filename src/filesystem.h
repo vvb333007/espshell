@@ -2198,3 +2198,4 @@ static int cmd_files_cat(int argc, char **argv) {
 }
 #endif  //WITH_FS
 #endif // #if COMPILING_ESPSHELL
+

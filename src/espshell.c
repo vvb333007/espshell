@@ -421,4 +421,3 @@ void STARTUP_HOOK espshell_start() {
   else
     espshell_task((const void *)1);
 }
-
