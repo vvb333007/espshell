@@ -3,6 +3,7 @@
  * Author: Viacheslav Logunov <vvb333007@gmail.com>, 
  *
  * Latest source code is at: https://github.com/vvb333007/espshell/
+ * Stable releases: https://github.com/vvb333007/espshell/tags
  * Feel free to use it as your wish, however credits would be greatly appreciated.
  */
 

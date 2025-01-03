@@ -65,15 +65,31 @@
 //    convar_add(some_variable);
 //    convar_add(another_variable);
 #if 1
-   extern float dummy_float;
-   extern void *dummy_pointer;
 
-#  define convar_add( VAR ) \
+
+// TODO:
+// The code below could be written simplier if we had acces to __builtin_types_compatible() or _Generic.
+// For some reason GCC v13+ (Xtensa arch) does not support those. My home old Cygwin installation supports both
+// on GCC v11.
+//
+extern float dummy_float;
+extern void *dummy_pointer;
+#  define convar_add( VAR ) do { \
+          bool is_signed; \
+          __typeof__(VAR) __x = ( __typeof__(VAR) )(-1);         /* this may generate warnings */ \
+          is_signed = (__x < 0);                                 /* The trick: GCC will optimize this out if VAR is of unsigned type */ \
           espshell_varadd( #VAR, &VAR, sizeof(VAR), \
           (__builtin_classify_type(VAR) == __builtin_classify_type(dummy_float)), \
-          (__builtin_classify_type(VAR) == __builtin_classify_type(dummy_pointer)))
+          (__builtin_classify_type(VAR) == __builtin_classify_type(dummy_pointer)), \
+          !is_signed); \
+} while( 0 )
+
+#  define convar_addp( VAR, ... ) do { \
+          espshell_varaddp( #VAR, &VAR, sizeof(VAR[0]), __VA_ARGS__ ) \
+} while ( 0 )
 #else
-#  define convar_add( VAR ) do {} while( 0 )
+#  define convar_add( ... )  do {} while( 0 )
+#  define convar_addp( ... ) do {} while( 0 )
 #endif
 
 
@@ -108,7 +124,7 @@ bool espshell_exec_finished();
 
 
 // DONT USE THIS! use convar_add() instead
-void espshell_varadd(const char *name, void *ptr, int size, bool isf, bool isp);
+void espshell_varadd(const char *name, void *ptr, int size, bool isf, bool isp, bool isu);
 
 // 5) By default ESPShell occupies UART0. Default port could be changed
 // at compile time by setting #define STARTUP_PORT in "extra/espshell.h"

@@ -38,13 +38,14 @@ if (!q_strcmp(argv[1],"iomux"))
 #endif
   
   // "show memory"
-  // "show memory ADDRESS [COUNT]"
+  // "show memory ADDRESS [COUNT | uint | int | ushort | short | uchar | char | float | void * ]"
   if (!q_strcmp(argv[1], "memory")) {
     if (argc < 3)
       return memory_show_information();
 
     unsigned char *address;
-    unsigned int length = 256;
+    unsigned int count = 256;
+    unsigned char length = 1;
 
     // read the address. NULL will be returned if address is 0 or has incorrect syntax.
     if ((address = (unsigned char *)(hex2uint32(argv[2]))) == NULL) {
@@ -52,11 +53,35 @@ if (!q_strcmp(argv[1],"iomux"))
       return 2;
     }
 
-    // read /count/ argument if specified
-    if (argc > 3)
-      length = q_atol(argv[3], length);
+    // read the rest of arguments if specified
+    int i = 3;
+    bool isu = false, isf = false, isp = false;
+    while (i < argc) {
+      if (isnum(argv[i]))
+        count = q_atol(argv[3], count);
+      else {
+        if (!q_strcmp(argv[i],"unsigned"))
+          isu = true;
+        else
+        if (!q_strcmp(argv[i],"void*") || argv[i][0] == '*')
+          isp = true;
+        else
+        if (!q_strcmp(argv[i],"float"))
+          isf = true;
+        else
+        if (!q_strcmp(argv[i],"int"))
+          length = 4;
+        else
+        if (!q_strcmp(argv[i],"short"))
+          length = 2;
 
-    return memory_display_content(address,length);
+        if (isp || isf)
+          length = 4;
+      }
+      i++;
+    }
+
+    return memory_display_content(address,count,length,isu,isf,isp);
   }
 
   if (!q_strcmp(argv[1],"counters"))

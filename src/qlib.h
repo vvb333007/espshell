@@ -420,6 +420,71 @@ static bool ishex2(const char *p) {
   return false;
 }
 
+
+// 
+static bool isoct(const char *p) {
+
+  if (p && *p) {
+
+    if (*p != '0')
+      return false;
+
+    p++;
+
+    while (*p >= '0' && *p < '8') 
+      p++;
+
+    return *p == '\0';  //if *p is 0 then all the chars were digits (end of line reached).
+  }
+  return false;
+}
+
+// 
+static bool isbin(const char *p) {
+
+  if (p && *p) {
+
+    if (p[0] == '0' && p[1] == 'b')
+      p += 2;
+
+    while (*p == '0' || *p == '1')
+      p++;
+
+    return *p == '\0';  //if *p is 0 then all the chars were digits (end of line reached).
+  }
+
+  return false;
+}
+
+
+
+
+// Check if string can be converted to number
+//
+static bool q_numeric(const char *p) {
+
+  if (p && *p) {
+
+    if (p[0] == '0') {
+      if (p[1] == 'x')
+        return ishex(p);
+      if (p[1] == 'b')
+        return isbin(p);
+      return isoct(p);
+    }
+
+    if (p[0] == '-')
+      return isnum(p) || isfloat(p);
+
+    if (p[0] == '.')
+      return isfloat(p);
+
+    return isnum(p);
+  }
+
+  return false;
+}
+
 //convert hex ascii byte.
 //strings "A", "5a" "0x5a" are valid input
 //
@@ -522,9 +587,7 @@ static unsigned int binary2uint32(const char *p) {
 
 static unsigned int q_atol(const char *p, unsigned int def) {
   if (p && *p) {
-    if (isnum(p))  // decimal number?
-      def = atol(p);
-    else if (p[0] == '0') {  // leading "0" : either hexadecimal, binary or octal number
+    if (p[0] == '0') {  // leading "0" : either hexadecimal, binary or octal number
       if (p[1] == 'x') {     // hexadecimal
         if (ishex(p))
           def = hex2uint32(p);
@@ -532,7 +595,9 @@ static unsigned int q_atol(const char *p, unsigned int def) {
         def = binary2uint32(p);
       else
         def = octal2uint32(p);  // octal  (TODO: isoct())
-    }
+    } else if (isnum(p))  // decimal number?
+      def = atol(p);
+
   }
   return def;
 }
@@ -664,6 +729,45 @@ static int q_print(const char *str) {
   return len;
 }
 
+// print Address : Value pairs, decoding the data according to data type
+// 1,2 and 4 bytes long data types are supported
+// TODO: signed/unsigned char is displayed as hex. this is wrong.
+//
+static void q_printtable(const unsigned char *p, unsigned int count, unsigned char length, bool isu, bool isf, bool isp) {
+    if (p && count && length) {
+      if (count > 1)
+        q_printf("%% Array of %u elements, %u bytes each\r\n%%  Address   :  Value    \r\n",count,length);
+      while (count) {
+        q_printf("%% %p : ", p);
+        if (isp) {
+          q_printf("0x%08x\r\n", *((unsigned int *)p));
+        } else if (isf) {
+          q_printf("%ff\r\n", *((float *)p));
+        } else {
+          if (length == 4) {
+            if (isu)
+              q_printf("%u (0x%x as hex)\r\n",*((unsigned int *)p),*((unsigned int *)p));
+            else
+              q_printf("%i\r\n",*((signed int *)p));
+          } else if (length == 2) {
+            if (isu)
+              q_printf("%u (0x%x as hex)\r\n",*((unsigned short *)p),*((unsigned short *)p));
+            else
+              q_printf("%i\r\n",*((signed short *)p));
+          } else if (length == 1) {
+            if (isu)
+              q_printf("%u (0x%x as hex)\r\n",*((unsigned char *)p),*((unsigned char *)p));
+            else
+              q_printf("%i\r\n",*((signed char *)p));
+          } else {
+            abort(); //must not happen
+          }
+        }
+        p += length;
+        count--;
+      }
+    }
+}
 // make fancy hex data output: mixed hex values
 // and ASCII. Useful to examine I2C EEPROM contents.
 //
@@ -716,7 +820,6 @@ static void q_printhex(const unsigned char *p, unsigned int len) {
 
       // end of buffer but less than 16 bytes:
       // pad line with spaces
-      // TODO: one space is lost somewhere when dumping sizes like 251
       if (j < 16) {
         unsigned char spaces = (16 - j) * 3 + (j <= 4 ? 3 : (j <= 8 ? 2 : (j <= 12 ? 1 : 0))) + 1;  // empirical :)
         char tmp[spaces + 1];

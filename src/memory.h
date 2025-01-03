@@ -43,13 +43,16 @@ static int memory_show_information() {
 // Display memory contens
 // Only use with readable memory otherwise it will crash (LoadProhibited exception)
 //
-static int memory_display_content(unsigned char *address, unsigned int length) {
+static int memory_display_content(unsigned char *address, unsigned int count, unsigned char length, bool isu, bool isf, bool isp) {
 
   // dont print this header when using shortform of q_printhex.
-  if (length > 15) 
-    HELP(q_printf("%% Memory content (starting from %08x, %u bytes)\r\n", (unsigned int)address,length));
+  if (length > 15) //TODO: use tbl_min_len
+    HELP(q_printf("%% Memory content (starting from %08x, %u bytes)\r\n", (unsigned int)address,length * count));
 
-  q_printhex(address, length);
+  if ((length > 1))
+    q_printtable(address, count, length, isu, isf, isp);
+  else
+    q_printhex(address, count * length);
 
   return 0;
 }

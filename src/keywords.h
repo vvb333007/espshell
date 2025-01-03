@@ -644,10 +644,12 @@ static const struct keywords_t keywords_main[] = {
           "% \"show mount /my_disk\"  - display information about mountpoint \"/my_disk\""), NULL},
 
   // shadowed entry. For helptext only
-  { "show", cmd_show, 2,
-    HELPK("% \"<*>show <i>memory</> [<1>ADDRESS</>] [<1>COUNT</>]\"\r\n"
+  { "show", cmd_show, -1,
+    HELPK("% \"<*>show <i>memory</> [<1>ADDRESS</>] [<1>COUNT</>] [<1>unsigned|signed|char|int|short|float|void *</>]\"\r\n"
           "%\r\n"
-          "% Display COUNT bytes starting from the memory address ADDRESS\r\n"
+          "% Display COUNT elements starting from the memory address ADDRESS\r\n"
+          "% Data type can be provided (e.g. \"show mem 0x3fff0000 10 unsigned int\")\r\n"
+          "% to hint espshell on how to display individual data items. Default is \"unsigned char\""
           "% Address is either decimal or hex (with or without leading \"0x\")\r\n%\r\n"
           "% COUNT is optional and its default value is 256 bytes. Can be decimal or hex\r\n"
           "%\r\n"
@@ -655,8 +657,8 @@ static const struct keywords_t keywords_main[] = {
           "%\r\n"
           "% Display HEAP information / availability"),NULL},
 
-  { "show", cmd_show, 3, HIDDEN_KEYWORD },
-  { "show", cmd_show, 1, HIDDEN_KEYWORD },
+//  { "show", cmd_show, 3, HIDDEN_KEYWORD },
+//  { "show", cmd_show, 1, HIDDEN_KEYWORD },
 
   // Shell input/output settings
   { "tty", cmd_tty, 1, HIDDEN_KEYWORD },

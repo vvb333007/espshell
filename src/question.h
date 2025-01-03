@@ -115,25 +115,18 @@ static int help_pinout(UNUSED int argc, UNUSED char **argv) {
 static int help_command(int argc, char **argv) {
 
   int i = 0;
-  bool found = false;
+  int found = 0;
 
   // go through all matched commands (only name is matched) and print their
   // help lines. hidden commands are ignored
   while (keywords[i].cmd) {
     if (keywords[i].help || keywords[i].brief) {  //skip hidden commands
       if (!q_strcmp(argv[1], keywords[i].cmd)) {
-
         // print common header for the first entry
         if (!found && keywords[i].brief)
-          q_printf("\r\n -- %s --\r\n", keywords[i].brief);
-
-        if (keywords[i].help)
-          q_printf("\r\n%s\r\n", keywords[i].help);  //display long help
-        else if (keywords[i].brief)
-          q_printf("\r\n%s\r\n", keywords[i].brief);  //display brief (must not happen)
-        else
-          q_print("% FIXME: no help lines?\r\n");
-        found = true;
+          q_printf("\r\n<r> -- %s --</>\r\n", keywords[i].brief);
+        q_printf("%s\r\n", keywords[i].help ? keywords[i].help : (keywords[i].brief ? keywords[i].brief : "FIXME:"));
+        found++;
       }
     }
     i++;
@@ -182,7 +175,7 @@ static int help_command_list(int argc, char **argv) {
         if ((clen = strlen(keywords[i].cmd)) < INDENT)
           spaces = &indent[clen];
         // "COMMAND" PADDING_SPACES : DESCRIPTION
-        q_printf("%% \"%s\"%s : %s\r\n", keywords[i].cmd, spaces, brief);
+        q_printf("%% \"<i>%s</>\"%s : %s\r\n", keywords[i].cmd, spaces, brief);
       }
     }
 
@@ -237,21 +230,13 @@ static bool help_page_for_inputline(unsigned char *raw) {
 //
 static int cmd_question(int argc, char **argv) {
 
-  //"? arg"
-  if (argc > 1) {
-    // use strcmp, not q_strcmp to distinguish from "? pin" command
-    //"? keys"
-    if (!strcmp(argv[1], "keys"))
-      return help_keys(argc, argv);
-
-    //"? pinout"
-    if (!strcmp("pinout", argv[1]))
-      return help_pinout(argc, argv);
-
-    //"? command"
-    return help_command(argc, argv);
-  }
-  return help_command_list(argc, argv);
+  return argc <= 1                                 /* Have arguments? */
+      ? help_command_list(argc, argv)              /*   No!  Display command list */
+      : (!strcmp(argv[1], "keys")                  /*   Yes! Is it "keys" ? */
+          ? help_keys(argc, argv)                  /*      Yes! Display appropriate helppage */
+          : (!strcmp("pinout", argv[1])            /*      No!. Is it "pinout" ? */
+              ? help_pinout(argc, argv)            /*         Yes, display pinout helppage */ 
+              : help_command(argc, argv)));        /*         No. Asking for help on given command */
 }
 #endif  // WITH_HELP
 #endif //#if COMPILING_ESPSHELL
