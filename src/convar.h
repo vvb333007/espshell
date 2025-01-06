@@ -18,12 +18,19 @@
 struct convar {
   struct convar *next;     // next var in list
   const char *name;        // var name
-  void *ptr;               // &var
+  void *ptr;               // &var or &gpp
+  void *gpp;               // helper pointer to handle arrays 
   unsigned int isf :  1;    // is it "float"?
-  unsigned int isp :  1;    // is it "void *"?
+  unsigned int isp :  1;    // is it array or pointer (non-void type)?
   unsigned int isu :  1;    // is it "unsigned" ?
+
+  unsigned int isfa :  1;    // is array element of "float" type?
+  unsigned int ispa :  1;    // -- pointer ?
+  unsigned int isua :  1;    // -- unsigned ?
+    
   unsigned int size:  3;    // variable size (1,2 or 4 bytes)
-  unsigned int esize: 25;   // if variable is a pointer (or an array) then this field contains sizeof(array_element)
+  unsigned int sizea: 22;   // if variable is a pointer (or an array) then this field contains sizeof(array_element)
+  unsigned int counta;      //              --                                                 sizeof(array)/sizeof(array_element, i.e. nnumber of elements in the array)
 };
 
 // composite variable value.
@@ -41,6 +48,14 @@ typedef union composite_u {
 
 // All registered variables. Access to the list is **not thread safe**
 static struct convar *var_head = NULL;
+
+static const char *__uch = "unsigned char";
+static const char *__ush = "unsigned short";
+static const char *__uin = "unsigned int";
+static const char *__ucha = "unsigned char *";
+static const char *__usha = "unsigned short *";
+static const char *__uina = "unsigned int *";
+
 
 // Register new sketch variable.
 // Memory allocated for variable descriptor is never free()'d. This function is not
@@ -74,26 +89,76 @@ void espshell_varadd(const char *name, void *ptr, int size, bool isf, bool isp, 
   }
 }
 
-#if NOT_YET
+// Code above fails when trying to register a pointer, because of integer comparision code
+// Code below is used to register pointers
+//
 void espshell_varaddp(const char *name, void *ptr, int size, bool isf, bool isp, bool isu) {
 
   struct convar *var;
 
   if ((var = (struct convar *)q_malloc(sizeof(struct convar), MEM_STATIC)) != NULL) {
+
+    q_printf("Registering \"%s\", address is %p\r\n",name,ptr);
     var->next = var_head;
     var->name = name;
     var->ptr = ptr;
-    var->size = sizeof( void * );
-    var->esize = size;
-    var->isf = 0;
     var->isp = 1;
+    var->isf = 0;
     var->isu = 0;
+    var->size = sizeof( void * );
+    var->sizea = size;
+    var->counta = 1;
+    var->isfa = isf;
+    var->isua = isu;
+    var->ispa = isp;
     var_head = var;
   }
 }
-#endif
 
+// Code above fails when trying to register an array, because of & operator logic. (&array and &pointer are different things)
+// Code below is used to register arrays
 //
+void espshell_varadda(const char *name, void *ptr, int size,int count, bool isf, bool isp, bool isu) {
+
+  struct convar *var;
+
+  if ((var = (struct convar *)q_malloc(sizeof(struct convar), MEM_STATIC)) != NULL) {
+
+    var->gpp = ptr;
+    var->next = var_head;
+    var->name = name;
+    var->ptr = &var->gpp;
+    var->isp = 1;
+    var->isf = 0;
+    var->isu = 0;
+    var->size = sizeof( void * );
+    var->sizea = size;
+    var->counta = count;
+    var->isfa = isf;
+    var->isua = isu;
+    var->ispa = isp;
+    var_head = var;
+  }
+}
+
+// return asciiz string with C-style variable type
+// e.g. "float" or "unsigned int *" in case of pointers or arrays
+//
+static const char *convar_typename(struct convar *var) {
+  int off = var->isu ? 0 : 9;
+  return var ? (var->isf ? "float" : 
+                          (var->isp ? (var->isfa ? "float *" : 
+                                                    (var->ispa ? "void **" : 
+                                                                 (var->sizea == 4 ? __uina + off : 
+                                                                                    (var->sizea == 2 ? __usha + off : 
+                                                                                                       __ucha + off)))) :
+                                      (var->size == 4 ? __uin + off : (var->size == 2 ? __ush + off : __uch + off)))) : 
+                "(null)";
+}
+
+
+// Find variable descriptor by variable name
+// TODO: is loose strcmp a good choice here? how to distinguish a1 and a11?
 static struct convar *convar_get(const char *name) {
 
   struct convar *var = var_head;
@@ -105,107 +170,79 @@ static struct convar *convar_get(const char *name) {
   return NULL;
 }
 
-static const char *__uch = "unsigned char";
-static const char *__ush = "unsigned short";
-static const char *__uin = "unsigned int";
+// Print the value of a variable.
+// Printing is done to internal buffer and then it is copied to /out/ if /olen/ permits
+//
+static int convar_value_as_string(struct convar *var, char *out, int olen) {
 
+  if (var && out && olen) {
+    composite_t comp;
+    memcpy(&comp, var->ptr, var->size);
+    if (var->isf)
+      snprintf(out, olen, "%f", comp.fval);
+    else if (var->isp)
+      snprintf(out, olen, "0x%x", comp.uval);
+    else if (var->isu) {
+        unsigned int val = var->size == 4 ? comp.uval : (var->size == 2 ? comp.ush : comp.uchar);
+        snprintf(out, olen, "%u", val);
+    } else {
+        signed int val = var->size == 4 ? comp.ival : (var->size == 2 ? comp.ish : comp.ichar);
+        snprintf(out, olen, "%i", val);
+    }
+    return 0;
+  }
+  return -1;
+}
 
-
+// Show variable value by variable name
 //
 static int convar_show_var(char *name) {
 
     struct convar *var;
-    composite_t *comp;
-
     if ((var = convar_get(name)) == NULL) {
       HELP(q_printf("%% <e>\"%s\" : No such variable. (use \"var\" to display variables list)</>\r\n", name));
       return 1;
     }
 
-    comp = (composite_t *)var->ptr;
+  char out[128]; // should be enough
+  if (convar_value_as_string(var,out,sizeof(out)) == 0) {
+    // Print value
+    q_printf("%% %s <i>%s</> = <3>%s</>;  ", convar_typename(var), var->name, out);
+    // In case of a pointer or array, print its content
+    if (var->isp) {
+      if (var->counta == 1) // arrays of 1 element are treated as plain pointers
+        q_printf("// Pointer to %u bytes memory region", var->sizea);
+      else
+        q_printf("// Array of %u elements, (%u bytes per element)", var->counta, var->sizea);
+      if (var->counta < 257) {
+        q_printf("\r\n%% %s[%u] = {\r\n", var->name, var->counta);
 
-    if (comp == NULL) // must not happen
-      abort();
+        struct convar var0 = { 0 };
 
+        void *ptr;
+        var0.name = var->name;
+        var0.isf = var->isfa;
+        var0.isp = var->ispa;
+        var0.isu = var->isua;
+        var0.size = var->sizea;
 
-    q_print(CRLF);
-
-
-    switch (var->size) {
-
-      case 1:
-          if (var->isu)
-            q_printf("%% %s <i>%s</> = <3>%u</>; // 0x%x in hex\r\n", __uch, var->name, comp->uchar, comp->uchar); 
-          else
-            q_printf("%% %s <i>%s</> = <3>%i</>; // 0x%x in hex\r\n", __uch + 9, var->name, comp->ichar, comp->ichar); 
-      break;
-
-      case 2:
-          if (var->isu)
-            q_printf("%% %s <i>%s</> = <3>%u</>; // 0x%x in hex\r\n", __ush, var->name, comp->ush, comp->ush); 
-          else
-            q_printf("%% %s <i>%s</> = <3>%i</>; // 0x%x in hex\r\n", __ush + 9, var->name, comp->ish, comp->ish); 
-      break;
-
-      case 4:
-          if (var->isf)
-            q_printf("%% float <i>%s</> = <3>%f</>; // 0x%x in hex\r\n", var->name, comp->fval, comp->uval);
-          else 
-          if (var->isp)
-            q_printf("%% void *<i>%s</> = <3>0x%x</>;\r\n", var->name, comp->uval);
-          else {
-            if (var->isu)
-              q_printf("%% %s <i>%s</> = <3>%u</>; // 0x%x in hex\r\n", __uin, var->name, comp->uval, comp->uval); 
-            else
-              q_printf("%% %s <i>%s</> = <3>%d</>; // 0x%x in hex\r\n", __uin + 9, var->name, comp->ival, comp->ival); 
-          }
-      break;
-
-      default:
-        HELP(q_printf("%% <e>Variable \"%s\" has unsupported size of %d bytes</>\r\n", var->name, var->size));
-        return 1;
-    }
-
+        for (int i = 0; i < var->counta; i++) {
+          var0.ptr = (void *)((char *)(*(void **)var->ptr) + var->sizea * i); // love pointer arithmetic :)
+          convar_value_as_string(&var0,out,sizeof(out));
+          q_printf("%%    <3>%s</>, // %s[%u]\r\n",out,var->name,i);
+        }
+        q_print("% };\r\n");
+      } else 
+        q_printf(", too many to display\r\n");
+    } else
+      q_printf("// use \"var %s\" see this number in hex, oct, bin etc\r\n",out);
+  }
     return 0;
 }
 
-static int convar_value_as_string(struct convar *var, char *out, int olen) {
 
-  if (!var || !out)
-    return -1;
-
-  char tmp[256];
-  composite_t comp;
-
-  memcpy(&comp, var->ptr, var->size);
-  if (var->isf)
-    snprintf(tmp, 255, "%f", comp.fval);
-  else if (var->isp)
-    snprintf(tmp, 255, "0x%x", comp.uval);
-  else if (var->isu) {
-      unsigned int val = var->size == 4 ? comp.uval : (var->size == 2 ? comp.ush : comp.uchar);
-      snprintf(tmp, 255, "%u", val);
-  } else {
-      signed int val = var->size == 4 ? comp.ival : (var->size == 2 ? comp.ish : comp.ichar);
-      snprintf(tmp, 255, "%i", val);
-  }
-
-  if (strlen(tmp) >= olen)
-    return -1;
-
-  strcpy(out,tmp);
-  return 0;
-}
-
-
-static const char *convar_typename(struct convar *var) {
-  int off = var->isu ? 0 : 9;
-  return var ? (var->isf ? "float" : 
-                          (var->isp ? "pointer / array" : 
-                                      (var->size == 4 ? __uin + off : (var->size == 2 ? __ush + off : __uch + off)))) : "???";
-}
-
-//
+// Show all variables in table form. Arrays and pointers are displayed as addresses, not as *(address)
+// To display memory content one have to use "var NAME" not just "var"
 static int convar_show_list() {
 
     struct convar *var = var_head;
@@ -236,6 +273,8 @@ static int convar_show_list() {
     return 0;
 }
 
+// Utility function to display a number in different bases and different casts:
+// i.e. display "float" as "hex", or an arbitrary number in octal, binary or hexadecimal form
 //
 static int convar_show_number(const char *p) {
 
@@ -243,8 +282,6 @@ static int convar_show_number(const char *p) {
     unsigned int unumber;
     signed int   inumber;
     float        fnumber;
-
-    
     
     // argv[n] is at least 2 bytes long (1 symbol + '\0')
     // Octal, Binary or Hex number?
@@ -276,13 +313,15 @@ static int convar_show_number(const char *p) {
     }
 
     // display a number in hex, octal, binary, integer or float representation
-    q_printf("%% \"%s\" is a number, which can be written as:\r\n"
-             "%% unsigned : %u\r\n"
-             "%%   signed : %i\r\n"
-             "%% float    : %f\r\n" 
-             "%% Hex      : 0x%x\r\n"
-             "%% Octal    : 0%o\r\n"
-             "%% Binary   : 0b",
+    q_printf("%% \"<i>%s</>\" is a number, which can be written as:\r\n"
+             "%% <_>C-style cast of a memory content:</>\r\n"
+             "%% unsigned : <3>%u</>\r\n"
+             "%%   signed : <3>%i</>\r\n"
+             "%% float    : <3>%f</>\r\n" 
+             "%% <_>Same number in different bases:</>\r\n" 
+             "%% Hex      : <3>0x%x</>\r\n"
+             "%% Octal    : <3>0%o</>\r\n"
+             "%% Binary   : <3>0b",
              p, unumber, inumber, fnumber, unumber, unumber);
 
     // display binary form with leading zeros omitted
@@ -292,7 +331,7 @@ static int convar_show_number(const char *p) {
       for (inumber = __builtin_clz(unumber); inumber < 32; inumber++)
         q_print((unumber & (0x80000000 >> inumber)) ? "1" : "0");
 
-    q_print(CRLF);
+    q_print("</>\r\n");
     return 0;
 }
 
@@ -348,10 +387,11 @@ static int cmd_var(int argc, char **argv) {
     }
   } else {
     // integers & pointer values
+    // TODO: warn if float argument is detected
     if (q_numeric(argv[2])) {
       if (argv[2][0] == '-') {
         if (var->isu) {
-          q_printf("%% Variable \"%s\" is unsigned\r\n",var->name);
+          q_printf("%% Variable \"%s\" is unsigned, new value is not set\r\n",var->name);
           return 0;
         }
         signed int val = -q_atol(&(argv[2][1]), 0);
@@ -364,11 +404,10 @@ static int cmd_var(int argc, char **argv) {
         if (var->size == 2) u.ush   = val; else
         if (var->size == 1) u.uchar = val; else { q_printf("%% Bad variable size %u\r\n",var->size); return 0; }
       }
-
-      memcpy(var->ptr, &u, var->size);
     } else 
       return 2;
   }
+  memcpy(var->ptr, &u, var->size);
   return 0;
 }
 #endif // #if COMPILING_ESPSHELL

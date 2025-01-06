@@ -473,13 +473,13 @@ static bool q_numeric(const char *p) {
       return isoct(p);
     }
 
-    if (p[0] == '-')
+    //if (p[0] == '-')
       return isnum(p) || isfloat(p);
 
-    if (p[0] == '.')
-      return isfloat(p);
+   // if (p[0] == '.')
+   //   return isfloat(p);
 
-    return isnum(p);
+   // return isnum(p);
   }
 
   return false;

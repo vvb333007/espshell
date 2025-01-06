@@ -33,6 +33,8 @@
 
 #define WITH_ESPCAM 0            // Include AiThinker ESP32CAM commands
 
+#define WITH_VAR 1               // enable support for sketch variables
+
 #define STARTUP_PORT UART_NUM_0  // Uart number (or 99 for USBCDC) where shell will be deployed at startup
 #define STARTUP_ECHO 1           // echo mode at espshell startup (-1=blackhole, 0=no echo or 1=echo)
 #define WITH_COLOR 1             // Enable terminal colors support 
@@ -64,7 +66,7 @@
 //    convar_add(ptr);
 //    convar_add(some_variable);
 //    convar_add(another_variable);
-#if 1
+#if WITH_VAR
 
 
 // TODO:
@@ -72,24 +74,46 @@
 // For some reason GCC v13+ (Xtensa arch) does not support those. My home old Cygwin installation supports both
 // on GCC v11.
 //
+// Array registration and pointer registration are two different macro/functions because &VAR returns &VAR[0] for array
+// but not for pointer
+//
 extern float dummy_float;
 extern void *dummy_pointer;
+
 #  define convar_add( VAR ) do { \
           bool is_signed; \
-          __typeof__(VAR) __x = ( __typeof__(VAR) )(-1);         /* this may generate warnings */ \
-          is_signed = (__x < 0);                                 /* The trick: GCC will optimize this out if VAR is of unsigned type */ \
+          __typeof__(VAR) __x = ( __typeof__(VAR) )(-1); \
+          is_signed = (__x < 0); /* HELLO! If you see this warning during compilation - just ignore it :) */ \
           espshell_varadd( #VAR, &VAR, sizeof(VAR), \
           (__builtin_classify_type(VAR) == __builtin_classify_type(dummy_float)), \
           (__builtin_classify_type(VAR) == __builtin_classify_type(dummy_pointer)), \
           !is_signed); \
 } while( 0 )
 
-#  define convar_addp( VAR, ... ) do { \
-          espshell_varaddp( #VAR, &VAR, sizeof(VAR[0]), __VA_ARGS__ ) \
+#  define convar_addp( VAR ) do { \
+          bool is_signed; \
+          __typeof__(VAR[0]) __x = ( __typeof__(VAR[0]) )(-1); \
+          is_signed = (__x < 0);   /* HELLO! If you see this warning during compilation - just ignore it :) */ \
+          espshell_varaddp( #VAR, &VAR, sizeof(VAR[0]), \
+          (__builtin_classify_type(VAR[0]) == __builtin_classify_type(dummy_float)), \
+          (__builtin_classify_type(VAR[0]) == __builtin_classify_type(dummy_pointer)), \
+          !is_signed); \
 } while ( 0 )
+
+#  define convar_adda( VAR ) do { \
+          bool is_signed; \
+          __typeof__(VAR[0]) __x = ( __typeof__(VAR[0]) )(-1); \
+          is_signed = (__x < 0);   /* HELLO! If you see this warning during compilation - just ignore it :) */ \
+          espshell_varadda( #VAR, &VAR, sizeof(VAR[0]), sizeof(VAR) / sizeof(VAR[0]), \
+          (__builtin_classify_type(VAR[0]) == __builtin_classify_type(dummy_float)), \
+          (__builtin_classify_type(VAR[0]) == __builtin_classify_type(dummy_pointer)), \
+          !is_signed); \
+} while ( 0 )
+
 #else
 #  define convar_add( ... )  do {} while( 0 )
 #  define convar_addp( ... ) do {} while( 0 )
+#  define convar_adda( ... ) do {} while( 0 )
 #endif
 
 
@@ -125,6 +149,8 @@ bool espshell_exec_finished();
 
 // DONT USE THIS! use convar_add() instead
 void espshell_varadd(const char *name, void *ptr, int size, bool isf, bool isp, bool isu);
+void espshell_varaddp(const char *name, void *ptr, int size, bool isf, bool isp, bool isu);
+void espshell_varadda(const char *name, void *ptr, int size,int count, bool isf, bool isp, bool isu);
 
 // 5) By default ESPShell occupies UART0. Default port could be changed
 // at compile time by setting #define STARTUP_PORT in "extra/espshell.h"

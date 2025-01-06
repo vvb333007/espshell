@@ -55,11 +55,20 @@ if (!q_strcmp(argv[1],"iomux"))
 
     // read the rest of arguments if specified
     int i = 3;
+    bool count_is_specified = false;
     bool isu = false, isf = false, isp = false;
     while (i < argc) {
-      if (isnum(argv[i]))
+      if (isnum(argv[i])) {
         count = q_atol(argv[3], count);
+        count_is_specified = true;
+      }
       else {
+        // Type was provided. 
+        // Most likely user wants to see *(var), not just 256 bytes of memory content, so if /count/ was not explicitly set, make count = 1
+        // or we risk LoadProhibited exception here
+        if (!count_is_specified)
+          count = 1;
+
         if (!q_strcmp(argv[i],"unsigned"))
           isu = true;
         else
@@ -74,6 +83,10 @@ if (!q_strcmp(argv[1],"iomux"))
         else
         if (!q_strcmp(argv[i],"short"))
           length = 2;
+        else
+        if (!q_strcmp(argv[i],"void")) {} // probably "void *", so just skip it and wait for an *
+        else
+          q_printf("%% Keyword \"%s\" was ignored\r\n",argv[i]);
 
         if (isp || isf)
           length = 4;
