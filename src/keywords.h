@@ -645,15 +645,17 @@ static const struct keywords_t keywords_main[] = {
 
   // shadowed entry. For helptext only
   { "show", cmd_show, -1,
-    HELPK("% \"<*>show <i>memory</> [<1>ADDRESS</>] [<1>COUNT</>] [<1>unsigned|signed|char|int|short|float|void *</>]\"\r\n"
+    HELPK("% \"<*>show <i>memory</> <i>ADDRESS</> [<1>COUNT</>] [<1>unsigned|signed|char|int|short|float|void *</>]\"\r\n"
           "%\r\n"
           "% Display COUNT elements starting from the memory address ADDRESS\r\n"
           "% Data type can be provided (e.g. \"show mem 0x3fff0000 10 unsigned int\")\r\n"
-          "% to hint espshell on how to display individual data items. Default is \"unsigned char\""
+          "% to hint espshell on how to display individual data items. \r\n"
+          "% Default data type is \"unsigned char\"\r\n"
           "% Address is either decimal or hex (with or without leading \"0x\")\r\n%\r\n"
           "% COUNT is optional and its default value is 256 bytes. Can be decimal or hex\r\n"
+          "% NOTE: if type specifier is used and COUNT is not set, then COUNT defaults to 1\r\n"
           "%\r\n"
-          "% <*>\"show <i>memory</>\"\r\n"
+          "% \"<*>show <i>memory</>\"\r\n"
           "%\r\n"
           "% Display HEAP information / availability"),NULL},
 
