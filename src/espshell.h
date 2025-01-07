@@ -63,7 +63,7 @@
 //    const char *ptr;
 //    static float volatile another_variable;
 //    ...
-//    convar_add(ptr);
+//    convar_addp(ptr);
 //    convar_add(some_variable);
 //    convar_add(another_variable);
 #if WITH_VAR
@@ -71,11 +71,13 @@
 
 // TODO:
 // The code below could be written simplier if we had acces to __builtin_types_compatible() or _Generic.
-// For some reason GCC v13+ (Xtensa arch) does not support those. My home old Cygwin installation supports both
+// For some reason GCC v13+ (Xtensa arch) does not support those. My old Cygwin installation supports both
 // on GCC v11.
 //
 // Array registration and pointer registration are two different macro/functions because &VAR returns &VAR[0] for array
 // but not for pointer
+//
+// All convar_addX() macros are reduced to single function call during compilation
 //
 extern float dummy_float;
 extern void *dummy_pointer;

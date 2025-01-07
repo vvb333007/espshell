@@ -35,6 +35,7 @@ struct convar {
 
 // composite variable value.
 // had to use union because of variables different sizeof()
+//
 typedef union composite_u {
   unsigned char  uchar;  // unsigned char
   signed char    ichar;  // signed --
@@ -44,6 +45,16 @@ typedef union composite_u {
   unsigned int   uval;   // unsigned --
   float          fval;   // float
 } composite_t;
+
+// Limits
+#define ARRAY_TOO_BIG       257 // don't display array content if its element count exceeeds this number. TODO: accept "var NAME[123]"
+
+#define CONVAR_NAMELEN_MAX  64 // max variable name length
+#define CONVAR_TYPELEN_MAX  32 // should be enough even for "unsigned long long"
+#define CONVAR_COUNTLEN_MAX 32 // should be enough even for "[4294967295]"
+
+#define CONVAR_BUFSIZ (CONVAR_NAMELEN_MAX + CONVAR_TYPELEN_MAX + CONVAR_COUNTLEN_MAX)
+
 
 
 // All registered variables. Access to the list is **not thread safe**
@@ -97,8 +108,7 @@ void espshell_varaddp(const char *name, void *ptr, int size, bool isf, bool isp,
   struct convar *var;
 
   if ((var = (struct convar *)q_malloc(sizeof(struct convar), MEM_STATIC)) != NULL) {
-
-    q_printf("Registering \"%s\", address is %p\r\n",name,ptr);
+   
     var->next = var_head;
     var->name = name;
     var->ptr = ptr;
@@ -145,7 +155,7 @@ void espshell_varadda(const char *name, void *ptr, int size,int count, bool isf,
 // e.g. "float" or "unsigned int *" in case of pointers or arrays
 //
 static const char *convar_typename(struct convar *var) {
-  int off = var->isu ? 0 : 9;
+  int off = var->isu ? 0 : 9; // offset to strings like "unsigned int" to make them "int" (i.e. skip first /off/ bytes)
   return var ? (var->isf ? "float" : 
                           (var->isp ? (var->isfa ? "float *" : 
                                                     (var->ispa ? "void **" : 
@@ -154,6 +164,38 @@ static const char *convar_typename(struct convar *var) {
                                                                                                        __ucha + off)))) :
                                       (var->size == 4 ? __uin + off : (var->size == 2 ? __ush + off : __uch + off)))) : 
                 "(null)";
+}
+
+
+// NOTE: NOT REENTRANT!!
+// For array-type variables onl
+static const char *convar_typename2(struct convar *var) {
+
+  static char out[CONVAR_BUFSIZ];
+  char *tn;
+  int i;
+
+  if ((i = strlen((tn = convar_typename(var)))) >= sizeof(out))
+    abort(); // must not happen
+
+  strcpy(out,tn);
+  
+  // For arrays (with number of elements > 1) we replace terminating "*" of typename
+  // with VAR_NAME[ARRAY_COUNT]. E.g. typename "float *" for variable "test" will be something like: "float test[]"
+  //
+  if (var->isp) {
+
+    if (out[i - 1] != '*') // must not happen
+      abort();
+
+    out[i - 1] = ' ';
+    sprintf(&out[i],"%s[%u]",var->name,var->counta); // TODO: this is unsafe! Limit variable name length to something real like 64 characters
+  } else {
+    out[i] = ' ';
+    strcpy(&out[i + 1],var->name); // TODO: this is unsafe! Limit variable name length to something real like 64 characters
+  }
+
+  return out;
 }
 
 
@@ -194,6 +236,7 @@ static int convar_value_as_string(struct convar *var, char *out, int olen) {
   return -1;
 }
 
+
 // Show variable value by variable name
 //
 static int convar_show_var(char *name) {
@@ -204,18 +247,18 @@ static int convar_show_var(char *name) {
       return 1;
     }
 
-  char out[128]; // should be enough
+  char out[CONVAR_BUFSIZ]; 
   if (convar_value_as_string(var,out,sizeof(out)) == 0) {
     // Print value
     q_printf("%% %s <i>%s</> = <3>%s</>;  ", convar_typename(var), var->name, out);
     // In case of a pointer or array, print its content
     if (var->isp) {
       if (var->counta == 1) // arrays of 1 element are treated as plain pointers
-        q_printf("// Pointer to %u bytes memory region", var->sizea);
+        q_printf("// Pointer to %u-byte memory region", var->sizea);
       else
         q_printf("// Array of %u elements, (%u bytes per element)", var->counta, var->sizea);
-      if (var->counta < 257) {
-        q_printf("\r\n%% %s[%u] = {\r\n", var->name, var->counta);
+      if (var->counta < ARRAY_TOO_BIG) {
+        q_printf("\r\n%% %s = {\r\n", convar_typename2(var));
 
         struct convar var0 = { 0 };
 
@@ -235,7 +278,7 @@ static int convar_show_var(char *name) {
       } else 
         q_printf(", too many to display\r\n");
     } else
-      q_printf("// use \"var %s\" see this number in hex, oct, bin etc\r\n",out);
+      q_print(CRLF);
   }
     return 0;
 }
@@ -246,7 +289,7 @@ static int convar_show_var(char *name) {
 static int convar_show_list() {
 
     struct convar *var = var_head;
-    char out[256] = { 0 };
+    char out[CONVAR_BUFSIZ] = { 0 };
 
     if (!var)
       HELP(q_print(VarOops));
