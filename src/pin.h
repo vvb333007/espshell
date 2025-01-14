@@ -252,11 +252,18 @@ static int pin_show_mux_functions() {
     q_printf( "%% %02u ",pin);
     for (int i = 0; i < nfunc; i++) 
       // 1-char long name means undefined function
+#pragma GCC diagnostic ignored "-Wformat"
       q_printf("| % 9s ",io_mux_func_name[pin][i][1] ? io_mux_func_name[pin][i] : " -undef- ");
+#pragma GCC diagnostic warning "-Wformat"      
     q_print(CRLF);
   }
   return 0;
 }
+
+// Set IO_MUX / GPIO Matrix function for the pin
+// /pin/       - pin
+// /function/  - IO_MUX function
+//
 
 
 static bool pin_set_iomux_function(unsigned char pin, unsigned char function) {
@@ -396,7 +403,7 @@ static void pin_save(int pin) {
   if (pu) Pins[pin].flags |= PULLUP;
   if (pd) Pins[pin].flags |= PULLDOWN;
   if (ie) Pins[pin].flags |= INPUT;
-  if (oe) Pins[pin].flags |= OUTPUT;
+  if (oe) Pins[pin].flags |= OUTPUT; // TODO: OUTPUT_ONLY ??
   if (od) Pins[pin].flags |= OPEN_DRAIN;
 }
 
@@ -410,11 +417,10 @@ static void pin_load(int pin) {
 
   //2. attempt to restore peripherial connections:
   //   If pin was not configured or was simple GPIO function then restore it to simple GPIO
-  //   If pin had a connection through GPIO Matrix, restore IN & OUT signals connection (use same
-  //   signal number for both IN and OUT. Probably it should be fixed)
-  //
-  if (Pins[pin].fun_sel != PIN_FUNC_GPIO)
-    q_printf("%% Pin %d IO MUX connection can not be restored\r\n", pin);
+  //   If pin had a connection through GPIO Matrix, restore IN & OUT signals connection
+  if (Pins[pin].fun_sel != PIN_FUNC_GPIO) {
+    pin_set_iomux_function(pin,Pins[pin].fun_sel);
+  }
   else {
     if (Pins[pin].bus_type == ESP32_BUS_TYPE_INIT || Pins[pin].bus_type == ESP32_BUS_TYPE_GPIO) {
       gpio_pad_select_gpio(pin);

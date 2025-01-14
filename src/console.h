@@ -54,7 +54,7 @@ static INLINE int console_here(int i) {
 
 //Detects if ANY key is pressed in serial terminal
 //or any character was sent in Arduino IDE Serial Monitor.
-// TODO: rewrite to use NotifyDelay only and make anykey_pressed sending notifications? Then we don't need 250ms polling thing
+// IDEA: rewrite to use NotifyDelay only and make anykey_pressed sending notifications? Then we don't need 250ms polling thing
 static bool anykey_pressed() {
 
   int av;

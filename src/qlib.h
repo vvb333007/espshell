@@ -19,7 +19,7 @@
 #define likely(_X)     __builtin_expect(!!(_X), 1)
 
 // millis() & micros() inlined versions
-// TODO: may be use CCOUNT register for that? It will be super fast and it does not require any timer to be run
+// IDEA: may be use CCOUNT register for that? It will be super fast and it does not require any timer to be run
 #define q_millis() ((unsigned int )esp_timer_get_time() / 1000)
 #define q_micros() ((unsigned int )esp_timer_get_time())
 
@@ -40,7 +40,14 @@
       xSemaphoreGive(_Name); \
   } while( 0 )
 
-  // TODO: mutex_destroy(_Name)
+// Just for completeness. unused in espshell
+#define mutex_destroy(_Name) \
+  do { \
+    if (likely(_Name != NULL)) { \
+      vSemaphoreDelete(_Name); \
+      _Name = NULL; \
+    } \
+  } while ( 0 )
 
 
 static bool ColorAuto = AUTO_COLOR;  // Autoenable coloring if terminal permits
@@ -53,8 +60,7 @@ static int  Echo = STARTUP_ECHO;  // Runtime echo flag: -1=silent,0=off,1=on
 // If MEMTEST is set to 0 (the default value) then q_malloc is simply malloc(),
 // q_free() is free() and so on.
 //
-// If MEMTEST is non-zero then ESPShell tries to  load "extra/memlog.c" extension
-// which provides its own versions of q_malloc, q_strdup, q_realloc and q_free
+// If MEMTEST is non-zero then ESPShell provides its own versions of q_malloc, q_strdup, q_realloc and q_free
 // functions which do memory statistics/tracking and perform some checks on pointers
 // being freed
 //
@@ -327,6 +333,7 @@ static void q_memleaks(const char *text) {
 
 
 // strdup() + extra 256 bytes
+// TODO: make generic q_strdup_tailroom(const char *string, int tailroom)
 static char *q_strdup256(const char *ptr, int type) {
   char *p = NULL;
   if (ptr != NULL) {
@@ -337,8 +344,17 @@ static char *q_strdup256(const char *ptr, int type) {
   return p;
 }
 
+// Check if condition ... is true and if it is - halt ESPShell
+// Wrapper for the must_not_happen() function below
+//
+#define MUST_NOT_HAPPEN( ... ) do { \
+  if ( __VA_ARGS__ ) \
+    must_not_happen(#__VA_ARGS__, __FILE__, __LINE__ ); \
+} while ( 0 )
 
-// Convert ascii (8biit per char) string to lowercase.
+
+
+// Convert an asciiz (8biit per char) string to lowercase.
 // Conversion is done for characters 'A'..'Z' by setting 5th bit
 //
 // /p/   - pointer to the string being converted (must be writeable memory)
@@ -357,7 +373,7 @@ static void q_tolower(char *p, int len) {
 }
 
 //check if given ascii string is a decimal number. Ex.: "12345", "-12"
-// "minus" sign is only accepted if first in the string
+// "minus" sign is only accepted at the beginning (must be 1st symbol)
 //
 static bool isnum(const char *p) {
   if (p && *p) {
@@ -462,9 +478,7 @@ static bool isbin(const char *p) {
 // Check if string can be converted to number
 //
 static bool q_numeric(const char *p) {
-
   if (p && *p) {
-
     if (p[0] == '0') {
       if (p[1] == 'x')
         return ishex(p);
@@ -472,21 +486,13 @@ static bool q_numeric(const char *p) {
         return isbin(p);
       return isoct(p);
     }
-
-    //if (p[0] == '-')
-      return isnum(p) || isfloat(p);
-
-   // if (p[0] == '.')
-   //   return isfloat(p);
-
-   // return isnum(p);
+    return isnum(p) || isfloat(p);
   }
-
   return false;
 }
 
 //convert hex ascii byte.
-//strings "A", "5a" "0x5a" are valid input
+//strings "A", "5a" "0x5a" are all valid input
 //
 static unsigned char hex2uint8(const char *p) {
 
@@ -760,7 +766,7 @@ static void q_printtable(const unsigned char *p, unsigned int count, unsigned ch
             else
               q_printf("%i\r\n",*((signed char *)p));
           } else {
-            abort(); //must not happen
+            MUST_NOT_HAPPEN( true ); // fatal error, likely memory corruption. abort the shell, don't make things worse
           }
         }
         p += length;
@@ -774,7 +780,7 @@ static void q_printtable(const unsigned char *p, unsigned int count, unsigned ch
 // data printed 16 bytes per line, a space between hex values, 2 spaces
 // after each 4th byte. then separator and ascii representation are printed
 //
-static unsigned short tbl_min_len = 16;
+static short tbl_min_len = 16;
 
 static void q_printhex(const unsigned char *p, unsigned int len) {
 

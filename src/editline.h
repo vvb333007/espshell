@@ -46,7 +46,6 @@ typedef struct {
 
 
 // Command history storage for HIST_SIZE unique commands
-// TODO: rewrite "scrolling" routine: we don't have to scroll whole history to add a new entry
 static struct {
   signed short Size;
   signed short Pos;
@@ -493,7 +492,6 @@ search_hist(unsigned char *search, unsigned char *(*move)()) {
   }
 
   /* Set up pattern-finder. */
-  //TODO: document "^" symbol use in search request
   if (*search == '^') {
     match = (int (*)(char *, char *, size_t))strncmp;
     pat = (char *)(search + 1);
@@ -733,7 +731,7 @@ emacs(unsigned int c) {
   return s;
 }
 
-static int bypass_qm = 0;  //TODO: register variable
+static int bypass_qm = 0;
 
 static EL_STATUS
 TTYspecial(unsigned int c) {
@@ -749,7 +747,7 @@ TTYspecial(unsigned int c) {
   }
 
 
-  if (c == 0 && Point == 0 && End == 0)  //TODO: investigate CSeof and CSsignal
+  if (c == 0 && Point == 0 && End == 0)
     return CSeof;
 
   return CSdispatch;
@@ -793,9 +791,7 @@ editinput() {
 
   //Original code has a bug here: Line was not set to NULL causing random heap corruption
   //on ESP32
-  // TODO: investigate
   q_free(Line);
-  q_print("Wow\r\n");
   return (Line = NULL);
 }
 
@@ -829,10 +825,13 @@ readline(const char *prompt) {
       return NULL;
   }
 
-  hist_add(nil);  //TODO: how does it work?!
+  hist_add(nil);
 
-  ScreenSize = SCREEN_INC;
-  Screen = NEW(char, ScreenSize, MEM_TMP);
+  if (unlikely(Screen == NULL)) {
+    ScreenSize = SCREEN_INC;
+    if ((Screen = NEW(char, ScreenSize, MEM_EDITLINE)) == NULL)
+      return NULL;
+  }
 
   TTYputs((const unsigned char *)(Prompt = prompt));
   TTYflush();
@@ -844,7 +843,7 @@ readline(const char *prompt) {
     TTYflush();
   }
 
-  DISPOSE(Screen);
+  //DISPOSE(Screen);
   DISPOSE(H.Lines[--H.Size]);
 
   return (char *)line;

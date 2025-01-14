@@ -155,7 +155,8 @@ static int cmd_uart_read(UNUSED int argc, UNUSED char **argv) {
       tmp = available;
       while (available--) {
         unsigned char c;
-        if (uart_read_bytes(u, &c, 1, portMAX_DELAY /* TODO: make short delay! */) == 1) {
+        // We use small number as a delay because we don't want read() to block
+        if (uart_read_bytes(u, &c, 1, /*portMAX_DELAY*/ pdMS_TO_TICKS(500) ) == 1) {
           if (c >= ' ' || c == '\r' || c == '\n' || c == '\t')
             q_printf("%c", c);
           else

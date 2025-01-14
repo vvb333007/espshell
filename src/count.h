@@ -64,7 +64,7 @@ static void IRAM_ATTR pcnt_unit_interrupt(void *arg) {
   pcnt_unit_t unit = (pcnt_unit_t )arg;
   units[unit].overflow++;
   PCNT.int_clr.val = BIT(unit);
- // pcnt_counter_clear(unit); //TODO: check if we need to clear the counter
+ // pcnt_counter_clear(unit);
 }
 
 
@@ -85,15 +85,13 @@ static int count_claim_unit() {
       // found one. mark it as /used/ and clear its counters
       units[i].in_use = 1;
       units[i].count = units[i].overflow = units[i].interval = units[i].pin = units[i].tsta = 0;
-      units[i].taskid = (unsigned int)taskid_self(); //TODO: change base type in struct definition instead of typecasting here
+      units[i].taskid = (unsigned int)taskid_self(); 
       pcnt_counters++;
-      //count_unlock();
       mutex_unlock(pcnt_mux);
       return (int)i;
     }
   }
   // Nothing found. 
-  //count_unlock();
   mutex_unlock(pcnt_mux);
   q_printf("%% All PCNT units are in use (units %u .. %u)\r\n", pcnt_unit, PCNT_UNIT_MAX - 1);
   if (pcnt_unit != PCNT_UNIT_0)
@@ -155,8 +153,7 @@ static unsigned int count_read_counter(int unit, unsigned int *freq, unsigned in
   int16_t count = 0;
   unsigned int cnt = 0, tsta = 0;
 
-  if (unit < 0  && unit >= PCNT_UNIT_MAX)
-    abort(); //must not happen
+  MUST_NOT_HAPPEN(unit < 0  || unit >= PCNT_UNIT_MAX);
 
   // Find out number of pulses counted so far & frequency
   // 1) Counter is running; reading a live counter will result of approximate values
@@ -174,7 +171,7 @@ static unsigned int count_read_counter(int unit, unsigned int *freq, unsigned in
   }
 
   if (freq)
-    *freq = tsta ? (uint32_t)((uint64_t)cnt * 1000ULL / (uint64_t)tsta) : 0; // TODO: should probably use uint64_t here
+    *freq = tsta ? (uint32_t)((uint64_t)cnt * 1000ULL / (uint64_t)tsta) : 0;
 
   if (interval)
     *interval = tsta;
@@ -324,9 +321,6 @@ bool count_wait_for_the_first_pulse(unsigned int pin) {
   return ret;
 }
 
-
-
-
 //TAG:count
 //"count PIN [DELAY_MS]"
 // Count pulses on given pin
@@ -402,9 +396,9 @@ static int cmd_count(int argc, char **argv) {
     }
   }
   // Start counting for /wait/ milliseconds
-  units[unit].tsta = millis(); // TODO: make our own q_millis()
+  units[unit].tsta = millis();
   pcnt_counter_resume(unit);
-  /*wait = */delay_interruptible(wait);
+  delay_interruptible(wait);
   pcnt_counter_pause(unit);
   wait = millis() - units[unit].tsta; // actual measurement time
 

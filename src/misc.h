@@ -204,4 +204,26 @@ static int cmd_colors(int argc, char **argv) {
   return 0;
 }
 #endif  //WITH_COLOR
+
+// Used in MUST_NOT_HAPPEN() macro. Declared here because of conflicts in include files
+// (can not be declared in qlib.h so let it be here)
+//
+static NORETURN void must_not_happen(const char *message, const char *file, int line) {
+
+  // Print location & cause of this MUST NOT HAPPEN event
+  q_printf("%% ESPShell internal error: \"<i>%s</>\" in file\r\n%% %s, line: %u\r\n%% ESPShell is stopped\r\n",message,file,line);
+
+  // forcefully kill our own background task
+  if (is_background_task()) {
+    // Signal ESPShell to exit its main loop
+    Exit = true; 
+    task_signal(taskid_self(), SIGNAL_KILL);
+    // UNREACHABLE (TODO: test it) 
+  }
+  
+  // Sleep for ever
+  while(1)
+    delay(999999);
+}
+
 #endif // #if COMPILING_ESPSHELL

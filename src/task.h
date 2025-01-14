@@ -136,8 +136,7 @@ static int exec_in_background(argcargv_t *aa_current) {
 
   TaskHandle_t ignored;
 
-  if (aa_current == NULL)  //must not happen
-    abort();
+  MUST_NOT_HAPPEN(aa_current == NULL);
 
   //increase refcount on argcargv (tokenized user input) because it will be used by async task and
   // we dont want this memory to be freed immediately after this command finishes
@@ -164,8 +163,7 @@ static void espshell_task(const void *arg) {
 
   // arg is not NULL - first time call: start the task and return immediately
   if (arg) {
-    if (shell_task != NULL)
-      abort();  // must not happen
+    MUST_NOT_HAPPEN (shell_task != NULL);
 
     // on multicore processors use another core: if Arduino uses Core1 then
     // espshell will be on core 0.

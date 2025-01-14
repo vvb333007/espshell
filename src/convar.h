@@ -47,7 +47,7 @@ typedef union composite_u {
 } composite_t;
 
 // Limits
-#define ARRAY_TOO_BIG       257 // don't display array content if its element count exceeeds this number. TODO: accept "var NAME[123]"
+#define ARRAY_TOO_BIG       257 // don't display array content if its element count exceeeds this number. TODO: accept "var NAME[123] and var[12 16]"
 
 #define CONVAR_NAMELEN_MAX  64 // max variable name length
 #define CONVAR_TYPELEN_MAX  32 // should be enough even for "unsigned long long"
@@ -168,15 +168,15 @@ static const char *convar_typename(struct convar *var) {
 
 
 // NOTE: NOT REENTRANT!!
-// For array-type variables onl
+// For array-type variables only.
+//
 static const char *convar_typename2(struct convar *var) {
 
   static char out[CONVAR_BUFSIZ];
-  char *tn;
+  const char *tn;
   int i;
 
-  if ((i = strlen((tn = convar_typename(var)))) >= sizeof(out))
-    abort(); // must not happen
+  MUST_NOT_HAPPEN((i = strlen((tn = convar_typename(var)))) >= sizeof(out));
 
   strcpy(out,tn);
   
@@ -185,8 +185,7 @@ static const char *convar_typename2(struct convar *var) {
   //
   if (var->isp) {
 
-    if (out[i - 1] != '*') // must not happen
-      abort();
+    MUST_NOT_HAPPEN(out[i - 1] != '*'); // must not happen
 
     out[i - 1] = ' ';
     sprintf(&out[i],"%s[%u]",var->name,var->counta); // TODO: this is unsafe! Limit variable name length to something real like 64 characters
@@ -200,7 +199,9 @@ static const char *convar_typename2(struct convar *var) {
 
 
 // Find variable descriptor by variable name
-// TODO: is loose strcmp a good choice here? how to distinguish a1 and a11?
+//
+// TODO: if there are more than 1 match on shortened name, don't pick up the first matched. Instead, display a warning and list all the
+//       matched variables.
 static struct convar *convar_get(const char *name) {
 
   struct convar *var = var_head;
@@ -262,7 +263,7 @@ static int convar_show_var(char *name) {
 
         struct convar var0 = { 0 };
 
-        void *ptr;
+        
         var0.name = var->name;
         var0.isf = var->isfa;
         var0.isp = var->ispa;

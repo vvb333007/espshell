@@ -138,7 +138,7 @@ static int q_print(const char *);                    // puts()
 static bool pin_is_input_only_pin(int pin);
 static bool pin_exist(int pin);
 
-#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 3, 0) // TODO: rough approximate. Have to check what idf version is used by Core3.0.7
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 3, 0)
 EXTERN bool esp_gpio_is_pin_reserved(unsigned int gpio);
 #else
 static INLINE bool esp_gpio_is_pin_reserved(unsigned int gpio) {
@@ -146,7 +146,7 @@ static INLINE bool esp_gpio_is_pin_reserved(unsigned int gpio) {
 }
 #endif
 
-
+static NORETURN void must_not_happen(const char *message, const char *file, int line);
 
 
 void STARTUP_HOOK espshell_start();
@@ -314,8 +314,7 @@ one_more_try:
           if (key[i].cb) {
 
             int l;
-            if ((l = strlen(argv[0]) - 1) < 0)
-              abort();  //Must no thappen TODO: make something better than abort() for every "must not happen" through the code
+            MUST_NOT_HAPPEN((l = strlen(argv[0]) - 1) < 0);
 
             // save command handler (exec_in_background() will need it)
             aa->gpp = key[i].cb;

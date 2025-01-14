@@ -45,7 +45,7 @@ struct sequence {
   
   char *bits;                  // asciiz "100101101"
   //unsigned char *bytes;        // TODO: use byte encoder for RMT
-  //unsigned char  bcount;       // TODO:
+  //unsigned char  bcount;       
 };
 
 // sequences
@@ -344,6 +344,8 @@ static int cmd_seq_eot(int argc, char **argv) {
 //
 //modulation FREQ [DUTY [low|high]]
 //
+#define SEQ_MODULATION_FREQ_MAX 40000000 //TODO: find out real boundaries
+
 static int cmd_seq_modulation(int argc, char **argv) {
 
   int high = 1;
@@ -355,8 +357,8 @@ static int cmd_seq_modulation(int argc, char **argv) {
     return -1;
 
   freq = q_atol(argv[1], 0);
-  if (!freq || freq > 40000000) {
-    HELP(q_print("% Frequency must be between 1 and 40 000 000 Hz\r\n"));  //TODO: find out real boundaries
+  if (!freq || freq > SEQ_MODULATION_FREQ_MAX) {
+    HELP(q_print("% Frequency must be between 1 and " xstr(SEQ_MODULATION_FREQ_MAX) " Hz\r\n"));  
     return 1;
   }
 

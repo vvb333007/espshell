@@ -374,8 +374,7 @@ static int files_show_mountpoint(const char *path) {
     if (files_mountpoint_is_sdspi(mpi)) {
       q_print("% Filesystem is located on a SD card (SPI bus)\r\n");
       sdmmc_card_t *card = (sdmmc_card_t *)mountpoints[mpi].gpp;
-      if (!card)
-        abort(); // must not happen
+      MUST_NOT_HAPPEN(card == NULL);
       // TODO: write our own print_info
       sdmmc_card_print_info(stdout, card);
     } else
@@ -403,10 +402,11 @@ static unsigned int files_space_total(int i) {
       BYTE pdrv = 0; 
 
       if (files_mountpoint_is_sdspi(i)) {
+#warning "Developer reminder #1"
+
 #if 0 // Not yet in Arduino Core.
         vfs_fat_sd_ctx_t *ctx = get_vfs_fat_get_sd_ctx((sdmmc_card_t *)mountpoints[i].gpp);
-        if (!ctx)
-          abort(); //must not happen
+        MUST_NOT_HAPPEN(ctx == NULL); // Or should we just return 0?
         pdrv = ctx->pdrv;
 #else
         //return 0;
@@ -450,10 +450,10 @@ static unsigned int files_space_free(int i) {
       BYTE pdrv = 0;
 
       if (files_mountpoint_is_sdspi(i)) {
+#warning "Developer reminder #2"
 #if 0 // Not yet in Arduino Core.
         vfs_fat_sd_ctx_t *ctx = get_vfs_fat_get_sd_ctx((sdmmc_card_t *)mountpoints[i].gpp);
-        if (!ctx)
-          abort(); //must not happen
+        MUST_NOT_HAPPEN(ctx == NULL);
         pdrv = ctx->pdrv;
 #else
         //return 0;
@@ -1011,8 +1011,7 @@ static int cmd_files_unmount(int argc, char **argv) {
   if (argc < 2) {
     if ((path = (char *)files_get_cwd()) == NULL)
       return 0;
-    if (strlen(path) >= sizeof(path0))  // must not happen
-      abort();
+    MUST_NOT_HAPPEN(strlen(path) >= sizeof(path0));
     strcpy(path0, path);
     path = path0;
   } else
@@ -1512,8 +1511,7 @@ static int cmd_files_cd(int argc, char **argv) {
     files_strip_trailing_slash(Cwd);
 
     if (NULL == (p = strrchr(Cwd, '/')))
-      if (NULL == (p = strrchr(Cwd, '\\')))
-        abort();  //must not happen
+      MUST_NOT_HAPPEN(NULL == (p = strrchr(Cwd, '\\')));
 
     // strip everything after it
     p[1] = '\0';
@@ -1567,8 +1565,7 @@ static int cmd_files_cd(int argc, char **argv) {
   // tmp = Cwd+arg1
   strcpy(tmp, Cwd);
 
-  if ((i = strlen(tmp)) < 1)  //must not happen
-    abort();
+  MUST_NOT_HAPPEN((i = strlen(tmp)) < 1);
 
   strcat(tmp, argv[1]);
 

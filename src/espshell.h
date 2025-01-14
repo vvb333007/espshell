@@ -118,7 +118,6 @@ extern void *dummy_pointer;
 #  define convar_adda( ... ) do {} while( 0 )
 #endif
 
-
 #ifdef __cplusplus
 extern "C" {
 #endif

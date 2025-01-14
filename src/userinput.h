@@ -50,8 +50,7 @@ static void userinput_ref(argcargv_t *a) {
 static void userinput_unref(argcargv_t *a) {
   if (a) {
     mutex_lock(argv_mux);
-    if (a->ref < 1)  //TODO: must not happen
-      abort();
+    MUST_NOT_HAPPEN(a->ref < 1);
     a->ref--;
       // ref dropped to zero: delete everything
     if (a->ref == 0) {

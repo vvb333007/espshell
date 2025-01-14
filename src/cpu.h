@@ -20,7 +20,7 @@ EXTERN uint32_t getApbFrequency();
 // Display CPU ID information, frequencies and
 // chip temperature
 //
-// TODO: check on different CPUs
+// TODO: keep in sync with latest ArduinoCore
 static int cmd_cpu(int argc, char **argv) {
 
   esp_chip_info_t chip_info;
