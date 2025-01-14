@@ -117,13 +117,13 @@ high     - Write logic "1" to the pin (digitalWrite(pin,HIGH)). Also sets OUTPUT
 low      - Write logic "0" to the pin. Also sets OUTPUT flag for the pin.
 seq X    - Send sequence number X over the pin. See documentation file
           "docs/Pulse_Generator" on sequences and how to use them
-pwm X Y  - Enable frequency generator on fiven pin. X is the frequency in Hertz
+pwm X Y  - Enable frequency generator on given pin. X is the frequency in Hertz
           and Y is the duty. Both parameters are mandatory. Setting frequency to 0
           disables frequency generator. Y (duty) is a floating point number in
           range (0..1)
 
 read    - Digital read.OUTPUT-only pin will be switched to INPUT-and-OUTPUT
-          automatically. Unlike noram digitalRead() this command is able to
+          automatically. Unlike  digitalRead() this command is able to
           read any GPIO regardless of its configuration and usage. Like this one
           can read values from UART or I2C lines while they are actively used
 
@@ -137,9 +137,35 @@ load    - Load pin configuration. reads previously saved data. reading does not
           erase saved data.
 
 iomux [NUMBER | gpio]
-        - Select IO_MUX function for the pin or route pin through GPIO Matrix.
 
-            Select IO_MUX function#0 for pin#0:
+        - Select IO_MUX function for the pin OR route pin through GPIO Matrix. ESP32 pins (GPIOs)
+          are internally routed through either IO_MUX (think - fast IO) or GPIO_Matrix (think of flexebility)
+          If routed through IO_MUX, pin can be assigned one of 5 (or 6 on original ESP32) different functions,
+          numbered starting from zero.
+
+          Full list of IO_MUX functions for every pin can be displayed by entering "show ioumux" command:
+
+              esp32#>show io
+              % IO MUX has 6 functions for every pin. The mapping is as follows:
+              %Pin | Function0 | Function1 | Function2 | Function3 | Function4 | Function5
+              %----+-----------+-----------+-----------+-----------+-----------+-----------
+              % 00 |     GPIO0 |  CLK_OUT1 |     GPIO0 |  -undef-  |  -undef-  | EMAC_TX_CLK
+              % 01 |     U0TXD |  CLK_OUT3 |     GPIO1 |  -undef-  |  -undef-  | EMAC_RXD2
+              % 02 |     GPIO2 |    HSPIWP |     GPIO2 | HS2_DATA0 |  SD_DATA0 |  -undef-
+              % 03 |     U0RXD |  CLK_OUT2 |     GPIO3 |  -undef-  |  -undef-  |  -undef-
+              % 04 |     GPIO4 |    HSPIHD |     GPIO4 | HS2_DATA1 |  SD_DATA1 | EMAC_TX_ER
+              % 05 |     GPIO5 |   VSPICS0 |     GPIO5 | HS1_DATA6 |  -undef-  | EMAC_RX_CLK
+              % 06 |    SD_CLK |    SPICLK |     GPIO6 |   HS1_CLK |     U1CTS |  -undef-
+              % 07 |  SD_DATA0 |      SPIQ |     GPIO7 | HS1_DATA0 |     U2RTS |  -undef-
+              % 08 |  SD_DATA1 |      SPID |     GPIO8 | HS1_DATA1 |     U2CTS |  -undef-
+              .... (40+ more lines)
+
+            So pin#0 can be set to Function#0 to make it low-latency fast GPIO, or setting it to Function#5 
+            makes this pin a part of EMAC interface. If you are not familiar with IO_MUX/GPIO Matrix concept 
+            of ESP32, please read ESP32 Technical Reference manual.
+           
+
+            Lets select IO_MUX function#0 for pin#0:
 
               esp32#>pin 0 iomux 0
 
@@ -148,7 +174,7 @@ iomux [NUMBER | gpio]
               esp32#>pin 0
               % Pin 0 (GPIO0) is strapping pin, available, and is not used by Arduino Core
               % Mode: INPUT, OUTPUT,  input is floating
-              % Output is done via IO MUX, (function: GPIO0)    <------- 
+              % Output is done via IO MUX, (function: GPIO0)    <------- Pin now is in "fast" GPIO mode
               % Input is done via IO MUX, (function: GPIO0)     <-------
               % Maximum current is 20 milliamps
               % Digital pin value is LOW (0)
@@ -162,25 +188,23 @@ iomux [NUMBER | gpio]
               esp32#>pin 0
               % Pin 0 (GPIO0) is strapping pin, available, and is not used by Arduino Core
               % Mode: INPUT, OUTPUT,  input is floating
-              % Output via GPIO matrix, simple GPIO output   <------------
+              % Output via GPIO matrix, simple GPIO output   <------------ Pin is routed through "gpio matrix"
               % Input via GPIO matrix, simple GPIO input     <------------
               % Maximum current is 20 milliamps
               % Digital pin value is LOW (0)
 
-            If "gpio" keyword is used, then pin will be autorouted aither via IO_MUX or
-            GPIO Matrix
-
-            To see function number meaning one can use "show iomux" command which display
-            each function meaning (there are 5 or 6 functions per pin, depending on ESP32 model)
+            If "gpio" keyword is used, then pin will be autorouted either via IO_MUX or
+            GPIO Matrix. This keyword is used, when one wants to switch a pin from its function 
+            to simple input/output. 
 
             Arduino Core (as of v3.0.7) routes pins through the GPIO Matrix, with this IO_MUX -> GPIO Matrix
             transition happening somewhere in Arduino's pinMode(...).
-
-            The "iomux" command allows for re-routing pins back through IO_MUX 
+            The "iomux" command allows for re-routing pins back through IO_MUX
 
 hold    - "freeze" pin state and output value. Frozen pin remains frozen after
           reboot (as long as power to the chip is provided. rebooting via 
           POWERUP unfreezes pin) See NOTE1 at the end of this document.
+
 release - "unfreeze" pin which was "frozen" by "pin X hold" See NOTE1 at the 
           end of this document
 
