@@ -18,13 +18,14 @@ EXTERN TaskHandle_t loopTaskHandle;  // task handle of a task which calls Arduin
 static TaskHandle_t shell_task = 0;  // Main espshell task ID
 static int          shell_core = 0;  // CPU core number ESPShell is running on. For single core systems it is always 0
 
-#define taskid_self() xTaskGetCurrentTaskHandle()
-
-
-#define SIGNAL_TERM 0  // Request to terminate
-#define SIGNAL_GPIO 1  // Pin interrupt
+// Signals for use in task_signal()
+#define SIGNAL_TERM 0  // Request to terminate. (Must be zero, DO NOT CHANGE its default value)
+#define SIGNAL_GPIO 1  // "Pin interrupt" signal
 #define SIGNAL_KILL 2  // Force task deletion
 #define SIGNAL_HUP  3  // "Reinitialize/Re-read configuration"
+
+// current task id
+#define taskid_self() xTaskGetCurrentTaskHandle()
 
 // Task signalling wrappers. qlib is used in a few different projects so I try to keep it easily convertible to other API
 // (POSIX for example). 
@@ -51,13 +52,11 @@ static int          shell_core = 0;  // CPU core number ESPShell is running on. 
 //
 static bool task_wait_for_signal(uint32_t *sig, uint32_t timeout_ms) {
 
-  uint32_t value0;
-
-
+  uint32_t sig0;
   timeout_ms = timeout_ms ? pdMS_TO_TICKS(timeout_ms) : portMAX_DELAY; 
  
   if (NULL == sig)
-    sig = &value0;
+    sig = &sig0;
 
   // block until any notification or timeout
   return xTaskNotifyWait(0, 0xffffffff, sig, timeout_ms ) == pdPASS;
@@ -166,7 +165,7 @@ static void espshell_task(const void *arg) {
     MUST_NOT_HAPPEN (shell_task != NULL);
 
     // on multicore processors use another core: if Arduino uses Core1 then
-    // espshell will be on core 0.
+    // espshell will be on core 0 and vice versa. 
     shell_core = xPortGetCoreID();
     if (portNUM_PROCESSORS > 1)
       shell_core = shell_core ? 0 : 1;
@@ -195,14 +194,17 @@ static void espshell_task(const void *arg) {
 
 
 //"suspend"
-// suspends the Arduino task
+// suspends main Arduino task (i.e loop())
 static int cmd_suspend(int argc, char **argv) {
 
   unsigned int taskid;
   TaskHandle_t sus = loopTaskHandle;
   if (argc > 1) {
     taskid = hex2uint32(argv[1]);
-    if (taskid_good(taskid)) sus = (TaskHandle_t )taskid; else return 1;
+    if (taskid_good(taskid)) 
+      sus = (TaskHandle_t )taskid; 
+    else 
+      return 1;
   }
   vTaskSuspend(sus);
   return 0;
@@ -249,8 +251,9 @@ static int cmd_kill(int argc, char **argv) {
       vTaskSuspend((TaskHandle_t)taskid);
       delay(1);
       vTaskDelete((TaskHandle_t)taskid);
-      HELP(q_printf("%% Killed: \"0x%x\". Resources are not deallocated!\r\n", taskid));
+      HELP(q_printf("%% Killed: \"0x%x\". Resources are not freed!\r\n", taskid));
     } else
+      // -term, -hup and other signals are sent directly to the task
       task_signal(taskid, sig);
   } else
     return i;

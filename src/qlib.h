@@ -18,15 +18,14 @@
 #define unlikely(_X)     __builtin_expect(!!(_X), 0)
 #define likely(_X)     __builtin_expect(!!(_X), 1)
 
-// millis() & micros() inlined versions
-// IDEA: may be use CCOUNT register for that? It will be super fast and it does not require any timer to be run
-#define q_millis() ((unsigned int )esp_timer_get_time() / 1000)
-#define q_micros() ((unsigned int )esp_timer_get_time())
+// inlined version of millis().
+#define q_millis() ((unsigned long )(esp_timer_get_time() / 1000ULL))
+
 
 // Mutex manipulation: declare, initialize, grab and release macros
 #define MUTEX(_Name) xSemaphoreHandle _Name = NULL;   // e.g. static MUTEX(argv_mux);
 
-// Grab a mutex. Blocks forever
+// Grab a mutex. Blocks forever. Initializes mutex object on a first use
 #define mutex_lock(_Name) \
   do { \
     if (unlikely(_Name == NULL)) _Name = xSemaphoreCreateMutex(); \
@@ -927,13 +926,13 @@ static unsigned int delay_interruptible(unsigned int duration) {
   
   unsigned int now, duration0 = duration;
 
-  now = millis();
+  now = q_millis();
 
   // Called from a background task? Wait for the signal from "kill" command, ignore keypresses
   if (!is_foreground_task()) {
     uint32_t note;
     if (task_wait_for_signal(&note, duration) == true)
-      return millis() - now; // Interrupted 
+      return q_millis() - now; // Interrupted 
     return duration;         // Success!
   }
 
@@ -944,7 +943,7 @@ static unsigned int delay_interruptible(unsigned int duration) {
       duration -= DELAY_POLL;
       delay(DELAY_POLL);
       if (anykey_pressed())
-        return millis() - now;  // interrupted by a keypress
+        return q_millis() - now;  // interrupted by a keypress
     }
   }
   delay(duration);

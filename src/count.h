@@ -99,7 +99,7 @@ static int count_claim_unit() {
   return -1;
 }
 
-// Mark PCNT unit as /unused/
+// Mark PCNT unit as "unused"
 static void count_release_unit(int unit) {
   mutex_lock(pcnt_mux);
   if (unit < PCNT_UNIT_MAX && unit >= 0 && units[unit].in_use) {
@@ -110,43 +110,46 @@ static void count_release_unit(int unit) {
   mutex_unlock(pcnt_mux);
 }
 
-// must be called before pcnt_unit_release();
-// disables events and interrupts on unit. If it was the last unit used then global ISR handler
-// is unregistered too
+// Disables events and interrupts on given PCNT unit. If it was the last actiove unit, then global ISR handler
+// is unregistered too.
+// NOTE: Must be called **before** calling count_release_unit()
 //
 static void count_release_interrupt(pcnt_unit_t unit) {
   mutex_lock(pcnt_mux);
   pcnt_event_disable(unit, PCNT_EVT_H_LIM);
-
-  //q_printf("%% Removing ISR for PCNT unit%u\r\n",unit);
   pcnt_isr_handler_remove(unit);
-
-  if (pcnt_counters < 2) {
-   // q_print("% Last counter is stopped: unregistering PCNT service ISR\r\n");
+  if (pcnt_counters < 2)
     pcnt_isr_service_uninstall();
-  }
   mutex_unlock(pcnt_mux);
 }
 
 // Enable H_LIM event & enable interrupts on unit
-// If it is the first counter used by ESPShell then global PCNT ISR handler is registered
 // 
 static void count_claim_interrupt(pcnt_unit_t unit) {
   mutex_lock(pcnt_mux);
   pcnt_event_enable(unit, PCNT_EVT_H_LIM);
   pcnt_event_disable(unit, PCNT_EVT_ZERO);
-  if (pcnt_counters == 1) {
-   // q_print("% Registering PCNT service ISR\r\n");
+  // Install ISR service, and register an interrupt handler.
+  // It is slower than using global PCNT interrupt but unfortunately I was not able to make it work
+  // when more than 1 PCNT unit was used at the same time: there were lost interrupts.
+  if (pcnt_counters == 1)
     pcnt_isr_service_install(0);
-  }
-  //q_printf("%% Adding ISR handler for unit %u\r\n",unit);
+
   pcnt_isr_handler_add(unit, pcnt_unit_interrupt, (void *)unit);
   mutex_unlock(pcnt_mux);
 }
 
+// Read pulses count, calculates frequency and returns time interval during which measurement were made
+//
 // For stopped counters exact value is returned
 // For running counters an approximate value is returned
-// Read pulses count, calculates frequency and returns time interval during which measurement were made
+// 
+// /unit/     -  PCNT unit number
+// /freq/     - Pointer where calculated frequency will be stored
+// /interval/ - Exact measurement time (for how long counter was counting)
+//              Both /freq/ and /interval/ can be NULL
+//
+// Returns number of pulses counted
 //
 static unsigned int count_read_counter(int unit, unsigned int *freq, unsigned int *interval) {
 
@@ -162,7 +165,7 @@ static unsigned int count_read_counter(int unit, unsigned int *freq, unsigned in
     if (!units[unit].trigger) {
       pcnt_get_counter_value(unit, &count);                               // current counter value ([0 .. 20000])
       cnt = units[unit].overflow * PCNT_OVERFLOW + (unsigned int)count;   // counter total
-      tsta = millis() - units[unit].tsta;                                 // milliseconds elapsed so far (for the frequency calculation)
+      tsta = q_millis() - units[unit].tsta;                                 // milliseconds elapsed so far (for the frequency calculation)
     }
   } else {
     // 2) Counter is stopped; values are already in units[]
@@ -179,9 +182,7 @@ static unsigned int count_read_counter(int unit, unsigned int *freq, unsigned in
   return cnt;
 }
 
-// Used by "count PIN clear" to clear counters for given pin
-// Clears all counters (running or stopped) which were associated with given pin
-// or are associated now
+// Clear counter(s) which was/are associated with given /pin/
 //
 static int count_clear_counter(int pin) {
   int unit;
@@ -198,7 +199,7 @@ static int count_clear_counter(int pin) {
       if (units[unit].in_use) {
         if (!units[unit].trigger)
           pcnt_counter_resume(unit);
-        units[unit].tsta = millis();
+        units[unit].tsta = q_millis();
       } else {
         // its ok to clear pin,taskid & tsta on stopped counter
         units[unit].pin = units[unit].taskid = units[unit].tsta = 0;
@@ -282,11 +283,13 @@ static void IRAM_ATTR count_pin_anyedge_interrupt(void *arg) {
 }
 
 
-// block until:
-// 1. a pulse comes to the pin OR
-// 2. "kill" commmand detected
-// 3. command interrupted by a keypress (foreground commands only)
+// This function blocks until at least 1 of 3 conditions is true:
 //
+// 1. a pulse comes to the pin (task notification SIGNAL_PIN is received)
+// 2. "kill" commmand detected (        ---       SIGNAL_TERM is received)
+// 3. command interrupted by a keypress
+//
+
 bool count_wait_for_the_first_pulse(unsigned int pin) {
 
   struct trigger_arg t;
@@ -297,33 +300,28 @@ bool count_wait_for_the_first_pulse(unsigned int pin) {
   t.taskid = taskid_self();
 
   gpio_set_intr_type(pin, GPIO_INTR_ANYEDGE);
-  gpio_install_isr_service((int)ARDUINO_ISR_FLAG);   // can be called multiple times
+  gpio_install_isr_service((int)ARDUINO_ISR_FLAG);            // it is ok to call it multiple times
   gpio_isr_handler_add(pin, count_pin_anyedge_interrupt, &t);
 
-  uint32_t value = 0;
+  uint32_t value = SIGNAL_TERM;
 
   while( (ret = task_wait_for_signal(&value, TRIGGER_POLL)) == false)
-    if (fg && anykey_pressed())
+    if (fg && anykey_pressed()) // detect keypress only if we are running in foreground
       break;
 
-  // 1. "kill" command sends "0", as notification value, (pcnt_pin_interrupt() sends 1). Upon reception of a "kill" (i.e. SIGNAL_KILL)
-  //    this function returns false which prevents cmd_count() from execution
-  //                                 OR
-  // 2. Value was unchanged from default 0 and that means task_wait_for_signal(...) has been interrupted by a keypress and thus
-  //    we don't want to continue with the rest of cmd_count()
-  if (value == 0) 
+  // Either "kill" command (sends SIGNAL_TERM) or interrupted by a keypress (/value/ didn't change, so SIGNAL_TERM again)
+  // In both cases we don't want to continue execution of calling function (i.e. cmd_count()) so return /false/ here
+  if (value == SIGNAL_TERM) 
     ret = false;
     
   // Disable further interrupts
-  
   gpio_isr_handler_remove(pin);
-
   return ret;
 }
 
-//TAG:count
-//"count PIN [DELAY_MS]"
-// Count pulses on given pin
+// Shell command handler
+//"count PIN [DELAY_MS] [trigger]"
+//"count PIN clear"
 //
 static int cmd_count(int argc, char **argv) {
 
@@ -345,7 +343,7 @@ static int cmd_count(int argc, char **argv) {
 
   // Allocate new counter unit
   if ((unit = count_claim_unit()) < 0) {
-    q_print("% <e>Can not allocate new PCNT hardware</>\r\n");
+    q_print("% <e>All counters are in use</>\r\n");
     return 0;
   }
 
@@ -396,11 +394,13 @@ static int cmd_count(int argc, char **argv) {
     }
   }
   // Start counting for /wait/ milliseconds
-  units[unit].tsta = millis();
+  units[unit].tsta = q_millis();
   pcnt_counter_resume(unit);
-  delay_interruptible(wait);
+  // Mystery#2: where these 2ms come from?!
+  if (wait != delay_interruptible(wait))  // delay_interruptible() returns its argument if wasn't interrupted
+    wait = q_millis() - units[unit].tsta; // actual measurement time
   pcnt_counter_pause(unit);
-  wait = millis() - units[unit].tsta; // actual measurement time
+  
 
 release_hardware_and_exit:
   pcnt_get_counter_value(unit, &count);

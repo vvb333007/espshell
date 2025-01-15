@@ -24,14 +24,14 @@ EXTERN uint32_t getApbFrequency();
 static int cmd_cpu(int argc, char **argv) {
 
   esp_chip_info_t chip_info;
-
-  uint32_t chip_ver;
-  uint32_t pkg_ver;
   const char *chipid = "ESP32-(Unknown)>";
 
   esp_chip_info(&chip_info);
 
 #if CONFIG_IDF_TARGET_ESP32
+  uint32_t chip_ver;
+  uint32_t pkg_ver;
+
   chip_ver = REG_GET_FIELD(EFUSE_BLK0_RDATA3_REG, EFUSE_RD_CHIP_PACKAGE);
   pkg_ver = chip_ver & 0x7;
 
@@ -50,6 +50,8 @@ static int cmd_cpu(int argc, char **argv) {
     default: q_printf("%% Detected PKG_VER=%04x\r\n", (unsigned int)pkg_ver);
   }
 #elif CONFIG_IDF_TARGET_ESP32S2
+  uint32_t pkg_ver;
+
   pkg_ver = REG_GET_FIELD(EFUSE_RD_MAC_SPI_SYS_3_REG, EFUSE_PKG_VERSION);
   switch (pkg_ver) {
     case 0: chipid = "ESP32-S2"; break;
@@ -63,10 +65,13 @@ static int cmd_cpu(int argc, char **argv) {
     case CHIP_ESP32C2: chipid = "ESP32-C2"; break;
     case CHIP_ESP32C6: chipid = "ESP32-C6"; break;
     case CHIP_ESP32H2: chipid = "ESP32-H2"; break;
+    case CHIP_ESP32P4: chipid = "ESP32-P4"; break;
+    case CHIP_ESP32C61: chipid = "ESP32-C61"; break;
+    default:
   }
 #endif  //CONFIG_IDF_TARGET_XXX
 
-  
+  q_print("% <_>Hardware:</>\r\n");
   q_printf("%% CPU ID: %s, Rev.: %d.%d\r\n%% CPU frequency is %luMhz, Xtal %luMhz, APB bus %luMhz\r\n%% Chip temperature: %.1f\xe8 C\r\n",
            chipid,
            (chip_info.revision >> 8) & 0xf,
@@ -76,8 +81,15 @@ static int cmd_cpu(int argc, char **argv) {
            getApbFrequency() / 1000000,
            temperatureRead());
 
-  q_printf("%%\r\n%% Sketch is running on " ARDUINO_BOARD "/(" ARDUINO_VARIANT "), uses Arduino Core v%s, based on\r\n%% Espressif ESP-IDF version \"%s\"\r\n", ESP_ARDUINO_VERSION_STR, esp_get_idf_version());
-  q_print("% ESPShell version: <i>" ESPSHELL_VERSION "</>\r\n");
+  q_print("%\r\n% <_>Firmware:</>\r\n");
+  q_printf( "%% Sketch is running on " ARDUINO_BOARD ", an " ARDUINO_VARIANT " variant), uses:\r\n"
+            "%% Arduino Core version <1>%s</>, which uses\r\n"
+            "%% Espressif ESP-IDF version \"%s\"\r\n"
+            "%% ESP32Shell library <i>" ESPSHELL_VERSION "</>\r\n", 
+            ESP_ARDUINO_VERSION_STR, 
+            esp_get_idf_version());
+
+  q_print("%\r\n% <_>Last boot:</>\r\n");            
   cmd_uptime(argc, argv);
   return 0;
 }
