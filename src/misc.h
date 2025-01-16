@@ -7,7 +7,10 @@
  */
 
 
-// -- misc command handlers --
+// -- Code which doesn't fit other files --
+// Misc command handlers
+// Misc code
+
 
 #if COMPILING_ESPSHELL
 

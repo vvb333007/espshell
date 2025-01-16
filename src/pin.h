@@ -127,8 +127,8 @@ static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][5] = {
   { "U0RXD", "GPIO44", "CLK_OUT2", "3", "4" },
   { "GPIO45", "GPIO45", "2", "3", "4" },
   { "GPIO46", "GPIO46", "2", "3", "4" },
-  { "SPICLK_P_DIFF", "GPIO47", "SUBSPICLK_P_DIFF", "3", "4" },
-  { "SPICLK_N_DIFF", "GPIO48", "SUBSPICLK_N_DIFF", "3", "4" },
+  { "SPIC_PDIF", "GPIO47", "SSPIC_PDIF", "3", "4" },
+  { "SPIC_NDIF", "GPIO48", "SSPIC_NDIF", "3", "4" },
 #elif defined(CONFIG_IDF_TARGET_ESP32S2)
 static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][5] = {
   // ESP32S2 MUX functions for pins
@@ -272,8 +272,10 @@ static bool pin_set_iomux_function(unsigned char pin, unsigned char function) {
 #ifdef CONFIG_IDF_TARGET_ESP32
   ++nfunc;
 #endif
-  if (function > nfunc) 
+  if (function >= nfunc) {
+    HELP(q_printf("%% <e>Valid function numbers are [0 .. %d]</>\r\n",nfunc));
     return false;
+  }
 
   // autoselect GPIO function from IO_MUX
   if (function == (unsigned char)(-1))
@@ -782,7 +784,7 @@ abort_if_input_only:
         if (!q_strcmp(argv[i], "release")) gpio_hold_dis((gpio_num_t)pin); else
         // 6. "pin X load"
         if (!q_strcmp(argv[i], "load")) pin_load(pin); else
-        // 6.1 "pin X iomux [NUMBER | gpio]"
+        // 6.1 "pin X iomux [NUMBER | gpi]"
         if (!q_strcmp(argv[i], "iomux")) {
           unsigned char function = (unsigned char )(-1);
           if ((i+1) < argc)

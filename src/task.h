@@ -69,7 +69,7 @@ static bool taskid_good(unsigned int taskid) {
 
   // Suspicously low address. Probably misstyped.
   // TODO: This value is approximate. Need to go deeper on memory mapping in different ESP32 models
-  if (taskid < 0x3ff00000) {
+  if (taskid <= 0x30000000) {
     HELP(q_print("% Task id is a hex number, something like \"3ffb0030\" or \"0x40005566\"\r\n"));
     return false;
   }
@@ -101,7 +101,7 @@ static INLINE bool espshell_started() {
 // Helper task, which runs (cmd_...) handlers in a background.
 //
 // Normally, when user inputs "pin" command, the corresponding handler (i.e. cmd_pin()) is called directly by espshell_command() parser
-// However, for commands which ends with "&" (e.g. "pin 8 up high &", "count 4 &") cmd_sync() handler is called. This handler starts a task 
+// However, for commands which ends with "&" (e.g. "pin 8 up high &", "count 4 &") cmd_async() handler is called. This handler starts a task 
 // (espshell_async_task()) which executes "real" command handler stored in aa->gpp.
 //
 // The "&" syntax is inspired by Linux bash's "&" keyword
