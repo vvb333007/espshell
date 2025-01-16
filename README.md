@@ -44,8 +44,8 @@ WHAT IS THIS:
 
 3. Documentation (a bit outdated here and there):
 
-    1. English (most up to date) is in "espshell/docs/"
-    2. Russian (is up to date when I have time) is in "espshell/docs/ru_RU/"
+    1. English (mostly up to date) is in "espshell/docs/"
+    2. Russian (outdated) is in "espshell/docs/ru_RU/"
 
 4. Development:
 
