@@ -197,10 +197,6 @@ iomux [NUMBER | gpio]
             GPIO Matrix. This keyword is used, when one wants to switch a pin from its function 
             to simple input/output. 
 
-            Arduino Core (as of v3.0.7) routes pins through the GPIO Matrix, with this IO_MUX -> GPIO Matrix
-            transition happening somewhere in Arduino's pinMode(...).
-            The "iomux" command allows for re-routing pins back through IO_MUX
-
 hold    - "freeze" pin state and output value. Frozen pin remains frozen after
           reboot (as long as power to the chip is provided. rebooting via 
           POWERUP unfreezes pin) See NOTE1 at the end of this document.
@@ -324,16 +320,17 @@ Yes, it is possible: just use "pin ... &" instead of "pin". The "pin ... &" comm
 executes in background. Below is the simple example of a "blinking led": pin 2 
 toggled HIGH and LOW every 100ms for quite long time.
 
-  esp32#>pin 2 low de 100 high de 100 loop 999999 &
-  % Async "pin" command task ID is 3ffb9038
-  % Use "kill 3ffb9038" to stop command execution
-  esp32#>% Repeating 999999 times, press <Enter> to abort
+  Lets look at the example:
 
-  esp32#>  
+    esp32#>pin 2 low de 100 high de 100 loop 999999 &
+    % Background task started
+    % Copy/paste "kill 0x3fca3b18" command to stop execution
+    % Repeating 999999 times
+    
 
 You may notice from the example above, that command "pin" is started as a /separate task/
 which either finish by itself or can be finished manually with "kill" command. Just copy
-and paste this "kill 3ffb9038" line and press <Enter> to stop the task.
+and paste this "kill 3fca.." line and press <Enter> to stop the task.
 
 NOTE: using command "kill" outside this scope is dangerous: wrong argument (a task ID) will
 cause immediate system crash.
