@@ -1,3 +1,9 @@
+ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
+
+
+Sketch Variables
+----------------
+
 ESPShell has API to register and manipulate sketch variables, although variable
 types are limited to simple C types (unsigned/signed int, char, short, float or 
 generic void * pointer). Arrays of abovementioned simple types are supported as 
@@ -64,7 +70,7 @@ Another example:
 
     esp32#>var table
     % int * table = 0x3ffbdb88;  // Array of 10 elements, (4 bytes per element)
-    % table[10] = {
+    % int table[10] = {
     %    1, // table[0]
     %    2, // table[1]
     %    3, // table[2]
@@ -98,6 +104,4 @@ be changed in runtime
 
 Another use of "var" command is to convert & cast numbers:
 
-
-
-
+TBD
