@@ -133,8 +133,10 @@ delay X - Make a delay of X milliseconds before executing next
           keyword. (see Example 5. below)
 
 save    - Save pin configuration. Each save rewrites previous save
+
 load    - Load pin configuration. reads previously saved data. reading does not
           erase saved data.
+
 
 iomux [NUMBER | gpio]
 
@@ -196,6 +198,8 @@ iomux [NUMBER | gpio]
             If "gpio" keyword is used, then pin will be autorouted either via IO_MUX or
             GPIO Matrix. This keyword is used, when one wants to switch a pin from its function 
             to simple input/output. 
+
+matrix  - Route pin through GPIO Matrix. 
 
 hold    - "freeze" pin state and output value. Frozen pin remains frozen after
           reboot (as long as power to the chip is provided. rebooting via 
