@@ -184,11 +184,8 @@ static const char *convar_typename2(struct convar *var) {
   // with VAR_NAME[ARRAY_COUNT]. E.g. typename "float *" for variable "test" will be something like: "float test[]"
   //
   if (var->isp) {
-
     MUST_NOT_HAPPEN(out[i - 1] != '*'); // must not happen
-
-    out[i - 1] = ' ';
-    sprintf(&out[i],"%s[%u]",var->name,var->counta); // TODO: this is unsafe! Limit variable name length to something real like 64 characters
+    sprintf(&out[i - 1],"%s[%u]",var->name,var->counta); // TODO: this is unsafe! Limit variable name length to something real like 64 characters
   } else {
     out[i] = ' ';
     strcpy(&out[i + 1],var->name); // TODO: this is unsafe! Limit variable name length to something real like 64 characters
@@ -200,17 +197,26 @@ static const char *convar_typename2(struct convar *var) {
 
 // Find variable descriptor by variable name
 //
-// TODO: if there are more than 1 match on shortened name, don't pick up the first matched. Instead, display a warning and list all the
-//       matched variables.
 static struct convar *convar_get(const char *name) {
 
-  struct convar *var = var_head;
-  while (var) {
-    if (!q_strcmp(name, var->name))
+  struct convar *var;
+  struct convar *candidate;
+
+  // try to find exact match...
+  for (var = var_head; var; var = var->next)
+    if (!strcmp(name, var->name))
       return var;
-    var = var->next;
-  }
-  return NULL;
+
+  // try partial match...
+  for (var = var_head, candidate = NULL; var; var = var->next)
+    if (!q_strcmp(name, var->name)) {
+      if (candidate) {
+        q_printf("%% Ambiguity: by \"%s\" did you mean \"%s\" or \"%s\"?\r\n",name,var->name, candidate->name);
+        return NULL;
+      }
+      candidate = var;
+    }
+  return candidate;
 }
 
 // Print the value of a variable.

@@ -541,8 +541,7 @@ static const struct keywords_t keywords_files[] = {
     HELPK("Erase old & create new filesystem") },
 
   { "format", cmd_files_format, 0, HIDDEN_KEYWORD },
-  { "format&", cmd_files_format, 1, HIDDEN_KEYWORD },
-  { "format&", cmd_files_format, 0, HIDDEN_KEYWORD },
+ 
 
   KEYWORDS_END
 };
@@ -644,7 +643,7 @@ static const struct keywords_t keywords_main[] = {
           "% \"show mount /my_disk\"  - display information about mountpoint \"/my_disk\""), NULL},
 
   // shadowed entry. For helptext only
-  { "show", cmd_show, -1,
+  { "show", cmd_show, MANY_ARGS,
     HELPK("% \"<*>show <i>memory</> <i>ADDRESS</> [<1>COUNT</>] [<1>unsigned|signed|char|int|short|float|void *</>]\"\r\n"
           "%\r\n"
           "% Display COUNT elements starting from the memory address ADDRESS\r\n"

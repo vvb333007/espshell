@@ -35,7 +35,7 @@ cmd_uptime(UNUSED int argc, UNUSED char **argv) {
     case ESP_RST_USB: rr = "<i>USB event"; break;
     case ESP_RST_JTAG: rr = "<i>JTAG event"; break;
 
-    case ESP_RST_PANIC: rr = "<w>panic() called :-("; break;
+    case ESP_RST_PANIC: rr = "<w>Kernel panic"; break;
     case ESP_RST_INT_WDT: rr = "<w>an interrupt watchdog"; break;
     case ESP_RST_TASK_WDT: rr = "<w>a task watchdog"; break;
     case ESP_RST_WDT: rr = "<w>an unspecified watchdog"; break;
@@ -90,8 +90,10 @@ static int cmd_tty(int argc, char **argv) {
       console_here(tty);
       return 0;
     }
-  } else
+  } else {
     HELP(q_print("%% <e>UART number is expected. (use 99 for USB CDC)</>\r\n"));
+    return 1;
+  }
 
   if (tty < 99)
     q_printf(uartIsDown, tty);
@@ -174,35 +176,25 @@ static int cmd_history(int argc, char **argv) {
 // Automated output processing or broken terminals need this
 //
 static int cmd_colors(int argc, char **argv) {
-  if (argc < 2)
-    q_printf("%% Color is \"%s\"\r\n", ColorAuto ? "auto" : (Color ? "on" : "off"));
-  else
-    // auto-colors: colors are enabled by ESPShell if it detects proper terminal software on user side
-    if (!q_strcmp(argv[1], "auto")) {
-      Color = false;
-      ColorAuto = true;
-    } else
-      // colors off: don't send any ANSI color escape sequences. Use with broken terminals
-      if (!q_strcmp(argv[1], "off"))
-        ColorAuto = Color = false;
-      else
-        // colors on : enable color sequences
-        if (!q_strcmp(argv[1], "on")) {
-          ColorAuto = false;
-          Color = true;
-        } else
-          // hidden command
-          if (!q_strcmp(argv[1], "test")) {
-            int i;
 
-            for (i = 0; i < 8; i++)
-              q_printf("3%d: \e[3%dmLorem Ipsum Dolor 1234567890 @#\e[0m 9%d\e[9%dmLorem Ipsum Dolor 1234567890 @#\e[0m\r\n", i, i, i, i);
-
-            for (i = 0; i < 108; i++)
-              q_printf("%d: \e[%dmLorem Ipsum Dolor 1234567890 @#\e[0m\r\n", i, i);
-
-          } else
-            return 1;
+  // "colors"
+  if (argc < 2) q_printf("%% Color is \"%s\"\r\n", ColorAuto ? "auto" : (Color ? "on" : "off")); else
+  // "color auto": colors are enabled by ESPShell if it detects proper terminal software on user side
+  if (!q_strcmp(argv[1], "auto")) { Color = false; ColorAuto = true; } else
+  // "color off": don't send any ANSI color escape sequences. Use with broken terminals
+  if (!q_strcmp(argv[1], "off"))  ColorAuto = Color = false; else
+  // "colors on" : enable color sequences
+  if (!q_strcmp(argv[1], "on")) { ColorAuto = false; Color = true; } else
+  // "color test" : hidden developers command
+  if (!q_strcmp(argv[1], "test")) {
+    int i;
+    for (i = 0; i < 8; i++)
+      q_printf("3%d: \e[3%dmLorem Ipsum Dolor 1234567890 @#\e[0m 9%d\e[9%dmLorem Ipsum Dolor 1234567890 @#\e[0m\r\n", i, i, i, i);
+    for (i = 0; i < 108; i++)
+      q_printf("%d: \e[%dmLorem Ipsum Dolor 1234567890 @#\e[0m\r\n", i, i);
+  } else
+  // "color ????"
+    return 1;
 
   return 0;
 }
