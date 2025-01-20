@@ -252,7 +252,7 @@ static int count_show_counters() {
   }
 
   if (pcnt_counters) {
-    q_printf("%% %u counter%s is currently in use\r\n",pcnt_counters,pcnt_counters == 1 ? "" : "s");
+    q_printf("%% %u counter%s is currently in use\r\n",PPA(pcnt_counters));
     HELP(q_print("% Use command \"<i>kill TASK_ID</>\" to stop a running counter\r\n"));
   }
   else
@@ -323,6 +323,7 @@ bool count_wait_for_the_first_pulse(unsigned int pin) {
 //"count PIN [DELAY_MS] [trigger]"
 //"count PIN clear"
 //
+// TODO: investigate /filter/ feature and add appropriate arguments to the "count" command
 static int cmd_count(int argc, char **argv) {
 
   pcnt_config_t cfg = { 0 };

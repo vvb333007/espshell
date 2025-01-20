@@ -8,7 +8,14 @@
 
 
 // -- Q-Lib: helpful routines: ascii to number conversions, etc --
+//
+// 1. OS/Kernel lightweight abstraction layer (mutexes, time intervals, delays, etc. part of it is in task.h file as well )
+// 2. Memory manager (for leaks detection)
+// 3. Bunch of number->string and string->number conversion functions
+// 4. Core functions like q_printf(), core variables etc
+//
 #if COMPILING_ESPSHELL
+
 
 // Bunch of handy macros:
 
@@ -18,8 +25,10 @@
 #define unlikely(_X)     __builtin_expect(!!(_X), 0)
 #define likely(_X)     __builtin_expect(!!(_X), 1)
 
-// inlined version of millis().
+// inlined version of millis() & delay() for better accuracy on small intervals
+// because of decreased overhead. q_millis vs millis shows 196 vs 286 CPU cycles
 #define q_millis() ((unsigned long )(esp_timer_get_time() / 1000ULL))
+#define q_delay(_Delay) vTaskDelay(_Delay / portTICK_PERIOD_MS);
 
 
 // Mutex manipulation: declare, initialize, grab and release macros
@@ -47,6 +56,10 @@
       _Name = NULL; \
     } \
   } while ( 0 )
+
+// Be nice & use good english
+#define PPA(_X) _X, (_X) == 1 ? "" : "s" // [P]lural [P]rintf [A]rgument
+
 
 
 static bool ColorAuto = AUTO_COLOR;  // Autoenable coloring if terminal permits
@@ -318,7 +331,7 @@ static void q_memleaks(const char *text) {
 
 #if WITH_HELP
   q_printf("<r>%% Tracking %07u memory block%s              </>\r\n"
-              "%% Use command \"show mem ADDRESS [COUNT]\" to display data at memory address\r\n",count, count == 1 ? "" : "s");
+              "%% Use command \"show mem ADDRESS [COUNT]\" to display data at memory address\r\n",PPA(count));
 #endif
 }
 #else // MEMTEST==0
@@ -627,12 +640,25 @@ static inline float q_atof(const char *p, float def) {
 // q_strcmp("sequence","seq") == 1
 //
 static int q_strcmp(const char *partial, const char *full) {
+
+#if 0  
   int plen;
   if (partial && full && (*partial == *full))      // quick reject
     if ((plen = strlen(partial)) <= strlen(full))  //     OR
       return strncmp(partial, full, plen);         //  full test
   return 1;
+#else
+  if (partial && full && (*partial++ == *full++)) {
+    while(*partial)
+      if (*partial++ != *full++)
+        return 1;
+    return 0;
+  }
+  return 1;
+#endif  
 }
+
+
 
 static inline const char *q_findchar(const char *str, char sym) {
   if (str) {
@@ -941,7 +967,7 @@ static unsigned int delay_interruptible(unsigned int duration) {
   if (duration > TOO_LONG) {
     while (duration >= DELAY_POLL) {
       duration -= DELAY_POLL;
-      delay(DELAY_POLL);
+      q_delay(DELAY_POLL);
       if (anykey_pressed())
         return q_millis() - now;  // interrupted by a keypress
     }
@@ -953,8 +979,14 @@ static unsigned int delay_interruptible(unsigned int duration) {
 }
 
 // return "st", "nd", "rd" ot "th" depending on number
-static __attribute__((const)) const char *number_english_ending(unsigned int n) {
+static inline __attribute__((const)) const char *number_english_ending(unsigned int n) {
   return n == 1 ? "st" : (n == 2 ? "nd" : (n == 3 ? "rd" : "th"));
 }
+
+#if 0
+typedef int64_t timestamp_t;
+extern unsigned xthal_get_ccount();
+#define CCC() xthal_get_ccount()
+#endif
 #endif //#if COMPILING_ESPSHELL
 

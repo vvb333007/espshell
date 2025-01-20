@@ -14,57 +14,57 @@
 
 #if COMPILING_ESPSHELL
 
-
 // "uptime"
 //
 // Displays system uptime as returned by esp_timer_get_time() counter
 // Displays last reboot cause
-static int
-cmd_uptime(UNUSED int argc, UNUSED char **argv) {
+static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
 
-  unsigned int sec, min = 0, hr = 0, day = 0;
-  sec = (unsigned int)(esp_timer_get_time() / 1000000ULL);
+  const char *rr = "";
 
-  const char *rr;
+  unsigned int  min = 0, 
+                hr = 0, 
+                day = 0,
+                sec = q_millis() / 1000;
 
   switch (esp_reset_reason()) {
-    case ESP_RST_POWERON: rr = "<i>Board power-on"; break;
-    case ESP_RST_SW: rr = "<i>reload command"; break;
+    case ESP_RST_POWERON:   rr = "<i>Board power-on"; break;
+    case ESP_RST_SW:        rr = "<i>reload command"; break;
     case ESP_RST_DEEPSLEEP: rr = "<i>Returned from a deep sleep"; break;
-    case ESP_RST_SDIO: rr = "<i>SDIO event"; break;
-    case ESP_RST_USB: rr = "<i>USB event"; break;
-    case ESP_RST_JTAG: rr = "<i>JTAG event"; break;
+    case ESP_RST_SDIO:      rr = "<i>SDIO event"; break;
+    case ESP_RST_USB:       rr = "<i>USB event"; break;
+    case ESP_RST_JTAG:      rr = "<i>JTAG event"; break;
 
-    case ESP_RST_PANIC: rr = "<w>Kernel panic"; break;
-    case ESP_RST_INT_WDT: rr = "<w>an interrupt watchdog"; break;
-    case ESP_RST_TASK_WDT: rr = "<w>a task watchdog"; break;
-    case ESP_RST_WDT: rr = "<w>an unspecified watchdog"; break;
-    case ESP_RST_CPU_LOCKUP: rr = "<w>lockup (double exception)"; break;
+    case ESP_RST_PANIC:     rr = "<w>Kernel panic"; break;
+    case ESP_RST_INT_WDT:   rr = "<w>an interrupt watchdog"; break;
+    case ESP_RST_TASK_WDT:  rr = "<w>a task watchdog"; break;
+    case ESP_RST_WDT:       rr = "<w>an unspecified watchdog"; break;
+    case ESP_RST_CPU_LOCKUP:rr = "<w>lockup (double exception)"; break;
 
-    case ESP_RST_BROWNOUT: rr = "<e>Brownout"; break;
-    case ESP_RST_PWR_GLITCH: rr = "<e>Power glitch"; break;
-    case ESP_RST_EFUSE: rr = "<e>eFuse errors"; break;
-    default: rr = "<e>no idea";
+    case ESP_RST_BROWNOUT:  rr = "<e>Brownout"; break;
+    case ESP_RST_PWR_GLITCH:rr = "<e>Power glitch"; break;
+    case ESP_RST_EFUSE:     rr = "<e>eFuse errors"; break;
+    default:                MUST_NOT_HAPPEN( true );
   };
 
   q_print("% Last boot was ");
   if (sec >= 60 * 60 * 24) {
     day = sec / (60 * 60 * 24);
     sec = sec % (60 * 60 * 24);
-    q_printf("%u day%s ", day, day == 1 ? "" : "s");
+    q_printf("%u day%s ", PPA(day));
   }
   if (sec >= 60 * 60) {
     hr = sec / (60 * 60);
     sec = sec % (60 * 60);
-    q_printf("%u hour%s ", hr, hr == 1 ? "" : "s");
+    q_printf("%u hour%s ", PPA(hr));
   }
   if (sec >= 60) {
     min = sec / 60;
     sec = sec % 60;
-    q_printf("%u minute%s ", min, min == 1 ? "" : "s");
+    q_printf("%u minute%s ", PPA(min));
   }
 
-  q_printf("%u second%s ago\r\n%% Restart reason was \"%s</>\"\r\n", sec, sec == 1 ? "" : "s", rr);
+  q_printf("%u second%s ago\r\n%% Restart reason was \"%s</>\"\r\n", PPA(sec), rr);
 
 
   return 0;
@@ -218,7 +218,7 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
   
   // Sleep for ever
   while(1)
-    delay(999999);
+    q_delay(999999);
 }
 
 #endif // #if COMPILING_ESPSHELL

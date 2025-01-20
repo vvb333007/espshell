@@ -8,19 +8,26 @@
 
 
 // -- pin (GPIO) manipulation --
-// Command "pin" (and her async version "pin&") is a tiny command processor itself: one can enter multiple arguments
+// Pin is the synonim of GPIO throughout the espshell code & docs. There is no support for pin remapping simply because
+// I don't have an appropriate board
+//
+// Main command here is "pin"
+//
+// Command "pin" is a tiny command processor itself: one can enter multiple arguments
 // to the "pin" command to form a sort of a microcode program which gets executed.
 
 #if COMPILING_ESPSHELL
 
-// Structure used to save/load pin states by "pin X save"/"pin X load".
-//
+// Structure which is used to save/load pin states by "pin X save"/"pin X load".
+// These are filled by pin_save() and applied by pin_load()
 static struct {
-  uint8_t flags;  // INPUT,PULLUP,...
-  bool value;     // digital value
-  uint16_t sig_out;
-  uint16_t fun_sel;
-  int bus_type;  //periman bus type.
+
+  uint8_t flags;     // INPUT,PULLUP,... Arduino pin flags (as per pinMode() )
+  bool value;        // digital value
+  uint16_t sig_out;  // SIG_IN & SIG_OUT for GPIO Matrix mode
+  uint16_t fun_sel;  // IO_MUX function selector
+  int bus_type;      // PeriMan bus type. (see ArdionoCore *periman*.c)
+
 } Pins[SOC_GPIO_PIN_COUNT];
 
 
@@ -34,197 +41,214 @@ static struct {
 //TODO: add support for other Espressif ESP32 variants
 //
 
-#ifdef CONFIG_IDF_TARGET_ESP32
-static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][6] = {
-  { "GPIO0", "CLK_OUT1", "GPIO0", 0, 0, "EMAC_TX_CLK" },
-  { "U0TXD", "CLK_OUT3", "GPIO1", 0, 0, "EMAC_RXD2" },
-  { "GPIO2", "HSPIWP", "GPIO2", "HS2_DATA0", "SD_DATA0", 0 },
-  { "U0RXD", "CLK_OUT2", "GPIO3", 0, 0, 0 },
-  { "GPIO4", "HSPIHD", "GPIO4", "HS2_DATA1", "SD_DATA1", "EMAC_TX_ER" },
-  { "GPIO5", "VSPICS0", "GPIO5", "HS1_DATA6", 0, "EMAC_RX_CLK" },
-  { "SD_CLK", "SPICLK", "GPIO6", "HS1_CLK", "U1CTS", 0 },
-  { "SD_DATA0", "SPIQ", "GPIO7", "HS1_DATA0", "U2RTS", 0 },
-  { "SD_DATA1", "SPID", "GPIO8", "HS1_DATA1", "U2CTS", 0 },
-  { "SD_DATA2", "SPIHD", "GPIO9", "HS1_DATA2", "U1RXD", 0 },
-  { "SD_DATA3", "SPIWP", "GPIO10", "HS1_DATA3", "U1TXD", 0 },
-  { "SD_CMD", "SPICS0", "GPIO11", "HS1_CMD", "U1RTS", 0 },
-  { "MTDI", "HSPIQ", "GPIO12", "HS2_DATA2", "SD_DATA2", "EMAC_TXD3" },
-  { "MTCK", "HSPID", "GPIO13", "HS2_DATA3", "SD_DATA3", "EMAC_RX_ER" },
-  { "MTMS", "HSPICLK", "GPIO14", "HS2_CLK", "SD_CLK", "EMAC_TXD2" },
-  { "MTDO", "HSPICS0", "GPIO15", "HS2_CMD", "SD_CMD", "EMAC_RXD3" },
-  { "GPIO16", 0, "GPIO16", "HS1_DATA4", "U2RXD", "EMAC_CLK_OUT" },
-  { "GPIO17", 0, "GPIO17", "HS1_DATA5", "U2TXD", "EMAC_CLK_180" },
-  { "GPIO18", "VSPICLK", "GPIO18", "HS1_DATA7", 0, 0 },
-  { "GPIO19", "VSPIQ", "GPIO19", "U0CTS", 0, "EMAC_TXD0" },
-  { "GPIO20", "GPIO20", "GPIO20", "GPIO20", "GPIO20", "GPIO20" },
-  { "GPIO21", "VSPIHD", "GPIO21", 0, 0, "EMAC_TX_EN" },
-  { "GPIO22", "VSPIWP", "GPIO22", "U0RTS", 0, "EMAC_TXD1" },
-  { "GPIO23", "VSPID", "GPIO23", "HS1_STROBE", 0, 0 },
-  { "GPIO24", "GPIO24(1)", "GPIO24(2)", "GPIO24(3)", "GPIO24(4)", "GPIO24(5)" },
-  { "GPIO25", 0, "GPIO25", 0, 0, "EMAC_RXD0" },
-  { "GPIO26", 0, "GPIO26", 0, 0, "EMAC_RXD1" },
-  { "GPIO27", 0, "GPIO27", 0, 0, "EMAC_RX_DV" },
-  { 0, 0, 0, 0, 0, 0 },
-  { 0, 0, 0, 0, 0, 0 },
-  { 0, 0, 0, 0, 0, 0 },
-  { 0, 0, 0, 0, 0, 0 },
-  { "GPIO32", 0, "GPIO32", 0, 0, 0 },
-  { "GPIO33", 0, "GPIO33", 0, 0, 0 },
-  { "GPIO34", 0, "GPIO34", 0, 0, 0 },
-  { "GPIO35", 0, "GPIO35", 0, 0, 0 },
-  { "GPIO36", 0, "GPIO36", 0, 0, 0 },
-  { "GPIO37", 0, "GPIO37", 0, 0, 0 },
-  { "GPIO38", 0, "GPIO38", 0, 0, 0 },
-  { "GPIO39", 0, "GPIO39", 0, 0, 0 },
-#elif defined(CONFIG_IDF_TARGET_ESP32S3)
-static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][5] = {
-  // ESP32S3 MUX functions for pins
-  { "GPIO0", "GPIO0", 0, 0, 0 },
-  { "GPIO1", "GPIO1", 0, 0, 0 },
-  { "GPIO2", "GPIO2", 0, 0, 0 },
-  { "GPIO3", "GPIO3", 0, 0, 0 },
-  { "GPIO4", "GPIO4", 0, 0, 0 },
-  { "GPIO5", "GPIO5", 0, 0, 0 },
-  { "GPIO6", "GPIO6", 0, 0, 0 },
-  { "GPIO7", "GPIO7", 0, 0, 0 },
-  { "GPIO8", "GPIO8", 0, "SUBSPICS1", 0 },
-  { "GPIO9", "GPIO9", 0, "SUBSPIHD", "FSPIHD" },
-  { "GPIO10", "GPIO10", "FSPIIO4", "SUBSPICS0", "FSPICS0" },
-  { "GPIO11", "GPIO11", "FSPIIO5", "SUBSPID", "FSPID" },
-  { "GPIO12", "GPIO12", "FSPIIO6", "SUBSPICLK", "FSPICLK" },
-  { "GPIO13", "GPIO13", "FSPIIO7", "SUBSPIQ", "FSPIQ" },
-  { "GPIO14", "GPIO14", "FSPIDQS", "SUBSPIWP", "FSPIWP" },
-  { "GPIO15", "GPIO15", "U0RTS", 0, 0 },
-  { "GPIO16", "GPIO16", "U0CTS", 0, 0 },
-  { "GPIO17", "GPIO17", "U1TXD", 0, 0 },
-  { "GPIO18", "GPIO18", "U1RXD", "CLK_OUT3", 0 },
-  { "GPIO19", "GPIO19", "U1RTS", "CLK_OUT2", 0 },
-  { "GPIO20", "GPIO20", "U1CTS", "CLK_OUT1", 0 },
-  { "GPIO21", "GPIO21", 0, 0, 0 },
-  { 0, 0, 0, 0, 0 },
-  { 0, 0, 0, 0, 0 },
-  { 0, 0, 0, 0, 0 },
-  { 0, 0, 0, 0, 0 },
-  { "SPICS1", "GPIO26", 0, 0, 0 },
-  { "SPIHD", "GPIO27", 0, 0, 0 },
-  { "SPIWP", "GPIO28", 0, 0, 0 },
-  { "SPICS0", "GPIO29", 0, 0, 0 },
-  { "SPICLK", "GPIO30", 0, 0, 0 },
-  { "SPIQ", "GPIO31", 0, 0, 0 },
-  { "SPID", "GPIO32", 0, 0, 0 },
-  { "GPIO33", "GPIO33", "FSPIHD", "SUBSPIHD", "SPIIO4" },
-  { "GPIO34", "GPIO34", "FSPICS0", "SUBSPICS0", "SPIIO5" },
-  { "GPIO35", "GPIO35", "FSPID", "SUBSPID", "SPIIO6" },
-  { "GPIO36", "GPIO36", "FSPICLK", "SUBSPICLK", "SPIIO7" },
-  { "GPIO37", "GPIO37", "FSPIQ", "SUBSPIQ", "SPIDQS" },
-  { "GPIO38", "GPIO38", "FSPIWP", "SUBSPIWP", 0 },
-  { "MTCK", "GPIO39", "CLK_OUT3", "SUBSPICS1", 0 },
-  { "MTDO", "GPIO40", "CLK_OUT2", 0, 0 },
-  { "MTDI", "GPIO41", "CLK_OUT1", 0, 0 },
-  { "MTMS", "GPIO42", 0, 0, 0 },
-  { "U0TXD", "GPIO43", "CLK_OUT1", 0, 0 },
-  { "U0RXD", "GPIO44", "CLK_OUT2", 0, 0 },
-  { "GPIO45", "GPIO45", 0, 0, 0 },
-  { "GPIO46", "GPIO46", 0, 0, 0 },
-  { "SPIC_PDIF", "GPIO47", "SSPICPDIF", 0, 0 },
-  { "SPIC_NDIF", "GPIO48", "SSPICNDIF", 0, 0 },
-#elif defined(CONFIG_IDF_TARGET_ESP32S2)
-static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][5] = {
-  // ESP32S2 MUX functions for pins
-  { "GPIO0", "GPIO0", 0, 0, 0 },
-  { "GPIO1", "GPIO1", 0, 0, 0 },
-  { "GPIO2", "GPIO2", 0, 0, 0 },
-  { "GPIO3", "GPIO3", 0, 0, 0 },
-  { "GPIO4", "GPIO4", 0, 0, 0 },
-  { "GPIO5", "GPIO5", 0, 0, 0 },
-  { "GPIO6", "GPIO6", 0, 0, 0 },
-  { "GPIO7", "GPIO7", 0, 0, 0 },
-  { "GPIO8", "GPIO8", 0, "SUBSPICS1", 0 },
-  { "GPIO9", "GPIO9", 0, "SUBSPIHD", "FSPIHD" },
-  { "GPIO10", "GPIO10", "FSPIIO4", "SUBSPICS0", "FSPICS0" },
-  { "GPIO11", "GPIO11", "FSPIIO5", "SUBSPID", "FSPID" },
-  { "GPIO12", "GPIO12", "FSPIIO6", "SUBSPICLK", "FSPICLK" },
-  { "GPIO13", "GPIO13", "FSPIIO7", "SUBSPIQ", "FSPIQ", "" },
-  { "GPIO14", "GPIO14", "FSPIDQS", "SUBSPIWP", "FSPIWP" },
-  { "XTAL_32K_P", "GPIO15", "U0RTS", 0, 0 },
-  { "XTAL_32K_N", "GPIO16", "U0CTS", 0, 0 },
-  { "DAC_1", "GPIO17", "U1TXD", 0, 0 },
-  { "DAC_2", "GPIO18", "U1RXD", "CLK_OUT3", 0 },
-  { "GPIO19", "GPIO19", "U1RTS", "CLK_OUT2", 0 },
-  { "GPIO20", "GPIO20", "U1CTS", "CLK_OUT1", 0 },
-  { "GPIO21", "GPIO21", 0, 0, 0 },
-  { 0, 0, 0, 0, 0 },
-  { 0, 0, 0, 0, 0 },
-  { 0, 0, 0, 0, 0 },
-  { 0, 0, 0, 0, 0 },
-  { "SPICS1", "GPIO26", 0, 0, 0 },
-  { "SPIHD", "GPIO27", 0, 0, 0 },
-  { "SPIWP", "GPIO28", 0, 0, 0 },
-  { "SPICS0", "GPIO29", 0, 0, 0 },
-  { "SPICLK", "GPIO30", 0, 0, 0 },
-  { "SPIQ", "GPIO31", 0, 0, 0 },
-  { "SPID", "GPIO32", 0, 0, 0 },
-  { "GPIO33", "GPIO33", "FSPIHD", "SUBSPIHD", "SPIIO4" },
-  { "GPIO34", "GPIO34", "FSPICS0", "SUBSPICS0", "SPIIO5" },
-  { "GPIO35", "GPIO35", "FSPID", "SUBSPID", "SPIIO6" },
-  { "GPIO36", "GPIO36", "FSPICLK", "SUBSPICLK", "SPIIO7" },
-  { "GPIO37", "GPIO37", "FSPIQ", "SUBSPIQ", "SPIDQS" },
-  { "GPIO38", "GPIO38", "FSPIWP", "SUBSPIWP", 0 },
-  { "MTCK", "GPIO39", "CLK_OUT3", "SUBSPICS1", 0 },
-  { "MTDO", "GPIO40", "CLK_OUT2", 0, 0 },
-  { "MTDI", "GPIO41", "CLK_OUT1", 0, 0 },
-  { "MTMS", "GPIO42", 0, 0, 0 },
-  { "U0TXD", "GPIO43", "CLK_OUT1", 0, 0 },
-  { "U0RXD", "GPIO44", "CLK_OUT2", 0, 0 },
-  { "GPIO45", "GPIO45", 0, 0, 0 },
-  { "GPIO46", "GPIO46", 0, 0, 0 },
-#else
-#warning "Unsupported target, using dummy IO_MUX function name table"
-static const char *io_mux_func_name[49][5] = { 0 
-#endif  // CONFIG_IDF_TARGET...
-};      //static const char *io_mux_func_name[][] = {
 
+// Number of available function in IO_MUX for given pin
+#define IOMUX_NFUNC 5
+
+#ifdef CONFIG_IDF_TARGET_ESP32
+
+// Classic ESP32 has 6 functions per pin. Function 0 selects IO_MUX GPIO mode, function 2 selects GPIO_MATRIX GPIO mode
+// All other ESP32 variants have only 5 functions with function 1 being GPIO_MATRIX selector
+# undef IOMUX_NFUNC
+# define IOMUX_NFUNC 6
+static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][IOMUX_NFUNC] = {
+  { "0", "CLK_OUT1", "0", 0, 0, "EMAC_TX_CLK" },
+  { "U0TXD", "CLK_OUT3", "1", 0, 0, "EMAC_RXD2" },
+  { "2", "HSPIWP", "2", "HS2_DATA0", "SD_DATA0", 0 },
+  { "U0RXD", "CLK_OUT2", "3", 0, 0, 0 },
+  { "4", "HSPIHD", "4", "HS2_DATA1", "SD_DATA1", "EMAC_TX_ER" },
+  { "5", "VSPICS0", "5", "HS1_DATA6", 0, "EMAC_RX_CLK" },
+  { "SD_CLK", "SPICLK", "6", "HS1_CLK", "U1CTS", 0 },
+  { "SD_DATA0", "SPIQ", "7", "HS1_DATA0", "U2RTS", 0 },
+  { "SD_DATA1", "SPID", "8", "HS1_DATA1", "U2CTS", 0 },
+  { "SD_DATA2", "SPIHD", "9", "HS1_DATA2", "U1RXD", 0 },
+  { "SD_DATA3", "SPIWP", "10", "HS1_DATA3", "U1TXD", 0 },
+  { "SD_CMD", "SPICS0", "11", "HS1_CMD", "U1RTS", 0 },
+  { "MTDI", "HSPIQ", "12", "HS2_DATA2", "SD_DATA2", "EMAC_TXD3" },
+  { "MTCK", "HSPID", "13", "HS2_DATA3", "SD_DATA3", "EMAC_RX_ER" },
+  { "MTMS", "HSPICLK", "14", "HS2_CLK", "SD_CLK", "EMAC_TXD2" },
+  { "MTDO", "HSPICS0", "15", "HS2_CMD", "SD_CMD", "EMAC_RXD3" },
+  { "16", 0, "16", "HS1_DATA4", "U2RXD", "EMAC_CLK_OUT" },
+  { "17", 0, "17", "HS1_DATA5", "U2TXD", "EMAC_CLK_180" },
+  { "18", "VSPICLK", "18", "HS1_DATA7", 0, 0 },
+  { "19", "VSPIQ", "19", "U0CTS", 0, "EMAC_TXD0" },
+  { "20", "20", "20", "20", "20", "20" },
+  { "21", "VSPIHD", "21", 0, 0, "EMAC_TX_EN" },
+  { "22", "VSPIWP", "22", "U0RTS", 0, "EMAC_TXD1" },
+  { "23", "VSPID", "23", "HS1_STROBE", 0, 0 },
+  { "24", "24(1)", "24(2)", "24(3)", "24(4)", "24(5)" },
+  { "25", 0, "25", 0, 0, "EMAC_RXD0" },
+  { "26", 0, "26", 0, 0, "EMAC_RXD1" },
+  { "27", 0, "27", 0, 0, "EMAC_RX_DV" },
+  { 0, 0, 0, 0, 0, 0 },
+  { 0, 0, 0, 0, 0, 0 },
+  { 0, 0, 0, 0, 0, 0 },
+  { 0, 0, 0, 0, 0, 0 },
+  { "32", 0, "32", 0, 0, 0 },
+  { "33", 0, "33", 0, 0, 0 },
+  { "34", 0, "34", 0, 0, 0 },
+  { "35", 0, "35", 0, 0, 0 },
+  { "36", 0, "36", 0, 0, 0 },
+  { "37", 0, "37", 0, 0, 0 },
+  { "38", 0, "38", 0, 0, 0 },
+  { "39", 0, "39", 0, 0, 0 },
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
+static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][IOMUX_NFUNC] = {
+  // ESP32S3 MUX functions for pins. S3 has only 5 functions per pin 
+  { "0", "0", 0, 0, 0 },
+  { "1", "1", 0, 0, 0 },
+  { "2", "2", 0, 0, 0 },
+  { "3", "3", 0, 0, 0 },
+  { "4", "4", 0, 0, 0 },
+  { "5", "5", 0, 0, 0 },
+  { "6", "6", 0, 0, 0 },
+  { "7", "7", 0, 0, 0 },
+  { "8", "8", 0, "SUBSPICS1", 0 },
+  { "9", "9", 0, "SUBSPIHD", "FSPIHD" },
+  { "10", "10", "FSPIIO4", "SUBSPICS0", "FSPICS0" },
+  { "11", "11", "FSPIIO5", "SUBSPID", "FSPID" },
+  { "12", "12", "FSPIIO6", "SUBSPICLK", "FSPICLK" },
+  { "13", "13", "FSPIIO7", "SUBSPIQ", "FSPIQ" },
+  { "14", "14", "FSPIDQS", "SUBSPIWP", "FSPIWP" },
+  { "15", "15", "U0RTS", 0, 0 },
+  { "16", "16", "U0CTS", 0, 0 },
+  { "17", "17", "U1TXD", 0, 0 },
+  { "18", "18", "U1RXD", "CLK_OUT3", 0 },
+  { "19", "19", "U1RTS", "CLK_OUT2", 0 },
+  { "20", "20", "U1CTS", "CLK_OUT1", 0 },
+  { "21", "21", 0, 0, 0 },
+  { 0, 0, 0, 0, 0 },
+  { 0, 0, 0, 0, 0 },
+  { 0, 0, 0, 0, 0 },
+  { 0, 0, 0, 0, 0 },
+  { "SPICS1", "26", 0, 0, 0 },
+  { "SPIHD", "27", 0, 0, 0 },
+  { "SPIWP", "28", 0, 0, 0 },
+  { "SPICS0", "29", 0, 0, 0 },
+  { "SPICLK", "30", 0, 0, 0 },
+  { "SPIQ", "31", 0, 0, 0 },
+  { "SPID", "32", 0, 0, 0 },
+  { "33", "33", "FSPIHD", "SUBSPIHD", "SPIIO4" },
+  { "34", "34", "FSPICS0", "SUBSPICS0", "SPIIO5" },
+  { "35", "35", "FSPID", "SUBSPID", "SPIIO6" },
+  { "36", "36", "FSPICLK", "SUBSPICLK", "SPIIO7" },
+  { "37", "37", "FSPIQ", "SUBSPIQ", "SPIDQS" },
+  { "38", "38", "FSPIWP", "SUBSPIWP", 0 },
+  { "MTCK", "39", "CLK_OUT3", "SUBSPICS1", 0 },
+  { "MTDO", "40", "CLK_OUT2", 0, 0 },
+  { "MTDI", "41", "CLK_OUT1", 0, 0 },
+  { "MTMS", "42", 0, 0, 0 },
+  { "U0TXD", "43", "CLK_OUT1", 0, 0 },
+  { "U0RXD", "44", "CLK_OUT2", 0, 0 },
+  { "45", "45", 0, 0, 0 },
+  { "46", "46", 0, 0, 0 },
+  { "SPIC_PDIF", "47", "SSPICPDIF", 0, 0 },
+  { "SPIC_NDIF", "48", "SSPICNDIF", 0, 0 },
+#elif defined(CONFIG_IDF_TARGET_ESP32S2)
+static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][IOMUX_NFUNC] = {
+  // ESP32S2 MUX functions for pins
+  { "0", "0", 0, 0, 0 },
+  { "1", "1", 0, 0, 0 },
+  { "2", "2", 0, 0, 0 },
+  { "3", "3", 0, 0, 0 },
+  { "4", "4", 0, 0, 0 },
+  { "5", "5", 0, 0, 0 },
+  { "6", "6", 0, 0, 0 },
+  { "7", "7", 0, 0, 0 },
+  { "8", "8", 0, "SUBSPICS1", 0 },
+  { "9", "9", 0, "SUBSPIHD", "FSPIHD" },
+  { "10", "10", "FSPIIO4", "SUBSPICS0", "FSPICS0" },
+  { "11", "11", "FSPIIO5", "SUBSPID", "FSPID" },
+  { "12", "12", "FSPIIO6", "SUBSPICLK", "FSPICLK" },
+  { "13", "13", "FSPIIO7", "SUBSPIQ", "FSPIQ", "" },
+  { "14", "14", "FSPIDQS", "SUBSPIWP", "FSPIWP" },
+  { "XTAL_32K_P", "15", "U0RTS", 0, 0 },
+  { "XTAL_32K_N", "16", "U0CTS", 0, 0 },
+  { "DAC_1", "17", "U1TXD", 0, 0 },
+  { "DAC_2", "18", "U1RXD", "CLK_OUT3", 0 },
+  { "19", "19", "U1RTS", "CLK_OUT2", 0 },
+  { "20", "20", "U1CTS", "CLK_OUT1", 0 },
+  { "21", "21", 0, 0, 0 },
+  { 0, 0, 0, 0, 0 },
+  { 0, 0, 0, 0, 0 },
+  { 0, 0, 0, 0, 0 },
+  { 0, 0, 0, 0, 0 },
+  { "SPICS1", "26", 0, 0, 0 },
+  { "SPIHD", "27", 0, 0, 0 },
+  { "SPIWP", "28", 0, 0, 0 },
+  { "SPICS0", "29", 0, 0, 0 },
+  { "SPICLK", "30", 0, 0, 0 },
+  { "SPIQ", "31", 0, 0, 0 },
+  { "SPID", "32", 0, 0, 0 },
+  { "33", "33", "FSPIHD", "SUBSPIHD", "SPIIO4" },
+  { "34", "34", "FSPICS0", "SUBSPICS0", "SPIIO5" },
+  { "35", "35", "FSPID", "SUBSPID", "SPIIO6" },
+  { "36", "36", "FSPICLK", "SUBSPICLK", "SPIIO7" },
+  { "37", "37", "FSPIQ", "SUBSPIQ", "SPIDQS" },
+  { "38", "38", "FSPIWP", "SUBSPIWP", 0 },
+  { "MTCK", "39", "CLK_OUT3", "SUBSPICS1", 0 },
+  { "MTDO", "40", "CLK_OUT2", 0, 0 },
+  { "MTDI", "41", "CLK_OUT1", 0, 0 },
+  { "MTMS", "42", 0, 0, 0 },
+  { "U0TXD", "43", "CLK_OUT1", 0, 0 },
+  { "U0RXD", "44", "CLK_OUT2", 0, 0 },
+  { "45", "45", 0, 0, 0 },
+  { "46", "46", 0, 0, 0 },
+#else
+#  warning "Unsupported target, using dummy IO_MUX function name table"
+static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][IOMUX_NFUNC] = { 0 
+#endif  // CONFIG_IDF_TARGET...
+};
+
+// WARNING! Not reentrat, use with caution
+static const char *iomux_funame(unsigned char pin, unsigned char func) {
+  static char gpio[8] = {'G','P','I','O',0};
+  // lisp style on
+  return  func < IOMUX_NFUNC && 
+          pin < SOC_GPIO_PIN_COUNT && 
+          io_mux_func_name[pin][func] ? ( io_mux_func_name[pin][func][0] >= '0' && 
+                                          io_mux_func_name[pin][func][0] <= '9' ? (strcpy(&gpio[4], io_mux_func_name[pin][func]), gpio) 
+                                                                                : io_mux_func_name[pin][func])
+                                      : " -undef- ";
+}
+
+// Display full table: all pins and every function available for every pin.
+// Function which is currently selected for the pin is displayed in reverse colors plus "*" symbol is
+// displayed after function name
+//
 static int pin_show_mux_functions() {
-  unsigned char pin;
-  unsigned char nfunc = 5;
+  unsigned char pin,i;
 
   bool pd, pu, ie, oe, od, slp_sel;
   uint32_t drv, fun_sel, sig_out;
 
-// Original ESP32 has 6 functions in its IO_MUX while other models only have 5
-#ifdef CONFIG_IDF_TARGET_ESP32
-  ++nfunc;
-#endif
+  HELP(q_print( "% IO MUX has <i>" xstr(IOMUX_NFUNC) "</> functions for every pin. The mapping is as follows:\r\n"));
 
-  HELP(q_printf( "%% IO MUX has <i>%s%u</> function%s for every pin. The mapping is as follows:\r\n",nfunc < 6 ? "only " : "", nfunc, nfunc == 1 ? "" : "s"));
-
-#ifdef CONFIG_IDF_TARGET_ESP32
-  q_printf("%% Pin | Function<i>0</> | Function<i>1</> | Function<i>2</> | Function<i>3</> | Function<i>4</> | Function<i>5</>\r\n%%-----+-----------+-----------+-----------+-----------+-----------+-----------\r\n");
-#else
-  q_printf("%% Pin | Function<i>0</> | Function<i>1</> | Function<i>2</> | Function<i>3</> | Function<i>4</>\r\n%%-----+-----------+-----------+-----------+-----------+-----------\r\n");
-#endif           
-
-
+  // Table header Save space.
+  q_print("% Pin ");
+  for (i = 0; i < IOMUX_NFUNC; i++)
+     q_printf("| Function<i>%d</> ",i);
+  q_print("\r\n%-----");
+  for (i = 0; i < IOMUX_NFUNC; i++)
+     q_print("+-----------");
+  q_print(CRLF);
 
   // run through all the pins
   for (pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++) {
     
-    if (io_mux_func_name[pin][0]) {
-
+    if (io_mux_func_name[pin][0]) { // can't use pin_exist() here : it is not silent 
       q_printf( "%%  %02u ",pin);
 
+      // get pin IO_MUX function currently selected
       gpio_ll_get_io_config(&GPIO, pin, &pu, &pd, &ie, &oe, &od, &drv, &fun_sel, &sig_out, &slp_sel);
+
       // For each pin, run through all its functions. 
       // Highligh function that is currently assigned to the pin (via per/post tags)
-      for (int i = 0; i < nfunc; i++) {
-        const char *pre = "";
-        const char *post = " ";
-        if (i == fun_sel) {
-          pre = "<r>";
-          post = "*</>";
-        }
+      for (int i = 0; i < IOMUX_NFUNC; i++) {
+        const char *pre = (i == fun_sel) ? "<r>" : "";    // gcc must fold two comparisions into one
+        const char *post = (i == fun_sel) ? "*</>" : " ";
 #pragma GCC diagnostic ignored "-Wformat"          
-        q_printf("|%s % 9s%s",pre,io_mux_func_name[pin][i] ? io_mux_func_name[pin][i] : " -undef- ",post);
+        q_printf("|%s % 9s%s", pre, iomux_funame(pin, i), post);
 #pragma GCC diagnostic warning "-Wformat"                
       }
       q_print(CRLF);
@@ -242,20 +266,14 @@ static int pin_show_mux_functions() {
 //
 static bool pin_set_iomux_function(unsigned char pin, unsigned char function) {
 
-  int nfunc = 5;
-#ifdef CONFIG_IDF_TARGET_ESP32
-  ++nfunc; // gcc will fold it to int nfunc = 6
-#endif
-  if ((unsigned char)(-1) != function && function >= nfunc) {
-    HELP(q_printf("%% <e>Valid function numbers are [0 .. %d]</>\r\n",nfunc));
+  if ((unsigned char)(-1) != function && function >= IOMUX_NFUNC) {
+    HELP(q_printf("%% <e>Valid function numbers are [0 .. %d]</>\r\n",IOMUX_NFUNC - 1));
     return false;
   }
-
-  // autoselect GPIO function from IO_MUX
   if (function == (unsigned char)(-1))
-    gpio_pad_select_gpio(pin);
+    gpio_pad_select_gpio(pin);                // autoselect GPIO function from IO_MUX
   else
-    gpio_ll_func_sel(&GPIO, pin, function);
+    gpio_ll_func_sel(&GPIO, pin, function);   // set specific IO_MUX function
   return true;
 }
 
@@ -523,32 +541,39 @@ static int pin_show(int argc, char **argv) {
 
     q_print("</>\r\n");
 
-    if (oe && fun_sel == PIN_FUNC_GPIO) {
-      q_print("% Output via GPIO matrix, ");
-      if (sig_out == SIG_GPIO_OUT_IDX)
-        q_print("simple GPIO output\r\n");
-      else
-        q_printf("provides path for signal ID: %lu\r\n", sig_out);
-    } else if (oe && fun_sel != PIN_FUNC_GPIO)
-      q_printf("%% Output is done via IO MUX, (function: <i>%s</>)\r\n", io_mux_func_name[pin][fun_sel]);
+    // Output
+    if (oe) {
+      q_print("% Output is done via <*>");
+      if (fun_sel == PIN_FUNC_GPIO) {
+        q_print("GPIO MATRIX</>, ");
+        if (sig_out == SIG_GPIO_OUT_IDX)
+          q_print("acts as simple GPIO output (SIG_GPIO_OUT_IDX)\r\n");
+        else
+          q_printf("provides path for signal ID: %lu\r\n", sig_out);
+      } else
+        q_printf("IO MUX</>, (function: <i>%s</>)\r\n", iomux_funame(pin,fun_sel));
+    } else
+      q_print("% Output is disabled\r\n");
 
-    if (ie && fun_sel == PIN_FUNC_GPIO) {
-      q_print("% Input via GPIO matrix, ");
-      for (int i = 0; i < SIG_GPIO_OUT_IDX; i++) {
-        if (gpio_ll_get_in_signal_connected_io(&GPIO, i) == pin) {
-          if (!informed)
-            q_print("provides path for signal IDs: ");
-          informed++;
-          q_printf("%d, ", i);
-        }
-      }
-
-      if (!informed)
-        q_print("simple GPIO input");
-      q_print(CRLF);
-
-    } else if (ie)
-      q_printf("%% Input is done via IO MUX, (function: <i>%s</>)\r\n", io_mux_func_name[pin][fun_sel]);
+    // Input
+    if (ie) {
+      q_print("% Input is done via <*>");
+      if (fun_sel == PIN_FUNC_GPIO) {
+        q_print("GPIO matrix</>, ");
+        for (int i = 0; i < SIG_GPIO_OUT_IDX; i++)
+          if (gpio_ll_get_in_signal_connected_io(&GPIO, i) == pin) {
+            if (!informed)
+              q_print("connected signal IDs: ");
+            informed++;
+            q_printf("%d, ", i);
+          }
+        if (!informed)
+          q_print("acts as simple GPIO input");
+        q_print(CRLF);
+      } else
+        q_printf("IO MUX</>, (function: <i>%s</>)\r\n", iomux_funame(pin,fun_sel));
+    } else
+      q_print("% Input is disabled\r\n");
   }
 
 

@@ -171,7 +171,7 @@ static int cmd_nap(int argc, char **argv) {
       esp_sleep_enable_timer_wakeup(1000000UL * (unsigned long)sleep);
     }
   HELP(q_print("% Entering light sleep\r\n"));
-  delay(100);  // give a chance to printf above do its job
+  q_delay(100);  // give a chance to printf above do its job
   esp_light_sleep_start();
   HELP(q_print("%% Resuming\r\n"));
   return 0;

@@ -85,8 +85,8 @@ if (!q_strcmp(argv[1],"iomux"))
           length = 2;
         else
         if (!q_strcmp(argv[i],"void")) {} // probably "void *", so just skip it and wait for an *
-        else
-          q_printf("%% Keyword \"%s\" was ignored\r\n",argv[i]);
+        //else
+          //q_printf("%% Keyword \"%s\" was ignored\r\n",argv[i]);
 
         if (isp || isf)
           length = 4;

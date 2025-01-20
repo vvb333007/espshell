@@ -211,7 +211,7 @@ static struct convar *convar_get(const char *name) {
   for (var = var_head, candidate = NULL; var; var = var->next)
     if (!q_strcmp(name, var->name)) {
       if (candidate) {
-        q_printf("%% Ambiguity: by \"%s\" did you mean \"%s\" or \"%s\"?\r\n",name,var->name, candidate->name);
+        q_printf("%% <e>Ambiguity: by \"%s\" did you mean \"%s\" or \"%s\"?</>\r\n",name,var->name, candidate->name);
         return NULL;
       }
       candidate = var;
@@ -302,8 +302,8 @@ static int convar_show_list() {
       HELP(q_print(VarOops));
     else
       q_print("% Sketch variables:\r\n<r>"
-              "% Variable X name | sizeof(X) |     typeof(X)    |     Value      </>\r\n"
-              "%-----------------+-----------+------------------+----------------\r\n");
+              "% Variable X name | sizeof(X) |     typeof(X)    |  Value/Address  </>\r\n"
+              "%-----------------+-----------+------------------+-----------------\r\n");
 
     while (var) {
 

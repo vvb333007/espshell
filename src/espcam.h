@@ -324,7 +324,7 @@ static int cam_down(int argc, char **argv) {
 #if WITH_HELP
     q_print("% Camera deinitialized\n\r");
 #endif
-    delay(100);
+    q_delay(100);
     if (config.pin_pwdn >= 0) {  // Enable POWER_DOWN
 
       pinMode(config.pin_pwdn, OUTPUT);
@@ -392,7 +392,7 @@ static int cam_up() {
 #if WITH_HELP
     q_printf("%% Camera power up (GPIO%d is LOW)\n\r", config.pin_pwdn);
 #endif
-    delay(100);
+    q_delay(100);
   }
 
 

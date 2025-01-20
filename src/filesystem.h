@@ -837,7 +837,7 @@ static bool files_copy(const char *src, const char *dst) {
                 if (rd == (wr = write(d, buf, rd))) {
                   // TODO: update_copy_progress()
                   // TODO: ctrlc_pressed()
-                  yield();  //make WDT happy
+                  task_yield();  //make WDT happy
                   continue;
                 }
               // errors during copy :(
@@ -1447,7 +1447,7 @@ static int cmd_files_mount0(int argc, char **argv) {
   if (!usable)
     q_print("% <e>No usable partitions were found. Use (Tools->Partition Scheme) in Arduino IDE</>\r\n");
   else
-    HELP(q_printf("%% <i>%u</> mountable partition%s found. (+) - mountable partition\r\n", usable, usable == 1 ? "" : "s"));
+    HELP(q_printf("%% <i>%u</> mountable partition%s found. (+) - mountable partition\r\n", PPA(usable)));
 
   if (it)
     esp_partition_iterator_release(it);
@@ -1684,8 +1684,8 @@ static int cmd_files_ls(int argc, char **argv) {
     }
     q_printf("%%\r\n%% <i>%u</> director%s, <i>%u</> file%s, <i>%u</> byte%s\r\n",
              total_d, total_d == 1 ? "y" : "ies",
-             total_f, total_f == 1 ? "" : "s",
-             total_fsize, total_fsize == 1 ? "" : "s");
+             PPA(total_f),
+             PPA(total_fsize));
   }
   return 0;
 }

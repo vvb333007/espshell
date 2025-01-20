@@ -41,6 +41,10 @@ static int          shell_core = 0;  // CPU core number ESPShell is running on. 
     xTaskNotifyFromISR((TaskHandle_t)(_Handle), _Signal, eSetValueWithOverwrite, &ignored); \
   } while (0)
 
+// Yeld to another task. We don't use portyield or taskyield here as they can't switch to lower priority task.
+// Our task_yield is implemented via delay(1) which forces task switch
+#define task_yield() q_delay(1)
+
 
 
 // Block until any signal is received but not longer than /timeout/ milliseconds. Value of 0 means "no timeout".
@@ -175,14 +179,14 @@ static void espshell_task(const void *arg) {
 
     // wait until user code calls Serial.begin()
     while (!console_isup())
-      delay(CONSOLE_UP_POLL_DELAY);
+      q_delay(CONSOLE_UP_POLL_DELAY);
 
     HELP(q_printf(WelcomeBanner));
 
     // read & execute commands until "exit ex" is entered
     while (!Exit) {
       espshell_command(readline(prompt));
-      delay(1);
+      task_yield();
     }
     HELP(q_print(Bye));
 
@@ -249,7 +253,7 @@ static int cmd_kill(int argc, char **argv) {
     // SIGNAL_KILL is never sent to a task. Instead, task is deleted.
     if (sig == SIGNAL_KILL) {
       vTaskSuspend((TaskHandle_t)taskid);
-      delay(1);
+      task_yield();
       vTaskDelete((TaskHandle_t)taskid);
       HELP(q_printf("%% Killed: \"0x%x\". Resources are not freed!\r\n", taskid));
     } else
@@ -259,4 +263,6 @@ static int cmd_kill(int argc, char **argv) {
     return i;
   return 0;
 }
-#endif
+
+#endif // COMPILING_ESPSHELL
+

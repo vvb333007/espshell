@@ -124,8 +124,9 @@ static int help_command(int argc, char **argv) {
       if (!q_strcmp(argv[1], keywords[i].cmd)) {
         // print common header for the first entry
         if (!found && keywords[i].brief)
-          q_printf("\r\n<r> -- %s --</>\r\n", keywords[i].brief);
-        q_printf("%s\r\n", keywords[i].help ? keywords[i].help : (keywords[i].brief ? keywords[i].brief : "FIXME:"));
+          q_printf("\r\n%% -- %s --\r\n", keywords[i].brief);
+
+        q_printf("%s\r\n\r\n", keywords[i].help ? keywords[i].help : (keywords[i].brief ? keywords[i].brief : "FIXME:"));
         found++;
       }
     }
