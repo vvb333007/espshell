@@ -276,39 +276,6 @@ COMMANDS (MAIN COMMAND DIRECTORY)
                    esp32#>cpu 99
                    % Supported frequencies are: 240, 160, 120, 80, 40, 20 and 10
 
-"show memory" - Display memory usage info: total/free memory both on heap and
-                in PSRAM (SPIRAM) if available:
-
-               esp32#>mem
-               % -- Memory information --
-               % malloc():
-               % 308496 bytes total, 266924 available, 110580 max per allocation
-               % heap_caps_malloc():
-               % 369772 bytes total,  327348 available, 110580 max per allocation
-               esp32#>
-
-               NOTE: memory available to classic mallo is different from 
-               heap_caps_malloc(MALLOC_CAPS_INTERNAL). Real size depend on what 
-               memory allocation function you use. malloc() internally calls
-               heap_caps_malloc(MALLOC_CAPS_DEFAULT). PSRAM allocation is only
-               available to heap_caps_malloc() allocater but not for malloc()
-
-"show memory ADDRESS [LENGTH]"
-             - Display memory contents for given address. First argument is the address
-               in hexadecimal form and second, optional argument is the length in bytes
-               of memory segment to be displayed. Length is set to 256 bytes by default.
-               
-
-               esp32#>mem 3fff0000 21
-                     0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F  |0123456789ABCDEF
-              ----------------------------------------------------------+----------------
-              0000: 00 00 00 00  db d3 07 f8  da 22 1e 0c  20 81 01 00  |....??.??".. „..
-              0010: 00 00 00 00  e9                                     |....?               
-
-"show seq X" - Shows information about signal pattern X. See documentation file
-             "docs/Pulse_Generator.txt" for more  information on sequences and
-             their use
-
                
 
 "reload"   - Reboots ESP32
@@ -370,22 +337,4 @@ COMMANDS (MAIN COMMAND DIRECTORY)
 "echo silent" - Completely disable ALL espshell output to the terminal. No error
                 messages will be displayed. Commands being executed will not
                 display anything.
-
-"suspend"  - Pause Arduino's loop(). Tasks that were started by the loop()
-             task are not suspended by this command
-
-           - Hint: Pressing Ctrl+C does the same thing if done in terminal
-
-"resume"   - Resume execution of Arduino's loop() previously paused with
-             "suspend" command
-
-"kill [-TERM | -15 | -KILL | -9] TASK_ID"
-Stop execution of task TASK_ID. The TASK_ID is either task id displayed upon 
-executionf of background commands or generic FreeRTOS task id. If killing
-                 an arbitrary FreeRTOS task one have to specify an extra keyword "terminate":
-
-                esp32#>kill 0x3fff0000 terminate      <------ to kill an arbitrary task
-                esp32#>kill 0x3fff0000                <------ safely stop & close tasks created by 
-                                                              background commands (see "pin&", 
-                                                              "count&" etc)
 
