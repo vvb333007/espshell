@@ -33,14 +33,14 @@ WHAT IS THIS:
 
 1. Installation (Preinstalled Arduino IDE with esp32 board support package from Espressif is expected):
 
-    1. Copy library folder ("espshell") as is to your <SketchDirectory>/libraries/
+    1. Copy library folder ("espshell") as is to your /SketchDirectory/libraries/
     2. Restart Arduino IDE
 
 2. Usage: 
 
     1. Add #include "espshell.h" to your sketch
     2. Compile, upload
-    3. Open terminal monitor, type "?" and press <Enter>
+    3. Open terminal monitor, type "?" and press **Enter**
 
 3. Documentation (a bit outdated here and there):
 
