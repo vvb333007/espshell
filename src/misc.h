@@ -8,8 +8,7 @@
 
 
 // -- Code which doesn't fit other files --
-// Misc command handlers
-// Misc code
+// Misc command handlers, misc code, misc macros..
 
 
 #if COMPILING_ESPSHELL
@@ -19,54 +18,49 @@
 // Displays system uptime as returned by esp_timer_get_time() counter
 // Displays last reboot cause
 static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
-
-  const char *rr = "";
-
-  unsigned int  min = 0, 
-                hr = 0, 
-                day = 0,
-                sec = q_millis() / 1000;
-
-  switch (esp_reset_reason()) {
-    case ESP_RST_POWERON:   rr = "<i>Board power-on"; break;
-    case ESP_RST_SW:        rr = "<i>reload command"; break;
-    case ESP_RST_DEEPSLEEP: rr = "<i>Returned from a deep sleep"; break;
-    case ESP_RST_SDIO:      rr = "<i>SDIO event"; break;
-    case ESP_RST_USB:       rr = "<i>USB event"; break;
-    case ESP_RST_JTAG:      rr = "<i>JTAG event"; break;
-
-    case ESP_RST_PANIC:     rr = "<w>Kernel panic"; break;
-    case ESP_RST_INT_WDT:   rr = "<w>an interrupt watchdog"; break;
-    case ESP_RST_TASK_WDT:  rr = "<w>a task watchdog"; break;
-    case ESP_RST_WDT:       rr = "<w>an unspecified watchdog"; break;
-    case ESP_RST_CPU_LOCKUP:rr = "<w>lockup (double exception)"; break;
-
-    case ESP_RST_BROWNOUT:  rr = "<e>Brownout"; break;
-    case ESP_RST_PWR_GLITCH:rr = "<e>Power glitch"; break;
-    case ESP_RST_EFUSE:     rr = "<e>eFuse errors"; break;
-    default:                MUST_NOT_HAPPEN( true );
+  const char *rr[] = {
+    "reason can not be determined",
+    "board power-on",
+    "external (pin) reset",
+    "reload command",
+    "exception and/or kernel panic",
+    "interrupt watchdog",
+    "task watchdog",
+    "other watchdog",
+    "returning from a deep sleep",
+    "brownout (software or hardware)",
+    "reset over SDIO",
+    "reset by USB peripheral",
+    "reset by JTAG",
+    "reset due to eFuse error",
+    "power glitch detected",
+    "CPU lock up (double exception)"
   };
 
+  unsigned int val, sec = q_millis() / 1000, div = 60 * 60 * 24;
+
+  // lets check if esp_reset_reason_t is still what we think it is: RST_CPU_LOCKUP must be the last entry (entry #15)
+  static_assert(ESP_RST_CPU_LOCKUP == 15, "Code review is required");
+
+#define XX(_Text, _Divider) do {\
+  if (sec >= div) { \
+    val = sec / div; \
+    sec = sec % div; \
+    q_printf("%u " #_Text "%s ", PPA(val)); \
+  } \
+  div /= _Divider; \
+} while (0)
+
   q_print("% Last boot was ");
-  if (sec >= 60 * 60 * 24) {
-    day = sec / (60 * 60 * 24);
-    sec = sec % (60 * 60 * 24);
-    q_printf("%u day%s ", PPA(day));
-  }
-  if (sec >= 60 * 60) {
-    hr = sec / (60 * 60);
-    sec = sec % (60 * 60);
-    q_printf("%u hour%s ", PPA(hr));
-  }
-  if (sec >= 60) {
-    min = sec / 60;
-    sec = sec % 60;
-    q_printf("%u minute%s ", PPA(min));
-  }
 
-  q_printf("%u second%s ago\r\n%% Restart reason was \"%s</>\"\r\n", PPA(sec), rr);
+  XX(day,24);
+  XX(hour,60);
+  XX(minute,60);
 
-
+  q_printf( "%u second%s ago\r\n"
+            "%% Reset reason: \"%s</>\"\r\n", 
+            PPA(sec), 
+            rr[esp_reset_reason()]);
   return 0;
 }
 
@@ -212,7 +206,7 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
   if (is_background_task()) {
     // Signal ESPShell to exit its main loop
     Exit = true; 
-    task_signal(taskid_self(), SIGNAL_KILL);
+    task_signal(taskid_self(), SIGNAL_KILL); // executes vTaskDelete
     // UNREACHABLE (TODO: test it) 
   }
   

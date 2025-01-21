@@ -564,13 +564,19 @@ static const struct keywords_t keywords_main[] = {
     HELPK("% \"<*>cpu</>\"\r\n% Show CPUID and CPU/XTAL/APB frequencies"), NULL },
 
   { "suspend", cmd_suspend, NO_ARGS,
-    HELPK("% \"<*>suspend</>\"\r\n% Suspend sketch execution (Hotkey: Ctrl+C). Resume with \"resume\"\r\n"), "Suspend sketch execution" },
+    HELPK("% \"<*>suspend</>\"\r\n% Suspend sketch execution (Hotkey: Ctrl+C). Resume with \"resume\""), "Suspend sketch execution" },
+
+  { "suspend", cmd_suspend, 1,
+    HELPK("% \"<*>suspend <i>TASK_ID</>\"\r\n% Suspend an arbitrary FreeRTOS task"), "Suspend sketch execution" },
 
   { "resume", cmd_resume, NO_ARGS,
-    HELPK("% \"<*>resume</>\"\r\n% Resume sketch execution\r\n"), "Resume sketch execution" },
+    HELPK("% \"<*>resume</>\"\r\n% Resume sketch execution"), "Resume sketch execution" },
+
+  { "resume", cmd_resume, 1,
+    HELPK("% \"<*>resume <i>TASK_ID</>\"\r\n% Resume an arbitrary FreeRTOS task"), "Resume sketch execution" },
 
   { "kill", cmd_kill, 2,
-    HELPK("% \"<*>kill [-term|-kill|-9|-15] TASK_ID</>\"\r\n"
+    HELPK("% \"<*>kill <1>[-term|-kill|-9|-15] <i>TASK_ID</>\"\r\n"
           "% Send a signal to a task. Default is SIGTERM (safely stop)\r\n"
           "% If -9 or -kill option is used then task is deleted (use with care!)"), 
     "Kill tasks" },
