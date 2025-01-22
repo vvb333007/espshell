@@ -1,13 +1,13 @@
 {
-  "name": "ESP32Shell",
+  "name": "ESPShell",
   "keywords": "shell, cli, debugging, arduino",
-  "description": "ESP32Shell : a command line interface which runs in parallel to your sketch with bunch of useful commands",
+  "description": "ESPShell : a command line interface which runs in parallel to your sketch with bunch of useful commands",
   "homepage": "https://github.com/vvb333007/espshell/",
   "repository": {
     "type": "git",
     "url": "https://github.com/vvb333007/espshell.git"
   },
-  "version": "0.99.0",
+  "version": "0.99.1",
   "license": "MIT",
   "authors": {
     "name": "Viacheslav Logunov",
