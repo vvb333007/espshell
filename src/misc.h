@@ -17,24 +17,15 @@
 //
 // Displays system uptime as returned by esp_timer_get_time() counter
 // Displays last reboot cause
+//
 static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
+
+  // Restart Reason (or Reset Reason)
   const char *rr[] = {
-    "reason can not be determined",
-    "board power-on",
-    "external (pin) reset",
-    "reload command",
-    "exception and/or kernel panic",
-    "interrupt watchdog",
-    "task watchdog",
-    "other watchdog",
-    "returning from a deep sleep",
-    "brownout (software or hardware)",
-    "reset over SDIO",
-    "reset by USB peripheral",
-    "reset by JTAG",
-    "reset due to eFuse error",
-    "power glitch detected",
-    "CPU lock up (double exception)"
+    "<w>reason can not be determined",   "<3>board power-on",                   "<3>external (pin) reset",   "<3>reload command",
+    "<e>exception and/or kernel panic",  "<e>interrupt watchdog",               "<e>task watchdog",          "<e>other watchdog",
+    "<3>returning from a deep sleep",    "<w>brownout (software or hardware)",  "<i>reset over SDIO",        "<i>reset by USB peripheral",
+    "<i>reset by JTAG",                  "<e>reset due to eFuse error",         "<w>power glitch detected",  "<e>CPU lock up (double exception)"
   };
 
   unsigned int val, sec = q_millis() / 1000, div = 60 * 60 * 24;

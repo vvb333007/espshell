@@ -82,7 +82,7 @@ static int cmd_cpu(int argc, char **argv) {
            temperatureRead());
 
   q_print("%\r\n% <_>Firmware:</>\r\n");
-  q_printf( "%% Sketch is running on " ARDUINO_BOARD ", an " ARDUINO_VARIANT " variant), uses:\r\n"
+  q_printf( "%% Sketch is running on " ARDUINO_BOARD ", (an " ARDUINO_VARIANT " variant), uses:\r\n"
             "%% Arduino Core version <1>%s</>, which uses\r\n"
             "%% Espressif ESP-IDF version \"%s\"\r\n"
             "%% ESP32Shell library <i>" ESPSHELL_VERSION "</>\r\n", 
@@ -105,7 +105,7 @@ static int cmd_cpu_freq(int argc, char **argv) {
 
   unsigned int freq;
 
-  if ((freq = q_atol(argv[1], 0)) == 0) {
+  if ((freq = q_atol(argv[1], DEF_BAD)) == DEF_BAD) {
     HELP(q_print("% Numeric value is expected (e.g. 240): frequency in MHz\r\n"));
     return 1;
   }
@@ -117,8 +117,10 @@ static int cmd_cpu_freq(int argc, char **argv) {
 
     unsigned int xtal = getXtalFrequencyMhz();
 
-    if ((freq == xtal) || (freq == xtal / 2)) break;
-    if ((xtal >= 40) && (freq == xtal / 4)) break;
+    if ((freq == xtal) || 
+        (freq == xtal / 2) ||
+        ((xtal >= 40) && (freq == xtal / 4))) break;
+    
     q_printf("%% <e>%u MHz is unsupported frequency</>\r\n", freq);
 #if WITH_HELP
     q_printf("%% Supported frequencies are: 240, 160, 120, 80, %u, %u", xtal, xtal / 2);

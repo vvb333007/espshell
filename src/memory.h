@@ -57,6 +57,69 @@ static int memory_display_content(unsigned char *address, unsigned int count, un
   return 0;
 }
 
+// Implementation of "show memory address ARG1 ARG2 ... ARGn"
+// This one is called from cmd_show()
+//
+static int memory_show_address(int argc, char **argv) {
+{
+    unsigned char *address;
+    unsigned int count = 256;
+    unsigned char length = 1;
+
+    // read the address. NULL will be returned if address is 0 or has incorrect syntax.
+    if ((address = (unsigned char *)(hex2uint32(argv[2]))) == NULL) {
+      HELP(q_print("% Bad address. Don't go below 0x3ffb0000, there are chances for system crash\r\n"));
+      return 2;
+    }
+
+    // read the rest of arguments if specified
+    int i = 3;
+    bool count_is_specified = false;
+    bool isu = false, isf = false, isp = false;
+    while (i < argc) {
+      if (isnum(argv[i])) {
+        count = q_atol(argv[3], count);
+        count_is_specified = true;
+      }
+      else {
+        // Type was provided. 
+        // Most likely user wants to see *(var), not just 256 bytes of memory content, so if /count/ was not explicitly set, make count = 1
+        // or we risk LoadProhibited exception here
+        if (!count_is_specified)
+          count = 1;
+
+        if (!q_strcmp(argv[i],"unsigned"))
+          isu = true;
+        else
+        if (!q_strcmp(argv[i],"void*") || argv[i][0] == '*')
+          isp = true;
+        else
+        if (!q_strcmp(argv[i],"float"))
+          isf = true;
+        else
+        if (!q_strcmp(argv[i],"int") || !q_strcmp(argv[i],"long"))
+          length = sizeof(int);
+        else
+        if (!q_strcmp(argv[i],"short"))
+          length = sizeof(short);
+        else
+        if (!q_strcmp(argv[i],"char")) {
+          //skip
+        } else
+        if (!q_strcmp(argv[i],"void")) { // probably "void *", so just skip it and wait for an *
+          //skip
+        } 
+        else
+          q_printf("%% Keyword \"%s\" was ignored\r\n",argv[i]);
+
+        if (isp || isf)
+          length = sizeof(void *);
+      }
+      i++;
+    }
+    return memory_display_content(address,count,length,isu,isf,isp);
+  }
+}
 
 #endif //
 
