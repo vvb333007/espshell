@@ -12,10 +12,10 @@ furnished to do so, subject to the following conditions:
 1. The above copyright notice and this permission notice shall be included in 
    all copies or substantial portions of the Software.
 
-2. No permission from the Author is required to for any commercial use of 
-   the Software. Howver, when used comercially (e.g. pre-installed on 
-   development boards), the person or organization who wish to use the 
-   Software in their commercial products should inform the author by e-mail. 
+2. No permission from the Author is required for any commercial or 
+   non-commercial use of the Software. However, when used comercially (e.g. 
+   pre-installed on development boards), the person or organization who is
+   using the Software should should inform the author by e-mail.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
