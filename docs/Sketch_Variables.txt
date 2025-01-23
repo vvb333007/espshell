@@ -102,6 +102,49 @@ signed values or assign floating point values to integer variables. Also, changi
 a value of an array has no effect. Address of array is defined by linker and can not
 be changed in runtime
 
-Another use of "var" command is to convert & cast numbers:
+Another use of "var" command is to convert & cast numbers: if argument to the "var"
+command is a number (i.e. decimal, hexadecimal, floating point, octal or binary) then
+a table is displayed showing the number in different bases plus, an unsafe C-style memory
+cast is performed; main use of this "C-cast" is to see hex representation of a negative 
+or floating point numbers
 
-TBD
+  Example:
+                          
+    esp32#>var 666
+    % "666" is a number, which can be written as:
+    % C-style cast of a memory content:
+    % unsigned : 666
+    %   signed : 666
+    % float    : 0.000000
+    % Same number in different bases:
+    % Hex      : 0x29a
+    % Octal    : 01232
+    % Binary   : 0b1010011010
+    esp32#>
+
+Or
+
+    esp32#>var 666.666
+    % "666.666" is a number, which can be written as:
+    % C-style cast of a memory content:
+    % unsigned : 1143384736
+    %   signed : 1143384736
+    % float    : 666.666016
+    % Same number in different bases:
+    % Hex      : 0x4426aaa0
+    % Octal    : 010411525240
+    % Binary   : 0b1000100001001101010101010100000
+    esp32#>
+Or
+    esp32#>var 0b111
+    % "0b111" is a number, which can be written as:
+    % C-style cast of a memory content:
+    % unsigned : 7
+    %   signed : 7
+    % float    : 0.000000
+    % Same number in different bases:
+    % Hex      : 0x7
+    % Octal    : 07
+    % Binary   : 0b111
+    esp32#>
+
