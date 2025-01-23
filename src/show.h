@@ -6,12 +6,11 @@
  * Feel free to use it as your wish, however credits would be greatly appreciated.
  */
 
-
 #if COMPILING_ESPSHELL
 
 //"show KEYWORD ARG1 ARG2 .. ARGn"
 // it is in a separate file because it is going to be big
-
+//
 static int cmd_show(int argc, char **argv) {
 
   if (argc < 2)
