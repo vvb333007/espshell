@@ -63,7 +63,7 @@ function 0 acting as "simple GPIO via IO_MUX" and function 2 as "simple GPIO via
 --
 
 
-"cpu" - this keyword is just an alias  to the "cpu" command (same text will be displayed on execution 
+"cpuid" - this keyword is just an alias  to the "cpu" command (same text will be displayed on execution 
 of "cpu" command):
 
     esp32#(/)>show cpu
@@ -221,3 +221,27 @@ To display 3 elements of the same array:
     esp32#>
 
 --
+
+"counters" - displays frequency meters / pulse counters states & values. Counters are created
+and started by using "count" command. Details on the frequency meter / pulse counter use can
+be found in "docs/Tone_Generator_And_Counter.txt"
+
+Typical output looks like that:
+
+    esp32#>show count
+    %PCNT|GPIO#|  Status |   TaskID   | Pulse count | Time, msec | Frequency
+    %----+-----+---------+------------+-------------+------------+------------
+    %  0 |   5 | Running | 0x3fca389c |           0 |      16620 |        0 Hz
+    %  1 |   1 | Trigger | 0x3fca3b08 |           0 |          0 |        0 Hz
+    %  2 |   0 | Unused! | 0x00000000 |           0 |          0 |        0 Hz
+    %  3 |   0 | Unused! | 0x00000000 |           0 |          0 |        0 Hz
+    % 2 counters is currently in use
+    % Use command "kill TASK_ID" to stop a running counter
+    esp32#>
+
+--
+
+"version" - shows current ESPShell version. The same information could be obtained from
+"show cpuid" output
+
+
