@@ -66,10 +66,14 @@ static const char *Hints[] = {
   "% Press Ctrl+L to clear the screen and enable terminal colors"
 };
 
-// name is a bit misleading. should be "next_hint()"
+// Display useful hints. 
+// Only first one is choosed randomly, so pressing Ctrl+L enough times will display all the hints
+#include <esp_random.h>
 static const char *random_hint() {
   static unsigned tick = 0;
-  return Hints[(tick++) % 21];
+  if (tick == 0)
+    tick = esp_random();
+  return Hints[(tick++) % (sizeof(Hints)/sizeof(Hints[0]))];
 }
 
 // "? keys"
