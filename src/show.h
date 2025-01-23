@@ -5,7 +5,7 @@
  * Latest source code is at: https://github.com/vvb333007/espshell/
  * Feel free to use it as your wish, however credits would be greatly appreciated.
  */
-BluetoothSerial
+
 #if COMPILING_ESPSHELL
 
 //"show KEYWORD ARG1 ARG2 .. ARGn"
