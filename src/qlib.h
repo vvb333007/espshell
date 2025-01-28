@@ -174,6 +174,10 @@ static void *q_malloc(size_t size, int type) {
   unsigned char *p = NULL;
   memlog_t *ml;
 
+  // yes, keeping a memlog_t structure as an extension to the memory being allocated
+  // is better, than keeping a separate list of memory entries as it is done below.
+  // The memlog code is supposed to be used only during development phase where speed is
+  // not an issue
   if ((type >= 0) && (type < 16) && (size < 0x80000) && (size > 0))
     if ((p = (unsigned char *)malloc(size + 2)) != NULL)
       if ((ml = (memlog_t *)malloc(sizeof(memlog_t))) != NULL) {
@@ -243,42 +247,48 @@ static void *q_realloc(void *ptr, size_t new_size,UNUSED int type) {
 	char *nptr;
   memlog_t *ml;
 
-  // trivial cases
+  // Trivial case #1
 	if (ptr == NULL)
 		return q_malloc(new_size,type);
 
+  // Be a good realloc(), accept size of 0
 	if (new_size == 0 && ptr != NULL) {
 		q_free(ptr);
 		return NULL;
 	}
 
-  //memlog_lock();
+  // A memory pointer being reallocated must be on a list. If its no - then it simply means that memory 
+  // user is trying to realloc() was not allocated through q_malloc() or may be it is a bad/corrupted pointer
   mutex_lock(mem_mux);
   for (ml = head; ml != NULL; ml = (memlog_t *)(ml->li.next))
     if (ml->ptr == (unsigned char *)ptr)
       break;
   
   if (!ml) {
-    //memlog_unlock();
     mutex_unlock(mem_mux);
     q_printf("<w>ERROR: q_realloc() : trying to realloc pointer %p which is not on the list</>\r\n",ptr);
     return NULL;
   }
 
+  // trivial case #2: requested size is the same as current size, so do nothing
+  // TODO: should it be new_size <= ml->len ?
 	if (new_size == ml->len) {
-    //memlog_unlock();
     mutex_unlock(mem_mux);
 		return ptr;
   }
 
+  // Allocate a memory buffer of a new size plus 2 bytes for a naive "buffer overrun" detector
 	if ((nptr = (char *)malloc(new_size + 2)) != NULL) {
 
     nptr[new_size + 0] = 0x55;
     nptr[new_size + 1] = 0xaa;
 
+    // copy content to the new resized buffer and free() the old one. we can't use q_free() here because we want to keep
+    // a memlog entry (which otherwise gets deleted)
     memcpy(nptr, ptr, (new_size < ml->len) ? new_size : ml->len);
   	free(ptr);
 
+    // Update the memory entry (memlog_t) with new size and new pointer values
     ml->ptr = (unsigned char *)nptr;
     allocated -= ml->len;
     ml->len = new_size;

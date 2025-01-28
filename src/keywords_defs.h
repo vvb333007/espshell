@@ -13,9 +13,11 @@
 // a command **subtree** (or subdirectory). Root (main) command tree is called keywords_main[]
 struct keywords_t {
   const char *cmd;                   // Command keyword ex.: "pin"
+
+#define HELP_ONLY NULL,0             // Used for entries whose sole purpose is to carry help lines: so-called /full/  and /brief/
   int (*cb)(int argc, char **argv);  // Callback to call (one of cmd_xxx functions)
 
-#define MANY_ARGS -1
+#define MANY_ARGS -1                 
 #define NO_ARGS 0
   signed char argc;                  // Number of arguments required (a NUMBER or /MANY_ARGS/ or /NO_ARGS/)
 

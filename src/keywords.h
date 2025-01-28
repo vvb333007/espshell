@@ -627,27 +627,38 @@ static const struct keywords_t keywords_main[] = {
     "File system access" },
 #endif
 
-  // Show funcions (more will be added)
-  { "show", cmd_show, 2,
+  // "show iomux" goes first, to define a /.brief/ for subsequent entries.
+  // There is MANY_ARGS modifier even though number of arguments is known and is 1: this is just to route all "show ARG1 ARG2 ... ARGn"
+  // commands to cmd_show(). It simply means that this command always matches any command starting with "show ".
+  //
+  // Other "show" commands below are lacking a command handler pointer and are here just for help lines
+  // 
+  { "show", cmd_show, MANY_ARGS,              // <---  this handler catches all "show" command variants
     HELPK("% \"<*>show <i>iomux</>\"\r\n"
           "%\r\n"
           "% Display IO_MUX functions available for each pin\r\n"
-          "% \"show iomux\"  - display IOMUX function names"),"Display information"},
+          "% Displays an IO_MUX function currently assigned for every pin"),"Display system information"},
 
-  { "show", cmd_show, 2,
+  // Entries below are only for the /full/ help line (/brief/ line is copied from the first "show" entry 
+  { "show", HELP_ONLY,
+    HELPK("% \"<*>show <i>cpuid</>\"\r\n"
+          "%\r\n"
+          "% Display CPU ID information, used components versions and uptime\r\n"
+          "% CPU temperature in Celsius is also displayed"),NULL},
+
+  { "show",  HELP_ONLY,
     HELPK("% \"<*>show <i>counters</>\"\r\n"
           "%\r\n"
-          "% Pules counters / frequency meters state and value\r\n"
-          "% \"show counters\"  - displays a 4..8 rows table with counters data"),"Display information"},
+          "% Pulse counters / frequency meters states and values\r\n"
+          "% Depending on a SoC used it may be up to 8 hardware counters"),NULL},
 
-  { "show", cmd_show, 2,
+  { "show", HELP_ONLY,
     HELPK("% \"<*>show <i>sequence</> NUMBER</>\"\r\n"
           "%\r\n"
           "% Display sequence configuration for given index:\r\n"
-          "% \"show sequence 6\"  - display Sequence #6 configuration"),"Display information"},
+          "% \"show sequence 6\"  - display Sequence #6 configuration"),NULL},
 
-  // shadowed entry
-  { "show", cmd_show, 2,
+  { "show", HELP_ONLY,
     HELPK("% \"<*>show <i>mount</> [<1>/PATH</>]\"\r\n"
           "%\r\n"
           "% Display information about mounted filesystems, partitions.\r\n"
@@ -655,7 +666,7 @@ static const struct keywords_t keywords_main[] = {
           "% \"show mount /my_disk\"  - display information about mountpoint \"/my_disk\""), NULL},
 
   // shadowed entry. For helptext only
-  { "show", cmd_show, MANY_ARGS,
+  { "show", HELP_ONLY,
     HELPK("% \"<*>show <i>memory</> <i>ADDRESS</> [<1>COUNT</>] [<1>unsigned|signed|char|int|short|float|void *</>]\"\r\n"
           "%\r\n"
           "% Display COUNT elements starting from the memory address ADDRESS\r\n"
@@ -689,11 +700,12 @@ static const struct keywords_t keywords_main[] = {
     HELPK("Pins (GPIO) commands") },
 
   { "pin", cmd_pin, MANY_ARGS,
-    HELPK("% \"<*>pin X [hold|release|up|down|out|in|open|high|low|save|load|read|aread|delay|loop|pwm|seq|iomux|matrix]*</>...\"\r\n"
-          "% Multifunction command which can:\r\n"
+    HELPK("% \"<*>pin X [<1>hold|release|up|down|out|in|open|high|low|save|load|read|aread|delay|loop|pwm|seq|iomux|matrix]*</>...\"\r\n"
+          "% Multipurpose command which can be used to:\r\n"
           "%  1. Set/Save/Load pin configuration and settings\r\n"
-          "%  2. Enable/disable PWM and pattern generation on pin\r\n"
+          "%  2. Enable/disable PWM and pattern generation on any pin\r\n"
           "%  3. Set/read digital and/or analog pin values\r\n"
+          "%  4. IO_MUX function and GPIO_Matrix signals\r\n"
           "%\r\n"
           "% Multiple arguments must be separated with spaces, see examples below:\r\n%\r\n"
           "% Ex.: pin 1 read aread         -pin1: read digital and then analog values\r\n"
@@ -758,23 +770,32 @@ static const struct keywords_t keywords_main[] = {
           "% down     - Camera shutdown & power-off"),
    HELPK("ESP32Cam commands") },
 #endif
-
+  // TODO: split helplines between different entries
   { "var", cmd_var, 2,
-    HELPK("% \"<*>var [VARIABLE_NAME] [NUMBER]</>\"\r\n%\r\n"
-          "% Set/display sketch variable \r\n"
-          "% VARIABLE_NAME is the variable name, optional argument\r\n"
-          "% NUMBER can be integer or float point values, positive or negative, optional argument\r\n"
+    HELPK("% \"<*>var</> [<1>VARIABLE_NAME</> [<1>NEW_VALUE</>]]</>\"\r\n%\r\n"
+          "% Set sketch variable to new value\r\n"
+          "% VARIABLE_NAME is the variable name (\"var\" to see the list of all vars)\r\n"
+          "% NEW_VALUE can be integer or float point values, positive or negative\r\n"
           "%\r\n"
           "% Ex.: \"var\"             - List all registered sketch variables\r\n"
           "% Ex.: \"var button1\"     - Display current value of \"button1\" sketch variable\r\n"
           "% Ex.: \"var angle -12.3\" - Set sketch variable \"angle\" to \"-12.3\"\r\n"
-          "% Ex.: \"var 1234\"        - Display a decimal number as hex, float, int etc.\r\n"
-          "% Ex.: \"var 0x1234\"      - -- // hex // --\r\n"
-          "% Ex.: \"var 01234\"       - -- // octal // --\r\n"
-          "% Use prefix \"0x\" for hex, \"0\" for octal or \"0b\" for binary numbers"),
-    "Sketch variables" },
+          "%\r\n"
+          "% Note#1: Partial (shortened) variable names can be used\r\n"
+          "% Note#2: Use prefix \"0x\" for hex, \"0\" for octal or \"0b\" for binary numbers"), "Sketch variables" },
 
-  { "var", cmd_var_show, 1, HIDDEN_KEYWORD },
+  { "var", cmd_var, 1,
+    HELPK("% \"<*>var <i>NUMBER</>\"\r\n%\r\n"
+          "% Display a NUMBER in differtent bases and perform unsafe C-style\r\n"
+          "% cast of a memory content\r\n"
+          "% NUMBER can be anything that converts to a number. Use \"0b\",\"0x\" or \"0\"\r\n"
+          "% prefixes to enter binary, hexadecimal or octal numbers."
+          "%\r\n"
+          "% Ex.: \"var -1234\"        - Get information on a decimal number -1234\r\n"
+          "% Ex.: \"var 0x1234\"      - on a hex number..\r\n"
+          "% Ex.: \"var 01234\"       - on an octal number..\r\n"
+          "% Ex.: \"var 0b1001110\"   - and on a binary number"), NULL },
+
   { "var", cmd_var_show, NO_ARGS, HIDDEN_KEYWORD },
 
 
