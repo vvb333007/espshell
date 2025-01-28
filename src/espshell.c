@@ -9,14 +9,16 @@
 #define COMPILING_ESPSHELL 1  // dont touch this!
 
 // Limits 
-#define MAX_PROMPT_LEN 16      // Prompt length ( except for PROMPT_FILES), max length of a prompt
-#define MAX_PATH 256           // max filesystem path len
-#define MAX_FILENAME MAX_PATH  // max filename len (equal to MAX_PATH for now)
+#define MAX_PROMPT_LEN 16              // Prompt length ( except for PROMPT_FILES), max length of a prompt
+#define MAX_PATH 256                   // max filesystem path len
+#define MAX_FILENAME MAX_PATH          // max filename len (equal to MAX_PATH for now)
 #define UART_DEF_BAUDRATE 115200
 #define UART_RXTX_BUF 512
 #define I2C_RXTX_BUF 1024
-#define I2C_DEF_FREQ 100000
-#define ESPSHELL_MAX_INPUT_LENGTH 500
+#define I2C_DEF_FREQ 100000            
+#define ESPSHELL_MAX_INPUT_LENGTH 500  // Maximum input length (strlen()). User input greater than 500 characters will be silently discarded
+#define ESPSHELL_MAX_CNLEN 10          // Maximum length (strlen()) of a command name. 
+                                       // NOTE!! If you change this, make sure initializer string is changed too in question.h:help_command_list()
 
 // Prompts used by command subdirectories
 #define PROMPT "esp32#>"                // Main prompt
@@ -28,7 +30,8 @@
 #define PROMPT_SEARCH "Search: "        // History search prompt
 #define PROMPT_ESPCAM "esp32-cam>"      // ESPCam settings directory
 
-//
+// Includes. Lots of them.
+// classic C
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -37,10 +40,14 @@
 #include <errno.h>
 #include <time.h>
 #include <assert.h>
+// Arduino
 #include <Arduino.h>
+// ESP-IDF
 #include "sdkconfig.h"
+// FreeRTOS
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+// ESP-IDF again
 #include <soc/soc_caps.h>
 #include <soc/gpio_struct.h>
 #include <soc/pcnt_struct.h>
@@ -52,10 +59,12 @@
 #include <rom/gpio.h>
 #include <esp_timer.h>
 #include <esp_chip_info.h>
+// Arduino Core
 #include <esp32-hal-periman.h>
 #include <esp32-hal-ledc.h>
 #include <esp32-hal-rmt.h>
 #include <esp32-hal-uart.h>
+// Filesystems
 #include <sys/unistd.h>
 #include <sys/stat.h>
 #include <dirent.h>
@@ -70,6 +79,7 @@
 #include <vfs_fat_internal.h>
 #include <wear_levelling.h>
 #include <sdmmc_cmd.h>
+// Camera
 #include <esp_camera.h>
 
 // Espressif devteam has changed their core API once again
@@ -81,9 +91,8 @@
 #  warning "esp_gpio_reserve.h is not found, lets see if it will compile at all"
 #endif
 
+// Compile-time settings
 #include "espshell.h"
-
-
 
 // Common macros used throughout the code, GCC-specific stuff
 #define UNUSED __attribute__((unused))
@@ -197,22 +206,24 @@ static const char *VarOops = "<e>% Oops :-(\r\n"
                              "% while your sketch is running. More is in \"docs/Commands.txt\"\r\n";
 #endif //WITH_HELP
 
+// -- Actual ESPShell code #included here --
 
-// common macros used by keywords trees
+// 1. Common macros used by keywords trees
 #include "keywords_defs.h"      
 
-// Console abstraction layer: provides generic read/write operation on UART or USBCDC device. Can be overriden with
+// 2. Console abstraction layer: provides generic read/write operation on UART or USBCDC device. Can be overriden with
 // any other implementation to support specific devices
 #include "console.h"
 
-// qLib : utility functions like q_printf(), string to number conversions, mutexes, memory management etc core functions
+// 3. qLib : utility functions like q_printf(), string to number conversions, mutexes, memory management etc core functions
 // Must be included before anything else
 #include "qlib.h"
 
-// Really old (but refactored) version of editline. Probably from 80's. Works well, rock solid :)
+// 4. Really old (but refactored) version of editline. Probably from 80's. Works well, rock solid :)
 #include "editline.h"           // editline library
 #include "userinput.h"          // userinput tokenizer and reference counter
 
+// 5. ESPShell core
 #include "convar.h"             // code for registering/accessing sketch variables
 #include "task.h"               // main shell task, async task helper, misc. task-related functions
 #include "keywords.h"           // all command trees
@@ -228,7 +239,7 @@ static const char *VarOops = "<e>% Oops :-(\r\n"
 #include "filesystem.h"         // file manager
 #include "memory.h"             // memory component
 
-// These two must be last entries
+// 6. These two must be included last as they are supposed to call functions from every other module
 #include "show.h"               // "show KEYWORD [ARG1 ARG2 ... ARGn]" command
 #include "question.h"           // cmd_question(), context help handler and help pages
 
@@ -285,7 +296,9 @@ espshell_command(char *p) {
 
     // /keywords/ is a pointer to one of /keywords_main/, /keywords_uart/ ... etc keyword tables.
     // It points at main tree at startup and then can be switched. 
+    barrier_lock(keywords_mux);
     const struct keywords_t *key = keywords;   
+    barrier_unlock(keywords_mux);
     found = false;
 
 one_more_try:
@@ -322,7 +335,7 @@ one_more_try:
             bad = fg ? key[i].cb(argc, argv) : exec_in_background(aa);
 
             if (bad > 0)
-              q_printf("%% <e>Invalid %u%s argument \"%s\" (\"? %s\" for help)</>\r\n",bad, number_english_ending(bad), bad < argc ? argv[bad] : "FIXME", argv[0]);
+              q_printf("%% <e>Invalid %u%s argument \"%s\" (\"? %s\" for help)</>\r\n",NEE(bad), bad < argc ? argv[bad] : "FIXME", argv[0]);
             else if (bad < 0)
               q_printf("%% <e>One or more arguments missing(\"? %s\" for help)</>\r\n", argv[0]);
             else
@@ -376,9 +389,9 @@ void espshell_exec(const char *p) {
 // execution
 bool espshell_exec_finished() {
   bool ret;
-  portENTER_CRITICAL(&Input_mux);
+  barrier_lock(Input_mux);
   ret = (*Input == '\0');
-  portEXIT_CRITICAL(&Input_mux);
+  barrier_unlock(Input_mux);
   return ret;
 }
 
@@ -387,13 +400,48 @@ bool espshell_exec_finished() {
 // Call functions which are intended to be called once, things like convars & memory allocations.
 //
 static bool call_once = false;
+static unsigned int NCmds = 0;
+static unsigned int NTrees = 0;
 
 static  void espshell_initonce() {
 
-  // main espshell mutex is created?
   if (!call_once) {
     call_once = true;
 
+    // these asserts are mostly for var.h module since it *assumes* that sizeof(int) is 4 and so on
+    // (as it should be on a 32bit cpu)
+    //
+    static_assert(sizeof(int) == 4,"Unexpected int size");
+    static_assert(sizeof(short) == 2,"Unexpected short size");
+    static_assert(sizeof(char) == 1,"Unexpected char size");
+    static_assert(sizeof(float) == 4,"Unexpected float size");
+    static_assert(sizeof(void *) == 4,"Unexpected pointer size");
+
+#if 0
+    struct keywords_t *k[] = { 
+      keywords_uart, 
+      keywords_i2c, 
+#if WITH_SPI      
+      keywords_spi, 
+#endif      
+      keywords_sequence, 
+#if WITH_FS      
+      keywords_files, 
+#endif      
+      keywords_main, 
+      NULL 
+    }, *tree;
+
+    unsigned int j;
+    for (j = 0;(tree = k[NTrees]) != NULL ;NTrees++)
+      while (tree[j].cmd != NULL) {
+        MUST_NOT_HAPPEN(ESPSHELL_MAX_CNLEN < strlen(tree[j].cmd));
+        j++;
+        NCmds++;
+      }
+    convar_add(NCmds);  // total number of commands supported by this version
+    convar_add(NTrees);  // 
+#endif
     // add internal variables ()
     convar_add(ls_show_dir_size);  // enable/disable dir size counting for "ls" command
     convar_add(pcnt_channel);      // PCNT channel which is used by "count" command
@@ -415,8 +463,9 @@ static  void espshell_initonce() {
 void STARTUP_HOOK espshell_start() {
 
   espshell_initonce();
-  if (espshell_started())
-    q_print("% ESPShell is started already, exiting\r\n");
+  if (espshell_started()) {
+    HELP(q_print("% ESPShell is started already, exiting\r\n"));
+  }
   else
     espshell_task((const void *)1);
 }

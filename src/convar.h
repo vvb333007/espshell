@@ -83,7 +83,7 @@ void espshell_varadd(const char *name, void *ptr, int size, bool isf, bool isp, 
 
   struct convar *var;
 
-  if (size != 1 && size != 2 && size != 4) {
+  if (size != sizeof(char) && size != sizeof(short) && size != sizeof(int) && size != sizeof(float)) {
     q_printf("%% Variable \"%s\" was not registered (unsupported size %u)\r\n",name,size);
     return;
   }
@@ -159,10 +159,10 @@ static const char *convar_typename(struct convar *var) {
   return var ? (var->isf ? "float" : 
                           (var->isp ? (var->isfa ? "float *" : 
                                                     (var->ispa ? "void **" : 
-                                                                 (var->sizea == 4 ? __uina + off : 
-                                                                                    (var->sizea == 2 ? __usha + off : 
+                                                                 (var->sizea == sizeof(int) ? __uina + off : 
+                                                                                    (var->sizea == sizeof(short) ? __usha + off : 
                                                                                                        __ucha + off)))) :
-                                      (var->size == 4 ? __uin + off : (var->size == 2 ? __ush + off : __uch + off)))) : 
+                                      (var->size == sizeof(int) ? __uin + off : (var->size == sizeof(short) ? __ush + off : __uch + off)))) : 
                 "(null)";
 }
 
@@ -196,11 +196,15 @@ static const char *convar_typename2(struct convar *var) {
 
 
 // Find variable descriptor by variable name
+// /name/ - is full or shortened variable name
+// returns a pointer to the descriptor
 //
 static struct convar *convar_get(const char *name) {
 
   struct convar *var;
   struct convar *candidate;
+  if (name == NULL)
+    return var_head;
 
   // try to find exact match...
   for (var = var_head; var; var = var->next)
@@ -232,10 +236,10 @@ static int convar_value_as_string(struct convar *var, char *out, int olen) {
     else if (var->isp)
       snprintf(out, olen, "0x%x", comp.uval);
     else if (var->isu) {
-        unsigned int val = var->size == 4 ? comp.uval : (var->size == 2 ? comp.ush : comp.uchar);
+        unsigned int val = var->size == sizeof(int) ? comp.uval : (var->size == sizeof(short) ? comp.ush : comp.uchar);
         snprintf(out, olen, "%u", val);
     } else {
-        signed int val = var->size == 4 ? comp.ival : (var->size == 2 ? comp.ish : comp.ichar);
+        signed int val = var->size == sizeof(int) ? comp.ival : (var->size == sizeof(short) ? comp.ish : comp.ichar);
         snprintf(out, olen, "%i", val);
     }
     return 0;
@@ -398,7 +402,7 @@ static int cmd_var_show(int argc, char **argv) {
 
   // "var NUMBER" : displays different representation of a constant
   if (argc < 3)
-    if (q_numeric(argv[1]))
+    if (q_isnumeric(argv[1]))
       return convar_show_number(argv[1]);
 
   return convar_show_var(argv[1]);
@@ -438,21 +442,21 @@ static int cmd_var(int argc, char **argv) {
   } else {
     // integers & pointer values
     // TODO: warn if float argument is detected
-    if (q_numeric(argv[2])) {
+    if (q_isnumeric(argv[2])) {
       if (argv[2][0] == '-') {
         if (var->isu) {
           q_printf("%% Variable \"%s\" is unsigned, new value is not set\r\n",var->name);
           return 0;
         }
         signed int val = -q_atol(&(argv[2][1]), 0);
-        if (var->size == 4) u.ival  = val; else
-        if (var->size == 2) u.ish   = val; else
-        if (var->size == 1) u.ichar = val; else { q_printf("%% Bad variable size %u\r\n",var->size); return 0; }
+        if (var->size == sizeof(int)) u.ival  = val; else
+        if (var->size == sizeof(short)) u.ish   = val; else
+        if (var->size == sizeof(char)) u.ichar = val; else { q_printf("%% Bad variable size %u\r\n",var->size); return 0; }
       } else {
         unsigned int val = q_atol(argv[2], 0);
-        if (var->size == 4) u.uval  = val; else
-        if (var->size == 2) u.ush   = val; else
-        if (var->size == 1) u.uchar = val; else { q_printf("%% Bad variable size %u\r\n",var->size); return 0; }
+        if (var->size == sizeof(int)) u.uval  = val; else
+        if (var->size == sizeof(short)) u.ush   = val; else
+        if (var->size == sizeof(char)) u.uchar = val; else { q_printf("%% Bad variable size %u\r\n",var->size); return 0; }
       }
     } else 
       return 2;

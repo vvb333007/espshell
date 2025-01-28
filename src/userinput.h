@@ -90,7 +90,7 @@ static char *userinput_strip(char *p) {
 // Split user input string to tokens.
 // Returns NULL if string is empty or there were memory allocation errors.
 // Returns pointer to allocated argcargv_t structure on success, which contains tokenized user input.
-// NOTE: ** Structure must be freed after use via userinput_unref() **;
+// NOTE: ** Structure must be freed after use by calling userinput_unref() **;
 //
 static argcargv_t *userinput_tokenize(char *userinput) {
   argcargv_t *a = NULL;
@@ -105,21 +105,11 @@ static argcargv_t *userinput_tokenize(char *userinput) {
       a->argc = argify((unsigned char *)userinput, (unsigned char ***)&(a->argv));
       if (a->argc > 0) {
         // successfully tokenized: we have at least 1 token (or more)
-        // Store userinput string because argv[] refers to memory within it. It is however not a single asciiz string: zeros were inserted in places
-        // of whitespace between arguments, so printf(userinput); will output only first token
+        // Keep /userinput/ : we have to free() it after command finishes its execution
         a->userinput = userinput;
         a->ref = 1;
-        // convert argv[0] (a command name) to lowercalse
-#if 0        
-        char *p = a->argv[0];
-        while(*p) {
-          if (*p >= 'A' && *p <= 'Z')
-            *p = *p - 'A' + 'a';
-          p++;
-        }
-#else
+        // Convert argv[0] (a command name) to lowercase to workaround some dumb terminals 
         q_tolower(a->argv[0],0);
-#endif
       } else {
         if (a->argv)
           q_free(a->argv);
@@ -130,6 +120,13 @@ static argcargv_t *userinput_tokenize(char *userinput) {
     }
   }
   return a;
+}
+
+// Redisplay user input & prompt. 
+//
+void userinput_redraw() {
+  redisplay(); 
+  TTYflush();
 }
 #endif //#if COMPILING_ESPSHELL
 

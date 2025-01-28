@@ -46,7 +46,7 @@ static int memory_show_information() {
 static int memory_display_content(unsigned char *address, unsigned int count, unsigned char length, bool isu, bool isf, bool isp) {
 
   // dont print this header when using shortform of q_printhex.
-  if (length > 15) //TODO: use tbl_min_len
+  if (length >= tbl_min_len)
     HELP(q_printf("%% Memory content (starting from %08x, %u bytes)\r\n", (unsigned int)address,length * count));
 
   if ((length > 1))
@@ -59,7 +59,7 @@ static int memory_display_content(unsigned char *address, unsigned int count, un
 
 // Implementation of "show memory address ARG1 ARG2 ... ARGn"
 // This one is called from cmd_show()
-//
+// TODO: support int64_t and uint64_t
 static int memory_show_address(int argc, char **argv) {
 {
     unsigned char *address;
@@ -68,7 +68,7 @@ static int memory_show_address(int argc, char **argv) {
 
     // read the address. NULL will be returned if address is 0 or has incorrect syntax.
     if ((address = (unsigned char *)(hex2uint32(argv[2]))) == NULL) {
-      HELP(q_print("% Bad address. Don't go below 0x3ffb0000, there are chances for system crash\r\n"));
+      HELP(q_print("% Bad address. Must be hexadecimal number (e.g. 3fff0000) but not zero\r\n"));
       return 2;
     }
 
@@ -110,7 +110,7 @@ static int memory_show_address(int argc, char **argv) {
           //skip
         } 
         else
-          q_printf("%% Keyword \"%s\" was ignored\r\n",argv[i]);
+          q_printf("%% Unrecognized keyword \"%s\" ignored\r\n",argv[i]);
 
         if (isp || isf)
           length = sizeof(void *);

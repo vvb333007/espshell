@@ -635,6 +635,12 @@ static const struct keywords_t keywords_main[] = {
           "% \"show iomux\"  - display IOMUX function names"),"Display information"},
 
   { "show", cmd_show, 2,
+    HELPK("% \"<*>show <i>counters</>\"\r\n"
+          "%\r\n"
+          "% Pules counters / frequency meters state and value\r\n"
+          "% \"show counters\"  - displays a 4..8 rows table with counters data"),"Display information"},
+
+  { "show", cmd_show, 2,
     HELPK("% \"<*>show <i>sequence</> NUMBER</>\"\r\n"
           "%\r\n"
           "% Display sequence configuration for given index:\r\n"
@@ -663,9 +669,6 @@ static const struct keywords_t keywords_main[] = {
           "% \"<*>show <i>memory</>\"\r\n"
           "%\r\n"
           "% Display HEAP information / availability"),NULL},
-
-//  { "show", cmd_show, 3, HIDDEN_KEYWORD },
-//  { "show", cmd_show, 1, HIDDEN_KEYWORD },
 
   // Shell input/output settings
   { "tty", cmd_tty, 1, HIDDEN_KEYWORD },
@@ -785,23 +788,25 @@ static const struct keywords_t keywords_main[] = {
   KEYWORDS_END
 };
 
-
-//TAG:keywords
-//current keywords list to use
+//current keywords list to use and a barrier.
+static BARRIER(keywords_mux);
 static const struct keywords_t *keywords = keywords_main;
 
 
-// Called by cmd_uart_if, cmd_i2c_if,cmd_seq_if, cam_settings and cmd_files_if to
+// Called by cmd_uart_if, cmd_i2c_if,cmd_seq_if, cam_settings and cmd_files_if and others to
 // set new command list (command directory) and displays user supplied text
-// /Context/ - arbitrary number which will be stored
+//
+// /Context/ - arbitrary number which will be stored. TODO: change it to "void *" for future extensions
 // /dir/     - new keywords list (one of keywords_main[], count"[] tc)
 // /prom/    - prompt to use
 // /text/    - text to be displayed when switching command directory
 //
 static void change_command_directory(unsigned int context, const struct keywords_t *dir, const char *prom, const char *text) {
+  barrier_lock(keywords_mux);
   Context = context;
   keywords = dir;
   prompt = prom;
+  barrier_unlock(keywords_mux);
   HELP(q_printf("%% Entering %s mode. Ctrl+Z or \"exit\" to return\r\n", text));
   HELP(q_print("% Hint: Main commands are still avaiable (but not visible in \"?\" command list)\r\n"));
 }
@@ -813,11 +818,14 @@ static void change_command_directory(unsigned int context, const struct keywords
 //
 static int exit_command_directory(int argc, char **argv) {
 
+  barrier_lock(keywords_mux);
   if (keywords != keywords_main) {
     // restore prompt & keywords list to use
     keywords = keywords_main;
     prompt = PROMPT;
+    barrier_unlock(keywords_mux);
   } else
+    barrier_unlock(keywords_mux);
     // close espshell. mounted filesystems are left mounted, background commands are left running
     // memory is not freed. It all can/will be reused on espshell restart via espshell_start() call
     if (argc > 1 && !q_strcmp(argv[1], "exit"))

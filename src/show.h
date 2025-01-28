@@ -15,9 +15,10 @@ static int cmd_show(int argc, char **argv) {
 
   if (argc < 2)
     return -1;
+    
   // show version
   if (!q_strcmp(argv[1],"version"))
-    return q_print("% ESPShell version " ESPSHELL_VERSION "\r\n"),0;
+    return q_print("% ESPShell version " ESPSHELL_VERSION "\r\n"),0; // always return 0
 
   // show iomux
   if (!q_strcmp(argv[1],"iomux"))

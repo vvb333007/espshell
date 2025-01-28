@@ -7,7 +7,7 @@
  */
 
 
-// -- Q-Lib: helpful routines: ascii to number conversions, etc --
+// -- Q-Lib: helpful routines: ascii to number conversions,platform abstraction, etc --
 //
 // 1. OS/Kernel lightweight abstraction layer (mutexes, time intervals, delays, etc. part of it is in task.h file as well )
 // 2. Memory manager (for leaks detection)
@@ -31,7 +31,10 @@
 #define q_delay(_Delay) vTaskDelay(_Delay / portTICK_PERIOD_MS);
 
 
-// Mutex manipulation: declare, initialize, grab and release macros
+//  -- Mutex manipulation --
+// declare, initialize, grab and release macros
+// These are simple wrappers which do not increase code size but allow for unified names and better portability
+//
 #define MUTEX(_Name) xSemaphoreHandle _Name = NULL;   // e.g. static MUTEX(argv_mux);
 
 // Grab a mutex. Blocks forever. Initializes mutex object on a first use
@@ -57,8 +60,16 @@
     } \
   } while ( 0 )
 
+// -- Memory access barrier -- :  a critical section on ESP32
+#define BARRIER(_Name) portMUX_TYPE _Name = portMUX_INITIALIZER_UNLOCKED
+#define barrier_lock(_Name) portENTER_CRITICAL(&_Name)
+#define barrier_unlock(_Name) portEXIT_CRITICAL(&_Name)
+
 // Be nice & use good english
-#define PPA(_X) _X, (_X) == 1 ? "" : "s" // [P]lural [P]rintf [A]rgument
+// PPA(Number) generates 2 arguments for a printf ("%u%s",PPA(Number)), adding an "s" where its needed
+// NEE(Number) are similar to the PPA above except it generates "st", "nd","rd" and "th" depending on /Number/
+#define PPA(_X) _X, (_X) == 1 ? "" : "s"
+#define NEE(_X) _X, number_english_ending(_X)
 
 
 
@@ -366,7 +377,7 @@ static char *q_strdup256(const char *ptr, int type) {
 
 
 
-// Convert an asciiz (8biit per char) string to lowercase.
+// Convert an asciiz (8bit per char) string to lowercase.
 // Conversion is done for characters 'A'..'Z' by setting 5th bit
 //
 // /p/   - pointer to the string being converted (must be writeable memory)
@@ -487,9 +498,10 @@ static bool isbin(const char *p) {
 
 
 
-// Check if string can be converted to number
+// Check if string can be converted to number, trying all possible formats: 
+// floats, octal, binary or hexadecimal with leading 0x or without it
 //
-static bool q_numeric(const char *p) {
+static bool q_isnumeric(const char *p) {
   if (p && *p) {
     if (p[0] == '0') {
       if (p[1] == 'x')
@@ -600,34 +612,27 @@ static unsigned int binary2uint32(const char *p) {
 // 2. If conversion fails (bad symbols in string, empty string etc) the
 //    "def" value is returned
 //
-// TAG:atol
 #define DEF_BAD ((unsigned int)(-1))
 
 static unsigned int q_atol(const char *p, unsigned int def) {
-  if (p && *p) {
-    if (p[0] == '0') {  // leading "0" : either hexadecimal, binary or octal number
-      if (p[1] == 'x') {     // hexadecimal
-        if (ishex(p))
-          def = hex2uint32(p);
-      } else if (p[1] == 'b')  // binary (TODO: isbin())
-        def = binary2uint32(p);
-      else
-        def = octal2uint32(p);  // octal  (TODO: isoct())
-    } else if (isnum(p))  // decimal number?
-      def = atol(p);
-
-  }
-  return def;
+   // If condition is true -> continue to the right
+   // If condition is false, continue from a "?" down to the first ":"
+   return p && *p ? (p[0] == '0' ? (p[1] == 'x' ? (ishex(p) ? hex2uint32(p)
+                                                            : def) 
+                                                : (p[1] == 'b' ? (isbin(p) ? binary2uint32(p)
+                                                                           : def)
+                                                               : (isoct(p) ? octal2uint32(p)
+                                                                           : def)))
+                                : (isnum(p) ? atol(p) 
+                                            : def))
+                 : def;
 }
 
-// same for the atof():
+// Safe conversion to /float/ type. Returns /def/ if conversion can not be done
+//
 static inline float q_atof(const char *p, float def) {
-  if (p && *p)
-    if (isfloat(p))
-      def = atof(p);
-  return def;
+  return isfloat(p) ? atof(p) : def;
 }
-
 
 
 // Loose strcmp() which deoes partial match. It is used to match commands and parameters which are shortened:
@@ -639,15 +644,18 @@ static inline float q_atof(const char *p, float def) {
 // q_strcmp("seq","sequence") == 0
 // q_strcmp("sequence","seq") == 1
 //
-static int q_strcmp(const char *partial, const char *full) {
+//
+// RATIONALE
+// ---------
+// It is implemented as byte-by-byte compare which is very efficient way to compare **short** strings
+// Longer strings are better to be compared as 32 bit chunks but this requires some calculation, string length measurement and so on
+// making this approach very slow for typical 2-4 letter strings
+//
+//  TODO: Function below gets called alot from various parts of ESPShell, thats why IRAM_ATTR; Really need to profile the code and move most critical
+//        functions to IRAM, but keep it small
+//
+static int IRAM_ATTR q_strcmp(const char *partial, const char *full) {
 
-#if 0  
-  int plen;
-  if (partial && full && (*partial == *full))      // quick reject
-    if ((plen = strlen(partial)) <= strlen(full))  //     OR
-      return strncmp(partial, full, plen);         //  full test
-  return 1;
-#else
   if (partial && full && (*partial++ == *full++)) {
     while(*partial)
       if (*partial++ != *full++)
@@ -655,9 +663,8 @@ static int q_strcmp(const char *partial, const char *full) {
     return 0;
   }
   return 1;
-#endif  
-}
 
+}
 
 
 static inline const char *q_findchar(const char *str, char sym) {
@@ -676,7 +683,7 @@ static inline const char *q_findchar(const char *str, char sym) {
 //       thus reusing internal 128 bytes buffer
 static int __printfv(const char *format, va_list arg) {
 
-  static char buf[128 + 1];  // TODO: Mystery#2. Crashes without /static/.
+  /*static */char buf[128 + 1];  // TODO: Mystery#2. Crashes without /static/.
   char *temp = buf;
   uint32_t len;
   int ret;
@@ -729,8 +736,17 @@ static int q_print(const char *str) {
     const char *ins;
 
     while (*pp) {
+      // No color tags? Send it straight to console, fast operation
       if ((p = q_findchar(pp, '<')) == NULL)
         return console_write_bytes(pp, strlen(pp));
+
+      // Found something looking like color tag. Process them, inserting corresponding ANSI sequence into
+      // output, replacing color tags.
+      //
+      // /p/   - is the pointer to "<" found in /str/
+      // /pp/  - is the "current" pointer to the string being processed 
+      // /ins/ - is the ANSI sequence which replaces color tags
+      //
       if (p[1] && p[2] == '>') {
         ins = NULL;
         if (Color)
@@ -747,11 +763,20 @@ static int q_print(const char *str) {
             case '*': ins = esc_ast; break;
             case '_': ins = esc__; break;
           }
+
+        // Send everything _before _the tag to the console
         len += console_write_bytes(pp, p - pp);
+
+        // if there is something to insert - send it to the console
         if (ins)
           len += console_write_bytes(ins, strlen(ins));
+        // advance source pointer by 3: the length of a color tag sequence <*>
         pp = p + 3;
+
       } else {
+        // Tag does not appear to be "our" color tag: there was opening "<" but closing tag and/or tag value was missing.
+        // Send a string, including opening tag bracket (i.e. "<") to the console. Advance /pp/ so it points to the character
+        // next to "<"
         len += console_write_bytes(pp, p - pp + 1);
         pp = p + 1;
       }
@@ -938,7 +963,8 @@ static int text2buf(int argc, char **argv, int i /* START */, char **out) {
 
 
 // version of delay() which can be interrupted by user input (terminal
-// keypress)or by a "kill" command
+// keypress)or by a "kill" command. If called from a different context (i.e. from a "background" command or
+// any task which is not an espshell_task) then it can not be interrupted by a keypress.
 //
 // `duration` - delay time in milliseconds
 //  returns duration if everything was ok, 
@@ -948,7 +974,6 @@ static int text2buf(int argc, char **argv, int i /* START */, char **out) {
 #define DELAY_POLL 250
 
 static unsigned int delay_interruptible(unsigned int duration) {
-
   
   unsigned int now, duration0 = duration;
 
@@ -982,11 +1007,6 @@ static unsigned int delay_interruptible(unsigned int duration) {
 static inline __attribute__((const)) const char *number_english_ending(unsigned int n) {
   return n == 1 ? "st" : (n == 2 ? "nd" : (n == 3 ? "rd" : "th"));
 }
-
-#if 0
-typedef int64_t timestamp_t;
-extern unsigned xthal_get_ccount();
-#define CCC() xthal_get_ccount()
-#endif
 #endif //#if COMPILING_ESPSHELL
+
 

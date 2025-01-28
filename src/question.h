@@ -140,22 +140,21 @@ static int help_command(int argc, char **argv) {
   return found ? 0 : 1;
 }
 
+
+
 //"?"
-// display command list
+// Display commands list for currently used command directory. There are few "command directories": main one,
+// uart, i2c, sequence, files, ...
+// Every command directory has its own set of commands, which is displayed by entering "?" and pressing <Enter>
 //
-#define INDENT 10
 static int help_command_list(int argc, char **argv) {
+
   int i = 0;
-  const char *prev = "";
-  char indent[INDENT + 1];
+  const char *prev = "", *spaces;
+  const char indent[ESPSHELL_MAX_CNLEN + 1] = {' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','\0'};
 
-  // commands which are shorter than INDENT will be padded with extra spaces to be INDENT bytes long
-  memset(indent, ' ', INDENT);
-  indent[INDENT] = 0;
-  char *spaces;
-
-  q_print("% Enter \"? command\" to get details about specific command.\r\n"
-          "% Enter \"? keys\" to display the espshell keyboard help page\r\n"
+  q_print("% Enter \"? COMMAND\" to get details about specific command.\r\n"
+          "% Enter \"? <i>keys</>\" to display the espshell keyboard help page\r\n"
           "%\r\n");
 
   //run through the keywords[] and print brief info for every entry
@@ -171,14 +170,12 @@ static int help_command_list(int argc, char **argv) {
         const char *brief;
         if (!(brief = keywords[i].brief))  //use "brief" or fallback to "help"
           if (!(brief = keywords[i].help))
-            brief = "% FIXME: No description";
+            brief = "No description";
 
         // indent: commands with short names are padded with spaces so
         // total length is always INDENT bytes. Longer commands are not padded
         int clen;
-        spaces = &indent[INDENT];  //points to \0
-        if ((clen = strlen(keywords[i].cmd)) < INDENT)
-          spaces = &indent[clen];
+        spaces = ((clen = strlen(keywords[i].cmd)) < ESPSHELL_MAX_CNLEN) ? &indent[clen] : &indent[ESPSHELL_MAX_CNLEN];
         // "COMMAND" PADDING_SPACES : DESCRIPTION
         q_printf("%% \"<i>%s</>\"%s : %s\r\n", keywords[i].cmd, spaces, brief);
       }

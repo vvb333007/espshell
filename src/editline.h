@@ -52,7 +52,7 @@ static struct {
   unsigned char *Lines[HIST_SIZE];
 } H;
 
-static portMUX_TYPE Input_mux = portMUX_INITIALIZER_UNLOCKED;
+static BARRIER(Input_mux);
 static const char *CRLF = "\r\n";
 static unsigned char *Line = NULL;  // Raw user input
 static const char *Prompt = NULL;   // Current prompt to use
@@ -166,9 +166,9 @@ static const KEYMAP MetaMap[] = {
 // "read" from this string first.
 static inline void
 TTYqueue(const char *input) {
-  portENTER_CRITICAL(&Input_mux);
+  barrier_lock(Input_mux);
   Input = input;
-  portEXIT_CRITICAL(&Input_mux);
+  barrier_unlock(Input_mux);
 }
 
 // Print buffered (by TTYputc/TTYputs) data. editline uses buffered IO
@@ -240,10 +240,12 @@ TTYget() {
 
   do {
     // read byte from a priority queue if any.
-    portENTER_CRITICAL(&Input_mux);
-    if (*Input) c = *Input++;
-    portEXIT_CRITICAL(&Input_mux);
-    if (c) return c;
+    barrier_lock(Input_mux);
+    if (*Input)
+      c = *Input++;
+    barrier_unlock(Input_mux);
+    if (c) 
+      return c;
 
     // read 1 byte from user. we use timeout to enable Input processing if it was set
     // mid console_read_bytes() call: i.e. Input polling happens every 500ms

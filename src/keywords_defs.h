@@ -14,12 +14,16 @@
 struct keywords_t {
   const char *cmd;                   // Command keyword ex.: "pin"
   int (*cb)(int argc, char **argv);  // Callback to call (one of cmd_xxx functions)
+
 #define MANY_ARGS -1
 #define NO_ARGS 0
-  int argc;                        // Number of arguments required (number or MANY_ARGS or NO_ARGS)
+  signed char argc;                  // Number of arguments required (a NUMBER or /MANY_ARGS/ or /NO_ARGS/)
+
 #define HIDDEN_KEYWORD NULL, NULL  // /help/ and /brief/ initializer which is used t hide command from being displayed by "?" command
   const char *help;                // Help text displayed on "? command"
   const char *brief;               // Brief text displayed on "?". NULL means "use help text, not brief"
+
+ // unsigned char cnlen;             // cached strlen(cmd). 
 };
 
 // HELP(...) and HELPK(...) macros: arguments are evaluated only when compiled WITH_HELP, otherwise args evaluate to an empty code block
@@ -32,7 +36,6 @@ struct keywords_t {
                          "% Show list of available commands or display command help page:\r\n" \
                          "% \"?\"         - Show list of available commands\r\n" \
                          "% \"? KEYWORD\" - Get help on command KEYWORD\r\n" \
-                         "% \"? pinout\"  - Display board pinout\r\n" \
                          "% \"? keys\"    - Get information on terminal keys used by ESPShell", \
                          "Commands list & help" },
 #else

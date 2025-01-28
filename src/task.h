@@ -119,15 +119,19 @@ static void espshell_async_task(void *arg) {
   // by command processor (espshell_command()) according to first keyword (argv[0])
   if (aa && aa->gpp) {
     ret = (*(aa->gpp))(aa->argc, aa->argv);
-    q_printf("%% Background command \"%s\" has %s\r\n", aa->argv[0], ret == 0 ? "finished its job" : "<e>failed</>");
+    q_printf("\r\n%% Background command \"%s\" has %s", aa->argv[0], ret == 0 ? "finished its job" : "<e>failed</>");
     // do the same job espshell_command() does: interpret error codes returned by the handler. Keep in sync with espshell_command() code
     if (ret < 0)
-      q_print("% <e>Wrong number of arguments</>\r\n");
+      q_print("\r\n% <e>Wrong number of arguments</>");
     else if (ret > 0)
-      q_printf("%% <e>Invalid %u%s argument \"%s\"</>\r\n", ret, number_english_ending(ret), ret < aa->argc ? aa->argv[ret] : "FIXME:");
+      q_printf("\r\n%% <e>Invalid %u%s argument \"%s\"</>", NEE(ret), ret < aa->argc ? aa->argv[ret] : "FIXME:");
   }
   // its ok to unref null pointer
   userinput_unref(aa);
+
+  // Redraw ESPShell command line prompt (yes we need it, because ESPShell has already printed its prompt out once) 
+  userinput_redraw();
+
   vTaskDelete(NULL);
 }
 
