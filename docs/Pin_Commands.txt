@@ -140,10 +140,12 @@ load    - Load pin configuration. reads previously saved data. reading does not
 
 iomux [NUMBER | gpio]
 
-        - Select IO_MUX function for the pin OR route pin through GPIO Matrix. ESP32 pins (GPIOs)
-          are internally routed through either IO_MUX (think - fast IO) or GPIO_Matrix (think of flexebility)
-          If routed through IO_MUX, pin can be assigned one of 5 (or 6 on original ESP32) different functions,
-          numbered starting from zero.
+        - Select IO_MUX function for the pin OR execute gpio_pad_select_gpio() on given pin when "gpio" keyword
+          is used. 
+
+          ESP32 pins (GPIOs) are internally routed through either IO_MUX (think - fast IO) or GPIO_Matrix 
+          (think of flexebility). If routed through IO_MUX, pin can be assigned one of 5 (or 6 on original 
+          ESP32) different functions numbered starting from zero.
 
           Full list of IO_MUX functions for every pin can be displayed by entering "show ioumux" command:
 
@@ -171,19 +173,31 @@ iomux [NUMBER | gpio]
 
               esp32#>pin 0 iomux 0
 
-            Display pin#0 information:
+            Note that for function#0 the last argument to the command may be omitted:
+
+              esp32#>pin 0 iomux   <---- is an equivalent of the command above
+
+            Now, when we have our pin set to IO_MUX Function#0, display pin#0 information, using
+            command "pin 0":
 
               esp32#>pin 0
               % Pin 0 (GPIO0) is strapping pin, available, and is not used by Arduino Core
               % Mode: INPUT, OUTPUT,  input is floating
-              % Output is done via IO MUX, (function: GPIO0)    <------- Pin now is in "fast" GPIO mode
+              % Output is done via IO MUX, (function: GPIO0)    <------- 
               % Input is done via IO MUX, (function: GPIO0)     <-------
               % Maximum current is 20 milliamps
               % Digital pin value is LOW (0)
 
-            Now, reconfigure pin to use GPIO Matrix:
+            Note lines marked with "<----" - pin 0 now is in "fast" GPIO mode
+
+            Ok, lets reconfigure pin 0 to use GPIO Matrix for signal routing:
+            For original ESP32 it should be something like this:
 
               esp32#>pin 0 iomux 2
+
+            For other ESP32 models (ESP32-S3, P4, S2, C3, C6 etc) one should use function#1 instead of function#2:
+
+              esp32#>pin 0 iomux 1
 
             Display pin0 configuration again:
 
@@ -195,11 +209,47 @@ iomux [NUMBER | gpio]
               % Maximum current is 20 milliamps
               % Digital pin value is LOW (0)
 
-            If "gpio" keyword is used, then pin will be autorouted either via IO_MUX or
-            GPIO Matrix. This keyword is used, when one wants to switch a pin from its function 
-            to simple input/output. 
+           Although it is possible to switch between IO_MUX and GPIO_Matrix using just "pin ... iomux" command,
+           it is recommended to use a dedicated command "pin ... matrix" to switch to GPIO_Matrix
 
+            If "gpio" keyword is used, then pin will be autorouted either via IO_MUX or
+            GPIO Matrix. Internally, all what this keyword does is simple call to "gpio_pad_select_gpio()" IDF API.
+            
 matrix  - Route pin through GPIO Matrix. 
+          The full syntax is "matrix [in|out NUMBER]". If optional parameters are not given than all this command does
+          is just switch a pin to be a "simple GPIO via GPIO Matrix". There are two optional parameters to connect 
+          internal peripherial to given pin, by executing a ESP32 ROM functions "gpio_matrix_in()" and "gpio_matrix_out()":
+
+            Display pin 2 information:
+
+            esp32#>pin 2
+            % Pin 2 (GPIO2) is available, and is not used by Arduino Core
+            % Mode: OUTPUT,
+            % Output is done via GPIO MATRIX, acts as simple GPIO output (SIG_GPIO_OUT_IDX)  <----------------- 1
+            % Input is disabled
+            % Maximum current is 20 milliamps
+            % Digital pin value is LOW (0)
+            esp32#>
+            esp32#>
+
+            Set our pin 2 to be INPUT and OUTPUT, through the GPIO Matrix, handling signals 33 and 55:            
+
+            esp32#>pin 2 in out matrix in 33 matrix out 55                                   <----------------- 2
+            esp32#>
+            esp32#>
+
+            Display pin 2 information once again to verify our changes:
+              
+            esp32#>pin 2
+            % Pin 2 (GPIO2) is available, and is not used by Arduino Core
+            % Mode: INPUT, OUTPUT,  input is floating
+            % Output is done via GPIO MATRIX, provides path for signal ID: 55                <----------------- 3
+            % Input is done via GPIO matrix, connected signal IDs: 33,
+            % Maximum current is 20 milliamps
+            % Digital pin value is HIGH (1)
+            esp32#>
+
+          
 
 hold    - "freeze" pin state and output value. Frozen pin remains frozen after
           reboot (as long as power to the chip is provided. rebooting via 
