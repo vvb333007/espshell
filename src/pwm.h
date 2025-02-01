@@ -10,6 +10,9 @@
 // -- PWM module --
 // Enables/disables a PWM signal on arbitrary pin.
 //
+// TODO: cover all frequency ranges up to 10MHz
+// TODO: remove ArduinoCore dependency, rewrite all PWM code using plain idf
+//
 #if COMPILING_ESPSHELL
 
 #define MAGIC_FREQ 312000  // max allowed frequency for the "pwm" command
@@ -32,6 +35,9 @@ static int pwm_enable(unsigned int pin, unsigned int freq, float duty) {
   if (duty > 1.0f) duty = 1.0f;
   if (freq < 78722) resolution = 10;  //higher duty parameter resolution on frequencies below 78 kHz
 
+  // Switchin pin mode here is done via Arduino Core because we want mr. Periman to run its deinit()
+  // stuff effectively detaching from the LEDC driver
+  //
   pinMode(pin, OUTPUT);
   //ledcDetach(pin);
 

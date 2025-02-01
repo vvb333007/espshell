@@ -254,26 +254,38 @@ static int pin_show_mux_functions() {
       q_print(CRLF);
     }
   }
-
-  HELP(q_print("\r\n%% NOTE 1: Use function #" xstr(PIN_FUNC_GPIO) " to select GPIO matrix function\r\n")); //TODO: make a keyword "pin 2 matrix"
-  HELP(q_print("%% NOTE 2: Function currently assigned to the pin is marked with \"*\"\r\n"));
+  HELP(q_print( "\r\n"
+                "% NOTE 1: To select GPIO matrix use function #" xstr(PIN_FUNC_GPIO) " or\r\n"
+                "%         use \"pin X matrix\" command where \"X\" is the pin number\r\n"
+                "% NOTE 2: Function, that is currently assigned to the pin is marked with \"*\"\r\n"));
   return 0;
 }
 
+
+// Virtual IO_MUX function #255, which has nothing to do with IO_MUX. Instead it calls gpio_pad_select_gpio()
+#define PIN_FUNC_PAD_SELECT_GPIO (unsigned char)(-1) 
+
 // Set IO_MUX / GPIO Matrix function for the pin
-// /pin/       - pin
-// /function/  - IO_MUX function
-//
+// /pin/       - pin number
+// /function/  - IO_MUX function code (in range [0..IOMUX_NFUNC) ). Code 0 is usually "GPIO via IO_MUX"
+//               while function #1 is the "GPIO via GPIO_Matrix" (with one exception: original ESP32 uses function#2
+//               for that)
 static bool pin_set_iomux_function(unsigned char pin, unsigned char function) {
 
-  if ((unsigned char)(-1) != function && function >= IOMUX_NFUNC) {
+  // Special case for a non-existent function 0xff: execute IDF's gpio_pad_select_gpio and return
+  if (function == PIN_FUNC_PAD_SELECT_GPIO) {
+    gpio_pad_select_gpio(pin);
+    return true;
+  }
+  
+  // Sanity check for arguments
+  if (function >= IOMUX_NFUNC) {
     HELP(q_printf("%% <e>Valid function numbers are [0 .. %d]</>\r\n",IOMUX_NFUNC - 1));
     return false;
   }
-  if (function == (unsigned char)(-1))
-    gpio_pad_select_gpio(pin);                // autoselect GPIO function from IO_MUX
-  else
-    gpio_ll_func_sel(&GPIO, pin, function);   // set specific IO_MUX function
+
+  // Set new IO_MUX function for the pin
+  gpio_ll_func_sel(&GPIO, pin, function);
   return true;
 }
 
@@ -306,15 +318,20 @@ void digitalForceWrite(int pin, unsigned char level) {
 // exported (non-static) to allow use in a sketch (by including "extra/espshell.h" in
 // user sketch .ino file)
 //
-void pinMode2(unsigned int pin, unsigned int flags) {
+void pinForceMode(unsigned int pin, unsigned int flags) {
 
-  // set ARDUINO flags to the pin using ESP-IDF functions
+  // Set Arduino flags to the pin using ESP-IDF functions
+  // NOTE: do not replace "(flags & MACRO) == MACRO" with "flags & MACRO": Arduino flags can have more than
+  //       1 bit set
+
   if ((flags & PULLUP) == PULLUP)         gpio_ll_pullup_en(&GPIO, pin);    else gpio_ll_pullup_dis(&GPIO, pin);
   if ((flags & PULLDOWN) == PULLDOWN)     gpio_ll_pulldown_en(&GPIO, pin);  else gpio_ll_pulldown_dis(&GPIO, pin);
   if ((flags & OPEN_DRAIN) == OPEN_DRAIN) gpio_ll_od_enable(&GPIO, pin);    else gpio_ll_od_disable(&GPIO, pin);
   if ((flags & INPUT) == INPUT)           gpio_ll_input_enable(&GPIO, pin); else gpio_ll_input_disable(&GPIO, pin);
 
-  // Deal with OUTPUT flag.
+  // OUTPUT_ONLY is a "true" OUTPUT flag (see macro definition above)
+  // workaround for Arduino Core's workaround :)
+
   if ((flags & OUTPUT_ONLY) != OUTPUT_ONLY)
     gpio_ll_output_disable(&GPIO, pin); 
   else
@@ -407,7 +424,7 @@ static void pin_save(int pin) {
 static void pin_load(int pin) {
 
   // 1. restore pin mode
-  pinMode2(pin, Pins[pin].flags);
+  pinForceMode(pin, Pins[pin].flags);
 
   // TODO: rewrite code below
 
@@ -545,7 +562,7 @@ static int pin_show(int argc, char **argv) {
     if (oe) {
       q_print("% Output is done via <*>");
       if (fun_sel == PIN_FUNC_GPIO) {
-        q_print("GPIO MATRIX</>, ");
+        q_print("GPIO Matrix</>, ");
         if (sig_out == SIG_GPIO_OUT_IDX)
           q_print("acts as simple GPIO output (SIG_GPIO_OUT_IDX)\r\n");
         else
@@ -559,7 +576,7 @@ static int pin_show(int argc, char **argv) {
     if (ie) {
       q_print("% Input is done via <*>");
       if (fun_sel == PIN_FUNC_GPIO) {
-        q_print("GPIO matrix</>, ");
+        q_print("GPIO Matrix</>, ");
         for (int i = 0; i < SIG_GPIO_OUT_IDX; i++)
           if (gpio_ll_get_in_signal_connected_io(&GPIO, i) == pin) {
             if (!informed)
@@ -728,27 +745,27 @@ static int cmd_pin(int argc, char **argv) {
           // 9. "pin X up"
         if (!q_strcmp(argv[i], "up")) {
           flags |= PULLUP;
-          pinMode2(pin, flags);
+          pinForceMode(pin, flags);
         } else  // set flags immediately as we read them
         // 10. "pin X down"
         if (!q_strcmp(argv[i], "down")) {
           flags |= PULLDOWN;
-          pinMode2(pin, flags);
+          pinForceMode(pin, flags);
         } else
         // 12. "pin X in"
         if (!q_strcmp(argv[i], "in")) {
           flags |= INPUT;
-          pinMode2(pin, flags);
+          pinForceMode(pin, flags);
         } else
         // 13. "pin X out"
         if (!q_strcmp(argv[i], "out")) {
           flags |= OUTPUT_ONLY;
-          pinMode2(pin, flags);
+          pinForceMode(pin, flags);
         } else
         // 11. "pin X open"
         if (!q_strcmp(argv[i], "open")) {
           flags |= OPEN_DRAIN;
-          pinMode2(pin, flags);
+          pinForceMode(pin, flags);
         } else
         // 14. "pin X low" keyword. only applies to I/O pins, fails for input-only pins
         if (!q_strcmp(argv[i], "low")) {
@@ -757,12 +774,12 @@ abort_if_input_only:
             q_printf("%% <e>Pin %u is **INPUT-ONLY**, can not be set \"%s</>\"\r\n", pin, argv[i]);
             return i;
           }
-          // use pinMode2/digitalForceWrite to not let the pin to be reconfigured
+          // use pinForceMode/digitalForceWrite to not let the pin to be reconfigured
           // to GPIO Matrix pin. By default many GPIO pins are handled by IOMUX. However if
           // one starts to use that pin it gets configured as "GPIO Matrix simple GPIO". Code below
           // keeps the pin at IOMUX, not switching to GPIO Matrix
           flags |= OUTPUT;
-          pinMode2(pin, flags);
+          pinForceMode(pin, flags);
           digitalForceWrite(pin, LOW);
         } else
         // 15. "pin X high" keyword. I/O pins only
@@ -772,7 +789,7 @@ abort_if_input_only:
             goto abort_if_input_only;
 
           flags |= OUTPUT;
-          pinMode2(pin, flags);
+          pinForceMode(pin, flags);
           digitalForceWrite(pin, HIGH);
         } else
         // 16. "pin X read"
@@ -785,16 +802,30 @@ abort_if_input_only:
         if (!q_strcmp(argv[i], "release")) gpio_hold_dis((gpio_num_t)pin); else
         // 6. "pin X load"
         if (!q_strcmp(argv[i], "load")) pin_load(pin); else
-        // 6.1 "pin X iomux [NUMBER | gpi]"
+        // 6.1 "pin X iomux [NUMBER | gpio]"
         if (!q_strcmp(argv[i], "iomux")) {
-          unsigned char function = (unsigned char )(-1);
+          unsigned char function = 0; // default is IO_MUX function 0 which is, in most cases, a GPIO function via IO_MUX
           if ((i+1) < argc)
-            function = q_atol(argv[++i],((unsigned char )(-1))); // number-> number, "gpio" -> 0xff
+            // if we have extra arguments, then treat number as IO_MUX function, treat text as special case. 
+            function = q_atol(argv[++i],PIN_FUNC_PAD_SELECT_GPIO); 
           pin_set_iomux_function(pin, function);
         } else
-        // 6.2 "pin X matrix"
+        // 6.2 "pin X matrix [in|out NUMBER]"
         if (!q_strcmp(argv[i], "matrix")) {
+          // set pin function to "Simple GPIO via GPIO Matrix"
           pin_set_iomux_function(pin, PIN_FUNC_GPIO);
+
+          // Is there any signal IDs provided? 
+          if (i + 2 < argc) {
+//            if (!isnum(argv[i + 2])
+//              return i + 2;
+            unsigned int sig_id = q_atol(argv[i + 2],SIG_GPIO_OUT_IDX);
+            if (argv[i + 1][0] == 'i')
+              gpio_matrix_in(pin, sig_id, false);
+            else
+              gpio_matrix_out(pin, sig_id, false, false);
+            i += 2;
+          }
         } else
         //4. "loop" keyword
         if (!q_strcmp(argv[i], "loop")) {
@@ -818,24 +849,25 @@ abort_if_input_only:
 
           if (!informed) {
             informed = true;
-            HELP(q_printf("%% Repeating %u times", count));
+            HELP(q_printf("%% Repeating whole command %u times", count));
             if (is_foreground_task())
               HELP(q_print(", press <Enter> to abort"));
             HELP(q_print(CRLF));
           }
 
         } else
-        //"X" keyword. when we see a number we use it as a pin number
-        //for subsequent keywords. must be valid GPIO number.
+        //A keyword which is a number. when we see a number we use it as a pin number
+        //for subsequent keywords. Must be valid GPIO number.
         if (isnum(argv[i])) {
-          if (!pin_exist((pin = q_atol(argv[i], 999))))
+          if (!pin_exist((pin = q_atol(argv[i], DEF_BAD))))
             return i;
         } else
           // argument i was not recognized
           return i;
+      // go to the next keyword
       i++;
     }       //big fat "while (i < argc)"
-    i = 1;  // start over again
+    i = 1;  // prepare to start over again
 
     //give a chance to cancel whole command
     // by anykey press

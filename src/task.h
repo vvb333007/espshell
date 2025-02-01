@@ -78,7 +78,7 @@ static bool taskid_good(unsigned int taskid) {
     return false;
   }
   
-  // Ignore attempts to delete the main espshell task
+  // Ignore attempts to manipulate the main espshell task
   if (shell_task == (TaskHandle_t )taskid) {
     HELP(q_printf("%% Task <i>0x%x</> is the main ESPShell task\r\n%% To exit ESPShell use command \"exit ex\" instead\r\n",taskid));
     return false;
@@ -185,7 +185,7 @@ static void espshell_task(const void *arg) {
     while (!console_isup())
       q_delay(CONSOLE_UP_POLL_DELAY);
 
-    HELP(q_printf(WelcomeBanner));
+    HELP(q_print(WelcomeBanner));
 
     // read & execute commands until "exit ex" is entered
     while (!Exit) {

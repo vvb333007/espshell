@@ -199,11 +199,11 @@ void digitalForceWrite(int pin, unsigned char level);
 // GPIO Matrix pin, even if it was at correct IO_MUX function. As a result we can not have
 // "working" pin which is managed by IO MUX.
 //
-// Function pinMode2() bypasses periman, does not reconfigure pin and even can be applied
-// to **reserved** ESP32 pins (SPI FLASH CLK) for example providing that new flags are compatible
+// Function pinForceMode() bypasses periman, does not reconfigure pin and even can be applied
+// to a **reserved** ESP32 pins (SPI FLASH CLK) for example providing that new flags are compatible
 // with pin function.
 //
-// calling pinMode(6,...) will likely crash your ESP32, pinMode2() - not
+// calling pinMode(6,...) will likely crash your ESP32, pinForceMode() - not
 //
 // /pin/    - pin (GPIO) number
 // /flags/  - flags as per pinMode(): INPUT, OUTPUT, OPEN_DRAIN,PULL_UP, PULL_DOWN and OUTPUT_ONLY
@@ -212,7 +212,7 @@ void digitalForceWrite(int pin, unsigned char level);
 //
 #define OUTPUT_ONLY ((OUTPUT) & ~(INPUT))
 
-void pinMode2(unsigned int pin, unsigned int flags);
+void pinForceMode(unsigned int pin, unsigned int flags);
 
 
 #ifdef __cplusplus

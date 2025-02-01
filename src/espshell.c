@@ -181,10 +181,10 @@ static const char *i2cIsDown = "%% I2C%u bus is not initialized. Use command \"u
 
 static const char *uartIsDown = "%% UART%u is down. Use command \"up\" to initialize it\r\n";
 
-static const char *WelcomeBanner = "\033[H\033[2J%%\r\n"
-                                   "%% ESP32Shell " ESPSHELL_VERSION "\r\n"
-                                   "%% Type \"?\" and press <Enter> for help\r\n"
-                                   "%% Press <Ctrl+L> to clear the screen, enable colors and show \"tip of the day\"\r\n";
+static const char *WelcomeBanner = "\033[H\033[2J%\r\n"
+                                   "% ESP32Shell " ESPSHELL_VERSION "\r\n"
+                                   "% Type \"?\" and press <Enter> for help\r\n"
+                                   "% Press <Ctrl+L> to clear the screen, enable colors and show \"tip of the day\"\r\n";
 
 #if WITH_HELP
 static const char *Bye = "% Sayonara!\r\n";

@@ -6,6 +6,9 @@
  * Feel free to use it as your wish, however credits would be greatly appreciated.
  */
 
+// TODO: priority. get rid of all Arduino function calls. Either rewrite code to use ESP-IDF or lift required Arduino Core code.
+// TODO: Library must compile in plain ESP-IDF environment
+
 #if COMPILING_ESPSHELL
 
 static camera_config_t config;      // camera config
