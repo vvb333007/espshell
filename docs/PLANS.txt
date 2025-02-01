@@ -17,4 +17,4 @@
   c. sends by internet to remote host
 
 
-  
+6. Make library Arduino-Core independed, so it can be used in normal ESP-IDF projects  
