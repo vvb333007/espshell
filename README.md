@@ -1,3 +1,15 @@
+<pre>
+88888888888  ad88888ba   88888888ba              88                       88  88
+88          d8"     "8b  88      "8b             88                       88  88
+88          Y8,          88      ,8P             88                       88  88
+88aaaaa     `Y8aaaaa,    88aaaaaa8P'  ,adPPYba,  88,dPPYba,    ,adPPYba,  88  88
+88"""""       `"""""8b,  88""""""'    I8[    ""  88P'    "8a  a8P_____88  88  88
+88                  `8b  88            `"Y8ba,   88       88  8PP"""""""  88  88
+88          Y8a     a8P  88           aa    ]8I  88       88  "8b,   ,aa  88  88
+88888888888  "Y88888P"   88           `"YbbdP"'  88       88   `"Ybbd8"'  88  88
+</pre>
+
+
 
 WHAT IS THIS:
 -------------
@@ -7,49 +19,82 @@ WHAT IS THIS:
  Provides a command line interface (CLI) on serial port running in parallel 
  to your Arduino sketch. It is not standalone program - this tool attaches
  to the user sketch (at compile time) and enchances any sketch (even empty one)
- with a shell.
+ with a shell. ESPShell has ability to pause/resume sketch execution.
 
  User can enter and execute commands (there are many built-in commands) in a way 
- similar to Linux shell while their sketch is running. ESPShell can be used either
- from Arduino IDE Serial Monitor or any other communication software like *PuTTY*
- or *TeraTerm*. Linux users have plenty of comm software but even "cu" utility 
- is ok
+ similar to Linux shell while their sketch is running. ESPShell can be used 
+ either from Arduino IDE Serial Monitor or any other communication software like
+ *PuTTY* or *TeraTerm*. Linux users have plenty of communication software to 
+ choose from but even "cu" utility can do the job.
 
  This library can be useful for: 
 
- 1. Developers who are interfacing new I2C or UART devices as espshell has commands 
-    to create/delete hardware interfaces, send/receive data. 
+ 1. Developers who are interfacing new I2C or UART devices as espshell has 
+    commands to create/delete hardware interfaces, send/receive data and so on. 
 
-    Interfacing GPS (uart-based) chips or GSM modems, making libraries for I2C devices.
+    Interfacing GPS (uart-based) chips or GSM modems, making libraries for I2C 
+    devices.
 
-    Simulating relays behaviour (using "pin" command)
+    Boards, which control number of relays, can be easily tested/debugged with 
+    one single command.
 
- 2. Beginners who wish to play with hardware without actually writing the code
+    Displaying/Changing sketch variables.
 
- 3. Arduino-compatible board makers: they can pre-install the espshell to their boards
+    Changing pin or interface parameters (uart speed for example, or pull mode 
+    for the pin) while sketch is running. Saves your time on 
+    countless "run/change/recompile/upload" cycles: wrong variable value? Now 
+    you can change it.
+ 
+ 2. Beginners who wish to play with hardware without actually writing any code
 
- Written in pure C, can be easily integrated with both C and C++ code
+ 3. Arduino-compatible board makers: preinstalled shell can be used in number 
+    of ways: production testing, users now can play with a hardware without 
+    writing any code. (as an example: it is possible to make various 
+    "blinking-led" or "relay-on/off" demos just using ESPShell commands
+
+HOW TO INSTALL
+--------------
+
+ This library is available for installation from **Arduino Library Manager.**:
+ Click the **Library  Manager** icon and type "espshell" in a search box. 
+ Choose latest version and click "INSTALL".
+
+ For those who wish to install it manually (say, latest source code from GitHub)
+ here are instructions:
+
+    1. Create folder /YourSketchBook/libraries/espshell
+    2. Copy library content (i.e. /docs, /src, /examples, etc) to that folder
+    3. Restart Arduino IDE
 
 
-1. Installation (Preinstalled Arduino IDE with esp32 board support package from Espressif is expected):
-
-    1. Copy library folder ("espshell") as is to your /SketchDirectory/libraries/
-    2. Restart Arduino IDE
-
-2. Usage: 
+HOW TO USE IT IN MY PROJECT?
+----------------------------
 
     1. Add #include "espshell.h" to your sketch
-    2. Compile, upload
-    3. Open terminal monitor, type "?" and press **Enter**
 
-3. Documentation (a bit outdated here and there):
+    2. Compile and upload as usual
+
+    3. Open Serial Monitor, type "?" and press **Enter**
+       (**NOTE: SerialMonitor is not the best option. Preferred way is to use
+       a dedicated terminal software like **Tera Term**)
+
+DOCUMENTATION
+-------------
 
     1. English (mostly up to date) is in "espshell/docs/"
     2. Russian (outdated) is in "espshell/docs/ru_RU/"
 
-4. Development:
+    Files named "Commands.txt" and "Pin_Commands.txt" are essential chapters
+    and it is a good idea to spend some of your time reading it.
 
-    ESPShell code is written in pure C, developer friendly and well-commented. There are few areas which calls for
-    attention and they are can be found as TODO: throughout the code. There are docs/PROBLEMS.txt and docs/PLANS.txt
+ESPSHELL DEVELOPMENT
+--------------------
+
+    ESPShell code is written in pure C, developer friendly and well-commented. 
+    There are few areas which calls for attention and they are can be found as 
+    "TODO:" throughout the code. There are docs/PROBLEMS.txt and docs/PLANS.txt
     for further reading
 
+    The code itself is quite simple and linear, with non-obvious parts well 
+    commented. Please note that author is not a native English speaker and thats
+    why comments in the code have mistakes, language misuse, etc.
