@@ -449,14 +449,27 @@ static int cmd_var(int argc, char **argv) {
           return 0;
         }
         signed int val = -q_atol(&(argv[2][1]), 0);
-        if (var->size == sizeof(int)) u.ival  = val; else
-        if (var->size == sizeof(short)) u.ish   = val; else
-        if (var->size == sizeof(char)) u.ichar = val; else { q_printf("%% Bad variable size %u\r\n",var->size); return 0; }
+        if (var->size == sizeof(int))
+          u.ival  = val; else
+        if (var->size == sizeof(short))
+          u.ish   = val; else
+        if (var->size == sizeof(char)) 
+          u.ichar = val; 
+        else 
+          goto report_and_exit;
       } else {
         unsigned int val = q_atol(argv[2], 0);
-        if (var->size == sizeof(int)) u.uval  = val; else
-        if (var->size == sizeof(short)) u.ush   = val; else
-        if (var->size == sizeof(char)) u.uchar = val; else { q_printf("%% Bad variable size %u\r\n",var->size); return 0; }
+        if (var->size == sizeof(int))
+          u.uval  = val; else
+        if (var->size == sizeof(short))
+          u.ush   = val; else
+        if (var->size == sizeof(char))
+          u.uchar = val;
+        else {
+report_and_exit:          
+          q_printf("%% Bad variable size %u\r\n",var->size); 
+          return 0; 
+        }
       }
     } else 
       return 2;

@@ -596,10 +596,9 @@ static unsigned int octal2uint32(const char *p) {
   return value;
 }
 
-// convert strings
-// 0b10010101 and 10100101 (with or without leading "0b") to
-// unsigned int values
-//
+// Convert strings 0b10010101 and 10100101 (with or without leading "0b") to unsigned int values
+// If there are more than 32 bits in the string then only last 32 bits will be read, while some leading bits 
+// will be ignored
 static unsigned int binary2uint32(const char *p) {
   unsigned int value = 0;
   unsigned int one = 0;

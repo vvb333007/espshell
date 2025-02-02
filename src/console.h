@@ -9,14 +9,16 @@
 
 #if COMPILING_ESPSHELL
 
-// espshell runs on this port:
-static uart_port_t uart = STARTUP_PORT;
-
-// TAG:console
-// --   SHELL TO CONSOLE HARDWARE GLUE --
-// espshell uses console_read../console_write.. and some other functions to print data or read user input.
+// --   "SHELL TO CONSOLE HARDWARE" GLUE --
+//
+// ESPShell uses abstract console_read../console_write.. and some other functions to print data or read user input.
+// Currently this abstraction layer is implemented for UARTs 
 // In order to implement support for another type of hardware (say USBCDC) one have to implement functions
 // below
+
+// espshell runs on this port:
+static uart_port_t uart = STARTUP_PORT; // either UART number OR 99 for USB-CDC
+
 #ifdef SERIAL_IS_USB
 #  error "console_write_bytes() is not implemented"
 #  error "console_read_bytes() is not implemented"
@@ -49,7 +51,10 @@ static INLINE bool console_isup() {
 // then set current uart to that number and return the same number as well. If i is not a valid uart number then -1 is returned
 //
 static INLINE int console_here(int i) {
-  return i < 0 ? uart : (i > UART_NUM_MAX ? (i == 99 ? (uart = i) : -1) : (uart = i));
+  return i < 0 ? uart 
+               : (i > UART_NUM_MAX ? (i == 99 ? (uart = i) 
+                                              : -1) 
+                                   : (uart = i));
 }
 
 //Detects if ANY key is pressed in serial terminal
