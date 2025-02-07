@@ -134,11 +134,20 @@
 #define esc_ast "\033[1;97m"  // Bold, bright white
 #define esc__   "\033[4;37m"  // Normal white, underlined
 
-// Miscellaneous forwards. These can not be resolved by rearranging :-/
-static bool task_wait_for_signal(uint32_t *sig, uint32_t timeout_ms); // block current task, wait for signal from another task or from an ISR. Timeout value less than 1 means infinite timeout
-static INLINE bool is_foreground_task();             // are we running in espshell task context?
+// -- Miscellaneous forwards. These can not be resolved by rearranging of "#include"'s :-/
 
-static inline bool uart_isup(unsigned char u);       // Check if UART u is up and operationg (is driver installed?)
+// block current task, wait for signal from another task or from an ISR.
+// Timeout value less than 1 means infinite timeout. Declared in task.h
+static bool task_wait_for_signal(uint32_t *sig, uint32_t timeout_ms); 
+
+// are we running in espshell task context? (task.h)
+static INLINE bool is_foreground_task();             
+
+// check if UART u is up and operationg (is driver installed?). Declared in uart.h
+static inline bool uart_isup(unsigned char u);       
+
+// check if address is in range 0x20000000 .. 0x80000000. Declared in qlib.h
+bool __attribute__((const)) is_valid_address(const void *addr, unsigned int count); 
 
 static int q_strcmp(const char *, const char *);     // loose strcmp
 static int PRINTF_LIKE q_printf(const char *, ...);  // printf()

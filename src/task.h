@@ -71,10 +71,9 @@ static bool task_wait_for_signal(uint32_t *sig, uint32_t timeout_ms) {
 //
 static bool taskid_good(unsigned int taskid) {
 
-  // Suspicously low address. Probably misstyped.
-  // TODO: This value is approximate. Need to go deeper on memory mapping in different ESP32 models
-  if (taskid <= 0x30000000) {
-    HELP(q_print("% Task id is a hex number, something like \"3ffb0030\" or \"0x40005566\"\r\n"));
+  // Use tange of "1" for now. May be change it to the sizeof(TaskHandle)
+  if (!is_valid_address((void *)taskid,1)) {
+    HELP(q_print("% Task ID is a hex number, something like \"3ffb0030\" or \"0x40005566\"\r\n"));
     return false;
   }
   
@@ -119,7 +118,7 @@ static void espshell_async_task(void *arg) {
   // by command processor (espshell_command()) according to first keyword (argv[0])
   if (aa && aa->gpp) {
     ret = (*(aa->gpp))(aa->argc, aa->argv);
-    q_printf("\r\n%% Background command \"%s\" has %s", aa->argv[0], ret == 0 ? "finished its job" : "<e>failed</>");
+    q_printf("\r\n%% Background command \"%s\" has %s\r\n", aa->argv[0], ret == 0 ? "finished its job" : "<e>failed</>");
     // do the same job espshell_command() does: interpret error codes returned by the handler. Keep in sync with espshell_command() code
     if (ret < 0)
       q_print("\r\n% <e>Wrong number of arguments</>");
@@ -130,7 +129,7 @@ static void espshell_async_task(void *arg) {
   userinput_unref(aa);
 
   // Redraw ESPShell command line prompt (yes we need it, because ESPShell has already printed its prompt out once) 
-  userinput_redraw();
+  //userinput_redraw();
 
   vTaskDelete(NULL);
 }
@@ -155,7 +154,7 @@ static int exec_in_background(argcargv_t *aa_current) {
     userinput_unref(aa_current);
   } else
     //Hint user on how to stop bg command
-    q_printf("%% Background task started\r\n%% Copy/paste \"kill 0x%x\" command to stop execution\r\n", (unsigned int)ignored);
+    q_printf("%% Background task started\r\n%% Copy/paste \"kill 0x%x\" command to abort\r\n", (unsigned int)ignored);
 
   return 0;
 }

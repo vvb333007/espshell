@@ -112,6 +112,17 @@ enum {
   MEM_UNUSED15
 };
 
+// Check if memory address is in valid range. This function does not check memory access
+// rights, only boundaries are checked.
+//
+bool __attribute__((const)) is_valid_address(const void *addr, unsigned int count) {
+  // On ESP32 "unsigned int" and "void *" aree both 32bit values, so it is ok to typecast like this.
+  // GCC will eliminate this local variable anyway
+  unsigned int ptr = (unsigned int)addr; 
+  return  ptr >= 0x20000000 ? (ptr + count <= 0x80000000) : false;
+}
+
+
 #if MEMTEST
 // WARNING: not suitable for mallocing buffers larger than 512k.
 // -- Memory wrappers for leaks hunting --
@@ -165,7 +176,6 @@ static unsigned int allocated = 0, internal = 0;
 
 // memory logger mutex to access memory records list
 static MUTEX(mem_mux);
-
 
 // memory allocated with extra 2 bytes: those are memory buffer overrun
 // markers. we check these at every q_free()
@@ -530,34 +540,29 @@ static bool q_isnumeric(const char *p) {
 //
 static unsigned char hex2uint8(const char *p) {
 
-  unsigned char f, l;  //first and last
+  unsigned char f = 0, l;  //first and last
 
+  // Skip leading "0x" if any
   if (p[0] == '0' && p[1] == 'x')
     p += 2;
 
-  f = *p++;
-
-  //single character HEX?
-  if (!(*p)) {
-    l = f;
-    f = '0';
-  } else l = *p;
-
-  // make it lowercase
-  if (f >= 'A' && f <= 'F') f = f + 'a' - 'A';
-  if (l >= 'A' && l <= 'F') l = l + 'a' - 'A';
-
-  //convert first hex character to decimal
-  if (f >= '0' && f <= '9') f = f - '0';
-  else if (f >= 'a' && f <= 'f') f = f - 'a' + 10;
-  else return 0;
-
-  //convert second hex character to decimal
-  if (l >= '0' && l <= '9') l = l - '0';
-  else if (l >= 'a' && l <= 'f') l = l - 'a' + 10;
-  else return 0;
-
-  return (f << 4) | l;
+  // Single character hex? (i.e "a", "A" or "0xC")
+  // Calculate the first nibble
+  if (p[1] != '\0') {
+    f = *p++;
+    f = f - (f >= 'A' && f <= 'F' ? 'A' 
+                                  : (f >= 'a' && f <= 'f' ? 'a' 
+                                                          : (f >= '0' && f <= '9' ? '0' 
+                                                                                  : f )));
+    f <<= 4;
+  }
+  // ..and the last
+  l = *p++;
+  l = l - (l >= 'A' && l <= 'F' ? 'A' 
+                                : (l >= 'a' && l <= 'f' ? 'a' 
+                                                        : (l >= '0' && l <= '9' ? '0' 
+                                                                                : l )));
+  return f | l;
 }
 
 // convert a hex string to uint32_t
@@ -856,7 +861,7 @@ static void q_printhex(const unsigned char *p, unsigned int len) {
   }
 
 
-  char ascii[16 + 1];
+  char ascii[16 + 2 + 1];
   unsigned int space = 1;
 
   q_print("<r>       0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F  |0123456789ABCDEF</>\r\n");
@@ -895,9 +900,10 @@ static void q_printhex(const unsigned char *p, unsigned int len) {
 
       // print a separator and the same line but in ascii form
       q_print("|");
+      ascii[j++] = '\r';
+      ascii[j++] = '\n';
       ascii[j] = '\0';
       q_print(ascii);
-      q_print("\r\n");
       j = 0;
     }
   }

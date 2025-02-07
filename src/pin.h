@@ -767,21 +767,18 @@ static int cmd_pin(int argc, char **argv) {
           flags |= OPEN_DRAIN;
           pinForceMode(pin, flags);
         } else
-        // 14. "pin X low" keyword. only applies to I/O pins, fails for input-only pins
-        if (!q_strcmp(argv[i], "low")) {
+        // 14. "pin X low | high" keyword. only applies to I/O pins, fails for input-only pins
+        if (!q_strcmp(argv[i], "low") || !q_strcmp(argv[i],"high")) {
           if (pin_is_input_only_pin(pin)) {
-abort_if_input_only:
             q_printf("%% <e>Pin %u is **INPUT-ONLY**, can not be set \"%s</>\"\r\n", pin, argv[i]);
             return i;
           }
-          // use pinForceMode/digitalForceWrite to not let the pin to be reconfigured
-          // to GPIO Matrix pin. By default many GPIO pins are handled by IOMUX. However if
-          // one starts to use that pin it gets configured as "GPIO Matrix simple GPIO". Code below
-          // keeps the pin at IOMUX, not switching to GPIO Matrix
-          flags |= OUTPUT;
+          // use pinForceMode/digitalForceWrite to not let the pin to be reconfigured (bypass PeriMan)
+          flags |= OUTPUT_ONLY;
           pinForceMode(pin, flags);
-          digitalForceWrite(pin, LOW);
+          digitalForceWrite(pin, argv[i][0] == 'l' ? LOW : HIGH);
         } else
+#if 0        
         // 15. "pin X high" keyword. I/O pins only
         if (!q_strcmp(argv[i], "high")) {
 
@@ -792,6 +789,7 @@ abort_if_input_only:
           pinForceMode(pin, flags);
           digitalForceWrite(pin, HIGH);
         } else
+#endif        
         // 16. "pin X read"
         if (!q_strcmp(argv[i], "read")) q_printf("%% GPIO%d : logic %d\r\n", pin, digitalForceRead(pin)); else
         // 17. "pin X read"
@@ -817,13 +815,19 @@ abort_if_input_only:
 
           // Is there any signal IDs provided? 
           if (i + 2 < argc) {
-//            if (!isnum(argv[i + 2])
-//              return i + 2;
+
+            // must be a number
+            if (!isnum(argv[i + 2]))
+              return i + 2;
+
+            // read the signal id. defaults to "simple GPIO" on fail
             unsigned int sig_id = q_atol(argv[i + 2],SIG_GPIO_OUT_IDX);
-            if (argv[i + 1][0] == 'i')
+            // TODO: handle "invert" flag/keyword
+            if (argv[i + 1][0] == 'i')                     // was it "in" signal?
               gpio_matrix_in(pin, sig_id, false);
             else
-              gpio_matrix_out(pin, sig_id, false, false);
+              gpio_matrix_out(pin, sig_id, false, false);  // ..no. then it is "out"
+            // advance to next keyword
             i += 2;
           }
         } else
@@ -869,7 +873,7 @@ abort_if_input_only:
     }       //big fat "while (i < argc)"
     i = 1;  // prepare to start over again
 
-    //give a chance to cancel whole command
+    // give a chance to cancel whole command
     // by anykey press
     if (anykey_pressed()) {
       HELP(q_print("% Key pressed, aborting..\r\n"));

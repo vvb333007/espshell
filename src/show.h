@@ -1,4 +1,4 @@
-/* 
+/*                            
  * This file is a part of ESP32Shell for the Arduino Framework by vvb333007
  * Author: Viacheslav Logunov <vvb333007@gmail.com>, 
  *
@@ -43,11 +43,11 @@ static int cmd_show(int argc, char **argv) {
 #endif
   
   // "show memory"
-  // "show memory ADDRESS [COUNT | uint | int | ushort | short | uchar | char | float | void * ]"
+  // "show memory ADDRESS [COUNT | unsigned | int | signed | short | char | float | long | void * ]"
   if (!q_strcmp(argv[1], "memory")) {
     if (argc < 3)
       return memory_show_information();
-    return memory_show_address(argc, argv);
+    return cmd_show_address(argc, argv); // memory.h
   }
 
   if (!q_strcmp(argv[1],"counters"))

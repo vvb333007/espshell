@@ -48,12 +48,13 @@ static const char *Hints[] = {
 
   "% \"touch\" creates all missing directories in given path before file creation",
 
-  "% Use \"var ls_show_dir_size 0\" to disable dirs size counting by \"ls\" command",
+  "% Use \"var ls_show_dir_size 0\" to disable dirs size counting by \"ls\" command:\r\n"
+  "% filesystems with huge amount of files & dirs can slow things down",
 
   "% To use spaces in filenames, replace spasces with asteriks (*): \"mkdir A*Path\"",
 
   "% Main commands are available in every command subdirectory: one can execute\r\n"
-  "% command \"pin\" while in UART configuration mode, without need to \"exit\")",
+  "% command \"pin\" while in UART configuration mode, without need to \"exit\"",
 
   "% You can send files over UARTs with filesystem's \"cat\" command",
 
@@ -63,7 +64,7 @@ static const char *Hints[] = {
   "% Use \"^\" symbol when history searching (Ctrl+R) to emphasize that search\r\n"
   "% pattern is matched from the beginning of the string (i.e. regexp-like \"^\")",
 
-  "% Press Ctrl+L to clear the screen and enable terminal colors"
+  "% Press Ctrl+L to clear the screen and enable terminal colors",
 };
 
 // Display useful hints. 
@@ -105,12 +106,6 @@ static int help_keys(UNUSED int argc, UNUSED char **argv) {
   return 0;
 }
 
-// "? pinout"
-// display some known interfaces pin numbers
-static int help_pinout(UNUSED int argc, UNUSED char **argv) {
-  q_print("% Sorry brother, not yet implemented\r\n");
-  return 0;
-}
 
 // "? COMMAND_NAME"
 //
@@ -226,19 +221,18 @@ static bool help_page_for_inputline(unsigned char *raw) {
 
 // "?"
 //
-// question mark command: display general help pages ("? keys", "? pinout")
-// display a command usage details ("? some_command") or display the list
+// A "question mark" command: displays general help pages ("? keys", "? pinout"),
+// displays a command usage details ("? some_command") or displays the list
 // of available commands ("?" with no arguments)
+//
+// Note that if question mark is not the first token in a command line (i.e. it is not a command)
+// then it is handled by editline's callback qm_pressed()
 //
 static int cmd_question(int argc, char **argv) {
 
-  return argc <= 1                                 /* Have arguments? */
-      ? help_command_list(argc, argv)              /*   No!  Display command list */
-      : (!strcmp(argv[1], "keys")                  /*   Yes! Is it "keys" ? */
-          ? help_keys(argc, argv)                  /*      Yes! Display appropriate helppage */
-          : (!strcmp("pinout", argv[1])            /*      No!. Is it "pinout" ? */
-              ? help_pinout(argc, argv)            /*         Yes, display pinout helppage */ 
-              : help_command(argc, argv)));        /*         No. Asking for help on given command */
+  return argc < 2 ? help_command_list(argc, argv)
+                  : (!strcmp(argv[1], "keys") ? help_keys(argc, argv)
+                                              : help_command(argc, argv));
 }
 #endif  // WITH_HELP
 #endif //#if COMPILING_ESPSHELL
