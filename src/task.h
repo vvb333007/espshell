@@ -22,7 +22,7 @@ static int          shell_core = 0;  // CPU core number ESPShell is running on. 
 #define SIGNAL_TERM 0  // Request to terminate. (Must be zero, DO NOT CHANGE its default value)
 #define SIGNAL_GPIO 1  // "Pin interrupt" signal
 #define SIGNAL_KILL 2  // Force task deletion
-#define SIGNAL_HUP  3  // "Reinitialize/Re-read configuration"
+#define SIGNAL_HUP  3  // "Reinitialize/Re-read configuration" (Unused, for future extensions)
 
 // current task id
 #define taskid_self() xTaskGetCurrentTaskHandle()
@@ -120,8 +120,11 @@ static void espshell_async_task(void *arg) {
     ret = (*(aa->gpp))(aa->argc, aa->argv);
     q_printf("\r\n%% Background command \"%s\" has %s\r\n", aa->argv[0], ret == 0 ? "finished its job" : "<e>failed</>");
     // do the same job espshell_command() does: interpret error codes returned by the handler. Keep in sync with espshell_command() code
-    if (ret < 0)
-      q_print("\r\n% <e>Wrong number of arguments</>");
+    if (ret < 0) {
+      if (ret == CMD_MISSING_ARG)
+        q_print("\r\n% <e>Wrong number of arguments</>");
+      // Keep silent on other errors
+    }
     else if (ret > 0)
       q_printf("\r\n%% <e>Invalid %u%s argument \"%s\"</>", NEE(ret), ret < aa->argc ? aa->argv[ret] : "FIXME:");
   }
@@ -239,7 +242,7 @@ static int cmd_kill(int argc, char **argv) {
 
   unsigned int sig = SIGNAL_TERM, i = 1, taskid;
   if (argc < 2)
-    return -1;
+    return CMD_MISSING_ARG;
 
   if (argv[i][0] == '-') { // an option, task id follows
     q_tolower(argv[i],0);
@@ -250,7 +253,7 @@ static int cmd_kill(int argc, char **argv) {
   }
 
   if (i >= argc)
-    return -1;
+    return CMD_MISSING_ARG;
 
   if (taskid_good((taskid = hex2uint32(argv[i])))) {
     // SIGNAL_KILL is never sent to a task. Instead, task is deleted.

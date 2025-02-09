@@ -50,7 +50,9 @@
 
 #define SEQUENCES_NUM 10         // Max number of sequences available for command "sequence"
 
+// Developer options
 #define MEMTEST 0                // hunt for espshell's memory leaks
+#define CMD_STATS 0               // register NCmds, NHandlers and NTrees variables which hold espshell's keyword stats
 
 // -- ESPShell public API --
 // 1) Access sketch variables from ESPShell while sketch is running.   Yes it is possible, you just need to /register/ your variable by using

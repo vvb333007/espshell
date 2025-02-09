@@ -75,7 +75,7 @@ static int cmd_uart_if(int argc, char **argv) {
   static char prom[MAX_PROMPT_LEN];
 
   if (argc < 2)
-    return -1;
+    return CMD_MISSING_ARG;
 
   if ((u = q_atol(argv[1], SOC_UART_NUM)) >= SOC_UART_NUM) {
     HELP(q_printf("%% <e>Valid UART interface numbers are 0..%d</>\r\n", SOC_UART_NUM - 1));
@@ -99,7 +99,7 @@ static int cmd_uart_baud(int argc, char **argv) {
   unsigned char u = Context;
 
   if (argc < 2)
-    return -1;
+    return CMD_MISSING_ARG;
 
   if (uart_isup(u)) {
     if (ESP_OK != uart_set_baudrate(u, q_atol(argv[1], UART_DEF_BAUDRATE)))
@@ -119,7 +119,7 @@ static int cmd_uart_up(int argc, char **argv) {
   unsigned char u = Context;
   unsigned int rx, tx, speed;
 
-  if (argc < 4) return -1;
+  if (argc < 4) return CMD_MISSING_ARG;
   if (!pin_exist((rx = q_atol(argv[1], 999)))) return 1;
   if (!pin_exist((tx = q_atol(argv[2], 999)))) return 2;
   if ((speed = q_atol(argv[3], 0)) == 0) return 3;
@@ -181,7 +181,7 @@ static int cmd_uart_write(int argc, char **argv) {
   char *out = NULL;
 
   if (argc < 2)
-    return -1;
+    return CMD_MISSING_ARG;
   if (uart_isup(u)) {
     if ((size = text2buf(argc, argv, 1, &out)) > 0)
       if ((size = uart_write_bytes(u, out, size)) > 0)

@@ -58,5 +58,15 @@ struct keywords_t {
     NULL, NULL, 0, NULL, NULL \
   }
 
+// Return values from a command handler (functions whose name starts from "cmd_": cmd_pin, cmd_count, cmd_mount etc):
+// 0  : successful operation
+// >0 : command has failed. returned value is an index of a failed argument (0 < INDEX < argc). espshell_command() displays error text
+// -1 : "not enough arguments". espshell_command() displays error text
+// -2 : "other failure". command handler displays error text
+
+#define CMD_SUCCESS      0    // unused. code uses "0" instead.
+#define CMD_MISSING_ARG -1
+#define CMD_FAILED      -2    // explanation is printed by handler, espshell_command() keeps silent
+
 #endif // #if COMPILING_ESPSHELL
 

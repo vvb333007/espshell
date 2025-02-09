@@ -342,6 +342,11 @@ void pinForceMode(unsigned int pin, unsigned int flags) {
 
 // checks if pin (GPIO) number is in valid range.
 // display a message if pin is out of range
+//
+// TODO: handle special case of pin numbers 30 and 38. This is required for 
+// TODO: "pin 30 matrix in SIGNAL" to set "Constant0" as input for a given SIGNAL. Pin 38 is used 
+// TODO: as "Constant1" source for the GPIO Matrix, and can be connected to any peripherial signal as well
+//
 static bool pin_exist(int pin) {
   // pin number is in range and is a valid GPIO number?
   if ((pin < SOC_GPIO_PIN_COUNT) && (((uint64_t)1 << pin) & SOC_GPIO_VALID_GPIO_MASK))
@@ -466,38 +471,26 @@ static bool pin_is_input_only_pin(int pin) {
 static bool pin_is_strapping_pin(int pin) {
   switch (pin) {
 #ifdef CONFIG_IDF_TARGET_ESP32
-    case 0:
-    case 2:
-    case 5:
-    case 12:
-    case 15: return true;
+    case 0: case 2: case 5: case 12: case 15:
 #elif defined(CONFIG_IDF_TARGET_ESP32S2)
-    case 0:
-    case 45:
-    case 46: return true;
+    case 0: case 45: case 46:
 #elif defined(CONFIG_IDF_TARGET_ESP32S3)
-    case 0:
-    case 3:
-    case 45:
-    case 46: return true;
+    case 0: case 3: case 45: case 46:
 #elif defined(CONFIG_IDF_TARGET_ESP32C3)
-    case 2:
-    case 8:
-    case 9: return true;
+    case 2: case 8: case 9:
 #elif defined(CONFIG_IDF_TARGET_ESP32C6)
-    case 8:
-    case 9:
-    case 12:
-    case 14:
-    case 15: return true;
+    case 8: case 9: case 12: case 14: case 15:
 #elif defined(CONFIG_IDF_TARGET_ESP32H2)
-    case 8:
-    case 9:
-    case 25: return true;
+    case 8: case 9: case 25:
 #else
-#warning "Unsupported target, pin_is_strapping_pin() is disabled"
+    case -1: // Unreachable code: pin number is always positive integer
+#warning "Unsupported (yet) target, pin_is_strapping_pin() is disabled. Dont hesitate to add support by yourself!"
 #endif
-    default: return false;
+      // Return /true/ if pin is a strapping pin
+      return true;
+    default:
+      // Pin is not a "strapping pin"
+      return false;
   }
 }
 
@@ -510,7 +503,7 @@ static int pin_show(int argc, char **argv) {
 
   unsigned int pin, informed = 0;
 
-  if (argc < 2) return -1;
+  if (argc < 2) return CMD_MISSING_ARG;
   if (!pin_exist((pin = q_atol(argv[1], 999)))) return 1;
 
   bool pu, pd, ie, oe, od, sleep_sel, res;
@@ -628,12 +621,107 @@ static int pin_show(int argc, char **argv) {
   return 0;
 }
 
+// -- Mutant command handlers --
+// These are called from a larger cmd_pin() handler and their purpose is to offload the cmd_pin() which became 
+// too big to read/debug and too heavy for the CPU cache so it was split into smaller handlers. These handlers
+// accept two extra parameters as compared to "normal" handlers: a pin number and a pointer to the /current argument index/
+//
+// Current argument index is advanced by these micro-handlers so main cmd_pin() can process all arguments 
+//
+// In case of error, a negative value of -2 is returned
+
+
+
+// handles "pin X pwm FREQ DUTY"
+// Since pin is multiple-argument command we also pass the /start/ index into argv[] array
+// 
+static int cmd_pin_pwm(int argc, char **argv,unsigned int pin, unsigned int *start) {
+
+  int i = *start;
+  unsigned int freq;
+  float duty;
+  // make sure that there are 2 extra arguments after "pwm" keyword
+  if ((i + 2) >= argc) {
+    HELP(q_print("% <e>Frequency and duty cycle are both expected</>\r\n"));
+    return i;
+  }
+  i++;
+  freq = q_atol(argv[i++], MAGIC_FREQ + 1);
+  *start = i;
+
+  // frequency must be an integer number and duty must be a float point number
+  if (freq > MAGIC_FREQ) {
+    HELP(q_print("% <e>Frequency must be in range [1.." xstr(MAGIC_FREQ) "] Hz</>\r\n"));
+    return i - 1;
+  }
+
+  duty = q_atof(argv[i], -1.0f);
+  if ( duty < 0.0f || duty > 1.0f ) {
+    HELP(q_print("% <e>Duty cycle is a number in range [0..1] (0.01 means 1% duty)</>\r\n"));
+    return i;
+  }
+
+  // enable/disable tone on given pin. if freq is 0 then tone is
+  // disabled
+  if (pwm_enable(pin, freq, duty) < 0) {
+    HELP(q_print(Failed));
+    return CMD_FAILED;
+  }
+
+  return 0;
+}
+
+// handles "sequence SEQ" keyword
+//
+static int cmd_pin_sequence(int argc, char **argv,unsigned int pin, unsigned int *start) {
+
+  int i = *start;
+
+  // do we have at least 1 extra arg after ith?
+  if ((i + 1) >= argc) {
+    HELP(q_printf("%% <e>Sequence number expected after \"%s\"</>\r\n", argv[i]));
+    return i;
+  }
+
+  i++;
+  *start = i;
+
+  int seq, j;
+
+  // Enable selected RMT sequence 'seq' on pin 'pin'
+  // TODO: should we "return 0" on error instead of continuing with next keyword?
+  if (seq_isready((seq = q_atol(argv[i], DEF_BAD)))) {
+    HELP(q_printf("%% Sending sequence %u over GPIO %u\r\n", seq, pin));
+    if ((j = seq_send(pin, seq)) < 0)
+      q_printf("%% <e>Failed. Error code is: %d</>\r\n", j);
+  } else
+    q_printf("%% <e>Sequence %u is not configured</>\r\n", seq);
+  return 0;
+}
+#if 0
+// handles "pin X matrix [in|out SIGNAL_ID]"
+// Since pin is multiple-argument command we also pass the /start/ index into argv[] array
+// 
+static int cmd_pin_matrix(int argc, char **argv,unsigned int pin, int *start) {
+  return 0;
+}
+
+// handles "pin X ... loop COUNT"
+// Since pin is multiple-argument command we also pass the /start/ index into argv[] array
+// TODO: make COUNT arg to "loop" optional. Omitted count means "loop forever"
+//
+static int cmd_pin_loop(int argc, char **argv,unsigned int pin, int start) {
+  return 0;
+}
+#endif
+
 
 
 // "pin NUM arg1 arg2 .. argn"
 // "pin NUM"
+//
 // Big fat "pin" command. Processes multiple arguments
-// TODO: should I split into bunch of smaller functions?
+//
 static int cmd_pin(int argc, char **argv) {
 
   unsigned int flags = 0;
@@ -644,166 +732,99 @@ static int cmd_pin(int argc, char **argv) {
   // this number can be changed by "loop" keyword
   unsigned int count = 1;
 
-  if (argc < 2) return -1;  //missing argument
+  if (argc < 2)
+    return CMD_MISSING_ARG;  //missing argument
 
   //first argument must be a decimal number: a GPIO number
-  if (!pin_exist((pin = q_atol(argv[1], 999))))
+  if (!pin_exist((pin = q_atol(argv[1], DEF_BAD))))
     return 1;
 
   //"pin X" command is executed here
-  if (argc == 2) return pin_show(argc, argv);
+  if (argc == 2)
+    return pin_show(argc, argv);
 
-  //"pin arg1 arg2 .. argN"
+  // process all arguments from left to the right:
   do {
 
     //Run through "pin NUM arg1, arg2 ... argN" arguments, looking for keywords
     // to execute.
     while (i < argc) {
+      int ret;
 
-      //1. "seq NUM" keyword found:
+      //1. "seq NUM" keyword.
       if (!q_strcmp(argv[i], "sequence")) {
-        if ((i + 1) >= argc) {
-          HELP(q_printf("%% <e>Sequence number expected after \"%s\"</>\r\n", argv[i]));
-          return i;
-        }
-        i++;
-
-        int seq, j;
-
-        // enable RMT sequence 'seq' on pin 'pin'
-        if (seq_isready((seq = q_atol(argv[i], DEF_BAD)))) {
-          HELP(q_printf("%% Sending sequence %u over GPIO %u\r\n", seq, pin));
-          if ((j = seq_send(pin, seq)) < 0)
-            q_printf("%% <e>Failed. Error code is: %d</>\r\n", j);
-
-        } else
-          q_printf("%% <e>Sequence %u is not configured</>\r\n", seq);
+        if ((ret = cmd_pin_sequence(argc,argv,pin,&i)) != 0)
+          return ret;
       } else
       //2. "pwm FREQ DUTY" keyword.
       // unlike global "pwm" command the duty and frequency are not an optional
-      // parameter anymore. Both can be 0 which used to disable previous "pwm"
+      // parameter anymore.
       if (!q_strcmp(argv[i], "pwm")) {
-
-        unsigned int freq;
-        float duty;
-        // make sure that there are 2 extra arguments after "pwm" keyword
-        if ((i + 2) >= argc) {
-
-          HELP(q_print("% <e>Frequency and duty cycle are both expected</>\r\n"));
-
+        if ((ret = cmd_pin_pwm(argc,argv,pin,&i)) != 0)
+          return ret;
+      } else
+      //3. "delay X" keyword
+      //creates delay for X milliseconds.
+      if (!q_strcmp(argv[i], "delay")) {
+        int duration;
+        if ((i + 1) >= argc) {
+          HELP(q_print("% <e>Delay value expected after keyword \"delay\"</>\r\n"));
           return i;
         }
         i++;
-
-        // frequency must be an integer number and duty must be a float point number
-        if ((freq = q_atol(argv[i++], MAGIC_FREQ + 1)) > MAGIC_FREQ) {
-          HELP(q_print("% <e>Frequency must be in range [1.." xstr(MAGIC_FREQ) "] Hz</>\r\n"));
-          return i - 1;
-        }
-
-        duty = q_atof(argv[i], -1.0f);
-        if (duty < 0 || duty > 1) {
-          HELP(q_print("% <e>Duty cycle is a number in range [0..1] (0.01 means 1% duty)</>\r\n"));
+        if ((duration = q_atol(argv[i], -1)) < 0)
           return i;
+        // Display a hint for the first time when delay is longer than 5 seconds
+        if (!informed && (duration > TOO_LONG)) {
+          informed = true;
+          if (is_foreground_task())
+            HELP(q_print("% <3>Hint: Press [Enter] to interrupt the command</>\r\n"));
         }
-
-        // enable/disable tone on given pin. if freq is 0 then tone is
-        // disabled
-        if (pwm_enable(pin, freq, duty) < 0) {
-          HELP(q_print(Failed));
+        // Was interrupted by keypress or by "kill" command? Abort whole command.
+        if (delay_interruptible(duration) != duration) {
+          HELP(q_printf("%% Command \"%s\" has been interrupted\r\n", argv[0]));
+          // TODO: return CMD_FAILED ?
           return 0;
         }
       } else
-        //3. "delay X" keyword
-        //creates delay for X milliseconds.
-        if (!q_strcmp(argv[i], "delay")) {
-          int duration;
-          if ((i + 1) >= argc) {
-            HELP(q_print("% <e>Delay value expected after keyword \"delay\"</>\r\n"));
-            return i;
-          }
-          i++;
-          if ((duration = q_atol(argv[i], -1)) < 0)
-            return i;
-
-          // Display a hint for the first time when delay is longer than 5 seconds
-          if (!informed && (duration > TOO_LONG)) {
-            informed = true;
-            if (is_foreground_task())
-              HELP(q_print("% <3>Hint: Press <Enter> to interrupt the command</>\r\n"));
-          }
-
-          // Was interrupted by keypress or by "kill" command? Abort whole command.
-          if (delay_interruptible(duration) != duration) {
-            HELP(q_printf("%% Command \"%s\" has been interrupted\r\n", argv[0]));
-            return 0;
-          }
-        } else
-        //Now all the single-line keywords:
-        // 5. "pin X save"
-        if (!q_strcmp(argv[i], "save")) pin_save(pin); else
-          // 9. "pin X up"
-        if (!q_strcmp(argv[i], "up")) {
-          flags |= PULLUP;
-          pinForceMode(pin, flags);
-        } else  // set flags immediately as we read them
-        // 10. "pin X down"
-        if (!q_strcmp(argv[i], "down")) {
-          flags |= PULLDOWN;
-          pinForceMode(pin, flags);
-        } else
-        // 12. "pin X in"
-        if (!q_strcmp(argv[i], "in")) {
-          flags |= INPUT;
-          pinForceMode(pin, flags);
-        } else
-        // 13. "pin X out"
-        if (!q_strcmp(argv[i], "out")) {
-          flags |= OUTPUT_ONLY;
-          pinForceMode(pin, flags);
-        } else
-        // 11. "pin X open"
-        if (!q_strcmp(argv[i], "open")) {
-          flags |= OPEN_DRAIN;
-          pinForceMode(pin, flags);
-        } else
-        // 14. "pin X low | high" keyword. only applies to I/O pins, fails for input-only pins
-        if (!q_strcmp(argv[i], "low") || !q_strcmp(argv[i],"high")) {
-          if (pin_is_input_only_pin(pin)) {
-            q_printf("%% <e>Pin %u is **INPUT-ONLY**, can not be set \"%s</>\"\r\n", pin, argv[i]);
-            return i;
-          }
-          // use pinForceMode/digitalForceWrite to not let the pin to be reconfigured (bypass PeriMan)
-          flags |= OUTPUT_ONLY;
-          pinForceMode(pin, flags);
-          digitalForceWrite(pin, argv[i][0] == 'l' ? LOW : HIGH);
-        } else
-#if 0        
-        // 15. "pin X high" keyword. I/O pins only
-        if (!q_strcmp(argv[i], "high")) {
-
-          if (pin_is_input_only_pin(pin))
-            goto abort_if_input_only;
-
-          flags |= OUTPUT;
-          pinForceMode(pin, flags);
-          digitalForceWrite(pin, HIGH);
-        } else
-#endif        
-        // 16. "pin X read"
-        if (!q_strcmp(argv[i], "read")) q_printf("%% GPIO%d : logic %d\r\n", pin, digitalForceRead(pin)); else
-        // 17. "pin X read"
-        if (!q_strcmp(argv[i], "aread")) q_printf("%% GPIO%d : analog %d\r\n", pin, analogRead(pin)); else
-        // 7. "pin X hold"
-        if (!q_strcmp(argv[i], "hold")) gpio_hold_en((gpio_num_t)pin); else
-        // 8. "pin X release"
-        if (!q_strcmp(argv[i], "release")) gpio_hold_dis((gpio_num_t)pin); else
-        // 6. "pin X load"
-        if (!q_strcmp(argv[i], "load")) pin_load(pin); else
-        // 6.1 "pin X iomux [NUMBER | gpio]"
-        if (!q_strcmp(argv[i], "iomux")) {
-          unsigned char function = 0; // default is IO_MUX function 0 which is, in most cases, a GPIO function via IO_MUX
-          if ((i+1) < argc)
+      //Now all the single-line keywords:
+      // 4. "pin X save"
+      if (!q_strcmp(argv[i], "save")) pin_save(pin); else
+      // 5. "pin X up"
+      if (!q_strcmp(argv[i], "up")) { flags |= PULLUP; pinForceMode(pin, flags); } else  // set flags immediately as we read them
+      // 10. "pin X down"
+      if (!q_strcmp(argv[i], "down")) { flags |= PULLDOWN; pinForceMode(pin, flags); } else
+      // 12. "pin X in"
+      if (!q_strcmp(argv[i], "in")) { flags |= INPUT; pinForceMode(pin, flags); } else
+      // 13. "pin X out"
+      if (!q_strcmp(argv[i], "out")) { flags |= OUTPUT_ONLY; pinForceMode(pin, flags); } else
+      // 11. "pin X open"
+      if (!q_strcmp(argv[i], "open")) { flags |= OPEN_DRAIN; pinForceMode(pin, flags); } else
+      // 14. "pin X low | high" keyword. only applies to I/O pins, fails for input-only pins
+      if (!q_strcmp(argv[i], "low") || !q_strcmp(argv[i],"high")) {
+        if (pin_is_input_only_pin(pin)) {
+          q_printf("%% <e>Pin %u is **INPUT-ONLY**, can not be set \"%s</>\"\r\n", pin, argv[i]);
+          return i;
+        }
+        // use pinForceMode/digitalForceWrite to not let the pin to be reconfigured (bypass PeriMan)
+        flags |= OUTPUT_ONLY;
+        pinForceMode(pin, flags);
+        digitalForceWrite(pin, argv[i][0] == 'l' ? LOW : HIGH);
+      } else
+      // 16. "pin X read"
+      if (!q_strcmp(argv[i], "read")) q_printf("%% GPIO%d : logic %d\r\n", pin, digitalForceRead(pin)); else
+      // 17. "pin X read"
+      if (!q_strcmp(argv[i], "aread")) q_printf("%% GPIO%d : analog %d\r\n", pin, analogRead(pin)); else
+      // 7. "pin X hold"
+      if (!q_strcmp(argv[i], "hold")) gpio_hold_en((gpio_num_t)pin); else
+      // 8. "pin X release"
+      if (!q_strcmp(argv[i], "release")) gpio_hold_dis((gpio_num_t)pin); else
+      // 6. "pin X load"
+      if (!q_strcmp(argv[i], "load")) pin_load(pin); else
+      // 6.1 "pin X iomux [NUMBER | gpio]"
+      if (!q_strcmp(argv[i], "iomux")) {
+        unsigned char function = 0; // default is IO_MUX function 0 which is, in most cases, a GPIO function via IO_MUX
+        if ((i+1) < argc)
             // if we have extra arguments, then treat number as IO_MUX function, treat text as special case. 
             function = q_atol(argv[++i],PIN_FUNC_PAD_SELECT_GPIO); 
           pin_set_iomux_function(pin, function);

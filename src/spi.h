@@ -29,7 +29,7 @@ static int cmd_spi_if(int argc, char **argv) {
   static char prom[MAX_PROMPT_LEN];
 
   if (argc < 2)
-    return -1;
+    return CMD_MISSING_ARG;
 
   #if 0
   if ((spi = q_atol(argv[1], SOC_SPI_NUM)) >= SOC_SPI_NUM) {

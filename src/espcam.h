@@ -23,7 +23,7 @@ static int cam_set_gain(int argc, char **argv) {
   sensor_t *cam;
 
   if (argc < 2)
-    return -1;
+    return CMD_MISSING_ARG;
 
   if ((cam = esp_camera_sensor_get()) == NULL) {
     q_print(Failed);
@@ -56,7 +56,7 @@ static int cam_set_balance(int argc, char **argv) {
   sensor_t *cam;
 
   if (argc < 2)
-    return -1;
+    return CMD_MISSING_ARG;
 
   if ((cam = esp_camera_sensor_get()) == NULL) {
     q_print(Failed);
@@ -93,7 +93,7 @@ static int cam_set_exposure(int argc, char **argv) {
   sensor_t *cam;
 
   if (argc < 2)
-    return -1;
+    return CMD_MISSING_ARG;
 
   if ((cam = esp_camera_sensor_get()) == NULL) {
     q_print(Failed);
@@ -143,7 +143,7 @@ static int cam_set_qbcss(int argc, char **argv) {
   sensor_t *cam;
 
   if (argc < 2)
-    return -1;
+    return CMD_MISSING_ARG;
 
   if (!isnum(argv[1])) {
     q_print("% Integer value expected\n\r");
@@ -183,7 +183,7 @@ static int cam_set_size(int argc, char **argv) {
   int size;
 
   if (argc < 2)
-    return -1;
+    return CMD_MISSING_ARG;
 
   if ((cam = esp_camera_sensor_get()) == NULL) {
     q_print(Failed);
@@ -427,7 +427,7 @@ static int cmd_cam(int argc, char **argv) {
   int err = 0;
 
   if (argc != 2)
-    return -1;
+    return CMD_MISSING_ARG;
 
   if (!q_strcmp(argv[1], "up"))
     return cam_up(argc, argv);

@@ -306,7 +306,7 @@ static int cmd_seq_if(int argc, char **argv) {
   unsigned char seq;
   static char prom[MAX_PROMPT_LEN];
   if (argc < 2)
-    return -1;
+    return CMD_MISSING_ARG;
 
   if ((seq = q_atol(argv[1], SEQUENCES_NUM)) >= SEQUENCES_NUM) {
     HELP(q_printf("%% <e>Sequence numbers are 0..%d</>\r\n", SEQUENCES_NUM - 1));
@@ -330,7 +330,7 @@ static int cmd_seq_if(int argc, char **argv) {
 static int cmd_seq_eot(int argc, char **argv) {
 
   if (argc < 2)
-    return -1;
+    return CMD_MISSING_ARG;
 
   if (!q_strcmp(argv[1], "high") || argv[1][0] == '1')
     sequences[Context].eot = 1;
@@ -354,7 +354,7 @@ static int cmd_seq_modulation(int argc, char **argv) {
 
   // at least FREQ must be provided
   if (argc < 2)
-    return -1;
+    return CMD_MISSING_ARG;
 
   freq = q_atol(argv[1], 0);
   if (!freq || freq > SEQ_MODULATION_FREQ_MAX) {
@@ -446,7 +446,7 @@ static int cmd_seq_zeroone(int argc, char **argv) {
 
 
     default:
-      return -1;  // wrong number of arguments
+      return CMD_MISSING_ARG;  // wrong number of arguments
   };
   seq_compile(Context);
   return 0;
@@ -463,7 +463,7 @@ static int cmd_seq_zeroone(int argc, char **argv) {
 // frequency of 80MHz
 static int cmd_seq_tick(int argc, char **argv) {
   if (argc < 2)
-    return -1;
+    return CMD_MISSING_ARG;
 
   if (!isfloat(argv[1]))
     return 1;
@@ -499,7 +499,7 @@ static int cmd_seq_bits(int argc, char **argv) {
   struct sequence *s = &sequences[Context];
 
   if (argc < 2)
-    return -1;
+    return CMD_MISSING_ARG;
 
   char *bits = argv[1];
 
@@ -513,7 +513,7 @@ static int cmd_seq_bits(int argc, char **argv) {
   s->bits = q_strdup(argv[1], MEM_SEQUENCE);
 
   if (!s->bits)
-    return -1;
+    return CMD_FAILED;
 
   seq_compile(Context);
 
@@ -533,7 +533,7 @@ static int cmd_seq_levels(int argc, char **argv) {
   struct sequence *s = &sequences[Context];
 
   if (argc < 2)
-    return -1;
+    return CMD_MISSING_ARG;
 
   // check if all levels have correct syntax
   for (i = 1; i < argc; i++)
@@ -546,7 +546,7 @@ static int cmd_seq_levels(int argc, char **argv) {
 
   if (i & 1) {
     q_print("% <e>Uneven number of levels. Please add 1 more</>\r\n");
-    return 0;
+    return CMD_FAILED;
   }
 
 
@@ -554,7 +554,7 @@ static int cmd_seq_levels(int argc, char **argv) {
   s->seq = (rmt_data_t *)q_malloc(sizeof(rmt_data_t) * s->seq_len, MEM_SEQUENCE);
 
   if (!s->seq)
-    return -1;
+    return CMD_FAILED;
 
 
   memset(s->seq, 0, sizeof(rmt_data_t) * s->seq_len);
@@ -608,7 +608,7 @@ static int cmd_seq_show(int argc, char **argv) {
   // command executaed as "show seq NUMBER".
   // two arguments (argc=3)
   if (argc != 3)
-    return -1;
+    return CMD_MISSING_ARG;
 
   if ((seq = q_atol(argv[2], SEQUENCES_NUM)) >= SEQUENCES_NUM)
     return 2;

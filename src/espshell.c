@@ -157,6 +157,7 @@ static bool pin_is_input_only_pin(int pin);
 static bool pin_exist(int pin);
 
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 3, 0)
+// TODO: rename
 EXTERN bool esp_gpio_is_pin_reserved(unsigned int gpio);
 #else
 static INLINE bool esp_gpio_is_pin_reserved(unsigned int gpio) {
@@ -345,8 +346,11 @@ one_more_try:
 
             if (bad > 0)
               q_printf("%% <e>Invalid %u%s argument \"%s\" (\"? %s\" for help)</>\r\n",NEE(bad), bad < argc ? argv[bad] : "FIXME", argv[0]);
-            else if (bad < 0)
-              q_printf("%% <e>One or more arguments missing(\"? %s\" for help)</>\r\n", argv[0]);
+            else if (bad < 0) {
+              if (bad == CMD_MISSING_ARG)
+                q_printf("%% <e>One or more arguments missing(\"? %s\" for help)</>\r\n", argv[0]);
+              // Keep silent on other error codes which are <0
+            }
             else
               // make sure keywords[i] is a valid pointer (change_command_directory() changes keywords list so keywords[i] might be invalid pointer)
               i = 0;
@@ -409,25 +413,32 @@ bool espshell_exec_finished() {
 // Call functions which are intended to be called once, things like convars & memory allocations.
 //
 static bool call_once = false;
-static unsigned int NCmds = 0;
-static unsigned int NTrees = 0;
+
+#if CMD_STATS
+static unsigned short NHandlers = 0;  // Number of command handlers
+static unsigned short NCmds = 2;     // "?" and "exit" only counted once, and it is done here
+static unsigned short NTrees = 0;    // Number of command directories
+#endif
 
 static  void espshell_initonce() {
 
   if (!call_once) {
     call_once = true;
 
-    // these asserts are mostly for var.h module since it *assumes* that sizeof(int) is 4 and so on
+    // These asserts are mostly for var.h module since it *assumes* that sizeof(int) is 4 and so on
     // (as it should be on a 32bit cpu)
-    //
+    // There is a code which assumes sizeof(unsigned int) >= sizeof(void *) here and there (mostly in task.h)
+    // We do these asserts in the beginning so we can safely convert between 32-bit types and make safe our, generally speaking unsafe code
+    
     static_assert(sizeof(int) == 4,"Unexpected int size");
     static_assert(sizeof(short) == 2,"Unexpected short size");
     static_assert(sizeof(char) == 1,"Unexpected char size");
     static_assert(sizeof(float) == 4,"Unexpected float size");
     static_assert(sizeof(void *) == 4,"Unexpected pointer size");
 
-#if 0
-    struct keywords_t *k[] = { 
+    // Do some stats
+#if CMD_STATS
+    const struct keywords_t *k[] = { 
       keywords_uart, 
       keywords_i2c, 
 #if WITH_SPI      
@@ -442,15 +453,26 @@ static  void espshell_initonce() {
     }, *tree;
 
     unsigned int j;
-    for (j = 0;(tree = k[NTrees]) != NULL ;NTrees++)
+    for (j = 0;(tree = k[NTrees]) != NULL ;NTrees++) {
+      void *prev = NULL;
       while (tree[j].cmd != NULL) {
         MUST_NOT_HAPPEN(ESPSHELL_MAX_CNLEN < strlen(tree[j].cmd));
-        j++;
+        // Try to count only unique command handlers. This count will be < than total amount of commands
+        // The counting procedure relies on that fact that the same command handler can appear at number of
+        // keywords but these keywords must be grouped together (e.g. all "show" keywords are grouped together)
+        if (tree[j].cb != prev) {
+          NHandlers++;
+          prev = (void *)tree[j].cb;
+        }
         NCmds++;
+        j++;
+        
       }
-    convar_add(NCmds);  // total number of commands supported by this version
-    convar_add(NTrees);  // 
-#endif
+    }
+    convar_add(NCmds);
+    convar_add(NTrees);
+    convar_add(NHandlers);
+#endif // CMD_STATS
     // add internal variables ()
     convar_add(ls_show_dir_size);  // enable/disable dir size counting for "ls" command
     convar_add(pcnt_channel);      // PCNT channel which is used by "count" command

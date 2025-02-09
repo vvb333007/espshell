@@ -1097,7 +1097,7 @@ static int cmd_files_mount_sd(int argc, char **argv) {
 
   // enough arguments?
   if (argc < 6)  //mount vspi 19 23 18 4 400 /mountpoint
-    return -1;
+    return CMD_MISSING_ARG;
 
   // SPI bus to use.
   // valid keywords are: hspi, vspi, fspi, spi1, spi2, spi3
@@ -1218,7 +1218,7 @@ static int cmd_files_mount(int argc, char **argv) {
 
   // enough arguments?
   if (argc < 2)
-    return -1;
+    return CMD_MISSING_ARG;
 
   // is mountpoint specified?
   // is mountpoint starts with "/"?
@@ -1695,7 +1695,7 @@ static int cmd_files_ls(int argc, char **argv) {
 //
 static int cmd_files_rm(int argc, char **argv) {
 
-  if (argc < 2) return -1;
+  if (argc < 2) return CMD_MISSING_ARG;
   if (argc > 2) HELP(q_print(MultipleEntries));
 
   int i, num;
@@ -1734,7 +1734,7 @@ static int cmd_files_write(int argc, char **argv) {
   char *path, *out = empty;
 
   if (argc < 2)
-    return -1;
+    return CMD_MISSING_ARG;
 
   if (argc > 2)
     size = text2buf(argc, argv, 2, &out);
@@ -1789,7 +1789,7 @@ static int cmd_files_insdel(int argc, char **argv) {
   int count = 1;
 
   if (argc < 3)
-    return -1;
+    return CMD_MISSING_ARG;
 
   // insert or delete?
   insert = q_strcmp(argv[0], "delete");
@@ -1891,7 +1891,7 @@ free_memory_and_return:
 static int cmd_files_mkdir(int argc, char **argv) {
 
   int i, failed = 0;
-  if (argc < 2) return -1;
+  if (argc < 2) return CMD_MISSING_ARG;
 
   if (argc > 2)
     HELP(q_print(MultipleEntries));
@@ -1918,7 +1918,7 @@ static int cmd_files_touch(int argc, char **argv) {
 
   int fd, i;
 
-  if (argc < 2) return -1;
+  if (argc < 2) return CMD_MISSING_ARG;
 
   if (argc > 2)
     HELP(q_print(MultipleEntries));
@@ -2062,7 +2062,7 @@ static int UNUSED file_cp_callback(const char *src, void *aux) {
 static int cmd_files_cp(int argc, char **argv) {
 
   if (argc < 3)
-    return -1;
+    return CMD_MISSING_ARG;
 
   char spath[MAX_PATH], dpath[MAX_PATH];
   strcpy(spath, files_full_path(argv[1], PROCESS_ASTERIKS));
@@ -2127,7 +2127,7 @@ static int cmd_files_cat(int argc, char **argv) {
   unsigned int line = (unsigned int)(-1), count = (unsigned int)(-1);
   unsigned char device = (unsigned char)(-1);
 
-  if (argc < 2) return -1;
+  if (argc < 2) return CMD_MISSING_ARG;
 
   // -b & -n options; -b here is for "binary", not for "number only non-blank lines"
   if (!strcmp("-b", argv[i]))
@@ -2136,7 +2136,7 @@ static int cmd_files_cat(int argc, char **argv) {
     numbers = ++i;
 
   if (i >= argc)
-    return -1;
+    return CMD_MISSING_ARG;
 
   if (!files_path_exist_file((path = files_full_path(argv[i], PROCESS_ASTERIKS)))) {
     q_printf("%% File not found:\"<e>%s</>\"\r\n", path);

@@ -101,7 +101,7 @@ static int cmd_cpu(int argc, char **argv) {
 static int cmd_cpu_freq(int argc, char **argv) {
 
   if (argc < 2)
-    return -1;  // not enough arguments
+    return CMD_MISSING_ARG;  // not enough arguments
 
   unsigned int freq;
 

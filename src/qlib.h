@@ -652,8 +652,11 @@ static inline float q_atof(const char *p, float def) {
 // Loose strcmp() which deoes partial match. It is used to match commands and parameters which are shortened:
 // e.g. user typed "seq" instead of "sequence" or "m w" instead of "mount wwwroot"
 //
-// /partial/ - string which expected to be incomplete/shortened
-// /full/    - full string to compare against
+// /partial/ - string which expected to be incomplete/shortened. Can be NULL or empty string
+// /full/    - full string to compare against. Can be null or empty string
+//
+// BIG FAT WARNING: If **both** /partial/ and /full/ are empty strings (i.e. strings containing only '\0')
+//                  then behaviour of this function will be undefined. 
 //
 // q_strcmp("seq","sequence") == 0
 // q_strcmp("sequence","seq") == 1
@@ -666,11 +669,13 @@ static inline float q_atof(const char *p, float def) {
 // making this approach very slow for typical 2-4 letter strings
 //
 //  TODO: Function below gets called alot from various parts of ESPShell, thats why IRAM_ATTR; Really need to profile the code and move most critical
-//        functions to IRAM, but keep it small
+//        functions to IRAM, but keep the IRAM usage small and optional (WITH_IRAM)
 //
 static int IRAM_ATTR q_strcmp(const char *partial, const char *full) {
 
+  // quick reject: first symbols must match
   if (partial && full && (*partial++ == *full++)) {
+    // Run through every character of the /partial/ and compare them to characters of /full/
     while(*partial)
       if (*partial++ != *full++)
         return 1;

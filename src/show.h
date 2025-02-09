@@ -14,7 +14,7 @@
 static int cmd_show(int argc, char **argv) {
 
   if (argc < 2)
-    return -1;
+    return CMD_MISSING_ARG;
     
   // show version
   if (!q_strcmp(argv[1],"version"))

@@ -332,7 +332,7 @@ static int cmd_count(int argc, char **argv) {
   int unit,i;
   
   if (argc < 2)
-    return -1;
+    return CMD_MISSING_ARG;
 
   if (!pin_exist((pin = q_atol(argv[1], 999))))
     return 1;

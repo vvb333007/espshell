@@ -59,7 +59,7 @@ static int cmd_pwm(int argc, char **argv) {
   float duty = 0.5f;
   unsigned pin;
 
-  if (argc < 2) return -1;     // missing arg
+  if (argc < 2) return CMD_MISSING_ARG;     // missing arg
   pin = q_atol(argv[1], 999);  // first parameter is pin number
 
   //frequency is the second one (optional)

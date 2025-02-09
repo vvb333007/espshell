@@ -27,7 +27,7 @@ static int cmd_i2c_if(int argc, char **argv) {
   static char prom[MAX_PROMPT_LEN];
 
   if (argc < 2)
-    return -1;
+    return CMD_MISSING_ARG;
 
   if ((iic = q_atol(argv[1], SOC_I2C_NUM)) >= SOC_I2C_NUM) {
     HELP(q_printf("%% <e>Valid I2C interface numbers are 0..%d</>\r\n", SOC_I2C_NUM - 1));
@@ -47,7 +47,7 @@ static int cmd_i2c_clock(int argc, char **argv) {
   unsigned char iic = (unsigned char)Context;
 
   if (argc < 2)
-    return -1;
+    return CMD_MISSING_ARG;
 
   if (!i2c_isup(iic)) {
     q_printf(i2cIsDown, iic);
@@ -71,7 +71,7 @@ static int cmd_i2c_up(int argc, char **argv) {
   unsigned char iic = (unsigned char)Context, sda, scl;
   unsigned int clock = argc < 4 ? I2C_DEF_FREQ : q_atol(argv[3], I2C_DEF_FREQ);
 
-  if (argc < 3) return -1;
+  if (argc < 3) return CMD_MISSING_ARG;
   if (i2c_isup(iic)) return 0;
   if (!pin_exist((sda = q_atol(argv[1], 255)))) return 1;
   if (!pin_exist((scl = q_atol(argv[2], 255)))) return 2;
@@ -103,7 +103,7 @@ static int cmd_i2c_read(int argc, char **argv) {
   int size;
   size_t got = 0;
 
-  if (argc < 3) return -1;
+  if (argc < 3) return CMD_MISSING_ARG;
   if ((addr = q_atol(argv[1], 0)) == 0) return 1;
   if ((size = q_atol(argv[2], I2C_RXTX_BUF + 1)) > I2C_RXTX_BUF) {
     size = I2C_RXTX_BUF;
@@ -139,7 +139,7 @@ static int cmd_i2c_write(int argc, char **argv) {
 
   // at least 1 byte but not too much
   if (argc < 3 || argc > I2C_RXTX_BUF)
-    return -1;
+    return CMD_MISSING_ARG;
 
   unsigned char data[argc];
 

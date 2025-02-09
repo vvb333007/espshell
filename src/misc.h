@@ -66,7 +66,7 @@ static int cmd_tty(int argc, char **argv) {
   unsigned char tty;
 
   if (argc < 2)
-    return -1;
+    return CMD_MISSING_ARG;
 
   if ((tty = q_atol(argv[1], 100)) < 100) {
     // if not USB then check if requested UART is up & running
