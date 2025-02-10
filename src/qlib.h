@@ -90,9 +90,10 @@ static const char *ansi_tags[26] = {
   ['u' - 'a'] = "\07\033[4;37m",   // [u]nderlined, normal white
   ['g' - 'a'] = "\05\033[92m",     // [g]reen. Bright green
 };
-#if 0 // This is here to keep Arduino IDE's colorer happy
-  ]]"
-#endif  
+
+// This is here to keep Arduino IDE's colorer happy
+/*"*/
+
 // Tags are <X> where X is [a..z]|[/].
 // Return an ANSI terminal sequence which corresponds to given tag.
 // const attribute is here because we need GCC to perform CSE on this function
