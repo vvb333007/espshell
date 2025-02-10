@@ -140,33 +140,33 @@ static const struct keywords_t keywords_uart[] = {
   KEYWORDS_BEGIN
 
   { "up", cmd_uart_up, 3,
-    HELPK("% \"<*>up</> <i>RX TX BAUD</>\"\r\n"
+    HELPK("% \"<b>up</> <i>RX TX BAUD</>\"\r\n"
           "%\r\n"
           "% Initialize uart interface X on pins RX/TX,baudrate BAUD, 8N1 mode\r\n"
-          "% Ex.: <*>up 18 19 115200</> - Setup uart on pins rx=18, tx=19, at speed 115200"),
+          "% Ex.: <b>up 18 19 115200</> - Setup uart on pins rx=18, tx=19, at speed 115200"),
     HELPK("Initialize uart (pins/speed)") },
 
   { "baud", cmd_uart_baud, 1,
-    HELPK("% \"<*>baud</> <i>SPEED</>\"\r\n"
+    HELPK("% \"<b>baud</> <i>SPEED</>\"\r\n"
           "%\r\n"
           "% Set speed for the uart (uart must be initialized)\r\n"
-          "% Ex.: <*>baud 115200</> - Set uart baud rate to 115200"),
+          "% Ex.: <b>baud 115200</> - Set uart baud rate to 115200"),
     HELPK("Set baudrate") },
 
   { "down", cmd_uart_down, NO_ARGS,
-    HELPK("% \"<*>down</>\"\r\n"
+    HELPK("% \"<b>down</>\"\r\n"
           "%\r\n"
           "% Shutdown interface, detach pins"),
     HELPK("Shutdown") },
 
   { "read", cmd_uart_read, NO_ARGS,
-    HELPK("% \"<*>read</>\"\r\n"
+    HELPK("% \"<b>read</>\"\r\n"
           "%\r\n"
           "% Read bytes (available) from uart interface X"),
     HELPK("Read data from UART") },
 
   { "tap", cmd_uart_tap, NO_ARGS,
-    HELPK("% \"<*>tap</>\r\n"
+    HELPK("% \"<b>tap</>\r\n"
           "%\r\n"
           "% Bridge the UART IO directly to/from shell\r\n"
           "% User input will be forwarded to uart X;\r\n"
@@ -174,13 +174,13 @@ static const struct keywords_t keywords_uart[] = {
     HELPK("Talk to connected device") },
 
   { "write", cmd_uart_write, MANY_ARGS,
-    HELPK("% \"<*>write</> <i>TEXT</>\"\r\n"
+    HELPK("% \"<b>write</> <i>TEXT</>\"\r\n"
           "%\r\n"
           "% Send an ascii/hex string(s) to UART interface\r\n"
-          "% <*>TEXT</> can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
+          "% <b>TEXT</> can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
           "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n"
           "%\r\n"
-          "% Ex.: \"<*>write ATI\\n\\rMixed\\20Text and \\20\\21\\ff\"</>"),
+          "% Ex.: \"<b>write ATI\\n\\rMixed\\20Text and \\20\\21\\ff\"</>"),
     HELPK("Send bytes over this UART") },
 
   // contains common entries and a NULL entry at the end
@@ -194,41 +194,41 @@ static const struct keywords_t keywords_i2c[] = {
   KEYWORDS_BEGIN
 
   { "up", cmd_i2c_up, 3,
-    HELPK("% \"<*>up</> <i>SDA SCL CLOCK</>\"\r\n"
+    HELPK("% \"<b>up</> <i>SDA SCL CLOCK</>\"\r\n"
           "%\r\n"
           "% Initialize I2C interface X, use pins SDA/SCL, clock rate CLOCK\r\n"
           "% Ex.: up 21 22 100000 - enable i2c at pins sda=21, scl=22, 100kHz clock"),
     HELPK("Initialize interface (pins and speed)") },
 
   { "clock", cmd_i2c_clock, 1,
-    HELPK("% \"<*>clock</> <i>SPEED</>\"\r\n"
+    HELPK("% \"<b>clock</> <i>SPEED</>\"\r\n"
           "%\r\n"
           "% Set I2C master clock (i2c must be initialized)\r\n"
           "% Ex.: clock 100000 - Set i2c clock to 100kHz"),
     HELPK("Set clock") },
 
   { "scan", cmd_i2c_scan, NO_ARGS,
-    HELPK("% \"<*>scan</>\"\r\n"
+    HELPK("% \"<b>scan</>\"\r\n"
           "%\r\n"
           "% Scan I2C bus X for devices. Interface must be initialized!"),
     HELPK("Scan i2c bus for devices") },
 
   { "write", cmd_i2c_write, MANY_ARGS,
-    HELPK("% \"<*>write</> <i>ADDR D1<i> [<1>D2 ... Dn</>]</>\"\r\n"
+    HELPK("% \"<b>write</> <i>ADDR D1<i> [<o>D2 ... Dn</>]</>\"\r\n"
           "%\r\n"
           "% Write bytes D1..Dn (hex values) to address ADDR on I2C bus X\r\n"
-          "% Ex.: <*>write 0x57 0 0xff</> - write 2 bytes to address 0x57: 0 and 255"),
+          "% Ex.: <b>write 0x57 0 0xff</> - write 2 bytes to address 0x57: 0 and 255"),
     HELPK("Send bytes to the device") },
 
   { "read", cmd_i2c_read, 2,
-    HELPK("% \"<*>read</> <i>ADDR SIZE</></>\"\r\n"
+    HELPK("% \"<b>read</> <i>ADDR SIZE</></>\"\r\n"
           "%\r\n"
           "% Read SIZE bytes from a device at address ADDR\r\n"
           "% Ex.: read 0x68 7 - read 7 bytes from device address 0x68"),
     HELPK("Read data from an I2C device") },
 
   { "down", cmd_i2c_down, NO_ARGS,
-    HELPK("% \"<*>down</>\"\r\n"
+    HELPK("% \"<b>down</>\"\r\n"
           "%\r\n"
           "% Shutdown I2C interface X"),
     HELPK("Shutdown i2c interface") },
@@ -284,72 +284,72 @@ static const struct keywords_t keywords_sequence[] = {
   KEYWORDS_BEGIN
 
   { "eot", cmd_seq_eot, 1,
-    HELPK("% \"<*>eot</> <i>high|low</>\"\r\n"
+    HELPK("% \"<b>eot</> <i>high|low</>\"\r\n"
           "%\r\n"
           "% End of transmission: pull the line high or low at the\r\n"
           "% end of a sequence. Default is \"low\""),
     HELPK("End-of-Transmission pin state") },
 
   { "tick", cmd_seq_tick, 1,
-    HELPK("% \"<*>tick</> <i>TIME</>\"\r\n"
+    HELPK("% \"<b>tick</> <i>TIME</>\"\r\n"
           "%\r\n"
           "% Set the sequence tick time: defines a resolution of a pulse sequence.\r\n"
           "% Expressed in microseconds, can be anything between 0.0125 and 3.2\r\n"
-          "% Ex.: <*>tick 0.1</> - set resolution to 0.1 microsecond (i.e. 1 tick = 0.1 usec)"),
+          "% Ex.: <b>tick 0.1</> - set resolution to 0.1 microsecond (i.e. 1 tick = 0.1 usec)"),
     HELPK("Set resolution") },
 
   { "zero", cmd_seq_zeroone, 2,
-    HELPK("% \"<*>zero</> <i>LEVEL/DURATION</> [<1>LEVEL2/DURATION2</>]\"\r\n"
+    HELPK("% \"<b>zero</> <i>LEVEL/DURATION</> [<o>LEVEL2/DURATION2</>]\"\r\n"
           "%\r\n"
           "% Define a logic \"0\"\r\n"
-          "% Ex.: <*>zero 0/50</>      - 0 is a level: LOW for 50 ticks\r\n"
-          "% Ex.: <*>zero 1/50 0/20</> - 0 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"),
+          "% Ex.: <b>zero 0/50</>      - 0 is a level: LOW for 50 ticks\r\n"
+          "% Ex.: <b>zero 1/50 0/20</> - 0 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"),
     HELPK("Define a zero") },
 
   { "zero", cmd_seq_zeroone, 1, HIDDEN_KEYWORD },  //1 arg command
 
   { "one", cmd_seq_zeroone, 2,
-    HELPK("% \"<*>one</> <i>LEVEL/DURATION</> [<1>LEVEL2/DURATION2</>]\"\r\n"
+    HELPK("% \"<b>one</> <i>LEVEL/DURATION</> [<o>LEVEL2/DURATION2</>]\"\r\n"
           "%\r\n"
           "% Define a logic \"1\"\r\n"
-          "% Ex.: <*>one 1/50</>       - 1 is a level: HIGH for 50 ticks\r\n"
-          "% Ex.: <*>one 1/50 0/20</>  - 1 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"),
+          "% Ex.: <b>one 1/50</>       - 1 is a level: HIGH for 50 ticks\r\n"
+          "% Ex.: <b>one 1/50 0/20</>  - 1 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"),
     HELPK("Define an one") },
 
   { "one", cmd_seq_zeroone, 1, HIDDEN_KEYWORD },  //1 arg command
 
   { "bits", cmd_seq_bits, 1,
-    HELPK("% \"<*>bits</> <i>STRING</>\"\r\n"
+    HELPK("% \"<b>bits</> <i>STRING</>\"\r\n"
           "%\r\n"
           "% A bit pattern to be used as a sequence. STRING must contain only 0s and 1s\r\n"
           "% Overrides previously set \"levels\" command\r\n"
           "% See commands \"one\" and \"zero\" to define \"1\" and \"0\"\r\n"
           "%\r\n"
-          "% Ex.: <*>bits 11101000010111100</>  - 17 bit sequence"),
+          "% Ex.: <b>bits 11101000010111100</>  - 17 bit sequence"),
     HELPK("Set pattern to transmit") },
 
   { "levels", cmd_seq_levels, MANY_ARGS,
-    HELPK("% \"<*>levels</> <1>L1/D1 L2/D2 ... Ln/Dn</>\"\r\n"
+    HELPK("% \"<b>levels</> <o>L1/D1 L2/D2 ... Ln/Dn</>\"\r\n"
           "%\r\n"
           "% A bit pattern to be used as a sequnce. L is either 1 or 0 and \r\n"
           "% D is the duration measured in ticks [0..32767] (see \"tick\" command) \r\n"
           "% Overrides previously set \"bits\" command\r\n"
           "%\r\n"
-          "% Ex.: <*>levels 1/50 0/20 1/100 0/500<*>  - HIGH 50 ticks, LOW 20, HIGH 100\r\n"
+          "% Ex.: <b>levels 1/50 0/20 1/100 0/500<b>  - HIGH 50 ticks, LOW 20, HIGH 100\r\n"
           "%                                            and 0 for 500 ticks\r\n"
-          "% Ex.: <*>levels 1/32767 1/17233 0/32767 0/7233</> - HIGH for 50000 ticks,\r\n"
+          "% Ex.: <b>levels 1/32767 1/17233 0/32767 0/7233</> - HIGH for 50000 ticks,\r\n"
           "%                                                    LOW for 40000 ticks"),
     HELPK("Set levels to transmit") },
 
   { "modulation", cmd_seq_modulation, 3,
-    HELPK("% \"<*>modulation</> <i>FREQ</> [ <1>DUTY [low|high]</> ]\"\r\n"
+    HELPK("% \"<b>modulation</> <i>FREQ</> [ <o>DUTY [low|high]</> ]\"\r\n"
           "%\r\n"
           "% Enables/disables an output signal modulation with frequency FREQ\r\n"
           "% Optional parameters are: DUTY (from 0 to 1) and LEVEL (either high or low)\r\n"
           "%\r\n"
-          "% Ex.: <*>modulation 100</>         - modulate all 1s with 100Hz, 50% duty cycle\r\n"
-          "% Ex.: <*>modulation 100 0.3 low</> - modulate all 0s with 100Hz, 30% duty cycle\r\n"
-          "% Ex.: <*>modulation 0</>           - disable modulation\r\n"),
+          "% Ex.: <b>modulation 100</>         - modulate all 1s with 100Hz, 50% duty cycle\r\n"
+          "% Ex.: <b>modulation 100 0.3 low</> - modulate all 0s with 100Hz, 30% duty cycle\r\n"
+          "% Ex.: <b>modulation 0</>           - disable modulation\r\n"),
     HELPK("Enable/disable modulation") },
 
   { "modulation", cmd_seq_modulation, 2, HIDDEN_KEYWORD },
@@ -369,14 +369,14 @@ static const struct keywords_t keywords_files[] = {
   KEYWORDS_BEGIN
 
   { "mount", cmd_files_mount_sd, 6,
-    HELPK("% \"<*>mount vspi|hspi|fspi MISO MOSI CLK CS</> <1>[SPI_FREQ] [/MOUNT_POINT]</>\"\r\n"
+    HELPK("% \"<b>mount vspi|hspi|fspi MISO MOSI CLK CS</> <o>[SPI_FREQ] [/MOUNT_POINT]</>\"\r\n"
           "%\r\n"
           "% Mount a FAT filesystem located on SD card connected to SPI bus\r\n"
           "%\r\n"
           "% <i>1st argument</>: SPI bus to use (<i>hspi</> is the safest choise)\r\n"
           "% <i>MISO, MOSI, CLK</> and <i>CS</> are SPI pins to use (19,23,18 and 5 for example)\r\n"
-          "% <1>SPI_FREQ</> : optional parameter, SPI frequency in kHz (20000 if not set)\r\n"
-          "% <1>/MOUNT_POINT</> - A path, starting with \"/\" where filesystem will be mounted.\r\n"
+          "% <o>SPI_FREQ</> : optional parameter, SPI frequency in kHz (20000 if not set)\r\n"
+          "% <o>/MOUNT_POINT</> - A path, starting with \"/\" where filesystem will be mounted.\r\n"
           "% If mount point is omitted then autogenerated name will be used, like \"scard4\"\r\n"
           "%\r\n"
           "% Ex.: mount vspi 19 23 18 4 /sdcard  - Mount an SD card located on VSPI pins 19,\r\n"
@@ -391,19 +391,19 @@ static const struct keywords_t keywords_files[] = {
 
 
   { "mount", cmd_files_mount0, NO_ARGS,
-    HELPK("% \"<*>mount</>\"\r\n"
+    HELPK("% \"<b>mount</>\"\r\n"
           "%\r\n"
           "% Command \"mount\" **without arguments** displays information about partitions\r\n"
           "% and mounted file systems (mount point, FS type, total/used counters)"),
     NULL },
 
   { "mount", cmd_files_mount, 2,
-    HELPK("% \"<*>mount LABEL</> <1>[/MOUNT_POINT]</>\"\r\n"
+    HELPK("% \"<b>mount LABEL</> <o>[/MOUNT_POINT]</>\"\r\n"
           "%\r\n"
           "% Mount a filesystem located on built-in SPI FLASH\r\n"
           "%\r\n"
           "% <i>LABEL</>        - SPI FLASH partition label\r\n"
-          "% <1>/MOUNT_POINT</> - A path, starting with \"/\" where filesystem will be mounted.\r\n"
+          "% <o>/MOUNT_POINT</> - A path, starting with \"/\" where filesystem will be mounted.\r\n"
           "% If mount point is omitted then \"/\" + LABEL will be used as a mountpoint\r\n"
           "%\r\n"
           "% Ex.: mount ffat /fs - mount partition \"ffat\" at directory \"/fs\"\r\n"
@@ -414,7 +414,7 @@ static const struct keywords_t keywords_files[] = {
 
 
   { "unmount", cmd_files_unmount, 1,
-    HELPK("% \"<*>unmount</> <1>[/MOUNT_POINT]</>\"\r\n"
+    HELPK("% \"<b>unmount</> <o>[/MOUNT_POINT]</>\"\r\n"
           "%\r\n"
           "% Unmount file system specified by its mountpoint\r\n"
           "% If mount point is omitted then current (by CWD) filesystem is unmounted\r\n"),
@@ -572,66 +572,65 @@ static const struct keywords_t keywords_main[] = {
   KEYWORDS_BEGIN
 
   { "uptime", cmd_uptime, NO_ARGS,
-    HELPK("% \"<*>uptime</>\"\r\n% Shows time passed since last boot; shows restart cause"), "System uptime" },
+    HELPK("% \"<b>uptime</>\"\r\n% Shows time passed since last boot; shows restart cause"), "System uptime" },
 
   // System commands
   { "cpu", cmd_cpu_freq, 1,
-    HELPK("% \"<*>cpu FREQ</>\"\r\n% Set CPU frequency to FREQ Mhz"), "Set/show CPU parameters" },
+    HELPK("% \"<b>cpu FREQ</>\"\r\n% Set CPU frequency to FREQ Mhz"), "Set/show CPU parameters" },
 
   { "cpu", cmd_cpu, NO_ARGS,
-    HELPK("% \"<*>cpu</>\"\r\n% Show CPUID and CPU/XTAL/APB frequencies"), NULL },
+    HELPK("% \"<b>cpu</>\"\r\n% Show CPUID and CPU/XTAL/APB frequencies"), NULL },
 
   { "suspend", cmd_suspend, NO_ARGS,
-    HELPK("% \"<*>suspend</>\"\r\n% Suspend sketch execution (Hotkey: Ctrl+C). Resume with \"resume\""), "Suspend sketch execution" },
+    HELPK("% \"<b>suspend</>\"\r\n% Suspend sketch execution (Hotkey: Ctrl+C). Resume with \"resume\""), "Suspend sketch execution" },
 
   { "suspend", cmd_suspend, 1,
-    HELPK("% \"<*>suspend <i>TASK_ID</>\"\r\n% Suspend an arbitrary FreeRTOS task"), "Suspend sketch execution" },
+    HELPK("% \"<b>suspend <i>TASK_ID</>\"\r\n% Suspend an arbitrary FreeRTOS task"), "Suspend sketch execution" },
 
   { "resume", cmd_resume, NO_ARGS,
-    HELPK("% \"<*>resume</>\"\r\n% Resume sketch execution"), "Resume sketch execution" },
+    HELPK("% \"<b>resume</>\"\r\n% Resume sketch execution"), "Resume sketch execution" },
 
   { "resume", cmd_resume, 1,
-    HELPK("% \"<*>resume <i>TASK_ID</>\"\r\n% Resume an arbitrary FreeRTOS task"), "Resume sketch execution" },
+    HELPK("% \"<b>resume <i>TASK_ID</>\"\r\n% Resume an arbitrary FreeRTOS task"), "Resume sketch execution" },
 
   { "kill", cmd_kill, 2,
-    HELPK("% \"<*>kill <1>[-term|-kill|-9|-15] <i>TASK_ID</>\"\r\n"
+    HELPK("% \"<b>kill <o>[-term|-kill|-9|-15] <i>TASK_ID</>\"\r\n"
           "% Send a signal to a task. Default is SIGTERM (safely stop)\r\n"
-          "% If -9 or -kill option is used then task is deleted (use with care!)"), 
-    "Kill tasks" },
+          "% If -9 or -kill option is used then task is deleted (use with care!)"), "Kill tasks" },
 
   { "kill", cmd_kill, 1, HIDDEN_KEYWORD },
 
   { "reload", cmd_reload, NO_ARGS,
-    HELPK("% \"<*>reload</>\"\r\n% Restarts CPU"), "Reset CPU" },
+    HELPK("% \"<b>reload</>\"\r\n% Restarts CPU"), "Reset CPU" },
 
   { "nap", cmd_nap, 1,
-    HELPK("% \"<*>nap SEC</>\"\r\n%\r\n% Put the CPU into light sleep mode for SEC seconds."), "CPU sleep" },
+    HELPK("% \"<b>nap SEC</>\"\r\n%\r\n% Put the CPU into light sleep mode for SEC seconds."), "CPU sleep" },
 
   { "nap", cmd_nap, NO_ARGS,
     HELPK("% \"nap\"\r\n%\r\n% Put the CPU into light sleep mode, wakeup by console"), NULL },
 
   // Interfaces (UART,I2C, RMT, FileSystem..)
   { "iic", cmd_i2c_if, 1,
-    HELPK("% \"<*>iic X</>\" \r\n%\r\n"
+    HELPK("% \"<b>iic X</>\" \r\n%\r\n"
           "% Enter I2C interface X configuration mode \r\n"
           "% Ex.: iic 0 - configure/use interface I2C0"),
     "I2C commands" },
 #if WITH_SPI
   { "spi", cmd_spi_if,1,
-    HELPK("% \"<*>spi [fspi|hspi|vspi]</>\" \r\n%\r\n"
+    HELPK("% \"<b>spi [fspi|hspi|vspi]</>\" \r\n%\r\n"
           "% Enter SPI interface configuration mode \r\n"
           "% Ex.: spi vspi - configure/use interface SPI3 (VSPI)"),
     HELPK("SPI commands") },
 #endif
   { "uart", cmd_uart_if, 1,
-    HELPK("% \"<*>uart X</>\"\r\n"
+    HELPK("% \"<b>uart X</>\"\r\n"
           "%\r\n"
           "% Enter UART interface X configuration mode\r\n"
           "% Ex.: uart 1 - configure/use interface UART 1"),
     "UART commands" },
 
   { "sequence", cmd_seq_if, 1,
-    HELPK("% \"<*>sequence X</>\"\r\n"
+    HELPK("% \"<b>sequence X</>\"\r\n"
           "%\r\n"
           "% Create/configure a sequence\r\n"
           "% Ex.: sequence 0 - configure Sequence0"),
@@ -639,7 +638,7 @@ static const struct keywords_t keywords_main[] = {
 
 #if WITH_FS
   { "files", cmd_files_if, NO_ARGS,
-    HELPK("% \"<*>files</>\"\r\n"
+    HELPK("% \"<b>files</>\"\r\n"
           "%\r\n"
           "% Enter files & file system operations mode"),
     "File system access" },
@@ -652,32 +651,32 @@ static const struct keywords_t keywords_main[] = {
   // Other "show" commands below are lacking a command handler pointer and are here just for help lines
   // 
   { "show", cmd_show, MANY_ARGS,              // <---  this handler catches all "show" command variants
-    HELPK("% \"<*>show <i>iomux</>\"\r\n"
+    HELPK("% \"<b>show <i>iomux</>\"\r\n"
           "%\r\n"
           "% Display IO_MUX functions available for each pin\r\n"
           "% Displays an IO_MUX function currently assigned for every pin"),"Display system information"},
 
   // Entries below are only for the /full/ help line (/brief/ line is copied from the first "show" entry 
   { "show", HELP_ONLY,
-    HELPK("% \"<*>show <i>cpuid</>\"\r\n"
+    HELPK("% \"<b>show <i>cpuid</>\"\r\n"
           "%\r\n"
           "% Display CPU ID information, used components versions and uptime\r\n"
           "% CPU temperature in Celsius is also displayed"),NULL},
 
   { "show",  HELP_ONLY,
-    HELPK("% \"<*>show <i>counters</>\"\r\n"
+    HELPK("% \"<b>show <i>counters</>\"\r\n"
           "%\r\n"
           "% Pulse counters / frequency meters states and values\r\n"
           "% Depending on a SoC used it may be up to 8 hardware counters"),NULL},
 
   { "show", HELP_ONLY,
-    HELPK("% \"<*>show <i>sequence</> NUMBER</>\"\r\n"
+    HELPK("% \"<b>show <i>sequence</> NUMBER</>\"\r\n"
           "%\r\n"
           "% Display sequence configuration for given index:\r\n"
           "% \"show sequence 6\"  - display Sequence #6 configuration"),NULL},
 
   { "show", HELP_ONLY,
-    HELPK("% \"<*>show <i>mount</> [<1>/PATH</>]\"\r\n"
+    HELPK("% \"<b>show <i>mount</> [<o>/PATH</>]\"\r\n"
           "%\r\n"
           "% Display information about mounted filesystems, partitions.\r\n"
           "% \"show mount\"           - display filesystem information\r\n"
@@ -685,7 +684,7 @@ static const struct keywords_t keywords_main[] = {
 
   // shadowed entry. For helptext only
   { "show", HELP_ONLY,
-    HELPK("% \"<*>show <i>memory</> <i>ADDRESS</> [<1>COUNT</>] [<1>unsigned|signed|char|int|short|float|void *</>]\"\r\n"
+    HELPK("% \"<b>show <i>memory</> <i>ADDRESS</> [<o>COUNT</>] [<o>unsigned|signed|char|int|short|float|void *</>]\"\r\n"
           "%\r\n"
           "% Display COUNT elements starting from the memory address ADDRESS\r\n"
           "% Data type can be provided (e.g. \"show mem 0x3fff0000 10 unsigned int\")\r\n"
@@ -695,7 +694,7 @@ static const struct keywords_t keywords_main[] = {
           "% COUNT is optional and its default value is 256 bytes. Can be decimal or hex\r\n"
           "% NOTE: if type specifier is used and COUNT is not set, then COUNT defaults to 1\r\n"
           "%\r\n"
-          "% \"<*>show <i>memory</>\"\r\n"
+          "% \"<b>show <i>memory</>\"\r\n"
           "%\r\n"
           "% Display HEAP information / availability"),NULL},
 
@@ -703,7 +702,7 @@ static const struct keywords_t keywords_main[] = {
   { "tty", cmd_tty, 1, HIDDEN_KEYWORD },
 
   { "echo", cmd_echo, 1,
-    HELPK("% \"<*>echo [on|off|silent]</>\"\r\n"
+    HELPK("% \"<b>echo [on|off|silent]</>\"\r\n"
           "% Echo user input on/off (default is on)\r\n"
           "% Without arguments displays current echo state\r\n"), 
     HELPK("Enable/Disable user input echo") },
@@ -712,13 +711,13 @@ static const struct keywords_t keywords_main[] = {
 
   // Generic pin commands
   { "pin", cmd_pin, 1,
-    HELPK("% \"<*>pin X</>\"\r\n"
+    HELPK("% \"<b>pin X</>\"\r\n"
           "% Show pin X configuration and digital value\r\n"
           "% Ex.: \"pin 2\" - show GPIO2 information"), 
     HELPK("Pins (GPIO) commands") },
 
   { "pin", cmd_pin, MANY_ARGS,
-    HELPK("% \"<*>pin X [<1>hold|release|up|down|out|in|open|high|low|save|load|read|aread|delay|loop|pwm|seq|iomux|matrix]*</>...\"\r\n"
+    HELPK("% \"<b>pin X [<o>hold|release|up|down|out|in|open|high|low|save|load|read|aread|delay|loop|pwm|seq|iomux|matrix]*</>...\"\r\n"
           "% Multipurpose command which can be used to:\r\n"
           "%  1. Set/Save/Load pin configuration and settings\r\n"
           "%  2. Enable/disable PWM and pattern generation on any pin\r\n"
@@ -739,7 +738,7 @@ static const struct keywords_t keywords_main[] = {
 
   // PWM generation
   { "pwm", cmd_pwm, 3,
-    HELPK("% \"<*>pwm X [FREQ [DUTY]]</>\"\r\n"
+    HELPK("% \"<b>pwm X [FREQ [DUTY]]</>\"\r\n"
           "%\r\n"
           "% Start PWM generator on pin X, frequency FREQ Hz and duty cycle of DUTY\r\n"
           "% Maximum frequency is 312000Hz, and DUTY is in range [0..1] with 0.123 being\r\n"
@@ -758,18 +757,18 @@ static const struct keywords_t keywords_main[] = {
 
   // Pulse counting/frequency meter
   { "count", cmd_count, 3,
-    HELPK("% \"<*>count PIN clear</>\"\r\n"
-          "% \"<*>count PIN</> [<1>DURATION</>] [<1>trigger</>]\"\r\n%\r\n"
+    HELPK("% \"<b>count PIN clear</>\"\r\n"
+          "% \"<b>count PIN</> [<o>DURATION</>] [<o>trigger</>]\"\r\n%\r\n"
           "% Count pulses on pin PIN within DURATION time, time is measured in\r\n"
           "% milliseconds (defaults to 1000 milliseconds if omitted)\r\n"
           "% The \"trigger\" keyword suspends the counter until the first pulse\r\n"
           "%\r\n"
-          "% Ex.: \"<*>count 4</>\"         - Count pulses & measure frequency on pin4 for 1000ms\r\n"
-          "% Ex.: \"<*>count 4 2000</>\"    - Same as above but measurement time is 2 seconds\r\n"
-          "% Ex.: \"<*>count 4 999999 &</>\"- Count pulses in <_>a background</> for 1000 seconds\r\n"
-          "% Ex.: \"<*>count 4 trigger</>\" - Wait for the first pulse, then start to count\r\n"
-          "% Ex.: \"<*>count 4 clear</>\"   - Set counter to 0 (running or stopped)\r\n"
-          "% Ex.: \"<*>count 4 2000 trigger &</>\" - Wait for the pulse, then start to count for\r\n"
+          "% Ex.: \"<b>count 4</>\"         - Count pulses & measure frequency on pin4 for 1000ms\r\n"
+          "% Ex.: \"<b>count 4 2000</>\"    - Same as above but measurement time is 2 seconds\r\n"
+          "% Ex.: \"<b>count 4 999999 &</>\"- Count pulses in <u>a background</> for 1000 seconds\r\n"
+          "% Ex.: \"<b>count 4 trigger</>\" - Wait for the first pulse, then start to count\r\n"
+          "% Ex.: \"<b>count 4 clear</>\"   - Set counter to 0 (running or stopped)\r\n"
+          "% Ex.: \"<b>count 4 2000 trigger &</>\" - Wait for the pulse, then start to count for\r\n"
           "%                                   2 seconds in a background"),
     "Pulse counter" },
 
@@ -790,7 +789,7 @@ static const struct keywords_t keywords_main[] = {
 #endif
   // TODO: split helplines between different entries
   { "var", cmd_var, 2,
-    HELPK("% \"<*>var</> [<1>VARIABLE_NAME</> [<1>NEW_VALUE</>]]</>\"\r\n%\r\n"
+    HELPK("% \"<b>var</> [<o>VARIABLE_NAME</> [<o>NEW_VALUE</>]]</>\"\r\n%\r\n"
           "% Set sketch variable to new value\r\n"
           "% VARIABLE_NAME is the variable name (\"var\" to see the list of all vars)\r\n"
           "% NEW_VALUE can be integer or float point values, positive or negative\r\n"
@@ -803,7 +802,7 @@ static const struct keywords_t keywords_main[] = {
           "% Note#2: Use prefix \"0x\" for hex, \"0\" for octal or \"0b\" for binary numbers"), "Sketch variables" },
 
   { "var", cmd_var, 1,
-    HELPK("% \"<*>var <i>NUMBER</>\"\r\n%\r\n"
+    HELPK("% \"<b>var <i>NUMBER</>\"\r\n%\r\n"
           "% Display a NUMBER in differtent bases and perform unsafe C-style\r\n"
           "% cast of a memory content\r\n"
           "% NUMBER can be anything that converts to a number. Use \"0b\",\"0x\" or \"0\"\r\n"

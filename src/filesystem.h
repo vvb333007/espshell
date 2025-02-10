@@ -166,7 +166,7 @@ static const char *files_set_cwd(const char *cwd) {
 
   // regenerate prompt, return CWD or "/" if there is no CWD
   const char *tmp = Cwd ? (const char *)Cwd : "/";
-  sprintf(prom, PROMPT_FILES, (Color ? esc_i : ""), tmp, (Color ? esc_n : ""));
+  sprintf(prom, PROMPT_FILES, (Color ? tag2ansi('i') : ""), tmp, (Color ? tag2ansi('n') : ""));
   prompt = prom;
 
   return tmp;
@@ -555,7 +555,7 @@ static int remove_file_callback(const char *path, UNUSED void *aux) {
     HELP(q_printf("%% <e>Failed to delete: \"%s\"</>\r\n", path));
     return 0;
   }
-  HELP(q_printf("%% Deleted file: \"<3>%s</>\"\r\n", path));
+  HELP(q_printf("%% Deleted file: \"<g>%s</>\"\r\n", path));
   return 1;
 }
 
@@ -1674,7 +1674,7 @@ static int cmd_files_ls(int argc, char **argv) {
             total_f++;
             total_fsize += st.st_size;
 #pragma GCC diagnostic ignored "-Wformat"
-            q_printf("%% % 9u  %s      <3>%s</>\r\n", (unsigned int)st.st_size, files_time2text(st.st_mtime), ent->d_name);
+            q_printf("%% % 9u  %s      <g>%s</>\r\n", (unsigned int)st.st_size, files_time2text(st.st_mtime), ent->d_name);
 #pragma GCC diagnostic warning "-Wformat"
           }
         } else
@@ -1761,7 +1761,7 @@ static int cmd_files_write(int argc, char **argv) {
         if (size < 0)
           q_printf("%% <e>Write to file \"%s\" has failed, errno is %d</>\r\n", path, errno);
         else
-          HELP(q_printf("%% <i>%u</> bytes written to <3>%s</>\r\n", size, path));
+          HELP(q_printf("%% <i>%u</> bytes written to <g>%s</>\r\n", size, path));
         close(fd);
         goto free_and_exit;
       }
@@ -1820,7 +1820,7 @@ static int cmd_files_insdel(int argc, char **argv) {
   path[tmp - 1] = '\0';  // remove "~""
 
   if ((t = fopen(upath, "wb")) == NULL) {
-    q_printf("%% <e>Failed to create temporary file \"<3>%s\"</>\r\n", upath);
+    q_printf("%% <e>Failed to create temporary file \"<g>%s\"</>\r\n", upath);
     goto free_memory_and_return;
   }
 
@@ -1936,7 +1936,7 @@ static int cmd_files_touch(int argc, char **argv) {
     // try to open file, creating it if it doesn't exist
     if ((fd = open(argv[i], O_CREAT | O_WRONLY, 0666)) > 0) {
       close(fd);
-      HELP(q_printf("%% Touched \"<3>%s</>\"\r\n", argv[i]));
+      HELP(q_printf("%% Touched \"<g>%s</>\"\r\n", argv[i]));
     } else
       q_printf("%% <e>Failed to create file \"%s\", error code is %d</>\r\n", argv[i], errno);
   }

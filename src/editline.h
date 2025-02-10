@@ -528,7 +528,7 @@ static EL_STATUS h_search() {
   old_prompt = Prompt;
   Prompt = PROMPT_SEARCH;
 #if WITH_COLOR
-  if (Color) TTYputs((const unsigned char *)"\033[1;36m");
+  if (Color) TTYputs((const unsigned char *)"\033[1;36m"); //TODO: use tag2ansi() call here
 #endif
 #if WITH_HELP
   const char *Hint = "% Command history search: start typing and press <Enter> to\r\n% find a matching command executed previously\r\n";

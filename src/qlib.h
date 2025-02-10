@@ -16,9 +16,6 @@
 //
 #if COMPILING_ESPSHELL
 
-
-// Bunch of handy macros:
-
 // gcc-specific size-optimization attempt ignored
 #undef likely
 #undef unlikely
@@ -72,11 +69,42 @@
 #define NEE(_X) _X, number_english_ending(_X)
 
 
+// Some globals as well.
+static bool Exit = false;            // True == close the shell and kill its FreeRTOS task. Can be restarted again with espshell_start()
 
 static bool ColorAuto = AUTO_COLOR;  // Autoenable coloring if terminal permits
-static bool Color = false;           // Enable coloring
-static bool Exit = false;            // True == close the shell and kill its FreeRTOS task.
-static int  Echo = STARTUP_ECHO;  // Runtime echo flag: -1=silent,0=off,1=on
+static bool Color = false;           // Coloring is enabled?
+static int  Echo = STARTUP_ECHO;     // Runtime echo flag: -1=silent,0=off,1=on
+
+// -- Coloring / ANSI sequences --
+// Sequence below have their **length** encoded as the very first byte to save on strlen() later.
+//
+static const char *ansi_tags[26] = {
+  ['b' - 'a'] = "\07\033[1;97m",   // [b]old bright white
+  ['e' - 'a'] = "\05\033[95m",     // [e]rror message (bright magenta)
+  ['i' - 'a'] = "\010\033[33;93m", // [i]important information (eye-catching bright yellow)
+  ['n' - 'a'] = "\04\033[0m",      // [n]ormal colors
+  ['r' - 'a'] = "\04\033[7m",      // [r]everse video
+  ['w' - 'a'] = "\05\033[91m",     // [w]arning message ( bright red )
+  ['o' - 'a'] = "\05\033[33m",     // [o]ptional dark yellow
+  ['u' - 'a'] = "\07\033[4;37m",   // [u]nderlined, normal white
+  ['g' - 'a'] = "\05\033[92m",     // [g]reen. Bright green
+};
+#if 0 // This is here to keep Arduino IDE's colorer happy
+  ]]"
+#endif  
+// Tags are <X> where X is [a..z]|[/].
+// Return an ANSI terminal sequence which corresponds to given tag.
+// const attribute is here because we need GCC to perform CSE on this function
+// and anther one below
+//
+static __attribute__((const)) const char *tag2ansi(char tag) {
+
+  return tag == '/' ? ansi_tags['n' - 'a'] + 1
+                    : (tag >= 'a' && tag <= 'z' ? ansi_tags[tag - 'a'] + 1
+                                                : NULL);
+}
+
 
 // -- Memory allocation wrappers --
 //
@@ -110,6 +138,7 @@ enum {
   MEM_UNUSED13,
   MEM_UNUSED14,
   MEM_UNUSED15
+  // NOTE: only values 0..15 are allowed, do not add more!
 };
 
 // Check if memory address is in valid range. This function does not check memory access
@@ -445,9 +474,9 @@ static bool isfloat(const char *p) {
 
 
 
-// Check if given ascii string is a hex BYTE.
+// Check if given ascii string is a hex number
 // String may or may not start with "0x"
-// Strings "a" , "5a", "0x5" and "0x5A" are valid input
+// Strings "a" , "5a", "0x5" and "0x5Ac5" are valid input
 //
 static bool ishex(const char *p) {
   if (p && *p) {
@@ -685,7 +714,7 @@ static int IRAM_ATTR q_strcmp(const char *partial, const char *full) {
 
 }
 
-
+// TODO: used only once, probably have to get rid of this function
 static inline const char *q_findchar(const char *str, char sym) {
   if (str) {
     while (*str && sym != *str)
@@ -697,12 +726,13 @@ static inline const char *q_findchar(const char *str, char sym) {
 }
 
 
-// adopted from esp32-hal-uart.c Arduino Core
-// TODO: remake to either use non-static buffer OR use sync objects because we have async tasks which dp q_printf
-//       thus reusing internal 128 bytes buffer
+// Adopted from esp32-hal-uart.c Arduino Core.
+// Internal buffer is changed from static to stack because q_printf() can be called from different tasks
+// This function can be used in Out-of-memory situation however caller must not use strings larger than 128 bytes (after % expansion)
+//
 static int __printfv(const char *format, va_list arg) {
 
-  /*static */char buf[128 + 1];  // TODO: Mystery#2. Crashes without /static/.
+  /*static */char buf[128 + 1]; //TODO: profile the shell to find out an optimal size. optimal == no calls to q_malloc
   char *temp = buf;
   uint32_t len;
   int ret;
@@ -734,6 +764,10 @@ static int __printfv(const char *format, va_list arg) {
 static int PRINTF_LIKE q_printf(const char *format, ...) {
   int len;
   va_list arg;
+
+  if (Echo < 0)  //"echo silent"
+    return 0;
+  
   va_start(arg, format);
   len = __printfv(format, arg);
   va_end(arg);
@@ -741,7 +775,9 @@ static int PRINTF_LIKE q_printf(const char *format, ...) {
 }
 
 
-//Faster than q_printf() but only does non-formatted output
+// Version of q_printf() which does NOT process format tags (%u, %s. etc)
+// It is faster, than q_printf
+//
 static int q_print(const char *str) {
 
   size_t len = 0;
@@ -751,45 +787,30 @@ static int q_print(const char *str) {
 
   if (str && *str) {
 
-    const char *p, *pp = str;
-    const char *ins;
-
+    const char *ins, *p, *pp = str;
+    
+    // /pp/ is the "current pointer" - a pointer to a currently analyzed chunk of an input string (i.e. /str/)
     while (*pp) {
-      // No color tags? Send it straight to console, fast operation
+      
+      // Shortcut #1: No color tags? Send it straight to console, fast operation
       if ((p = q_findchar(pp, '<')) == NULL)
         return console_write_bytes(pp, strlen(pp));
 
       // Found something looking like color tag. Process them, inserting corresponding ANSI sequence into
       // output, replacing color tags.
-      //
-      // /p/   - is the pointer to "<" found in /str/
-      // /pp/  - is the "current" pointer to the string being processed 
-      // /ins/ - is the ANSI sequence which replaces color tags
+      // Check if it is a color
       //
       if (p[1] && p[2] == '>') {
-        ins = NULL;
-        if (Color)
-          switch (p[1]) {
-            case 'i': ins = esc_i; break;
-            case 'w': ins = esc_w; break;
-            case 'e': ins = esc_e; break;
-            case '/': ins = esc_n; break;
-            case 'r': ins = esc_r; break;
-            case '2': ins = esc_2; break;
-            case '1': ins = esc_1; break;
-            case '3': ins = esc_3; break;
-            case 'b': ins = esc_b; break;
-            case '*': ins = esc_ast; break;
-            case '_': ins = esc__; break;
-          }
+
+        ins = Color ? tag2ansi(p[1]) : NULL; // NOTE: ins can only have values returned by tag2ansi() as they are of special format (pascal-like)
 
         // Send everything _before _the tag to the console
         len += console_write_bytes(pp, p - pp);
 
         // if there is something to insert - send it to the console
         if (ins)
-          len += console_write_bytes(ins, strlen(ins));
-        // advance source pointer by 3: the length of a color tag sequence <*>
+          len += console_write_bytes(ins, *(ins - 1)); // NOTE: ins has its length prepended
+        // advance source pointer by 3: the length of a color tag sequence <b>
         pp = p + 3;
 
       } else {

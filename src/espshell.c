@@ -121,19 +121,6 @@
 // enable -Wformat warnings. Turned off by Arduino IDE by default.
 #pragma GCC diagnostic warning "-Wformat"  
 
-// coloring macros.
-#define esc_i   "\033[33;93m" // [I]important information (eye-catching bright yellow)
-#define esc_r   "\033[7m"     // [R]everse video
-#define esc_w   "\033[91m"    // [W]arning message ( bright red )
-#define esc_e   "\033[95m"    // [E]rror message (bright magenta)
-#define esc_b   "\033[1;97m"  // [B]old bright white
-#define esc_n   "\033[0m"     // [N]ormal colors
-#define esc_1   "\033[33m"    // Hint[1] dark yellow
-#define esc_2   "\033[36m"    // Hint[2] dark cyan
-#define esc_3   "\033[92m"    // Hint[3] bright green
-#define esc_ast "\033[1;97m"  // Bold, bright white
-#define esc__   "\033[4;37m"  // Normal white, underlined
-
 // -- Miscellaneous forwards. These can not be resolved by rearranging of "#include"'s :-/
 
 // block current task, wait for signal from another task or from an ISR.
@@ -185,7 +172,7 @@ static const char * prompt = PROMPT;
 // Common messages. 
 static const char *Failed = "% <e>Failed</>\r\n";
 
-static const char *Notset = "<1>not set</>\r\n";
+static const char *Notset = "<i>not set</>\r\n";
 
 static const char *i2cIsDown = "%% I2C%u bus is not initialized. Use command \"up\" to initialize\r\n";
 

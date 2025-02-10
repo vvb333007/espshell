@@ -553,7 +553,7 @@ static int pin_show(int argc, char **argv) {
 
     // Output
     if (oe) {
-      q_print("% Output is done via <*>");
+      q_print("% Output is done via <b>");
       if (fun_sel == PIN_FUNC_GPIO) {
         q_print("GPIO Matrix</>, ");
         if (sig_out == SIG_GPIO_OUT_IDX)
@@ -567,7 +567,7 @@ static int pin_show(int argc, char **argv) {
 
     // Input
     if (ie) {
-      q_print("% Input is done via <*>");
+      q_print("% Input is done via <b>");
       if (fun_sel == PIN_FUNC_GPIO) {
         q_print("GPIO Matrix</>, ");
         for (int i = 0; i < SIG_GPIO_OUT_IDX; i++)
@@ -778,7 +778,7 @@ static int cmd_pin(int argc, char **argv) {
         if (!informed && (duration > TOO_LONG)) {
           informed = true;
           if (is_foreground_task())
-            HELP(q_print("% <3>Hint: Press [Enter] to interrupt the command</>\r\n"));
+            HELP(q_print("% <g>Hint: Press [Enter] to interrupt the command</>\r\n"));
         }
         // Was interrupted by keypress or by "kill" command? Abort whole command.
         if (delay_interruptible(duration) != duration) {

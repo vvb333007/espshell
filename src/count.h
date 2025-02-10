@@ -219,9 +219,9 @@ static const char *count_state_name(int i) {
   const char *st = "Unused!";
 
   if (units[i].in_use)
-    st = units[i].trigger ? "<i>Trigger</>" : "<3>Running</>";
+    st = units[i].trigger ? "<i>Trigger</>" : "<g>Running</>";
   else if (units[i].count || units[i].overflow || units[i].pin)
-    st = "<1>Stopped</>";
+    st = "<o>Stopped</>";
 
   return st;
 }

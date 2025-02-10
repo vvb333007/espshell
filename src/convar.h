@@ -261,7 +261,7 @@ static int convar_show_var(char *name) {
   char out[CONVAR_BUFSIZ]; 
   if (convar_value_as_string(var,out,sizeof(out)) == 0) {
     // Print value
-    q_printf("%% %s <i>%s</> = <3>%s</>;  ", convar_typename(var), var->name, out);
+    q_printf("%% %s <i>%s</> = <g>%s</>;  ", convar_typename(var), var->name, out);
     // In case of a pointer or array, print its content
     if (var->isp) {
       if (var->counta == 1) // arrays of 1 element are treated as plain pointers
@@ -283,7 +283,7 @@ static int convar_show_var(char *name) {
         for (int i = 0; i < var->counta; i++) {
           var0.ptr = (void *)((char *)(*(void **)var->ptr) + var->sizea * i); // love pointer arithmetic :)
           convar_value_as_string(&var0,out,sizeof(out));
-          q_printf("%%    <3>%s</>, // %s[%u]\r\n",out,var->name,i);
+          q_printf("%%    <g>%s</>, // %s[%u]\r\n",out,var->name,i);
         }
         q_print("% };\r\n");
       } else 
@@ -368,14 +368,14 @@ static int convar_show_number(const char *p) {
 
     // display a number in hex, octal, binary, integer or float representation
     q_printf("%% \"<i>%s</>\" is a number, which can be written as:\r\n"
-             "%% <_>C-style cast of a memory content:</>\r\n"
-             "%% unsigned : <3>%u</>\r\n"
-             "%%   signed : <3>%i</>\r\n"
-             "%% float    : <3>%f</>\r\n" 
-             "%% <_>Same number in different bases:</>\r\n" 
-             "%% Hex      : <3>0x%x</>\r\n"
-             "%% Octal    : <3>0%o</>\r\n"
-             "%% Binary   : <3>0b",
+             "%% <u>C-style cast of a memory content:</>\r\n"
+             "%% unsigned : <g>%u</>\r\n"
+             "%%   signed : <g>%i</>\r\n"
+             "%% float    : <g>%f</>\r\n" 
+             "%% <u>Same number in different bases:</>\r\n" 
+             "%% Hex      : <g>0x%x</>\r\n"
+             "%% Octal    : <g>0%o</>\r\n"
+             "%% Binary   : <g>0b",
              p, unumber, inumber, fnumber, unumber, unumber);
 
     // display binary form with leading zeros omitted

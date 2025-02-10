@@ -49,7 +49,7 @@ struct keywords_t {
 // Common commands that are inserted at the end of every command tree
 #define KEYWORDS_END \
   { "exit", exit_command_directory, MANY_ARGS, \
-    HELPK("% \"<*>exit [exit]</>\"  (Hotkey: Ctrl+Z)\r\n" \
+    HELPK("% \"<b>exit [exit]</>\"  (Hotkey: Ctrl+Z)\r\n" \
           "% Exit from uart, i2c, spi, files etc configuration modes.\r\n" \
           "% Has no effect when executed in main command mode unless typed twice\r\n" \
           "% (i.e. \"exit exit\"): in this case ESPShell closes and stops its task\r\n"), \

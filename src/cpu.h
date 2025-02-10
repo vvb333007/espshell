@@ -71,7 +71,7 @@ static int cmd_cpu(int argc, char **argv) {
   }
 #endif  //CONFIG_IDF_TARGET_XXX
 
-  q_print("% <_>Hardware:</>\r\n");
+  q_print("% <u>Hardware:</>\r\n");
   q_printf("%% CPU ID: %s, Rev.: %d.%d\r\n%% CPU frequency is %luMhz, Xtal %luMhz, APB bus %luMhz\r\n%% Chip temperature: %.1f\xe8 C\r\n",
            chipid,
            (chip_info.revision >> 8) & 0xf,
@@ -81,15 +81,15 @@ static int cmd_cpu(int argc, char **argv) {
            getApbFrequency() / 1000000,
            temperatureRead());
 
-  q_print("%\r\n% <_>Firmware:</>\r\n");
+  q_print("%\r\n% <u>Firmware:</>\r\n");
   q_printf( "%% Sketch is running on " ARDUINO_BOARD ", (an " ARDUINO_VARIANT " variant), uses:\r\n"
-            "%% Arduino Core version <1>%s</>, which uses\r\n"
+            "%% Arduino Core version <i>%s</>, which uses\r\n"
             "%% Espressif ESP-IDF version \"%s\"\r\n"
             "%% ESP32Shell library <i>" ESPSHELL_VERSION "</>\r\n", 
             ESP_ARDUINO_VERSION_STR, 
             esp_get_idf_version());
 
-  q_print("%\r\n% <_>Last boot:</>\r\n");            
+  q_print("%\r\n% <u>Last boot:</>\r\n");            
   cmd_uptime(argc, argv);
   return 0;
 }
