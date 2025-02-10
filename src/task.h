@@ -245,7 +245,7 @@ static int cmd_kill(int argc, char **argv) {
     return CMD_MISSING_ARG;
 
   if (argv[i][0] == '-') { // an option, task id follows
-    q_tolower(argv[i],0);
+    q_tolower(argv[i]);
     if (!q_strcmp(argv[i],"-term") || !q_strcmp(argv[i],"-15")) sig = SIGNAL_TERM; else
     if (!q_strcmp(argv[i],"-hup") ||  !q_strcmp(argv[i],"-1")) sig = SIGNAL_HUP; else
     if (!q_strcmp(argv[i],"-kill") || !q_strcmp(argv[i],"-9"))  sig = SIGNAL_KILL; else return 1;

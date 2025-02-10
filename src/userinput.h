@@ -109,7 +109,7 @@ static argcargv_t *userinput_tokenize(char *userinput) {
         a->userinput = userinput;
         a->ref = 1;
         // Convert argv[0] (a command name) to lowercase to workaround some dumb terminals 
-        q_tolower(a->argv[0],0);
+        q_tolower(a->argv[0]);
       } else {
         if (a->argv)
           q_free(a->argv);

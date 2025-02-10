@@ -77,7 +77,10 @@ static bool Color = false;           // Coloring is enabled?
 static int  Echo = STARTUP_ECHO;     // Runtime echo flag: -1=silent,0=off,1=on
 
 // -- Coloring / ANSI sequences --
+//
 // Sequence below have their **length** encoded as the very first byte to save on strlen() later.
+// These sequences are used by q_print() when decoding **color tags** (search for "<i> in the source code to find out where color tags are used")
+// Unlike HTML, our tags are 1-character long, for easier processing.
 //
 static const char *ansi_tags[26] = {
   ['b' - 'a'] = "\07\033[1;97m",   // [b]old bright white
@@ -94,10 +97,7 @@ static const char *ansi_tags[26] = {
 // This is here to keep Arduino IDE's colorer happy
 /*"*/
 
-// Tags are <X> where X is [a..z]|[/].
 // Return an ANSI terminal sequence which corresponds to given tag.
-// const attribute is here because we need GCC to perform CSE on this function
-// and anther one below
 //
 static __attribute__((const)) const char *tag2ansi(char tag) {
 
@@ -144,12 +144,11 @@ enum {
 
 // Check if memory address is in valid range. This function does not check memory access
 // rights, only boundaries are checked.
+// sizeof(unsigned int) == sizeof(void *) is ensured in espshell.c static_asserts section
 //
 bool __attribute__((const)) is_valid_address(const void *addr, unsigned int count) {
-  // On ESP32 "unsigned int" and "void *" aree both 32bit values, so it is ok to typecast like this.
-  // GCC will eliminate this local variable anyway
-  unsigned int ptr = (unsigned int)addr; 
-  return  ptr >= 0x20000000 ? (ptr + count <= 0x80000000) : false;
+  
+  return  ((unsigned int)addr >= 0x20000000) && ((unsigned int)addr + count <= 0x80000000);
 }
 
 
@@ -431,17 +430,16 @@ static char *q_strdup256(const char *ptr, int type) {
 // Conversion is done for characters 'A'..'Z' by setting 5th bit
 //
 // /p/   - pointer to the string being converted (must be writeable memory)
-// /len/ - if < 1, then string length is calculated by q_tolower. If > 0, then the value
-//         is used as number of bytes to convert
 //
-static void q_tolower(char *p, int len) {
-  if (p && *p) {
-    if (len < 1)
-      len = strlen(p);
-    while (--len >= 0) {
-      if (p[len] >= 'A' && p[len] <= 'Z')
-        p[len] |= 1 << 5;
-    }
+static void q_tolower(char *p) {
+  if (p) {
+    char pp;
+    do {
+      pp = *p; // pp undergo CSE removal, while *p is not :(
+      if (pp >= 'A' && pp <= 'Z')
+        *p = pp | (1 << 5);
+      p++;
+    } while( pp );
   }
 }
 
@@ -1045,7 +1043,7 @@ static unsigned int delay_interruptible(unsigned int duration) {
   return duration0;
 }
 
-// return "st", "nd", "rd" ot "th" depending on number
+// returns "st", "nd", "rd" ot "th" depending on number
 static inline __attribute__((const)) const char *number_english_ending(unsigned int n) {
   return n == 1 ? "st" : (n == 2 ? "nd" : (n == 3 ? "rd" : "th"));
 }
