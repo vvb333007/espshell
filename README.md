@@ -18,6 +18,7 @@
 
 WHAT IS THIS:
 -------------
+
  This is a debugging/development tool (a library for Arduino framework) for use 
  with Arduino projects on *ESP32 hardware*.
 
@@ -64,30 +65,42 @@ HOW TO INSTALL
  Click the **Library  Manager** icon and type "espshell" in a search box. 
  Choose latest version and click "INSTALL".
 
- For those who wish to install it manually (say, latest source code from GitHub)
+ **For those who wish to install it manually** (say, latest source code from GitHub)
  here are instructions:
 
-    1. Create folder /YourSketchBook/libraries/espshell
-    2. Copy library content (i.e. /docs, /src, /examples, etc) to that folder
-    3. Restart Arduino IDE
+ Create folder /YourSketchBook/libraries/espshell
+ Copy library content (i.e. /docs, /src, /examples, etc) to that folder
+ Restart Arduino IDE
 
 
 HOW TO USE IT IN MY PROJECT?
 ----------------------------
 
-    1. Add #include "espshell.h" to your sketch
+ Add #include "espshell.h" to your sketch
+ Compile and upload as usual
+ Open Serial Monitor, type "?" and press **Enter**
+ (**NOTE: SerialMonitor is not the best option. Preferred way is to use
+    a dedicated terminal software like **Tera Term**)
 
-    2. Compile and upload as usual
+WHAT IS ESPSHELL MEMORY/CPU FOOTPRINT?
+----------------------------------
 
-    3. Open Serial Monitor, type "?" and press **Enter**
-       (**NOTE: SerialMonitor is not the best option. Preferred way is to use
-       a dedicated terminal software like **Tera Term**)
+Latest GitHub version I checked was:
+
+  Code size (i.e. binary size): +81kbytes to the sketch
+  Data size (data + BSS): +2kbytes
+  There are also tiny portions of code with IRAM_ATTR (means they are in IRAM permanently)
+
+ESPShell executes on another core (on multicore systems) to minimize interference to 
+sketch execution
+
 
 DOCUMENTATION
 -------------
 
-    1. English (mostly up to date) is in "espshell/docs/"
-    2. Russian (outdated) is in "espshell/docs/ru_RU/"
+    English (mostly up to date) is in "espshell/docs/"
+                        and
+    Russian (outdated) is in "espshell/docs/ru_RU/"
 
     Files named "Commands.txt" and "Pin_Commands.txt" are essential chapters
     and it is a good idea to spend some of your time reading it.
