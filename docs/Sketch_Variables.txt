@@ -83,10 +83,20 @@ Another example:
     %    0, // table[9]
     % };
 
+To access an array element simply add its index like in C language. 
+
+    esp32#>var table[5]
+    % int table[5] = 6;
+    esp32#>
+
+Note that this syntax can also be used to access memory regions defined by pointers, not arrays.
+Using an index for a pointer variable simply means adding index value to the pointer before dereferencing.
+There will be warning message displayed in such case because ESPShell have no idea on memory ranges
+
 In the same way other variables can be displayed:
 
     esp32#>var a1
-    % unsigned char a1 = 99;  // use "var 99" see this number in hex, oct, bin etc
+    % unsigned char a1 = 99;
     esp32#>
 
 To set a variable to new value one can use "var VARIABLE_NAME NEW_VALUE" command.
