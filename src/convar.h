@@ -196,17 +196,76 @@ static const char *convar_typename2(struct convar *var) {
 
 
 // Find variable descriptor by variable name
-// /name/ - is full or shortened variable name
-// returns a pointer to the descriptor
+// /name/ - is full or shortened variable name, or an array element (i.e. name[index])
 //
-static struct convar *convar_get(const char *name) {
+// Returns a pointer to the descriptor
+// WARNING: For array elements a virtual variable is created & returned, and it is STATIC variable. So convar_get() function
+// WARNING: is NOT reentrant! Means, avoid running "var" command in a background.
+//
+static struct convar *convar_get(char *name) {
 
   struct convar *var;
   struct convar *candidate;
+  static struct convar var0; // WARNING: NOT REENTRANT!
+  char *br;
+  unsigned int idx = 0;  // Index to array element if element == true
+
   if (name == NULL)
     return var_head;
 
-  // try to find exact match...
+  // Variable name is an array element? (e.g. "buff[11]")
+  if ((br = q_findchar(name,'[')) != NULL) {
+
+    static char name0[64] = { 0 };
+    char *index = br + 1;
+
+    *br = '\0';
+    
+    br = q_findchar(index,']');
+    if (!br) {
+      q_print("% <e>Closing bracket \"]\" expected</>\r\n");
+      return NULL;
+    }
+    *br = '\0';
+    if ((idx = q_atol(index,DEF_BAD)) == DEF_BAD) {
+      q_print("% <e>Numeric index is expected within []</>\r\n");
+      return NULL;
+    }
+
+    // Recursive call. /name/ at this point was transformed from "Text[Index]"" to "Text"
+    // I.e. we are trying to get a descriptor for an array whose element was requested
+    if ((var = convar_get(name)) == NULL)
+      return NULL;
+
+    // Index only applies to pointers and arrays
+    if (!var->isp) {
+      q_printf("% Variable \"%s\" is not a pointer nor array\r\n",name);
+      return NULL;
+    }
+    
+    // Should we deny access to indicies beyound boundaries?
+    // In other hand it might be useful for accessing pointers as arrays
+    if (idx >= var->counta)
+      q_printf("%% Warning: requested element %u is beyound the array range 0..%u\r\n",idx,var->counta - 1);
+
+    // create a virtual variable pointing to a requested array element
+    // and pass it to the code below
+    memset(&var0,0,sizeof(var0));
+    snprintf(name0,sizeof(name0) - 1,"%s[%u]",var->name,idx);
+    var0.name = name0;
+    var0.ptr = (char *)(var->gpp) + idx * var->sizea;
+    var0.isf = var->isfa;
+    var0.isp = var->ispa;
+    var0.isu = var->isua;
+    var0.size = var->sizea;
+    var0.counta = 1;
+
+    // Done
+    return &var0;
+  }
+
+  // Requested variable is not an array element, it is just ordinary variable
+  // Try to find exact name match...
   for (var = var_head; var; var = var->next)
     if (!strcmp(name, var->name))
       return var;
@@ -272,7 +331,6 @@ static int convar_show_var(char *name) {
         q_printf("\r\n%% %s = {\r\n", convar_typename2(var));
 
         struct convar var0 = { 0 };
-
         
         var0.name = var->name;
         var0.isf = var->isfa;
@@ -427,8 +485,8 @@ static int cmd_var(int argc, char **argv) {
     return cmd_var_show(argc, argv);
 
   // Set variable
-  // does variable exist? get its size
   struct convar *var;
+
   if ((var = convar_get(argv[1])) == NULL)
     return 1;
 

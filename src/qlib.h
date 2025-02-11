@@ -62,9 +62,15 @@
 #define barrier_lock(_Name) portENTER_CRITICAL(&_Name)
 #define barrier_unlock(_Name) portEXIT_CRITICAL(&_Name)
 
-// Be nice & use good english
+
 // PPA(Number) generates 2 arguments for a printf ("%u%s",PPA(Number)), adding an "s" where its needed
 // NEE(Number) are similar to the PPA above except it generates "st", "nd","rd" and "th" depending on /Number/
+// returns "st", "nd", "rd" ot "th" depending on number
+//
+static inline __attribute__((const)) const char *number_english_ending(unsigned int n) {
+  return n == 1 ? "st" : (n == 2 ? "nd" : (n == 3 ? "rd" : "th"));
+}
+
 #define PPA(_X) _X, (_X) == 1 ? "" : "s"
 #define NEE(_X) _X, number_english_ending(_X)
 
@@ -426,7 +432,7 @@ static char *q_strdup256(const char *ptr, int type) {
 
 
 
-// Convert an asciiz (8bit per char) string to lowercase.
+// Convert an asciiz (7bit per char) string to lowercase.
 // Conversion is done for characters 'A'..'Z' by setting 5th bit
 //
 // /p/   - pointer to the string being converted (must be writeable memory)
@@ -1043,10 +1049,6 @@ static unsigned int delay_interruptible(unsigned int duration) {
   return duration0;
 }
 
-// returns "st", "nd", "rd" ot "th" depending on number
-static inline __attribute__((const)) const char *number_english_ending(unsigned int n) {
-  return n == 1 ? "st" : (n == 2 ? "nd" : (n == 3 ? "rd" : "th"));
-}
 #endif //#if COMPILING_ESPSHELL
 
 
