@@ -13,8 +13,16 @@
 // User sketch can **register** global or static variables to be accessible (for reading/writing)
 // from ESPShell. Once registered, variables can be manipulated by "var" command: see "extra/espshell.h"
 // for convar_add() definition, and example_blink.ino for example of use
+//
+// Sketch variables then can be accessible through "var" command:
+// "var VARIABLE_NAME" - display variable (for arrays it also displays its elements)
+// "var VARIABLE_NAME VALUE" - set variable to a new value
+// Individual array elements can be referred to as VARIABLE_NAME[INDEX]
 
 // "Console Variable" (convar) descriptor. These are created by convar_add() and linked into SL list
+// The head of the list is "var_head". 
+// Entries are created once and never deleted
+//
 struct convar {
   struct convar *next;     // next var in list
   const char *name;        // var name
@@ -47,7 +55,7 @@ typedef union composite_u {
 } composite_t;
 
 // Limits
-#define ARRAY_TOO_BIG       257 // don't display array content if its element count exceeeds this number. TODO: accept "var NAME[123] and var[12 16]"
+#define ARRAY_TOO_BIG       257 // don't display array content if its element count exceeeds this number
 
 #define CONVAR_NAMELEN_MAX  64 // max variable name length
 #define CONVAR_TYPELEN_MAX  32 // should be enough even for "unsigned long long"
@@ -67,6 +75,14 @@ static const char *__ucha = "unsigned char *";
 static const char *__usha = "unsigned short *";
 static const char *__uina = "unsigned int *";
 
+static bool variable_type_is_ok(unsigned int size) {
+  if (size != sizeof(char) && size != sizeof(short) && size != sizeof(int) && size != sizeof(float)) {
+    q_printf("%% Variable was not registered (unsupported size %u)\r\n",size);
+    return false;
+  }
+  return true;
+}
+
 
 // Register new sketch variable.
 // Memory allocated for variable descriptor is never free()'d. This function is not
@@ -83,87 +99,94 @@ void espshell_varadd(const char *name, void *ptr, int size, bool isf, bool isp, 
 
   struct convar *var;
 
-  if (size != sizeof(char) && size != sizeof(short) && size != sizeof(int) && size != sizeof(float)) {
-    q_printf("%% Variable \"%s\" was not registered (unsupported size %u)\r\n",name,size);
-    return;
-  }
-
-  if ((var = (struct convar *)q_malloc(sizeof(struct convar), MEM_STATIC)) != NULL) {
-    var->next = var_head;
-    var->name = name;
-    var->ptr = ptr;
-    var->size = size;
-    var->isf = isf ? 1 : 0;
-    var->isp = isp ? 1 : 0;
-    var->isu = isu ? 1 : 0;
-    var_head = var;
-  }
+  if (variable_type_is_ok(size))
+    if ((var = (struct convar *)q_malloc(sizeof(struct convar), MEM_STATIC)) != NULL) {
+      var->next = var_head;
+      var->name = name;
+      var->ptr = ptr;
+      var->size = size;
+      var->isf = isf ? 1 : 0;
+      var->isp = isp ? 1 : 0;
+      var->isu = isu ? 1 : 0;
+      var_head = var;
+    }
 }
 
 // Code above fails when trying to register a pointer, because of integer comparision code
 // Code below is used to register pointers
+// The /size/ argument here is the sizeof(*ptr), i.e. size of a memory region pointed by pointer
 //
 void espshell_varaddp(const char *name, void *ptr, int size, bool isf, bool isp, bool isu) {
 
   struct convar *var;
 
-  if ((var = (struct convar *)q_malloc(sizeof(struct convar), MEM_STATIC)) != NULL) {
+  if (variable_type_is_ok(size))
+    if ((var = (struct convar *)q_malloc(sizeof(struct convar), MEM_STATIC)) != NULL) {
    
-    var->next = var_head;
-    var->name = name;
-    var->ptr = ptr;
-    var->isp = 1;
-    var->isf = 0;
-    var->isu = 0;
-    var->size = sizeof( void * );
-    var->sizea = size;
-    var->counta = 1;
-    var->isfa = isf;
-    var->isua = isu;
-    var->ispa = isp;
-    var_head = var;
+      var->next = var_head;
+      var->name = name;
+      var->ptr = ptr;
+      var->isp = 1;
+      var->isf = 0;
+      var->isu = 0;
+      var->size = sizeof( void * );
+      var->sizea = size;
+      var->counta = 1;
+      var->isfa = isf;
+      var->isua = isu;
+      var->ispa = isp;
+      var_head = var;
   }
 }
 
 // Code above fails when trying to register an array, because of & operator logic. (&array and &pointer are different things)
 // Code below is used to register arrays
+// In this case ->ptr points to internal general purpose pointer, which points to the first array element.
+// Because of this it is possible to set an array variable to a new value. It will not affect the sketch 
+// (you can not change address of an array) but it will affect ESPShell.
 //
 void espshell_varadda(const char *name, void *ptr, int size,int count, bool isf, bool isp, bool isu) {
 
   struct convar *var;
 
-  if ((var = (struct convar *)q_malloc(sizeof(struct convar), MEM_STATIC)) != NULL) {
+  if (variable_type_is_ok(size))
+    if ((var = (struct convar *)q_malloc(sizeof(struct convar), MEM_STATIC)) != NULL) {
 
-    var->gpp = ptr;
-    var->next = var_head;
-    var->name = name;
-    var->ptr = &var->gpp;
-    var->isp = 1;
-    var->isf = 0;
-    var->isu = 0;
-    var->size = sizeof( void * );
-    var->sizea = size;
-    var->counta = count;
-    var->isfa = isf;
-    var->isua = isu;
-    var->ispa = isp;
-    var_head = var;
-  }
+      var->gpp = ptr;                   // actual pointer to the array (i.e. &array[0])
+      var->next = var_head;
+      var->name = name;
+      var->ptr = &var->gpp;             // "address of a variable" for arrays it is always points to GPP
+      var->isp = 1;                     // It is a pointer
+      var->isf = 0;
+      var->isu = 0;
+      var->size = sizeof( void * );     // size of a pointer is a constant
+      var->sizea = size;                // size of array element
+      var->counta = count;              // number of elements in the array
+      var->isfa = isf;                  // is?a is a twin brothers of their is? counterparts but related to the array element
+      var->isua = isu;
+      var->ispa = isp;
+      var_head = var;
+    }
 }
 
-// return asciiz string with C-style variable type
-// e.g. "float" or "unsigned int *" in case of pointers or arrays
+// return asciiz string with C-style type of a variable.
+// E.g. returns "float" or "unsigned int *" in case of pointers or arrays
+// Never return NULL
 //
 static const char *convar_typename(struct convar *var) {
+
   int off = var->isu ? 0 : 9; // offset to strings like "unsigned int" to make them "int" (i.e. skip first /off/ bytes)
-  return var ? (var->isf ? "float" : 
-                          (var->isp ? (var->isfa ? "float *" : 
-                                                    (var->ispa ? "void **" : 
-                                                                 (var->sizea == sizeof(int) ? __uina + off : 
-                                                                                    (var->sizea == sizeof(short) ? __usha + off : 
-                                                                                                       __ucha + off)))) :
-                                      (var->size == sizeof(int) ? __uin + off : (var->size == sizeof(short) ? __ush + off : __uch + off)))) : 
-                "(null)";
+
+  return var ? (var->isf  ? "float"
+                          : (var->isp ? (var->isfa ? "float *"
+                                                   : (var->ispa ? "void **"
+                                                                : (var->sizea == sizeof(int) ? __uina + off
+                                                                                             :  (var->sizea == sizeof(short) ? __usha + off
+                                                                                                                             : __ucha + off)))) 
+                                      : (var->size == sizeof(int) ? __uin + off 
+                                                                  : (var->size == sizeof(short) ? __ush + off 
+                                                                                                : __uch + off))))
+             : "(null)";
 }
 
 
@@ -239,14 +262,20 @@ static struct convar *convar_get(char *name) {
 
     // Index only applies to pointers and arrays
     if (!var->isp) {
-      q_printf("% Variable \"%s\" is not a pointer nor array\r\n",name);
+      q_printf("%% Variable \"%s\" is not a pointer nor array\r\n",name);
       return NULL;
     }
     
     // Should we deny access to indicies beyound boundaries?
     // In other hand it might be useful for accessing pointers as arrays
-    if (idx >= var->counta)
-      q_printf("%% Warning: requested element %u is beyound the array range 0..%u\r\n",idx,var->counta - 1);
+    if (idx >= var->counta) {
+      if (var->counta > 1) { // an array. defenitely we don't want to go beyound its boundaries
+        q_printf("%% Requested element %u is beyound the array range 0..%u\r\n",idx,var->counta - 1);
+        return NULL;
+      }
+      // Pointers unlike arrays always have their .counta set to 1, so we don't know the real boundaries.
+      // We just issue the warning and continue. Arrays of size 1 are treated as pointers so no warning will be issued
+    }
 
     // create a virtual variable pointing to a requested array element
     // and pass it to the code below
@@ -345,7 +374,7 @@ static int convar_show_var(char *name) {
         }
         q_print("% };\r\n");
       } else 
-        q_printf(", too many to display\r\n");
+        q_print(", too many to display\r\n%% Use \"var Name[Index]\" to display individual array elements\r\n");
     } else
       q_print(CRLF);
   }
@@ -399,6 +428,9 @@ static int convar_show_number(const char *p) {
     // Octal, Binary or Hex number?
     if (p[0] == '0') {
       unumber = q_atol(p,DEF_BAD);
+      // Prepare for "unsafe" C-style typecast: these memcpy() here and below
+      // just make a copy of the same value into different type variables.
+      // This can be used to see a hex representation of a floating point variable and so on
       memcpy(&fnumber, &unumber, sizeof(fnumber));
       memcpy(&inumber, &unumber, sizeof(inumber));
     } else {
@@ -419,7 +451,7 @@ static int convar_show_number(const char *p) {
           memcpy(&inumber, &fnumber, sizeof(inumber));
         } else {
           // No brother, this defenitely not a number.
-          q_printf("%% \"%s\" doesn't look like number\r\n",p);
+          q_printf("%% <e>A number is expected. \"%s\" doesn't look like number</>\r\n",p);
           return 0;
         }
     }
@@ -498,12 +530,19 @@ static int cmd_var(int argc, char **argv) {
       return 2;
     }
   } else {
-    // integers & pointer values
-    // TODO: warn if float argument is detected
+    // Integers & pointer values.
+    // Warn if float argument is detected, or negative value is attempted for an unsigned variable
+    //
     if (q_isnumeric(argv[2])) {
+      if (q_findchar(argv[2],'.')) {
+        q_printf("%% <e>Variable \"%s\" is integer, new value is not set</>\r\n",var->name);
+        return 0;
+      }
+
+      // New value is a negative integer?
       if (argv[2][0] == '-') {
         if (var->isu) {
-          q_printf("%% Variable \"%s\" is unsigned, new value is not set\r\n",var->name);
+          q_printf("%% <e>Variable \"%s\" is unsigned, new value is not set</>\r\n",var->name);
           return 0;
         }
         signed int val = -q_atol(&(argv[2][1]), 0);
@@ -516,6 +555,7 @@ static int cmd_var(int argc, char **argv) {
         else 
           goto report_and_exit;
       } else {
+      // New value is an unsigned integer?
         unsigned int val = q_atol(argv[2], 0);
         if (var->size == sizeof(int))
           u.uval  = val; else
