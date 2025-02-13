@@ -56,11 +56,11 @@ static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
 }
 
 
-//TAG:tty
 //"tty NUM"
 //
 // Set UART (or USBCDC) to use by this shell.
 // this command is hidden to not confuse users
+//
 static int cmd_tty(int argc, char **argv) {
 
   unsigned char tty;
@@ -86,7 +86,6 @@ static int cmd_tty(int argc, char **argv) {
   return 0;
 }
 
-//TAG:echo
 //"echo on|off|silent"
 //
 // Enable/disable local echo. Normally enabled, it lets software
@@ -94,17 +93,23 @@ static int cmd_tty(int argc, char **argv) {
 // all shell output (except for command handlers output)
 //
 // Setting "echo silent" has effect of "echo off" + all command output
-// is supressed as well. commands executed do not output anything
+// is supressed as well. commands are executed do not output anything
 //
 static int cmd_echo(int argc, char **argv) {
 
   if (argc < 2)
     q_printf("%% Echo is \"%s\"\r\n", Echo ? "on" : "off");  //if echo is silent we can't see it anyway so no bother printing
   else {
-    if (!q_strcmp(argv[1], "on")) Echo = 1;
-    else if (!q_strcmp(argv[1], "off")) Echo = 0;
-    else if (!q_strcmp(argv[1], "silent")) Echo = -1;
-    else return 1;
+#if 0    
+    if (!q_strcmp(argv[1], "on"))     Echo = 1;  else 
+    if (!q_strcmp(argv[1], "off"))    Echo = 0;  else 
+    if (!q_strcmp(argv[1], "silent")) Echo = -1; else return 1;
+#else
+    Echo = (argv[1][0] == 'o') ? (argv[1][1] == 'n' ? 1
+                                                    : 0) 
+                               : (argv[1][0] == 's' ? -1 
+                                                    : Echo);
+#endif    
   }
   return 0;
 }

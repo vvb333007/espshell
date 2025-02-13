@@ -23,6 +23,9 @@
 // The head of the list is "var_head". 
 // Entries are created once and never deleted
 //
+// TODO: This code needs a review. There may be buffer overflows because of strcpy and sprintf. These should be changed to strlcpy & snprintf
+// TODO: Verify that no variables with names longer than CONVAR_NAMELEN_MAX-1 can be registered
+
 struct convar {
   struct convar *next;     // next var in list
   const char *name;        // var name
@@ -115,7 +118,7 @@ void espshell_varadd(const char *name, void *ptr, int size, bool isf, bool isp, 
 // Code above fails when trying to register a pointer, because of integer comparision code
 // Code below is used to register pointers
 // The /size/ argument here is the sizeof(*ptr), i.e. size of a memory region pointed by pointer
-//
+// TODO: pointer to a pointer can not be registered on the same reason
 void espshell_varaddp(const char *name, void *ptr, int size, bool isf, bool isp, bool isu) {
 
   struct convar *var;
@@ -145,6 +148,7 @@ void espshell_varaddp(const char *name, void *ptr, int size, bool isf, bool isp,
 // Because of this it is possible to set an array variable to a new value. It will not affect the sketch 
 // (you can not change address of an array) but it will affect ESPShell.
 //
+// TODO: array of pointers can not be registered. 
 void espshell_varadda(const char *name, void *ptr, int size,int count, bool isf, bool isp, bool isu) {
 
   struct convar *var;
@@ -171,11 +175,11 @@ void espshell_varadda(const char *name, void *ptr, int size,int count, bool isf,
 
 // return asciiz string with C-style type of a variable.
 // E.g. returns "float" or "unsigned int *" in case of pointers or arrays
-// Never return NULL
+// Never returns NULL
 //
 static const char *convar_typename(struct convar *var) {
 
-  int off = var->isu ? 0 : 9; // offset to strings like "unsigned int" to make them "int" (i.e. skip first /off/ bytes)
+  int off = var->isu ? 0 : 9; // offset to strings like "unsigned int" to make them "int" (i.e. skip first 9 bytes)
 
   return var ? (var->isf  ? "float"
                           : (var->isp ? (var->isfa ? "float *"
@@ -219,12 +223,13 @@ static const char *convar_typename2(struct convar *var) {
 
 
 // Find variable descriptor by variable name
-// /name/ - is full or shortened variable name, or an array element (i.e. name[index])
+// /name/ - variable name (e.g. "my_var" or "arr[10]"), can be shortened
 //
 // Returns a pointer to the descriptor
 // WARNING: For array elements a virtual variable is created & returned, and it is STATIC variable. So convar_get() function
-// WARNING: is NOT reentrant! Means, avoid running "var" command in a background.
-//
+//          is NOT reentrant! Means, avoid running "var" command in a background.
+// WARNING: convar_get() can write to the string which is passed as its argument! All convar names are expected to come from an argv's
+//          so they are writeable. Dont attempt convar_get("String literal")!
 static struct convar *convar_get(char *name) {
 
   struct convar *var;
@@ -237,14 +242,14 @@ static struct convar *convar_get(char *name) {
     return var_head;
 
   // Variable name is an array element? (e.g. "buff[11]")
-  if ((br = q_findchar(name,'[')) != NULL) {
+  if ((br = (char *)q_findchar(name,'[')) != NULL) {
 
-    static char name0[64] = { 0 };
+    static char name0[CONVAR_NAMELEN_MAX] = { 0 };
     char *index = br + 1;
 
     *br = '\0';
     
-    br = q_findchar(index,']');
+    br = (char *)q_findchar(index,']');
     if (!br) {
       q_print("% <e>Closing bracket \"]\" expected</>\r\n");
       return NULL;
@@ -340,13 +345,15 @@ static int convar_value_as_string(struct convar *var, char *out, int olen) {
 //
 static int convar_show_var(char *name) {
 
-    struct convar *var;
-    if ((var = convar_get(name)) == NULL) {
-      HELP(q_printf("%% <e>\"%s\" : No such variable. (use \"var\" to display variables list)</>\r\n", name));
-      return 1;
-    }
+  struct convar *var;
+
+  if ((var = convar_get(name)) == NULL) {
+    HELP(q_printf("%% <e>\"%s\" : No such variable registered. (type \"var\" to see the list)</>\r\n", name));
+    return 1;
+  }
 
   char out[CONVAR_BUFSIZ]; 
+
   if (convar_value_as_string(var,out,sizeof(out)) == 0) {
     // Print value
     q_printf("%% %s <i>%s</> = <g>%s</>;  ", convar_typename(var), var->name, out);

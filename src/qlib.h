@@ -83,12 +83,19 @@ static bool Color = false;           // Coloring is enabled?
 static int  Echo = STARTUP_ECHO;     // Runtime echo flag: -1=silent,0=off,1=on
 
 // -- Coloring / ANSI sequences --
+// ESPShell messages can have **color tags** embedded into them like in example below:
+//       "This <b>text is bold</><u><g>And this one green and underlined</>"
 //
-// Sequence below have their **length** encoded as the very first byte to save on strlen() later.
-// These sequences are used by q_print() when decoding **color tags** (search for "<i> in the source code to find out where color tags are used")
-// Unlike HTML, our tags are 1-character long, for easier processing.
+// The HTML-looking tags we use are single-letter tags: <b> <e> <i> ... 
+// Closing tag </> simply sets standart colors and text attributes (cancels action of all tags).
+// Tag actions are additive: <g><u> will set text color to green and then turns underline font option.
 //
-static const char *ansi_tags[26] = {
+// Color tags are processed in q_print() (there are 1 direct use of color sequence in editline.h) and
+// either replaced with ANSI coloring sequences or they are simply gets stripped if coloring is turned off
+//
+// Sequences below have their **length** encoded as the very first byte to save on strlen() later.
+//
+static const char *ansi_tags['z' - 'a' + 1] = {
   ['b' - 'a'] = "\07\033[1;97m",   // [b]old bright white
   ['e' - 'a'] = "\05\033[95m",     // [e]rror message (bright magenta)
   ['i' - 'a'] = "\010\033[33;93m", // [i]important information (eye-catching bright yellow)
@@ -98,6 +105,7 @@ static const char *ansi_tags[26] = {
   ['o' - 'a'] = "\05\033[33m",     // [o]ptional dark yellow
   ['u' - 'a'] = "\07\033[4;37m",   // [u]nderlined, normal white
   ['g' - 'a'] = "\05\033[92m",     // [g]reen. Bright green
+  //other definitions can be added here as well as long as they are in [a-z] range
 };
 
 // This is here to keep Arduino IDE's colorer happy
@@ -113,19 +121,8 @@ static __attribute__((const)) const char *tag2ansi(char tag) {
 }
 
 
-// -- Memory allocation wrappers --
-//
-// If MEMTEST is set to 0 (the default value) then q_malloc is simply malloc(),
-// q_free() is free() and so on.
-//
-// If MEMTEST is non-zero then ESPShell provides its own versions of q_malloc, q_strdup, q_realloc and q_free
-// functions which do memory statistics/tracking and perform some checks on pointers
-// being freed
-//
-
-
 // Memory type: a number from 0 to 15 to identify newly allocated memory block intended
-// usage. Newly allocated memory is assigned one of the types below. Command "mem" invokes
+// usage. Newly allocated memory is assigned one of the types below. Command "sh mem" invokes
 // q_memleaks() function to dump memory allocation information. Only works #if MEMTEST == 1
 
 enum {
@@ -158,17 +155,20 @@ bool __attribute__((const)) is_valid_address(const void *addr, unsigned int coun
 }
 
 
+
+
 #if MEMTEST
-// WARNING: not suitable for mallocing buffers larger than 512k.
-// -- Memory wrappers for leaks hunting --
+// If MEMTEST is non-zero then ESPShell provides its own versions of q_malloc, q_strdup, q_realloc and q_free
+// functions which do memory statistics/tracking and perform some checks on pointers
+// being freed. When MEMTEST is 0 then q_malloc(), q_free(), ... are aliases for malloc(), free() ...
 //
-// memory calls (malloc,realloc,free and strdup) are wrapped to keep track of
-// allocations and report ememory usage statistics.
+// Memory allocation API (malloc(), realloc(), free() and strdup()) are wrapped to keep track of
+// allocations and report memory usage statistics. This code here is for debugging ESPShell itself only!
 //
-// espshell stores all allocation in a list and creates 2 bytes overwrite detection
-// zone at the end of the buffer allocated. these are checked upon q_free()
+// ESPShell keeps track of all its memory allocations in a SL list and also creates a 2 bytes "buffer 
+// overwrite detection zone" at the end of the buffer allocated. These are checked upon q_free()
 //
-// statistics is displayed by "mem" command
+// Statistics is displayed by "show memory" command
 //
 typedef struct list_s {
   struct list_s *next;

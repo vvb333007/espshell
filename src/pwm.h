@@ -8,21 +8,22 @@
 
 
 // -- PWM module --
-// Enables/disables a PWM signal on arbitrary pin.
 //
-// TODO: cover all frequency ranges up to 10MHz
-// TODO: remove ArduinoCore dependency, rewrite all PWM code using plain idf
+// Enables/disables a PWM signal on arbitrary pin.
+// Unfortunately, the way it is done in ESP32 you can't have different pins generating different frequencies.
+// What you can have is the same frequency but different duty for every pin.
+//
+// PWM can be enabled either by "pwm"  command or "pin pwm" command. 
 //
 #if COMPILING_ESPSHELL
 
-#define MAGIC_FREQ 312000  // max allowed frequency for the "pwm" command
+#define MAGIC_FREQ 312000  // max allowed frequency for the "pwm" command. TODO: cover all frequency ranges up to 10MHz
 
-// enable or disable (freq==0) squarewave generation on given pin. 
-// freq is in (0..312kHz), duty is [0..1]
+// Enable or disable (freq==0) PWM generation on given pin. 
+// Frequency must be in range (0..312kHz), duty is floating point number in range [0..1]. Depending on the frequency
+// different LEDC resolution may be choosen.
 //
-// TODO: there is a bug somewhere in this function. Sometimes, on a first use after
-//       reboot it enables PWM but there is no output (as indicated by attached led).
-//       calling this function again resolves the glitch.
+// This function is used by command "pwm" (see cmd_pwm()) and it is also used by "pin" command (see cmd_pin())
 //
 static int pwm_enable(unsigned int pin, unsigned int freq, float duty) {
 
@@ -31,13 +32,15 @@ static int pwm_enable(unsigned int pin, unsigned int freq, float duty) {
   if (!pin_exist(pin))
     return -1;
 
+  // Sanity checks on arguments
   if (freq > MAGIC_FREQ) freq = MAGIC_FREQ;
   if (duty > 1.0f) duty = 1.0f;
-  if (freq < 78722) resolution = 10;  //higher duty parameter resolution on frequencies below 78 kHz
 
-  // Switching thr pin mode here is done via Arduino Core because we want mr. Periman to run its deinit()
-  // stuff effectively detaching from the LEDC driver
-  // 
+  // Choose 10 bit duty resolution if frequency is low enough
+  if (freq < 78722) resolution = 10;
+
+  // pinMode() calls periman's deinit()stuff effectively detaching a pin from the LEDC driver
+  // so we don't need to call ledcDetach()
   pinMode(pin, OUTPUT);
   //ledcDetach(pin);
 
@@ -62,7 +65,7 @@ static int cmd_pwm(int argc, char **argv) {
   if (argc < 2) return CMD_MISSING_ARG;     // missing arg
   pin = q_atol(argv[1], 999);  // first parameter is pin number
 
-  //frequency is the second one (optional)
+  //frequency is the second one (optional, can't be zero)
   if (argc > 2) {
     if ((freq = q_atol(argv[2], 0)) == 0)
       return 2;

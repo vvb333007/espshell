@@ -774,7 +774,8 @@ static int cmd_pin(int argc, char **argv) {
         i++;
         if ((duration = q_atol(argv[i], -1)) < 0)
           return i;
-        // Display a hint for the first time when delay is longer than 5 seconds
+        // Display a hint for the first time when delay is longer than 5 seconds.
+        // Any key works instead of <Enter> but Enter works in Arduino Serial Monitor
         if (!informed && (duration > TOO_LONG)) {
           informed = true;
           if (is_foreground_task())
@@ -881,13 +882,13 @@ static int cmd_pin(int argc, char **argv) {
           }
 
         } else
-        //A keyword which is a number. when we see a number we use it as a pin number
+        //A keyword which is a decimal number. when we see a number we use it as a pin number
         //for subsequent keywords. Must be valid GPIO number.
         if (isnum(argv[i])) {
           if (!pin_exist((pin = q_atol(argv[i], DEF_BAD))))
             return i;
         } else
-          // argument i was not recognized
+        // argument i was not recognized
           return i;
       // go to the next keyword
       i++;
