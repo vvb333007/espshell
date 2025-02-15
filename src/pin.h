@@ -568,6 +568,7 @@ static int pin_show(int argc, char **argv) {
     // Input
     if (ie) {
       q_print("% Input is done via <b>");
+      // if pin function is set to GPIO_Matrix, fetch and display all the peri ID's that are connected to this pin
       if (fun_sel == PIN_FUNC_GPIO) {
         q_print("GPIO Matrix</>, ");
         for (int i = 0; i < SIG_GPIO_OUT_IDX; i++)
@@ -595,15 +596,8 @@ static int pin_show(int argc, char **argv) {
   }
 #endif
   drv = !drv ? 5 : (drv == 1 ? 10 : (drv == 2 ? 20 : 40));
-  q_print("% Maximum current is ");
-#if WITH_COLOR
-  if (drv > 20)
-    q_print("<w>");
-  else if (drv < 20)
-    q_printf("<i>");
-#endif
-  q_printf("%u", (unsigned int)drv);
-  q_print("</> milliamps\r\n");
+  q_printf("%% Maximum current is %u milliamps\r\n", (unsigned int)drv);
+  
 
   // enable INPUT if was not enabled before
   //
@@ -628,8 +622,6 @@ static int pin_show(int argc, char **argv) {
 //
 // Current argument index is advanced by these micro-handlers so main cmd_pin() can process all arguments 
 //
-// In case of error, a negative value of -2 is returned
-
 
 
 // handles "pin X pwm FREQ DUTY"
@@ -642,8 +634,8 @@ static int cmd_pin_pwm(int argc, char **argv,unsigned int pin, unsigned int *sta
   float duty;
   // make sure that there are 2 extra arguments after "pwm" keyword
   if ((i + 2) >= argc) {
-    HELP(q_print("% <e>Frequency and duty cycle are both expected</>\r\n"));
-    return i;
+    HELP(q_print("% <e>Frequency and duty cycle: both are expected</>\r\n"));
+    return CMD_MISSING_ARG;
   }
   i++;
   freq = q_atol(argv[i++], MAGIC_FREQ + 1);
@@ -676,33 +668,55 @@ static int cmd_pin_pwm(int argc, char **argv,unsigned int pin, unsigned int *sta
 static int cmd_pin_sequence(int argc, char **argv,unsigned int pin, unsigned int *start) {
 
   int i = *start;
+  int seq, j;
 
   // do we have at least 1 extra arg after ith?
   if ((i + 1) >= argc) {
     HELP(q_printf("%% <e>Sequence number expected after \"%s\"</>\r\n", argv[i]));
-    return i;
+    return CMD_MISSING_ARG;
   }
-
-  i++;
-  *start = i;
-
-  int seq, j;
+  *start = ++i;
 
   // Enable selected RMT sequence 'seq' on pin 'pin'
-  // TODO: should we "return 0" on error instead of continuing with next keyword?
   if (seq_isready((seq = q_atol(argv[i], DEF_BAD)))) {
-    HELP(q_printf("%% Sending sequence %u over GPIO %u\r\n", seq, pin));
-    if ((j = seq_send(pin, seq)) < 0)
-      q_printf("%% <e>Failed. Error code is: %d</>\r\n", j);
+    //HELP(q_printf("%% Sending sequence %u over GPIO %u\r\n", seq, pin));
+    if ((j = seq_send(pin, seq)) == 0)
+      return 0;
+    q_printf("%% <e>RMT failed with code %d</>\r\n", j);
   } else
     q_printf("%% <e>Sequence %u is not configured</>\r\n", seq);
-  return 0;
+  return CMD_FAILED;
 }
-#if 0
+
 // handles "pin X matrix [in|out SIGNAL_ID]"
 // Since pin is multiple-argument command we also pass the /start/ index into argv[] array
 // 
 static int cmd_pin_matrix(int argc, char **argv,unsigned int pin, int *start) {
+
+  int i = *start;
+
+  // set pin function to "Simple GPIO via GPIO Matrix"
+  pin_set_iomux_function(pin, PIN_FUNC_GPIO);
+
+  // Is there any signal IDs provided? 
+  if (i + 2 < argc) {
+
+    // must be a number
+    if (!isnum(argv[i + 2]))
+      return i + 2;
+
+    // read the signal id. defaults to "simple GPIO" on fail
+    unsigned int sig_id = q_atol(argv[i + 2],SIG_GPIO_OUT_IDX);
+    // TODO: handle "invert" flag/keyword
+    if (argv[i + 1][0] == 'i')                     // was it "in" signal?
+      gpio_matrix_in(pin, sig_id, false);
+    else
+      gpio_matrix_out(pin, sig_id, false, false);  // ..no. then it is "out"
+
+    // advance to next keyword (skip [in|out] and SIGNAL_ID)
+    *start += 2;
+  }
+
   return 0;
 }
 
@@ -710,11 +724,31 @@ static int cmd_pin_matrix(int argc, char **argv,unsigned int pin, int *start) {
 // Since pin is multiple-argument command we also pass the /start/ index into argv[] array
 // TODO: make COUNT arg to "loop" optional. Omitted count means "loop forever"
 //
-static int cmd_pin_loop(int argc, char **argv,unsigned int pin, int start) {
+static int cmd_pin_loop(int argc, char **argv,unsigned int pin, int *start, unsigned int *count) {
+
+  int i = *start;
+
+  //must have an extra argument (loop count)
+  if ((i + 1) >= argc) {
+    HELP(q_print("% <e>Loop count expected after keyword \"loop\"</>\r\n"));
+    return CMD_MISSING_ARG;
+  }
+
+  *start = ++i;
+
+  // loop must be the last keyword, so we can strip it later
+  if ((i + 1) < argc) {
+    HELP(q_print("% <e>\"loop\" must be the last keyword</>\r\n"));
+    return i + 1;
+  }
+  //read loop count
+  if ((*count = q_atol(argv[i], 0)) == 0)
+    return i;
+
+  HELP(q_printf("%% Repeating whole command %u times%s\r\n", *count,is_foreground_task() ? ", press <Enter> to abort" : ""));
+
   return 0;
 }
-#endif
-
 
 
 // "pin NUM arg1 arg2 .. argn"
@@ -739,32 +773,27 @@ static int cmd_pin(int argc, char **argv) {
   if (!pin_exist((pin = q_atol(argv[1], DEF_BAD))))
     return 1;
 
-  //"pin X" command is executed here
+  //"pin X" command
   if (argc == 2)
     return pin_show(argc, argv);
-
-  // process all arguments from left to the right:
+  
   do {
 
-    //Run through "pin NUM arg1, arg2 ... argN" arguments, looking for keywords
-    // to execute.
+    // Run through "pin NUM arg1, arg2 ... argN" arguments, looking for keywords to execute.
+    // Abort if there were errors during next keywords processing. 
+    //
     while (i < argc) {
+
       int ret;
 
-      //1. "seq NUM" keyword.
-      if (!q_strcmp(argv[i], "sequence")) {
-        if ((ret = cmd_pin_sequence(argc,argv,pin,&i)) != 0)
-          return ret;
-      } else
       //2. "pwm FREQ DUTY" keyword.
-      // unlike global "pwm" command the duty and frequency are not an optional
-      // parameter anymore.
+      // unlike global "pwm" command the duty and frequency are not an optional parameter anymore.
       if (!q_strcmp(argv[i], "pwm")) {
         if ((ret = cmd_pin_pwm(argc,argv,pin,&i)) != 0)
           return ret;
       } else
-      //3. "delay X" keyword
-      //creates delay for X milliseconds.
+      //3. "delay X" keyword. 
+      // Creates *interruptible* delay for X milliseconds.
       if (!q_strcmp(argv[i], "delay")) {
         int duration;
         if ((i + 1) >= argc) {
@@ -772,7 +801,7 @@ static int cmd_pin(int argc, char **argv) {
           return i;
         }
         i++;
-        if ((duration = q_atol(argv[i], -1)) < 0)
+        if ((duration = (int)q_atol(argv[i], -1)) < 0) //TODO: should we use atoi?
           return i;
         // Display a hint for the first time when delay is longer than 5 seconds.
         // Any key works instead of <Enter> but Enter works in Arduino Serial Monitor
@@ -788,20 +817,19 @@ static int cmd_pin(int argc, char **argv) {
           return 0;
         }
       } else
-      //Now all the single-line keywords:
       // 4. "pin X save"
       if (!q_strcmp(argv[i], "save")) pin_save(pin); else
       // 5. "pin X up"
       if (!q_strcmp(argv[i], "up")) { flags |= PULLUP; pinForceMode(pin, flags); } else  // set flags immediately as we read them
-      // 10. "pin X down"
+      // 6. "pin X down"
       if (!q_strcmp(argv[i], "down")) { flags |= PULLDOWN; pinForceMode(pin, flags); } else
-      // 12. "pin X in"
+      // 7. "pin X in"
       if (!q_strcmp(argv[i], "in")) { flags |= INPUT; pinForceMode(pin, flags); } else
-      // 13. "pin X out"
+      // 8. "pin X out"
       if (!q_strcmp(argv[i], "out")) { flags |= OUTPUT_ONLY; pinForceMode(pin, flags); } else
-      // 11. "pin X open"
+      // 9. "pin X open"
       if (!q_strcmp(argv[i], "open")) { flags |= OPEN_DRAIN; pinForceMode(pin, flags); } else
-      // 14. "pin X low | high" keyword. only applies to I/O pins, fails for input-only pins
+      // 10. "pin X low | high" keyword. only applies to I/O pins, fails for input-only pins
       if (!q_strcmp(argv[i], "low") || !q_strcmp(argv[i],"high")) {
         if (pin_is_input_only_pin(pin)) {
           q_printf("%% <e>Pin %u is **INPUT-ONLY**, can not be set \"%s</>\"\r\n", pin, argv[i]);
@@ -812,85 +840,53 @@ static int cmd_pin(int argc, char **argv) {
         pinForceMode(pin, flags);
         digitalForceWrite(pin, argv[i][0] == 'l' ? LOW : HIGH);
       } else
-      // 16. "pin X read"
+      // 11. "pin X read"
       if (!q_strcmp(argv[i], "read")) q_printf("%% GPIO%d : logic %d\r\n", pin, digitalForceRead(pin)); else
-      // 17. "pin X read"
+      // 12. "pin X aread"
       if (!q_strcmp(argv[i], "aread")) q_printf("%% GPIO%d : analog %d\r\n", pin, analogRead(pin)); else
-      // 7. "pin X hold"
+      //1. "seq NUM" keyword.
+      if (!q_strcmp(argv[i], "sequence")) {
+        if ((ret = cmd_pin_sequence(argc,argv,pin,&i)) != 0)
+          return ret;
+      } else
+      // 13. "pin X hold"
       if (!q_strcmp(argv[i], "hold")) gpio_hold_en((gpio_num_t)pin); else
-      // 8. "pin X release"
+      // 14. "pin X release"
       if (!q_strcmp(argv[i], "release")) gpio_hold_dis((gpio_num_t)pin); else
-      // 6. "pin X load"
+      // 15. "pin X load"
       if (!q_strcmp(argv[i], "load")) pin_load(pin); else
-      // 6.1 "pin X iomux [NUMBER | gpio]"
+      // 16. "pin X iomux [NUMBER | gpio]"
       if (!q_strcmp(argv[i], "iomux")) {
-        unsigned char function = 0; // default is IO_MUX function 0 which is, in most cases, a GPIO function via IO_MUX
+        // default is IO_MUX function 0 which is, in most cases, a GPIO function via IO_MUX
+        unsigned char function = 0; 
+
+        // if we have extra arguments, then treat number as IO_MUX function, treat text as special case. 
         if ((i+1) < argc)
-            // if we have extra arguments, then treat number as IO_MUX function, treat text as special case. 
             function = q_atol(argv[++i],PIN_FUNC_PAD_SELECT_GPIO); 
           pin_set_iomux_function(pin, function);
-        } else
-        // 6.2 "pin X matrix [in|out NUMBER]"
-        if (!q_strcmp(argv[i], "matrix")) {
-          // set pin function to "Simple GPIO via GPIO Matrix"
-          pin_set_iomux_function(pin, PIN_FUNC_GPIO);
-
-          // Is there any signal IDs provided? 
-          if (i + 2 < argc) {
-
-            // must be a number
-            if (!isnum(argv[i + 2]))
-              return i + 2;
-
-            // read the signal id. defaults to "simple GPIO" on fail
-            unsigned int sig_id = q_atol(argv[i + 2],SIG_GPIO_OUT_IDX);
-            // TODO: handle "invert" flag/keyword
-            if (argv[i + 1][0] == 'i')                     // was it "in" signal?
-              gpio_matrix_in(pin, sig_id, false);
-            else
-              gpio_matrix_out(pin, sig_id, false, false);  // ..no. then it is "out"
-            // advance to next keyword
-            i += 2;
-          }
-        } else
-        //4. "loop" keyword
-        if (!q_strcmp(argv[i], "loop")) {
-          //must have an extra argument (loop count)
-          if ((i + 1) >= argc) {
-            HELP(q_print("% <e>Loop count expected after keyword \"loop\"</>\r\n"));
-            return i;
-          }
-          i++;
-
-          // loop must be the last keyword, so we can strip it later
-          if ((i + 1) < argc) {
-            HELP(q_print("% <e>\"loop\" must be the last keyword</>\r\n"));
-            return i + 1;
-          }
-
-          //read loop count and strip two last keywords off
-          if ((count = q_atol(argv[i], 0)) == 0)
-            return i;
-          argc -= 2;  
-
-          if (!informed) {
-            informed = true;
-            HELP(q_printf("%% Repeating whole command %u times", count));
-            if (is_foreground_task())
-              HELP(q_print(", press <Enter> to abort"));
-            HELP(q_print(CRLF));
-          }
-
-        } else
-        //A keyword which is a decimal number. when we see a number we use it as a pin number
-        //for subsequent keywords. Must be valid GPIO number.
-        if (isnum(argv[i])) {
-          if (!pin_exist((pin = q_atol(argv[i], DEF_BAD))))
-            return i;
-        } else
-        // argument i was not recognized
+      } else
+      // 17. "pin X matrix [in|out NUMBER]"
+      if (!q_strcmp(argv[i], "matrix")) {
+        if ((ret = cmd_pin_matrix(argc,argv,pin,&i)) != 0)
+          return ret;
+      } else
+      //18. "loop" keyword
+      if (!q_strcmp(argv[i], "loop")) {
+        if ((ret = cmd_pin_loop(argc,argv,pin,&i,&count)) != 0)
+          return ret;
+        // Strip "loop COUNT" arguments. We read them only once
+        argc -= 2;
+      } else
+      //A keyword which is a decimal number. when we see a number we use it as a pin number
+      //for subsequent keywords. Must be valid GPIO number.
+      if (isnum(argv[i])) {
+        if (!pin_exist((pin = q_atol(argv[i], DEF_BAD))))
           return i;
-      // go to the next keyword
+      } else
+      // argument i was not recognized
+        return i;
+
+      // Keyword was executed successfully. Proceed to the next keyword.
       i++;
     }       //big fat "while (i < argc)"
     i = 1;  // prepare to start over again

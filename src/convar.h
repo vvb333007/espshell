@@ -128,6 +128,7 @@ void espshell_varaddp(const char *name, void *ptr, int size, bool isf, bool isp,
    
       var->next = var_head;
       var->name = name;
+      var->gpp = *(void **)ptr;
       var->ptr = ptr;
       var->isp = 1;
       var->isf = 0;
@@ -498,7 +499,7 @@ static int cmd_var_show(int argc, char **argv) {
 
 
   // "var NUMBER" : displays different representation of a constant
-  if (argc < 3)
+  //if (argc < 3)
     if (q_isnumeric(argv[1]))
       return convar_show_number(argv[1]);
 
