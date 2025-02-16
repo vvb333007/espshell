@@ -4,30 +4,28 @@ ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
 ESP32 PINS (GPIOs)
 ------------------
 
-ESP32 has many pins (GPIO) which can be configured to be either a
-general purpose pin (GPIO) or to bear some function: be a TX pin of
-a hardware UART interface or be a CLOCK line for an I2C interface
-for example.
+ESP32 has many pins (or GPIOs, both names are used interchangeable throughout
+the shell documentation) which can be configured to be either a general purpose
+pin (GPIO) or to bear some function: be a TX pin of a hardware UART interface 
+or be a CLOCK line for an I2C interface for example.
 
-Some pins have system functions: so called "bootstrapping" pins.
-Their function is to tell the bootloader what to do on boot and
-how to initialize the hardware. It is ok to use them as long as 
-it does not interfere with booting process
+Some pins have system functions: so called "bootstrapping" pins. Their function 
+is to tell the bootloader what to do on boot and how to initialize the hardware. 
+It is ok to use them as long as it does not interfere with booting process
 
-Some pins are reserved for internal use: for example pins 6-11 on
-most ESP32 Dev boards are used to access internal flash: you can play
-with these pins only if your program is fully in processor cache 
-(be within 64kb which is impossible when using espshell)
+Some pins are reserved for internal use: for example pins 6-11 on most generic
+ESP32 Dev boards are used to access internal flash: you can play with these pins 
+only if your program is cached by the CPU so no icache-miss happens
 
 Some pins are configured to be INPUT only and this can not be changed
 
 
 PURPOSE
 -------
-In ESPShell one can play with GPIOs using "pin" command which is used
-both for displaying pin information and configuring. Turning pin high
-or low, sending various pulse patterns through pins, setting pin direction 
-etc can be done without need to recompile user sketch
+In ESPShell one can play with GPIOs using "pin" command which is used both for 
+displaying information on particular pin and configuring. Turning pin high or 
+low, sending various pulse patterns through pins, setting pin direction and so
+on can be done manually, thus eliminating fix/compile/uploiad/check cycles.
 
 ESPShell is able to read digital value on any GPIO: unlike digitalRead() which
 does not work with pins which are used as hardware interface pins (for example 
@@ -45,7 +43,8 @@ ESPShell provides commands for
 
 DISPLAYING PIN INFORMATION
 --------------------------
-To display informaton on arbitrary pin type "pin" followed by pin number.
+To display informaton for an arbitrary pin: type "pin" followed by pin number
+
 Example below displays GPIO 0,8,1 and 4 basic information:
 
   esp32#>pin 0
@@ -75,193 +74,233 @@ Example below displays GPIO 0,8,1 and 4 basic information:
 
 Note that there are **RESERVED** pins: these are used by SoC for its function.
 It could be FLASH memory access pins, or pins controlling external PSRAM.
-Manipulating these pins will likely crash your sketch and reboot ESP32a
+Manipulating these pins will likely crash your sketch and reboot ESP32
 
 
 To get information on pin numbers and their availability one can try to
 display information on non-existing pin (pin 999 as an example):
 
   esp32#>pin 999
-  % Available pin numbers are are 0..39, except 24,28,29,30,31,
-  % Invalid argument "999" ("? pin" for help)
+  % Available pin numbers are 0..48, except pins: 25, 24, 23, and 22
+  % Reserved pins (used internally):, 22, 23, 24, 25, 27, 28, 29, 30, 31 and 32
+  % Invalid 1st argument "999" ("? pin" for help)
   esp32#>
-
-Output above tells the pin range and shows pins which simply do not 
-exists in this hardware 24,28,29,30,31
 
 
 SETTING PIN MODE, READING/WRITING PIN VALUES
 --------------------------------------------
 
-(No time to read? Scroll to Examples below!)
-
-Command "pin" takes multiple argumens which are processed in order
-from left to right. The first argument is a pin number and the rest
-of arguments are keywords to execute. One can think of arguments as
-of simple program to execute on given pin. 
+Command "pin" takes multiple argumens which are processed in order from left
+to right. The first argument is a pin number and the rest of arguments are 
+keywords to execute. One can think of arguments as of simple program to execute
+on given pin. 
 
 For example "pin 2 save out high load" is a valid command with 4 
-argument.
+arguments/keywords. The command above saves GPIO2 state in its internal register,
+then changes pin mode to OUTPUT, then sets pin to HIGH and immediately after that
+the pin state gets loaded (restored) from previously saved copy.
 
 Here is the full list of allowed keywords:
 
- X       - A pin number to work with (see Example 7)
-out      - Set pin to be output (i.e. pinMode(OUTPUT))
-in       - Set pin to be input
-up       - Set weak internal pull-up (~45 kOhm)
-down     - Set weak internal pull-down
-open     - Set pin "open drain" option
+NUMBER    A pin number to work with (see Example 7). The very first argument
+          of the "pin" command is a pin number. This "pin number" keyword can 
+          appear multilpe times in a single "pin" statement. Following is the 
+          example, which sets pins 0, 1 and 2 low:
 
-high     - Write logic "1" to the pin (digitalWrite(pin,HIGH)). Also sets OUTPUT
-           flag for the pin.
-low      - Write logic "0" to the pin. Also sets OUTPUT flag for the pin.
-seq X    - Send sequence number X over the pin. See documentation file
-          "docs/Pulse_Generator" on sequences and how to use them
-pwm X Y  - Enable frequency generator on given pin. X is the frequency in Hertz
-          and Y is the duty. Both parameters are mandatory. Setting frequency to 0
-          disables frequency generator. Y (duty) is a floating point number in
-          range (0..1)
+            esp32#>pin 0 low 1 low 2 low
 
-read    - Digital read.OUTPUT-only pin will be switched to INPUT-and-OUTPUT
-          automatically. Unlike  digitalRead() this command is able to
-          read any GPIO regardless of its configuration and usage. Like this one
-          can read values from UART or I2C lines while they are actively used
+          A command, which only contains numbers as its keywords 
+          (e.g. "pin 1 2 3") is a valid command which simply does nothing
 
-aread   - Analog read*
 
-delay X - Make a delay of X milliseconds before executing next
-          keyword. (see Example 5. below)
 
-save    - Save pin configuration. Each save rewrites previous save
+"out"     Set pin to be output
+"in"      Set pin to be input
+"up"      Set weak internal pull-up (~45 kOhm)
+"down"    Set weak internal pull-down
+"open"    Configure pin for "open drain" operation
 
-load    - Load pin configuration. reads previously saved data. reading does not
+
+
+"low"     Write logic "0" to the pin.
+"high"    Write logic "1" to the pin (i.e. digitalWrite(pin,HIGH)).
+          
+          Both keywords will also set OUTPUT flag for the pin if it was not
+          set before, so following commands are equivalent:
+              "pin 2 high"
+              "pin 2 out high"
+
+
+
+"seq X"   Send a sequence (a custom-made signal pattern) number X over the pin. 
+          See documentation file "docs/Pulse_Generator" on sequences and how to 
+          use them
+
+
+"pwm X Y"   Enable PWM generator on given pin. X is the frequency in Hertz
+            and Y is the duty. Both parameters are mandatory. Setting frequency to 0
+            disables frequency generator. Y (duty) is a floating point number in
+            range (0..1).
+
+"read"    Digital read.
+
+          OUTPUT-only pin will be switched to INPUT-and-OUTPUT automatically. 
+          Unlike digitalRead() this command is able to read any GPIO regardless
+          of its configuration and usage: e.g. can read values from UART or I2C 
+          lines
+
+"aread"   Analog read.
+          Command configures 1-shot ADC on given pin and performs a measurement. 
+          An absolute ADC value is displayed.
+
+"delay X" Make a delay of X milliseconds before executing next keyword. (see Example 5. below)
+          
+
+"save"    Save pin configuration. Each save rewrites the previous one
+
+"load"    Load pin configuration. Reads previously saved data. Reading does not
           erase saved data.
 
 
-iomux [NUMBER | gpio]
+"iomux [NUMBER | gpio]"
 
-        - Select IO_MUX function for the pin OR execute gpio_pad_select_gpio() on given pin when "gpio" keyword
-          is used. 
+  Select IO_MUX function for the pin OR execute gpio_pad_select_gpio() on given pin when "gpio" keyword
+  is used. 
 
-          ESP32 pins (GPIOs) are internally routed through either IO_MUX (think - fast IO) or GPIO_Matrix 
-          (think of flexebility). If routed through IO_MUX, pin can be assigned one of 5 (or 6 on original 
-          ESP32) different functions numbered starting from zero.
+  ESP32 pins (GPIOs) are internally routed through either IO_MUX (think - fast IO) or GPIO_Matrix 
+  (think of flexebility). If routed through IO_MUX, pin can be assigned one of 5 (or 6 on original 
+  ESP32) different functions numbered starting from zero.
 
-          Full list of IO_MUX functions for every pin can be displayed by entering "show ioumux" command:
+  Full list of IO_MUX functions for every pin can be displayed by entering "show ioumux" command:
 
-              esp32#>show io
-              % IO MUX has 6 functions for every pin. The mapping is as follows:
-              %Pin | Function0 | Function1 | Function2 | Function3 | Function4 | Function5
-              %----+-----------+-----------+-----------+-----------+-----------+-----------
-              % 00 |     GPIO0 |  CLK_OUT1 |     GPIO0 |  -undef-  |  -undef-  | EMAC_TX_CLK
-              % 01 |     U0TXD |  CLK_OUT3 |     GPIO1 |  -undef-  |  -undef-  | EMAC_RXD2
-              % 02 |     GPIO2 |    HSPIWP |     GPIO2 | HS2_DATA0 |  SD_DATA0 |  -undef-
-              % 03 |     U0RXD |  CLK_OUT2 |     GPIO3 |  -undef-  |  -undef-  |  -undef-
-              % 04 |     GPIO4 |    HSPIHD |     GPIO4 | HS2_DATA1 |  SD_DATA1 | EMAC_TX_ER
-              % 05 |     GPIO5 |   VSPICS0 |     GPIO5 | HS1_DATA6 |  -undef-  | EMAC_RX_CLK
-              % 06 |    SD_CLK |    SPICLK |     GPIO6 |   HS1_CLK |     U1CTS |  -undef-
-              % 07 |  SD_DATA0 |      SPIQ |     GPIO7 | HS1_DATA0 |     U2RTS |  -undef-
-              % 08 |  SD_DATA1 |      SPID |     GPIO8 | HS1_DATA1 |     U2CTS |  -undef-
-              .... (40+ more lines)
+      esp32#>show io
+      % IO MUX has 6 functions for every pin. The mapping is as follows:
+      %Pin | Function0 | Function1 | Function2 | Function3 | Function4 | Function5
+      %----+-----------+-----------+-----------+-----------+-----------+-----------
+      % 00 |     GPIO0 |  CLK_OUT1 |     GPIO0 |  -undef-  |  -undef-  | EMAC_TX_CLK
+      % 01 |     U0TXD |  CLK_OUT3 |     GPIO1 |  -undef-  |  -undef-  | EMAC_RXD2
+      % 02 |     GPIO2 |    HSPIWP |     GPIO2 | HS2_DATA0 |  SD_DATA0 |  -undef-
+      % 03 |     U0RXD |  CLK_OUT2 |     GPIO3 |  -undef-  |  -undef-  |  -undef-
+      % 04 |     GPIO4 |    HSPIHD |     GPIO4 | HS2_DATA1 |  SD_DATA1 | EMAC_TX_ER
+      % 05 |     GPIO5 |   VSPICS0 |     GPIO5 | HS1_DATA6 |  -undef-  | EMAC_RX_CLK
+      % 06 |    SD_CLK |    SPICLK |     GPIO6 |   HS1_CLK |     U1CTS |  -undef-
+      % 07 |  SD_DATA0 |      SPIQ |     GPIO7 | HS1_DATA0 |     U2RTS |  -undef-
+      % 08 |  SD_DATA1 |      SPID |     GPIO8 | HS1_DATA1 |     U2CTS |  -undef-
+      .... (40+ more lines)
 
-            So pin#0 can be set to Function#0 to make it low-latency fast GPIO, or setting it to Function#5 
-            makes this pin a part of EMAC interface. If you are not familiar with IO_MUX/GPIO Matrix concept 
-            of ESP32, please read ESP32 Technical Reference manual.
+    So pin#0 can be set to Function#0 to make it low-latency fast GPIO, or setting it to Function#5 
+    makes this pin a part of EMAC interface. If you are not familiar with IO_MUX/GPIO Matrix concept 
+    of ESP32, please read ESP32 Technical Reference manual.
+   
+
+    Lets select IO_MUX function#0 for pin#0:
+
+      esp32#>pin 0 iomux 0
+
+    Note that for function#0 the last argument to the command may be omitted:
+
+      esp32#>pin 0 iomux   <---- is an equivalent of the command above
+
+    Now, when we have our pin set to IO_MUX Function#0, display pin#0 information, using
+    command "pin 0":
+
+      esp32#>pin 0
+      % Pin 0 (GPIO0) is strapping pin, available, and is not used by Arduino Core
+      % Mode: INPUT, OUTPUT,  input is floating
+      % Output is done via IO MUX, (function: GPIO0)    <------- 
+      % Input is done via IO MUX, (function: GPIO0)     <-------
+      % Maximum current is 20 milliamps
+      % Digital pin value is LOW (0)
+
+    Note lines marked with "<----" - pin 0 now is in "fast" GPIO mode
+
+    Ok, lets reconfigure pin 0 to use GPIO Matrix for signal routing:
+    For original ESP32 it should be something like this:
+
+      esp32#>pin 0 iomux 2
+
+    For other ESP32 models (ESP32-S3, P4, S2, C3, C6 etc) one should use function#1 instead of function#2:
+
+      esp32#>pin 0 iomux 1
+
+    Display pin0 configuration again:
+
+      esp32#>pin 0
+      % Pin 0 (GPIO0) is strapping pin, available, and is not used by Arduino Core
+      % Mode: INPUT, OUTPUT,  input is floating
+      % Output via GPIO matrix, simple GPIO output   <------------ Pin is routed through "gpio matrix"
+      % Input via GPIO matrix, simple GPIO input     <------------
+      % Maximum current is 20 milliamps
+      % Digital pin value is LOW (0)
+
+   Although it is possible to switch between IO_MUX and GPIO_Matrix using just "pin ... iomux" command,
+   it is recommended to use a dedicated command "pin ... matrix" to switch to GPIO_Matrix
+
+    If "gpio" keyword is used, then pin will be autorouted either via IO_MUX or
+    GPIO Matrix. Internally, all what this keyword does is simple call to "gpio_pad_select_gpio()" IDF API.
+
+
+
            
+"matrix [in|out NUMBER]"
 
-            Lets select IO_MUX function#0 for pin#0:
-
-              esp32#>pin 0 iomux 0
-
-            Note that for function#0 the last argument to the command may be omitted:
-
-              esp32#>pin 0 iomux   <---- is an equivalent of the command above
-
-            Now, when we have our pin set to IO_MUX Function#0, display pin#0 information, using
-            command "pin 0":
-
-              esp32#>pin 0
-              % Pin 0 (GPIO0) is strapping pin, available, and is not used by Arduino Core
-              % Mode: INPUT, OUTPUT,  input is floating
-              % Output is done via IO MUX, (function: GPIO0)    <------- 
-              % Input is done via IO MUX, (function: GPIO0)     <-------
-              % Maximum current is 20 milliamps
-              % Digital pin value is LOW (0)
-
-            Note lines marked with "<----" - pin 0 now is in "fast" GPIO mode
-
-            Ok, lets reconfigure pin 0 to use GPIO Matrix for signal routing:
-            For original ESP32 it should be something like this:
-
-              esp32#>pin 0 iomux 2
-
-            For other ESP32 models (ESP32-S3, P4, S2, C3, C6 etc) one should use function#1 instead of function#2:
-
-              esp32#>pin 0 iomux 1
-
-            Display pin0 configuration again:
-
-              esp32#>pin 0
-              % Pin 0 (GPIO0) is strapping pin, available, and is not used by Arduino Core
-              % Mode: INPUT, OUTPUT,  input is floating
-              % Output via GPIO matrix, simple GPIO output   <------------ Pin is routed through "gpio matrix"
-              % Input via GPIO matrix, simple GPIO input     <------------
-              % Maximum current is 20 milliamps
-              % Digital pin value is LOW (0)
-
-           Although it is possible to switch between IO_MUX and GPIO_Matrix using just "pin ... iomux" command,
-           it is recommended to use a dedicated command "pin ... matrix" to switch to GPIO_Matrix
-
-            If "gpio" keyword is used, then pin will be autorouted either via IO_MUX or
-            GPIO Matrix. Internally, all what this keyword does is simple call to "gpio_pad_select_gpio()" IDF API.
-            
-matrix  - Route pin through GPIO Matrix. 
-          The full syntax is "matrix [in|out NUMBER]". If optional parameters are not given than all this command does
-          is just switch a pin to be a "simple GPIO via GPIO Matrix". There are two optional parameters to connect 
-          internal peripherial to given pin, by executing a ESP32 ROM functions "gpio_matrix_in()" and "gpio_matrix_out()":
-
-            Display pin 2 information:
-
-            esp32#>pin 2
-            % Pin 2 (GPIO2) is available, and is not used by Arduino Core
-            % Mode: OUTPUT,
-            % Output is done via GPIO MATRIX, acts as simple GPIO output (SIG_GPIO_OUT_IDX)  <----------------- 1
-            % Input is disabled
-            % Maximum current is 20 milliamps
-            % Digital pin value is LOW (0)
-            esp32#>
-            esp32#>
-
-            Set our pin 2 to be INPUT and OUTPUT, through the GPIO Matrix, handling signals 33 and 55:            
-
-            esp32#>pin 2 in out matrix in 33 matrix out 55                                   <----------------- 2
-            esp32#>
-            esp32#>
-
-            Display pin 2 information once again to verify our changes:
-              
-            esp32#>pin 2
-            % Pin 2 (GPIO2) is available, and is not used by Arduino Core
-            % Mode: INPUT, OUTPUT,  input is floating
-            % Output is done via GPIO MATRIX, provides path for signal ID: 55                <----------------- 3
-            % Input is done via GPIO matrix, connected signal IDs: 33,
-            % Maximum current is 20 milliamps
-            % Digital pin value is HIGH (1)
-            esp32#>
-
+  Route pin through GPIO Matrix. 
+  The full syntax is "matrix [in|out NUMBER]". If optional parameters are not given than all this command does
+  is just switch a pin to be a "simple GPIO via GPIO Matrix". There are two optional parameters to connect 
+  internal peripherial to given pin, by executing a ESP32 ROM functions "gpio_matrix_in()" and "gpio_matrix_out()":
+  
+  Display pin 2 information:
+  
+  esp32#>pin 2
+  % Pin 2 (GPIO2) is available, and is not used by Arduino Core
+  % Mode: OUTPUT,
+  % Output is done via GPIO MATRIX, acts as simple GPIO output (SIG_GPIO_OUT_IDX)  <----------------- 1
+  % Input is disabled
+  % Maximum current is 20 milliamps
+  % Digital pin value is LOW (0)
+  esp32#>
+  esp32#>
+  
+  Set our pin 2 to be INPUT and OUTPUT, through the GPIO Matrix, handling signals 33 and 55:
+  
+  esp32#>pin 2 in out matrix in 33 matrix out 55           <----------------- 2
+  esp32#>
+  esp32#>
+  
+  Display pin 2 information once again to verify our changes:
+    
+  esp32#>pin 2
+  % Pin 2 (GPIO2) is available, and is not used by Arduino Core
+  % Mode: INPUT, OUTPUT,  input is floating
+  % Output is done via GPIO MATRIX, provides path for signal ID: 55    <----------------- 3
+  % Input is done via GPIO matrix, connected signal IDs: 33,
+  % Maximum current is 20 milliamps
+  % Digital pin value is HIGH (1)
+  esp32#>
+  
           
 
-hold    - "freeze" pin state and output value. Frozen pin remains frozen after
-          reboot (as long as power to the chip is provided. rebooting via 
-          POWERUP unfreezes pin) See NOTE1 at the end of this document.
+"hold"    
+"release"
 
-release - "unfreeze" pin which was "frozen" by "pin X hold" See NOTE1 at the 
+  Hold (freeze) pin state and output value. Frozen pin remains frozen after
+  reboot (as long as power to the chip is provided. rebooting via 
+  POWERUP unfreezes pin) See NOTE1 at the end of this document.
+
+                            And..
+
+  Release pin which was "frozen" by "pin X hold" See NOTE1 at the 
           end of this document
 
-loop X  - repeat whole command X times. The "loop X" keyword must be the last
-          argument of the command. Pressing anykey in your terminal software
-          or sending any character from Arduino IDE Serial Monitor interrupts
-          loop
+"loop X"
+  Repeat whole command X times. The "loop X" keyword must be the last argument of the 
+  command. 
+
+
+
+
+EXAMPLES:
+---------
 
 Multiple keywords can be used in single "pin" command (separated by spaces):
 "pin 2 out open up" is a valid command, executing 3 keywords in sequence.
