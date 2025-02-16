@@ -90,7 +90,7 @@ extern void *dummy_pointer;
           is_signed = (__x < 0); /* HELLO! If you see this warning during compilation - just ignore it :) */ \
           espshell_varadd( #VAR, &VAR, sizeof(VAR), \
           (__builtin_classify_type(VAR) == __builtin_classify_type(dummy_float)), \
-          (__builtin_classify_type(VAR) == __builtin_classify_type(dummy_pointer)), \
+          /*(__builtin_classify_type(VAR) == __builtin_classify_type(dummy_pointer))*/0, \
           !is_signed); \
 } while( 0 )
 
@@ -100,7 +100,7 @@ extern void *dummy_pointer;
           is_signed = (__x < 0);   /* HELLO! If you see this warning during compilation - just ignore it :) */ \
           espshell_varaddp( #VAR, &VAR, sizeof(VAR[0]), \
           (__builtin_classify_type(VAR[0]) == __builtin_classify_type(dummy_float)), \
-          (__builtin_classify_type(VAR[0]) == __builtin_classify_type(dummy_pointer)), \
+          /*(__builtin_classify_type(VAR[0]) == __builtin_classify_type(dummy_pointer))*/0, \
           !is_signed); \
 } while ( 0 )
 
@@ -110,14 +110,26 @@ extern void *dummy_pointer;
           is_signed = (__x < 0);   /* HELLO! If you see this warning during compilation - just ignore it :) */ \
           espshell_varadda( #VAR, &VAR, sizeof(VAR[0]), sizeof(VAR) / sizeof(VAR[0]), \
           (__builtin_classify_type(VAR[0]) == __builtin_classify_type(dummy_float)), \
-          (__builtin_classify_type(VAR[0]) == __builtin_classify_type(dummy_pointer)), \
+          /*(__builtin_classify_type(VAR[0]) == __builtin_classify_type(dummy_pointer))*/0, \
           !is_signed); \
+} while ( 0 )
+
+#  define convar_addpp( VAR ) do { \
+          void **tmp = (void **)VAR; \
+          espshell_varaddp( #VAR, &VAR, sizeof(void *), 0, 1, 1); \
+} while ( 0 )
+
+#  define convar_addap( VAR ) do { \
+          espshell_varadda( #VAR, &VAR, sizeof(VAR[0]), sizeof(VAR) / sizeof(VAR[0]), 0, 1, 1); \
 } while ( 0 )
 
 #else
 #  define convar_add( ... )  do {} while( 0 )
 #  define convar_addp( ... ) do {} while( 0 )
 #  define convar_adda( ... ) do {} while( 0 )
+#  define convar_addpp( ... ) do {} while( 0 )
+#  define convar_addap( ... ) do {} while( 0 )
+
 #endif
 
 #ifdef __cplusplus

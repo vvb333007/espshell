@@ -499,7 +499,7 @@ static bool pin_is_strapping_pin(int pin) {
 // "pin X"
 // Display pin information: function, direction, mode, pullup/pulldown etc
 //
-static int pin_show(int argc, char **argv) {
+static int cmd_pin_show(int argc, char **argv) {
 
   unsigned int pin, informed = 0;
 
@@ -629,7 +629,7 @@ static int pin_show(int argc, char **argv) {
 // 
 static int cmd_pin_pwm(int argc, char **argv,unsigned int pin, unsigned int *start) {
 
-  int i = *start;
+  unsigned int i = *start;
   unsigned int freq;
   float duty;
   // make sure that there are 2 extra arguments after "pwm" keyword
@@ -667,7 +667,7 @@ static int cmd_pin_pwm(int argc, char **argv,unsigned int pin, unsigned int *sta
 //
 static int cmd_pin_sequence(int argc, char **argv,unsigned int pin, unsigned int *start) {
 
-  int i = *start;
+  unsigned int i = *start;
   int seq, j;
 
   // do we have at least 1 extra arg after ith?
@@ -691,9 +691,9 @@ static int cmd_pin_sequence(int argc, char **argv,unsigned int pin, unsigned int
 // handles "pin X matrix [in|out SIGNAL_ID]"
 // Since pin is multiple-argument command we also pass the /start/ index into argv[] array
 // 
-static int cmd_pin_matrix(int argc, char **argv,unsigned int pin, int *start) {
+static int cmd_pin_matrix(int argc, char **argv,unsigned int pin, unsigned int *start) {
 
-  int i = *start;
+  unsigned int i = *start;
 
   // set pin function to "Simple GPIO via GPIO Matrix"
   pin_set_iomux_function(pin, PIN_FUNC_GPIO);
@@ -724,9 +724,9 @@ static int cmd_pin_matrix(int argc, char **argv,unsigned int pin, int *start) {
 // Since pin is multiple-argument command we also pass the /start/ index into argv[] array
 // TODO: make COUNT arg to "loop" optional. Omitted count means "loop forever"
 //
-static int cmd_pin_loop(int argc, char **argv,unsigned int pin, int *start, unsigned int *count) {
+static int cmd_pin_loop(int argc, char **argv,unsigned int pin, unsigned int *start, unsigned int *count) {
 
-  int i = *start;
+  unsigned int i = *start;
 
   //must have an extra argument (loop count)
   if ((i + 1) >= argc) {
@@ -772,10 +772,11 @@ static int cmd_pin(int argc, char **argv) {
   //first argument must be a decimal number: a GPIO number
   if (!pin_exist((pin = q_atol(argv[1], DEF_BAD))))
     return 1;
-
+#if 0
   //"pin X" command
   if (argc == 2)
-    return pin_show(argc, argv);
+    return cmd_pin_show(argc, argv);
+#endif    
   
   do {
 

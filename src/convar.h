@@ -17,15 +17,19 @@
 // Sketch variables then can be accessible through "var" command:
 // "var VARIABLE_NAME" - display variable (for arrays it also displays its elements)
 // "var VARIABLE_NAME VALUE" - set variable to a new value
-// Individual array elements can be referred to as VARIABLE_NAME[INDEX]
+// Individual array elements (real array or a pointer) can be referred to as VARIABLE_NAME[INDEX]
+
+// TODO: Do we really need to malloc() variable descriptors? Can we declare them as static variables?
+// TODO: This code needs a review. There may be buffer overflows because of strcpy and sprintf. These should be changed to strlcpy & snprintf
+// TODO: Verify that no variables with names longer than CONVAR_NAMELEN_MAX-1 can be registered
+// TODO: Pointer to a pointer or array of pointers are unsupported data structures. (convar_addpp(), convar_addap() ?)
+// TODO: Find out why cant we use _Generic with this xtensa gcc
+
 
 // "Console Variable" (convar) descriptor. These are created by convar_add() and linked into SL list
 // The head of the list is "var_head". 
 // Entries are created once and never deleted
 //
-// TODO: This code needs a review. There may be buffer overflows because of strcpy and sprintf. These should be changed to strlcpy & snprintf
-// TODO: Verify that no variables with names longer than CONVAR_NAMELEN_MAX-1 can be registered
-
 struct convar {
   struct convar *next;     // next var in list
   const char *name;        // var name
@@ -44,8 +48,8 @@ struct convar {
   unsigned int counta;      //              --                                                 sizeof(array)/sizeof(array_element, i.e. nnumber of elements in the array)
 };
 
-// composite variable value.
-// had to use union because of variables different sizeof()
+// Composite variable value.
+// This is to perform "unsafe" C-style casts
 //
 typedef union composite_u {
   unsigned char  uchar;  // unsigned char
@@ -58,19 +62,21 @@ typedef union composite_u {
 } composite_t;
 
 // Limits
-#define ARRAY_TOO_BIG       257 // don't display array content if its element count exceeeds this number
+#define ARRAY_TOO_BIG       257 // don't display array content if its elements count exceeeds this number
 
 #define CONVAR_NAMELEN_MAX  64 // max variable name length
 #define CONVAR_TYPELEN_MAX  32 // should be enough even for "unsigned long long"
 #define CONVAR_COUNTLEN_MAX 32 // should be enough even for "[4294967295]"
 
+// Safe text buffer size
 #define CONVAR_BUFSIZ (CONVAR_NAMELEN_MAX + CONVAR_TYPELEN_MAX + CONVAR_COUNTLEN_MAX)
 
 
-
-// All registered variables. Access to the list is **not thread safe**
+// Single-linked list of all registered variables. 
+// NOTE: Access to the list is not protected (no mutexes nor semaphores)
 static struct convar *var_head = NULL;
 
+// Helper constants which are used by convar_typenameX() to construct type names like "char" or "unsigned int"
 static const char *__uch = "unsigned char";
 static const char *__ush = "unsigned short";
 static const char *__uin = "unsigned int";
@@ -78,6 +84,9 @@ static const char *__ucha = "unsigned char *";
 static const char *__usha = "unsigned short *";
 static const char *__uina = "unsigned int *";
 
+// Check if variable has supported type. ESPShell supports only basic C types
+// which can fit 1,2 or 4 bytes
+//
 static bool variable_type_is_ok(unsigned int size) {
   if (size != sizeof(char) && size != sizeof(short) && size != sizeof(int) && size != sizeof(float)) {
     q_printf("%% Variable was not registered (unsupported size %u)\r\n",size);
@@ -128,7 +137,7 @@ void espshell_varaddp(const char *name, void *ptr, int size, bool isf, bool isp,
    
       var->next = var_head;
       var->name = name;
-      var->gpp = *(void **)ptr;
+      var->gpp = *(void **)ptr; // this is required if we want to set/display values of a pointer (NAME[INDEX])
       var->ptr = ptr;
       var->isp = 1;
       var->isf = 0;

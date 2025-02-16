@@ -88,6 +88,7 @@ static int cmd_nap(int, char **);
 static int cmd_pwm(int, char **);
 static int cmd_count(int, char **);
 static int cmd_pin(int, char **);
+static int cmd_pin_show(int, char **);
 
 // RMT sequences
 static int cmd_seq_if(int, char **);
@@ -709,8 +710,8 @@ static const struct keywords_t keywords_main[] = {
 
   { "echo", cmd_echo, NO_ARGS, HIDDEN_KEYWORD },  //hidden command, displays echo status
 
-  // Generic pin commands
-  { "pin", cmd_pin, 1,
+  // 1 arg "pin" command is declared first, because cmd_pin() has MANY_ARGS and will match any pin command otherwhise
+  { "pin", cmd_pin_show, 1,
     HELPK("% \"<b>pin X</>\"\r\n"
           "% Show pin X configuration and digital value\r\n"
           "% Ex.: \"pin 2\" - show GPIO2 information"), 
