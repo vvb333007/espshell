@@ -752,7 +752,6 @@ static int cmd_pin_loop(int argc, char **argv,unsigned int pin, unsigned int *st
 
 
 // "pin NUM arg1 arg2 .. argn"
-// "pin NUM"
 //
 // Big fat "pin" command. Processes multiple arguments
 //
@@ -760,7 +759,7 @@ static int cmd_pin(int argc, char **argv) {
 
   unsigned int flags = 0;
   unsigned int i = 2, pin;
-  bool informed = false;
+  bool informed = false, is_fore = is_foreground_task();
 
   // repeat whole "pin ..." command "count" times.
   // this number can be changed by "loop" keyword
@@ -772,12 +771,7 @@ static int cmd_pin(int argc, char **argv) {
   //first argument must be a decimal number: a GPIO number
   if (!pin_exist((pin = q_atol(argv[1], DEF_BAD))))
     return 1;
-#if 0
-  //"pin X" command
-  if (argc == 2)
-    return cmd_pin_show(argc, argv);
-#endif    
-  
+
   do {
 
     // Run through "pin NUM arg1, arg2 ... argN" arguments, looking for keywords to execute.
@@ -808,7 +802,7 @@ static int cmd_pin(int argc, char **argv) {
         // Any key works instead of <Enter> but Enter works in Arduino Serial Monitor
         if (!informed && (duration > TOO_LONG)) {
           informed = true;
-          if (is_foreground_task())
+          if (is_fore)
             HELP(q_print("% <g>Hint: Press [Enter] to interrupt the command</>\r\n"));
         }
         // Was interrupted by keypress or by "kill" command? Abort whole command.
@@ -893,11 +887,12 @@ static int cmd_pin(int argc, char **argv) {
     i = 1;  // prepare to start over again
 
     // give a chance to cancel whole command
-    // by anykey press
-    if (anykey_pressed()) {
-      HELP(q_print("% Key pressed, aborting..\r\n"));
-      break;
-    }
+    // by anykey press, but only if it is a foreground process
+    if (is_fore)
+      if (anykey_pressed()) {
+        HELP(q_print("% Key pressed, aborting..\r\n"));
+        break;
+      }
   } while (--count > 0);  // repeat if "loop X" command was found
   return 0;
 }
