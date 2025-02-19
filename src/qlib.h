@@ -449,35 +449,39 @@ static void q_tolower(char *p) {
   }
 }
 
-//check if given ascii string is a decimal number. Ex.: "12345", "-12"
+// Check if given ascii string represents a decimal number. Ex.: "12345", "-12"
 // "minus" sign is only accepted at the beginning (must be 1st symbol)
 //
 static bool isnum(const char *p) {
   if (p && *p) {
-    if (*p == '-') p++;
-    while (*p >= '0' && *p <= '9') p++;
+    if (*p == '-')
+      p++;
+    while (*p >= '0' && *p <= '9')
+      p++;
     return *p == '\0';  //if *p is 0 then all the chars were digits (end of line reached).
   }
   return false;
 }
 
-// check if ascii string is a float number
-// NOTE: "0.5" and ".5" are both valid inputs
+// Check if ascii string represents a floating point number
+// "0.5" and "-.5" are both valid inputs
 static bool isfloat(const char *p) {
   if (p && *p) {
     bool dot = false;
-    if (*p == '-') p++;
-    while ((*p >= '0' && *p <= '9') || (*p == '.' && !dot)) {
-      if (*p == '.')
-        dot = true;
+    if (*p == '-')
       p++;
-    }
-    return !(*p);  //if *p is 0 then all the chars were ok. (end of line reached).
+    while ((*p >= '0' && *p <= '9') || (*p == '.' && !dot))
+      if (*p++ == '.')
+        dot = true;
+    return *p == '\0';  //if *p is 0 then all the chars were ok. (end of line reached).
   }
   return false;
 }
 
-
+// "to-lowercase" helper macro
+// Only works with ANSI charset, single-byte encodings
+//
+#define A2a(_A) (((_A) >= 'A' && (_A) <= 'Z') ? ((_A) | (1 << 5)) : (_A))
 
 // Check if given ascii string is a hex number
 // String may or may not start with "0x"
@@ -485,10 +489,12 @@ static bool isfloat(const char *p) {
 //
 static bool ishex(const char *p) {
   if (p && *p) {
+    char c;
     if (p[0] == '0' && p[1] == 'x')
       p += 2;
-    while (*p != '\0') {
-      if ((*p < '0' || *p > '9') && (*p < 'a' || *p > 'f') && (*p < 'A' || *p > 'F'))
+    while ((c = *p) != '\0') {
+      c = A2a(c);
+      if (c < '0' || (c > '9' && c < 'a') || c > 'f')
         break;
       p++;
     }
@@ -552,16 +558,15 @@ static bool isbin(const char *p) {
 
 
 
-// Check if string can be converted to number, trying all possible formats: 
-// floats, octal, binary or hexadecimal with leading 0x or without it
+// Check if string can be converted to a number, trying all possible formats: 
+// floats, octal, binary or hexadecimal with leading 0x or without it, both signed and unsigned
 //
 static bool q_isnumeric(const char *p) {
   if (p && *p) {
     if (p[0] == '0') {
-      if (p[1] == 'x')
-        return ishex(p);
-      if (p[1] == 'b')
-        return isbin(p);
+      if (p[1] == 'x') return ishex(p);
+      if (p[1] == 'b') return isbin(p);
+      if (p[1] == '.') return isfloat(p);
       return isoct(p);
     }
     return isnum(p) || isfloat(p);
@@ -611,10 +616,9 @@ static unsigned int hex2uint32(const char *p) {
     p += 2;
 
   while (*p) {
-    if (*p >= '0' && *p <= '9') four = *p - '0';
-    else if (*p >= 'a' && *p <= 'f') four = *p - 'a' + 10;
-    else if (*p >= 'A' && *p <= 'F') four = *p - 'A' + 10;
-    else return 0;
+    if (*p >= '0' && *p <= '9') four = *p - '0'; else 
+    if (*p >= 'a' && *p <= 'f') four = *p - 'a' + 10; else
+    if (*p >= 'A' && *p <= 'F') four = *p - 'A' + 10; else return 0;
     value <<= 4;
     value |= four;
     p++;
@@ -626,8 +630,10 @@ static unsigned int octal2uint32(const char *p) {
   unsigned int value = 0;
   unsigned int three = 0;
   while (*p) {
-    if (*p >= '0' && *p <= '7') three = *p - '0';
-    else return 0;
+    if (*p >= '0' && *p <= '7')
+      three = *p - '0';
+    else
+      return 0;
     value <<= 3;
     value |= three;
     p++;
@@ -683,7 +689,7 @@ static inline float q_atof(const char *p, float def) {
 }
 
 
-// Loose strcmp() which deoes partial match. It is used to match commands and parameters which are shortened:
+// Loose strcmp() which performs a **partial** match. It is used to match commands and parameters which are shortened:
 // e.g. user typed "seq" instead of "sequence" or "m w" instead of "mount wwwroot"
 //
 // /partial/ - string which expected to be incomplete/shortened. Can be NULL or empty string
@@ -702,12 +708,9 @@ static inline float q_atof(const char *p, float def) {
 // Longer strings are better to be compared as 32 bit chunks but this requires some calculation, string length measurement and so on
 // making this approach very slow for typical 2-4 letter strings
 //
-//  TODO: Function below gets called alot from various parts of ESPShell, thats why IRAM_ATTR; Really need to profile the code and move most critical
-//        functions to IRAM, but keep the IRAM usage small and optional (WITH_IRAM)
-//
 static int IRAM_ATTR q_strcmp(const char *partial, const char *full) {
 
-  // quick reject: first symbols must match
+  // quick reject: first symbols must match. if both are \0 then we will read beyound string buffers.
   if (partial && full && (*partial++ == *full++)) {
     // Run through every character of the /partial/ and compare them to characters of /full/
     while(*partial)
@@ -719,7 +722,7 @@ static int IRAM_ATTR q_strcmp(const char *partial, const char *full) {
 
 }
 
-// TODO: used only once, probably have to get rid of this function
+// 
 static inline const char *q_findchar(const char *str, char sym) {
   if (str) {
     while (*str && sym != *str)
@@ -830,7 +833,7 @@ static int q_print(const char *str) {
   return len;
 }
 
-// print Address : Value pairs, decoding the data according to data type
+// print /Address : Value/ pairs, decoding the data according to data type
 // 1,2 and 4 bytes long data types are supported
 // TODO: signed/unsigned char is displayed as hex. this is wrong.
 //

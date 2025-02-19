@@ -2114,8 +2114,8 @@ file_to_file:
 // cat /wwwroot/text_file.txt
 // cat /wwwroot/text_file.txt 10
 // cat /wwwroot/text_file.txt 10 10
-// cat /wwwroot/text_file.txt uart1
-// cat /wwwroot/text_file.txt 10 10 usb0
+// cat /wwwroot/text_file.txt uart 1
+// cat /wwwroot/text_file.txt 10 10 usb 0
 //
 // Display a text file content
 //

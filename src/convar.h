@@ -443,7 +443,7 @@ static int convar_show_number(const char *p) {
     
     // argv[n] is at least 2 bytes long (1 symbol + '\0')
     // Octal, Binary or Hex number?
-    if (p[0] == '0') {
+    if (p[0] == '0' && p[1] != '.') {
       unumber = q_atol(p,DEF_BAD);
       // Prepare for "unsafe" C-style typecast: these memcpy() here and below
       // just make a copy of the same value into different type variables.
