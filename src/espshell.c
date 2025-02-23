@@ -141,7 +141,7 @@ static int PRINTF_LIKE q_printf(const char *, ...);  // printf()
 static int q_print(const char *);                    // puts()
 
 static bool pin_is_input_only_pin(int pin);
-static bool pin_exist(int pin);
+static bool pin_exist(unsigned char pin);
 
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 3, 0)
 // TODO: rename

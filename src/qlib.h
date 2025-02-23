@@ -463,6 +463,18 @@ static bool isnum(const char *p) {
   return false;
 }
 
+// Inlined optimized versions of isnum() and atoi(). These are called from cmd_pin() handler,
+// and this optimization is to decrease delays when processing multiple "pin" arguments
+//
+static inline bool isnum2(const char *p) {
+  return p[0] >= '0' && p[0] <= '9' && (p[1] == 0 || (p[1] >= '0' && p[1] <= '9'));
+}
+// ...
+static inline int atoi2(const char *p) {
+  return p[1] ? (p[0] - '0') * 10 + p[1] - '0'
+              : (p[0] - '0');
+}
+
 // Check if ascii string represents a floating point number
 // "0.5" and "-.5" are both valid inputs
 static bool isfloat(const char *p) {

@@ -216,6 +216,7 @@ static const char *iomux_funame(unsigned char pin, unsigned char func) {
 // Function which is currently selected for the pin is displayed in reverse colors plus "*" symbol is
 // displayed after function name
 //
+
 static int pin_show_mux_functions() {
   unsigned char pin,i;
 
@@ -237,7 +238,10 @@ static int pin_show_mux_functions() {
   for (pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++) {
     
     if (io_mux_func_name[pin][0]) { // can't use pin_exist() here : it is not silent 
-      q_printf( "%%  %02u ",pin);
+      if (esp_gpio_is_pin_reserved(pin))
+        q_printf( "%% !<w>%02u</> ",pin);
+      else
+        q_printf( "%%  %02u ",pin);
 
       // get pin IO_MUX function currently selected
       gpio_ll_get_io_config(&GPIO, pin, &pu, &pd, &ie, &oe, &od, &drv, &fun_sel, &sig_out, &slp_sel);
@@ -257,7 +261,8 @@ static int pin_show_mux_functions() {
   HELP(q_print( "\r\n"
                 "% NOTE 1: To select GPIO matrix use function #" xstr(PIN_FUNC_GPIO) " or\r\n"
                 "%         use \"pin X matrix\" command where \"X\" is the pin number\r\n"
-                "% NOTE 2: Function, that is currently assigned to the pin is marked with \"*\"\r\n"));
+                "% NOTE 2: Function, that is currently assigned to the pin is marked with \"*\"\r\n"
+                "% NOTE 3: Pins that are RESERVED are marked with \"!\"\r\n"));
   return 0;
 }
 
@@ -340,51 +345,42 @@ void pinForceMode(unsigned int pin, unsigned int flags) {
 }
 
 
-// checks if pin (GPIO) number is in valid range.
-// display a message if pin is out of range
-
-static bool pin_exist(int pin) {
-  // pin number is in range and is a valid GPIO number?
-  if ((pin < SOC_GPIO_PIN_COUNT) && (((uint64_t)1 << pin) & SOC_GPIO_VALID_GPIO_MASK))
-    return true;
+// displays a message if pin is out of range
+//
+static bool pin_exist_notice(unsigned char pin) {
 #if WITH_HELP
-  else {
-    uint64_t mask = ~SOC_GPIO_VALID_GPIO_MASK;
-    int informed = 0;
-    // pin number is incorrect, display help
-    q_printf("%% Valid pin numbers are 0 to %d", SOC_GPIO_PIN_COUNT - 1);
+  uint64_t mask = ~SOC_GPIO_VALID_GPIO_MASK;
+  
 
-    if (mask)
-      for (pin = 63; pin >= 0; pin--)
+  // pin number is incorrect, display help
+  if (pin >= SOC_GPIO_PIN_COUNT)
+    q_printf("%% Valid pin numbers are from 0 to %u, there is no pin \"%u\"\r\n", SOC_GPIO_PIN_COUNT - 1, pin);
+  else {
+    q_printf("%% Pin number %u does not exists; These GPIOs do not exist as well: \r\n%% ", pin);
+    if (mask) {
+      for (pin = 63; ; pin--) {
         if (mask & ((uint64_t)1 << pin)) {
           mask &= ~((uint64_t)1 << pin);
-          if (pin < SOC_GPIO_PIN_COUNT) {
-            if (!informed) {
-              informed = 1;
-              q_print(", except pins: ");
-            } else
-              q_print(", ");
-            q_printf("%s<e>%d</>", mask ? "" : "and ", pin);
-          }
+          if (pin < SOC_GPIO_PIN_COUNT)
+            q_printf("%s<e>%d</>,", mask ? "" : "and ", pin);
         }
-    // the function is not in .h files.
-    // moreover its name has changed in recent ESP IDF
-    for (pin = informed = 0; pin < SOC_GPIO_PIN_COUNT; pin++)
-      if (esp_gpio_is_pin_reserved(pin))
-        informed++;
+        if (pin == 0)
+          break;
+      }
+    } else
+      q_print(" none");
 
-    if (informed) {
-      q_print("\r\n% Reserved pins (used internally):");
-      for (pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++)
-        if (esp_gpio_is_pin_reserved(pin)) {
-          informed--;
-          q_printf("%s<e>%d</>", informed ? ", " : " and ", pin);
-        }
-    }
     q_print(CRLF);
-#endif  // WITH_HELP
-    return false;
   }
+#endif  // WITH_HELP
+  return false;
+}
+
+// pin number is in range and is a valid GPIO number?
+//
+static inline bool pin_exist(unsigned char pin) {
+  return ((pin < SOC_GPIO_PIN_COUNT) && (((uint64_t)1 << pin) & SOC_GPIO_VALID_GPIO_MASK))  ? true
+                                                                                            : pin_exist_notice(pin);
 }
 
 
@@ -590,13 +586,16 @@ static int cmd_pin_show(int argc, char **argv) {
 
   // ESP32S3 has its pin 18 and 19 drive capability of 3 but the meaning is 2 and vice-versa
   // TODO:Other versions probably have the same behaviour on some other pins. Check TechRefs
-#ifdef CONFIG_IDF_TAGET_ESP32S3
+  
+#ifdef CONFIG_IDF_TARGET_ESP32S3
   if (pin == 18 || pin == 19) {
-    if (drv == 2) drv == 3 else if (drv == 3) drv == 2;
+    if (drv == 2)
+      drv = 3;
+    else if (drv == 3) 
+      drv = 2;
   }
 #endif
-  drv = !drv ? 5 : (drv == 1 ? 10 : (drv == 2 ? 20 : 40));
-  q_printf("%% Maximum current is %u milliamps\r\n", (unsigned int)drv);
+  q_printf("%% Maximum current is %u milliamps\r\n", (unsigned int)(5 * (1 << drv)));
   
 
   // enable INPUT if was not enabled before
@@ -878,8 +877,8 @@ static int cmd_pin(int argc, char **argv) {
       } else
       //A keyword which is a decimal number. When we see a number we use it as a pin number
       //for subsequent keywords. Must be a valid GPIO number.
-      if (isnum(argv[i])) {
-        if (!pin_exist((pin = q_atol(argv[i], DEF_BAD))))
+      if (isnum2(argv[i])) {
+        if (!pin_exist((pin = /*q_atol(argv[i], DEF_BAD)*/atoi2(argv[i]))))
           return i;
       } else
       // argument i was not recognized
