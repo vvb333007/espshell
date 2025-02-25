@@ -9,10 +9,10 @@
   // !! READ ME FIRST !!
  //
  // 1) Inclusion of this file will enable CLI automatically
- // 2) No functions need to be called in order to use the shell
- // 3) There are Compile Time Settings below to tweak ESP32Shell behaviour
+ // 2) No functions needs to be called in order to use the shell
+ // 3) There are Compile-time Settings below to tweak ESP32Shell behaviour
  // 4) Console on USB (Serial is of USBCDC class) is not supported yet
- // 5) Using CompileTimeSettings section below disable code which is not needed to decrease the memory footprint
+ // 5) Using Compile-time Settings section below disable code which is not needed to decrease the memory footprint
 
 #ifndef espshell_h
 #define espshell_h
@@ -50,96 +50,95 @@
 
 #define SEQUENCES_NUM 10         // Max number of sequences available for command "sequence"
 
-// Developer options
+// Developer options, keep default
 #define MEMTEST 0                // hunt for espshell's memory leaks
 #define CMD_STATS 0               // register NCmds, NHandlers and NTrees variables which hold espshell's keyword stats
 
 // -- ESPShell public API --
-// 1) Access sketch variables from ESPShell while sketch is running.   Yes it is possible, you just need to /register/ your variable by using
-//    "convar_add(VAR)" macro. Once registered, variables are available for read/write access (via "var" command). Variable types supported: 
-//    pointers, integers and floating point types both signed and unsigned
+
+// 1)
+// Access sketch variables from ESPShell while sketch is running: in order to do so variables 
+// must be **registered** (using one of convar_addX() macros). Once registered, variables are 
+// available for read/write access (via "var" command). 
+//
+//    Variable types supported: 
+//
+//      1. Simple types: unsigned/signed char, short, int and long; float; bool;
+//      2. Pointers: pointers to Simple Types, pointer to a pointer
+//      3. Arrays of Simple Types, arrays of pointers
+//
+//    To register a non-pointer type variable (i.e. "int", "unsigned char" and so on) use "convar_add()"
+//    To register a pointer to a simple scalar type use convar_addp()
+//    To register a pointer to a pointer use convar_addpp()
+//    Arrays of scalar types is registered with convar_adda()
+//    Arrays of pointers are registered with convar_addap()
 // 
-//    Example: register 3 sketch variables in ESPShell
+//    Example: register sketch variables in ESPShell
 //    ...
 //    int some_variable;
-//    const char *ptr;
+//    const int *ptr = ptr;
 //    static float volatile another_variable;
+//    int arr[] = {1,2,3};
+//    void **bb = &ptr;
 //    ...
 //    convar_addp(ptr);
+//    convar_adda(arr);
 //    convar_add(some_variable);
 //    convar_add(another_variable);
+//    convar_addpp(bb);
+//
+//
 #if WITH_VAR
-
-
-// TODO:
-// The code below could be written simplier if we had acces to __builtin_types_compatible() or _Generic.
-// For some reason GCC v13+ (Xtensa arch) does not support those. My old Cygwin installation supports both
-// on GCC v11.
-//
-// Array registration and pointer registration are two different macro/functions because &VAR returns &VAR[0] for array
-// but not for pointer
-//
-// All convar_addX() macros are reduced to single function call during compilation
-//
 extern float dummy_float;
-extern void *dummy_pointer;
 
+// Any non-pointer variable of simple (builtin) type (e.g. float, unsigned int, signed char, bool and so on)
 #  define convar_add( VAR ) do { \
-          bool is_signed; \
           __typeof__(VAR) __x = ( __typeof__(VAR) )(-1); \
-          is_signed = (__x < 0); /* HELLO! If you see this warning during compilation - just ignore it :) */ \
-          espshell_varadd( #VAR, &VAR, sizeof(VAR), \
-          (__builtin_classify_type(VAR) == __builtin_classify_type(dummy_float)), \
-          /*(__builtin_classify_type(VAR) == __builtin_classify_type(dummy_pointer))*/0, \
-          !is_signed); \
+          bool is_signed = (__x < 0); /* HELLO! If you see this warning during compilation - just ignore it :) */ \
+          espshell_varadd( #VAR, &VAR, sizeof(VAR),(__builtin_classify_type(VAR) == __builtin_classify_type(dummy_float)),0,!is_signed); \
 } while( 0 )
 
+// Pointer to a simple type
 #  define convar_addp( VAR ) do { \
-          bool is_signed; \
           __typeof__(VAR[0]) __x = ( __typeof__(VAR[0]) )(-1); \
-          is_signed = (__x < 0);   /* HELLO! If you see this warning during compilation - just ignore it :) */ \
-          espshell_varaddp( #VAR, &VAR, sizeof(VAR[0]), \
-          (__builtin_classify_type(VAR[0]) == __builtin_classify_type(dummy_float)), \
-          /*(__builtin_classify_type(VAR[0]) == __builtin_classify_type(dummy_pointer))*/0, \
-          !is_signed); \
+          bool is_signed = (__x < 0);   /* HELLO! If you see this warning during compilation - just ignore it :) */ \
+          espshell_varaddp( #VAR, &VAR, sizeof(VAR[0]), (__builtin_classify_type(VAR[0]) == __builtin_classify_type(dummy_float)),0,!is_signed); \
 } while ( 0 )
 
+// Array of elements of a simple type
 #  define convar_adda( VAR ) do { \
-          bool is_signed; \
           __typeof__(VAR[0]) __x = ( __typeof__(VAR[0]) )(-1); \
-          is_signed = (__x < 0);   /* HELLO! If you see this warning during compilation - just ignore it :) */ \
-          espshell_varadda( #VAR, &VAR, sizeof(VAR[0]), sizeof(VAR) / sizeof(VAR[0]), \
-          (__builtin_classify_type(VAR[0]) == __builtin_classify_type(dummy_float)), \
-          /*(__builtin_classify_type(VAR[0]) == __builtin_classify_type(dummy_pointer))*/0, \
-          !is_signed); \
+          bool is_signed = (__x < 0);   /* HELLO! If you see this warning during compilation - just ignore it :) */ \
+          espshell_varadda( #VAR, &VAR, sizeof(VAR[0]), sizeof(VAR) / sizeof(VAR[0]), (__builtin_classify_type(VAR[0]) == __builtin_classify_type(dummy_float)), 0,!is_signed); \
 } while ( 0 )
 
+// Pointer to a pointer
 #  define convar_addpp( VAR ) do { \
-          void **tmp = (void **)VAR; \
           espshell_varaddp( #VAR, &VAR, sizeof(void *), 0, 1, 1); \
 } while ( 0 )
 
+// Array of pointers
 #  define convar_addap( VAR ) do { \
           espshell_varadda( #VAR, &VAR, sizeof(VAR[0]), sizeof(VAR) / sizeof(VAR[0]), 0, 1, 1); \
 } while ( 0 )
 
 #else
+// convar_addX API disabled
 #  define convar_add( ... )  do {} while( 0 )
 #  define convar_addp( ... ) do {} while( 0 )
 #  define convar_adda( ... ) do {} while( 0 )
 #  define convar_addpp( ... ) do {} while( 0 )
 #  define convar_addap( ... ) do {} while( 0 )
-
 #endif
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// 2) Start ESPShell manually (case when AUTOSTART is 0).
-// By default espshell shell autostarts. If AUTOSTART is set to 0 in espshell.h then
-// user sketch must call espshell_start() to manually start the shell. Regardless of AUTOSTART:
-// a shell which was closed by "exit ex" command it is ok to call this function to restart the shell
+// 2) Start ESPShell manually
+// By default espshell autostarts. If AUTOSTART is set to 0 in espshell.h then
+// user sketch must call espshell_start() to manually start the shell. 
+// A shell which was closed by "exit ex" command can be restarted by this function 
 //
 #if !AUTOSTART
 void espshell_start();
@@ -147,10 +146,9 @@ void espshell_start();
 
 // 3) Execute an arbitrary shell command (\n are allowed for multiline, i.e. multiple commands at once).
 // This function injects its argument to espshell's input stream as if it was typed by user. 
-// It is an asyn call, returns immediately. Next call can be done only after espshell_exec_finished() 
-// returns /true/
+// It is an asyn call, returns immediately. Next call can be done only after espshell_exec_finished()
 //
-// Example: espshell_exec("uptime \n cpu \n");
+// @param p - A pointer to a valid asciiz string. String must remain a valid memory until espshell finishes its processing!
 //
 void espshell_exec(const char *p);
 

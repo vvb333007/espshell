@@ -405,7 +405,7 @@ static void pin_save(int pin) {
 
   //save digital value for OUTPUT GPIO
   if (Pins[pin].bus_type == ESP32_BUS_TYPE_GPIO && oe)
-    Pins[pin].value = (digitalRead(pin) == HIGH);
+    Pins[pin].value = (digitalForceRead(pin) == HIGH);
 
   Pins[pin].flags = 0;
   if (pu) Pins[pin].flags |= PULLUP;
@@ -422,8 +422,6 @@ static void pin_load(int pin) {
 
   // 1. restore pin mode
   pinForceMode(pin, Pins[pin].flags);
-
-  // TODO: rewrite code below
 
   //2. attempt to restore peripherial connections:
   //   If pin was not configured or was simple GPIO function then restore it to simple GPIO
@@ -455,37 +453,33 @@ static void pin_load(int pin) {
 // ESP32 has these while newer models have all GPIO capable
 // of Input & Output
 //
-static bool pin_is_input_only_pin(int pin) {
+static inline bool pin_is_input_only_pin(int pin) {
   return !GPIO_IS_VALID_OUTPUT_GPIO(pin);
 }
 
 
-// strapping pins as per Technical Reference
-//
-static bool pin_is_strapping_pin(int pin) {
-  switch (pin) {
+// strapping pins as per Technical Reference (a 64bit bitmask)
+// TODO: add other ESP32 variants
 #ifdef CONFIG_IDF_TARGET_ESP32
-    case 0: case 2: case 5: case 12: case 15:
+#  define STRAPPING_PINS 1 | (1 << 2) | (1 << 5) | (1 << 12) | (1 << 15)
 #elif defined(CONFIG_IDF_TARGET_ESP32S2)
-    case 0: case 45: case 46:
+#  define STRAPPING_PINS 1ULL | (1ULL << 45) | (1ULL << 46)
 #elif defined(CONFIG_IDF_TARGET_ESP32S3)
-    case 0: case 3: case 45: case 46:
+#  define STRAPPING_PINS 1ULL | (1ULL << 3) | (1ULL << 45) | (1ULL << 46)
 #elif defined(CONFIG_IDF_TARGET_ESP32C3)
-    case 2: case 8: case 9:
+#  define STRAPPING_PINS (1 << 2) | (1 << 8) | (1 << 9)
 #elif defined(CONFIG_IDF_TARGET_ESP32C6)
-    case 8: case 9: case 12: case 14: case 15:
+#  define STRAPPING_PINS (1 << 8) | (1 << 9) | (1 << 12) | (1 << 14) | (1 << 15)
 #elif defined(CONFIG_IDF_TARGET_ESP32H2)
-    case 8: case 9: case 25:
+#  define STRAPPING_PINS (1 << 8) | (1 << 9) | (1 << 25)
 #else
-    case -1: // Unreachable code: pin number is always positive integer
-#warning "Unsupported (yet) target, pin_is_strapping_pin() is disabled. Dont hesitate to add support by yourself!"
+#  define STRAPPING_PINS 0
+#  warning "Unsupported (yet) target, pin_is_strapping_pin() is disabled. Dont hesitate to add support by yourself!"
 #endif
-      // Return /true/ if pin is a strapping pin
-      return true;
-    default:
-      // Pin is not a "strapping pin"
-      return false;
-  }
+
+// Check if pin is a strapping pin
+static inline bool pin_is_strapping_pin(int pin) {
+  return ((unsigned long long)( STRAPPING_PINS ) & ((unsigned long long)1 << pin)) != 0;
 }
 
 

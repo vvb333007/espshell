@@ -25,7 +25,7 @@
 
 #if COMPILING_ESPSHELL
 
-#define TRIGGER_POLL    500  // How often check for keyboard press (to abort the command)
+#define TRIGGER_POLL   1000  // How often check for keyboard press (to abort the command)
 #define PULSE_WAIT     1000  // Default counting time, 1000ms
 #define PCNT_OVERFLOW 20000  // PCNT interrupt every 20000 pulses
 #define UNUSED_PIN       -1  // Pin number when we don't need the function
@@ -46,9 +46,10 @@ static volatile struct {
   volatile unsigned int  overflow;  // incremented on every PCNT_OVERFLOW pulses
   volatile unsigned int  count;              // Pulses counted                         (only valid for stopped counters) 
   volatile unsigned int  interval;           // Measurement interval in milliseconds   (only valid for stopped counters) 
-  volatile unsigned int  pin:8;                // Pin where pulses were counted
-  volatile unsigned int  in_use:1;             // non-zero means pcnt unit is used by ESPShell
-  volatile unsigned int  trigger:1;             // non-zero means pcnt unit is waiting for the first pulse to start counting
+  volatile unsigned int  pin:8;              // Pin where pulses were counted
+  volatile unsigned int  in_use:1;           // non-zero means pcnt unit is used by ESPShell
+  volatile unsigned int  trigger:1;          // non-zero means pcnt unit is waiting for the first pulse to start counting
+  volatile unsigned int  been_used:1;       // workaround
   volatile unsigned int  tsta;               // millis() just before counting starts
   volatile unsigned int  taskid;             // ID of the task responsible for counting
 
@@ -84,6 +85,7 @@ static int count_claim_unit() {
 
       // found one. mark it as /used/ and clear its counters
       units[i].in_use = 1;
+      units[i].been_used = 1; // Only set to 1, never cleared.
       units[i].count = units[i].overflow = units[i].interval = units[i].pin = units[i].tsta = 0;
       units[i].taskid = (unsigned int)taskid_self(); 
       pcnt_counters++;
@@ -93,9 +95,6 @@ static int count_claim_unit() {
   }
   // Nothing found. 
   mutex_unlock(pcnt_mux);
-  q_printf("%% All PCNT units are in use (units %u .. %u)\r\n", pcnt_unit, PCNT_UNIT_MAX - 1);
-  if (pcnt_unit != PCNT_UNIT_0)
-    HELP(q_print("% Try to decrease \"pcnt_unit\" variable: (\"var pcnt_unit 0\")\r\n"));
   return -1;
 }
 
@@ -182,13 +181,24 @@ static unsigned int count_read_counter(int unit, unsigned int *freq, unsigned in
   return cnt;
 }
 
+// Human-readable PCNT unit state 
+// /i/ is the PCNT unit index (array units[] index)
+//
+static const char *count_state_name(int i) {
+  return units[i].in_use  ? (units[i].trigger ? "<i>Trigger</>"
+                                              : "<g>Running</>")
+                          : (units[i].been_used ? "<o>Stopped</>"
+                                                : "Unused ");
+}
+
 // Clear counter(s) which was/are associated with given /pin/
+// There may be more than 1 PCNT unit associated with given pin.
 //
 static int count_clear_counter(int pin) {
   int unit;
   mutex_lock(pcnt_mux);
   for (unit = pcnt_unit; unit < PCNT_UNIT_MAX; unit++) {
-    if (units[unit].pin == pin) {
+    if (units[unit].pin == pin && units[unit].been_used) {
 
       if (units[unit].in_use)
         pcnt_counter_pause(unit);
@@ -204,26 +214,11 @@ static int count_clear_counter(int pin) {
         // its ok to clear pin,taskid & tsta on stopped counter
         units[unit].pin = units[unit].taskid = units[unit].tsta = 0;
       }
-      q_printf("%% %s counter#%u has been cleared\r\n",units[unit].in_use ? "Running" : "Stopped / Trigger",unit);
+      q_printf("%% Counter #%u (while in %s state) has been cleared\r\n", unit, count_state_name(unit));
     }
   }
   mutex_unlock(pcnt_mux);
   return 0;
-}
-
-// Human-readable PCNT unit state 
-// /i/ is the PCNT unit index (array units[] index)
-//
-static const char *count_state_name(int i) {
-
-  const char *st = "Unused!";
-
-  if (units[i].in_use)
-    st = units[i].trigger ? "<i>Trigger</>" : "<g>Running</>";
-  else if (units[i].count || units[i].overflow || units[i].pin)
-    st = "<o>Stopped</>";
-
-  return st;
 }
 
 // Display counters (stopped or running. information is retained on stopped counters)
@@ -245,7 +240,7 @@ static int count_show_counters() {
   for (i = 0; i < PCNT_UNIT_MAX; i++) {
     cnt = count_read_counter(i,&freq,&interval);
     st = count_state_name(i);
-
+// wish we can have #pragma in #define ..
   #pragma GCC diagnostic ignored "-Wformat"
     q_printf("%%  %d | % 3u | %s | 0x%08x | % 11u | % 10u | % 8u Hz\r\n", i, units[i].pin, st, units[i].taskid, cnt, interval, freq);
   #pragma GCC diagnostic warning "-Wformat"
@@ -261,21 +256,27 @@ static int count_show_counters() {
   return 0;
 }
 
-// PIN interrupt helpers. ESPShell uses GPIO interrupt to catch the first pulse when counter is in "trigger" mode
-// Once pulse is detected the interrupt is fired (count_pin_anyedge_interrupt(void *)) which disables further interrupts
-// and unblocks counter task so counter can start counting
-
 // Pointer to the struct below is passed to GPIO interrupt handler
 struct trigger_arg {
   TaskHandle_t taskid;  // counter's task id
-  unsigned int pin;     // pin that has generated interrupt
+  unsigned int pin;     // pin that has generated the interrupt
 };
 
 
-// GPIO interrupt handler. We use GPIO Service ISR approach: per-GPIO interrupts
+// PIN interrupt helpers. 
+// ESPShell uses GPIO interrupt to catch the first pulse when counter is in "trigger" mode
+// Once pulse is detected the interrupt is fired (count_pin_anyedge_interrupt(void *)) which disables further interrupts
+// and unblocks counter task so counter can start counting. All these transient processes **may** have impact on accuracy
+// at higher frequencies.
+//
+
+// "ISR Services" style interrupt handler.
+// Called by the IDF whenever a pulse (edge) is detected on a pin
 //
 static void IRAM_ATTR count_pin_anyedge_interrupt(void *arg) {
+
   struct trigger_arg *t = (struct trigger_arg *)arg;
+
   // Send an event to PCNT task blocking on TaskNotifyWait so it can unblock and start counting.
   task_signal_from_isr(t->taskid, SIGNAL_GPIO);
   // Disable further interrupts immediately
@@ -285,29 +286,37 @@ static void IRAM_ATTR count_pin_anyedge_interrupt(void *arg) {
 
 // This function blocks until at least 1 of 3 conditions is true:
 //
-// 1. a pulse comes to the pin (task notification SIGNAL_PIN is received)
-// 2. "kill" commmand detected (        ---       SIGNAL_TERM is received)
-// 3. command interrupted by a keypress
+// 1. A task notification SIGNAL_PIN is received (which is sent by a GPIO interrupt handler when (see function above)) 
+// 2.                     SIGNAL_TERM is received (which means user issued "kill -9" command)
+// 3. A keypress is detected (not applicable for "background" commands)
 //
-
+// Returns /false/ when the further processing is better to be stopped
+//         /true/  when it is ok to continue with counting.
+// /False/ is returned when this function was interrupted by one of conditions above.
+//
 bool count_wait_for_the_first_pulse(unsigned int pin) {
 
   struct trigger_arg t;
   bool ret = false;
   bool fg = is_foreground_task();
 
+  // /t/ is the argument to the interrupt handler
   t.pin = pin;
   t.taskid = taskid_self();
 
   gpio_set_intr_type(pin, GPIO_INTR_ANYEDGE);
-  gpio_install_isr_service((int)ARDUINO_ISR_FLAG);            // it is ok to call it multiple times
+  gpio_install_isr_service((int)ARDUINO_ISR_FLAG);            // it is ok to call it multiple times, however IDF issues a warning
   gpio_isr_handler_add(pin, count_pin_anyedge_interrupt, &t);
 
   uint32_t value = SIGNAL_TERM;
 
-  while( (ret = task_wait_for_signal(&value, TRIGGER_POLL)) == false)
-    if (fg && anykey_pressed()) // detect keypress only if we are running in foreground
-      break;
+  if (!fg)
+    ret = task_wait_for_signal(&value, 0); // for a background tasks we dont have to poll. Delay of 0 means "wait forever"
+  else
+    // detect keypress only if we are running in foreground
+    while( (ret = task_wait_for_signal(&value, TRIGGER_POLL)) == false)
+      if (anykey_pressed()) 
+        break;
 
   // Either "kill" command (sends SIGNAL_TERM) or interrupted by a keypress (/value/ didn't change, so SIGNAL_TERM again)
   // In both cases we don't want to continue execution of calling function (i.e. cmd_count()) so return /false/ here
@@ -329,7 +338,8 @@ static int cmd_count(int argc, char **argv) {
   pcnt_config_t cfg = { 0 };
   unsigned int pin, wait = PULSE_WAIT;
   int16_t count;
-  int unit,i;
+  int unit,i, trigger;
+  
   
   if (argc < 2)
     return CMD_MISSING_ARG;
@@ -344,7 +354,9 @@ static int cmd_count(int argc, char **argv) {
 
   // Allocate new counter unit
   if ((unit = count_claim_unit()) < 0) {
-    q_print("% <e>All counters are in use</>\r\n");
+    q_print("% <e>All " xstr(PCNT_UNIT_MAX) "counters are in use</>\r\n% Use \"kill\" to free up counter resources\r\n");
+    if (pcnt_unit != PCNT_UNIT_0)
+      HELP(q_print("% Try to decrease \"pcnt_unit\" variable: (\"var pcnt_unit 0\")\r\n"));
     return 0;
   }
 
@@ -386,7 +398,8 @@ static int cmd_count(int argc, char **argv) {
   // Allocate & attach interrupt handler for the unit
   count_claim_interrupt(unit);
 
-  if (units[unit].trigger) {
+  // save units[].trigger flag, we will use it later
+  if ((trigger = units[unit].trigger) == 1) {
     bool triggered = count_wait_for_the_first_pulse(pin); // blocking call
     units[unit].trigger = 0;
     if (!triggered) { // interrupted by "kill" or a keypress while was in waiting state
@@ -407,7 +420,7 @@ release_hardware_and_exit:
   pcnt_get_counter_value(unit, &count);
 
   count_release_interrupt(unit);
-  units[unit].count = units[unit].overflow * PCNT_OVERFLOW + (unsigned int)count + units[unit].trigger;
+  units[unit].count = units[unit].overflow * PCNT_OVERFLOW + (unsigned int)count + trigger /* add one pulse which triggered counting */;
 
   // real value. it will be different from planned value if command "count" was interrupted
   units[unit].interval = wait;

@@ -200,7 +200,7 @@ static const char *VarOops = "<e>% Oops :-(\r\n"
                              "%  <i>2. Use \"convar_add()\" macro to register your variables</>\r\n"
                              "%\r\n"
                              "% Once registered, variables can be manipulated by the \"var\" command\r\n"
-                             "% while your sketch is running. More is in \"docs/Commands.txt\"\r\n";
+                             "% while your sketch is running\r\n";
 #endif //WITH_HELP
 
 // -- Actual ESPShell code #included here --
@@ -264,7 +264,7 @@ espshell_command(char *p) {
   // background command is then resposible for container deletion.
   argcargv_t *aa = NULL;
 
-  // got something to process? this "while" here is only for "break" below. Was fighting with goto's
+  // got something to process?
   if (p && *p) {
 
     //make a history entry, if history is enabled (default)
@@ -280,12 +280,12 @@ espshell_command(char *p) {
     // /fg/ is /true/ for foreground commands. it is /false/ for background commands.
     // TODO: char comparision is enough, q_strcmp is overkill
     if ((fg = q_strcmp(aa->argv[aa->argc - 1],"&")) == false) {
-      //q_print("% A background exec is requested\r\n");
+      //q_print("% A background exec has been requested\r\n");
       // strip last "&" argument
       aa->argc--;
     }
 
-    // from now on /p/ is deallocated only by userinput_unref(), as part of /aa/
+    // from now on /p/ is can be freed by userinput_unref() only, as part of /aa/
     // Handy shortcuts. GCC is smart enough to eliminate these.
     argc = aa->argc;
     argv = aa->argv;
@@ -422,6 +422,7 @@ static  void espshell_initonce() {
     static_assert(sizeof(char) == 1,"Unexpected char size");
     static_assert(sizeof(float) == 4,"Unexpected float size");
     static_assert(sizeof(void *) == 4,"Unexpected pointer size");
+    static_assert(sizeof(unsigned long long) == 8,"Unexpected long long size");
 
     // Do some stats
 #if CMD_STATS
@@ -464,7 +465,7 @@ static  void espshell_initonce() {
     convar_add(ls_show_dir_size);  // enable/disable dir size counting for "ls" command
     convar_add(pcnt_channel);      // PCNT channel which is used by "count" command
     convar_add(pcnt_unit);         // PCNT unit which is used by "count" command
-    convar_add(bypass_qm);         // enable/disable "?" as context help hotkey
+    convar_add(bypass_qm);         // enable/disable "?" as a context help hotkey
     convar_add(tbl_min_len);       // buffers whose length is > printhex_tbl (def: 16) are printed as fancy tables
 
     // init subsystems
