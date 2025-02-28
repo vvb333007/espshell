@@ -24,7 +24,7 @@ EXTERN uint32_t getApbFrequency();
 static int cmd_cpu(int argc, char **argv) {
 
   esp_chip_info_t chip_info;
-  const char *chipid = "ESP32-(Unknown)>";
+  const char *chipid = "ESP32-(Unknown)";
 
   esp_chip_info(&chip_info);
 
@@ -72,20 +72,35 @@ static int cmd_cpu(int argc, char **argv) {
 #endif  //CONFIG_IDF_TARGET_XXX
 
   q_print("% <u>Hardware:</>\r\n");
-  q_printf("%% CPU ID: %s, Rev.: %d.%d\r\n%% CPU frequency is %luMhz, Xtal %luMhz, APB bus %luMhz\r\n%% Chip temperature: %.1f\xe8 C\r\n",
+  q_printf("%% CPU ID: %s,%u core%s, Rev.: %d.%d\r\n%% CPU frequency is %luMhz, Xtal %luMhz, APB bus %luMhz\r\n%% Chip temperature: %.1fC\r\n",
            chipid,
+           PPA(chip_info.cores),
            (chip_info.revision >> 8) & 0xf,
            chip_info.revision & 0xff,
            getCpuFrequencyMhz(),
            getXtalFrequencyMhz(),
            getApbFrequency() / 1000000,
            temperatureRead());
+  q_print("SoC features: ");
+
+  if (chip_info.features & CHIP_FEATURE_EMB_FLASH)
+    q_print("Embedded flash, ");
+  if (chip_info.features & CHIP_FEATURE_WIFI_BGN)
+    q_print("WiFi 2.4GHz, ");
+  if (chip_info.features & CHIP_FEATURE_BLE)
+    q_print("Bluetooth LE, ");
+  if (chip_info.features & CHIP_FEATURE_BT)
+    q_print("Bluetooth, ");
+  if (chip_info.features & CHIP_FEATURE_IEEE802154)
+    q_print("IEEE 802.15.4, ");
+  if (chip_info.features & CHIP_FEATURE_EMB_PSRAM)
+    q_print("embedded PSRAM");
 
   q_print("%\r\n% <u>Firmware:</>\r\n");
   q_printf( "%% Sketch is running on " ARDUINO_BOARD ", (an " ARDUINO_VARIANT " variant), uses:\r\n"
             "%% Arduino Core version <i>%s</>, which uses\r\n"
             "%% Espressif ESP-IDF version \"%s\"\r\n"
-            "%% ESP32Shell library <i>" ESPSHELL_VERSION "</>\r\n", 
+            "%% ESPShell library <i>" ESPSHELL_VERSION "</>\r\n", 
             ESP_ARDUINO_VERSION_STR, 
             esp_get_idf_version());
 

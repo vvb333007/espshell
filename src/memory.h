@@ -100,13 +100,9 @@ static int cmd_show_address(int argc, char **argv) {
         if (!q_strcmp(argv[i],"short"))
           length = sizeof(short);
         else
-        if (!q_strcmp(argv[i],"char")) {
-          //skip
+        if (!q_strcmp(argv[i],"char") || !q_strcmp(argv[i],"void") || !q_strcmp(argv[i],"signed")) {
+          //keywords to skip
         } else
-        if (!q_strcmp(argv[i],"void")) { // probably "void *", so just skip it and wait for an *
-          //skip
-        } 
-        else
           q_printf("%% Unrecognized keyword \"%s\" ignored\r\n",argv[i]);
 
         if (isp || isf)

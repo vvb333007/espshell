@@ -463,7 +463,6 @@ static  void espshell_initonce() {
 #endif // CMD_STATS
     // add internal variables ()
     convar_add(ls_show_dir_size);  // enable/disable dir size counting for "ls" command
-    convar_add(pcnt_channel);      // PCNT channel which is used by "count" command
     convar_add(pcnt_unit);         // PCNT unit which is used by "count" command
     convar_add(bypass_qm);         // enable/disable "?" as a context help hotkey
     convar_add(tbl_min_len);       // buffers whose length is > printhex_tbl (def: 16) are printed as fancy tables
