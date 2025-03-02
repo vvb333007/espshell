@@ -631,12 +631,12 @@ static int cmd_pin_pwm(int argc, char **argv,unsigned int pin, unsigned int *sta
     return CMD_MISSING_ARG;
   }
   i++;
-  freq = q_atol(argv[i++], MAGIC_FREQ + 1);
+  freq = q_atol(argv[i++], PWM_MAX_FREQUENCY + 1);
   *start = i;
 
   // frequency must be an integer number and duty must be a float point number
-  if (freq > MAGIC_FREQ) {
-    HELP(q_print("% <e>Frequency must be in range [1.." xstr(MAGIC_FREQ) "] Hz</>\r\n"));
+  if (freq > PWM_MAX_FREQUENCY) {
+    HELP(q_print("% <e>Maximum frequency is " xstr(PWM_MAX_FREQUENCY) " Hz</>\r\n"));
     return i - 1;
   }
 

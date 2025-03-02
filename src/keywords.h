@@ -732,50 +732,53 @@ static const struct keywords_t keywords_main[] = {
           "% Ex.: pin 1 high               -pin1 set to logic \"1\"\r\n"
           "% Ex.: pin 1 high delay 100 low -set pin1 to logic \"1\", after 100ms to \"0\"\r\n"
           "% Ex.: pin 1 pwm 5000 0.3       -set 5kHz, 30% duty square wave output\r\n"
-          "% Ex.: pin 1 pwm 0 0            -disable generation\r\n"
+          "% Ex.: pin 1 pwm 0 0            -disable PWN on GPIO1\r\n"
           "% Ex.: pin 1 high delay 500 low delay 500 loop 10 - Blink a led 10 times\r\n%\r\n"
           "% (see \"docs/Pin_Commands.txt\" for more details & examples)\r\n"),
     NULL },
 
   // PWM generation
   { "pwm", cmd_pwm, 3,
-    HELPK("% \"<b>pwm X [FREQ [DUTY]]</>\"\r\n"
+    HELPK("% \"<b>pwm X</> [<o>FREQ</> [<o>DUTY</>]]\"\r\n"
           "%\r\n"
           "% Start PWM generator on pin X, frequency FREQ Hz and duty cycle of DUTY\r\n"
-          "% Maximum frequency is 312000Hz, and DUTY is in range [0..1] with 0.123 being\r\n"
-          "% a 12.3% duty cycle\r\n"
+          "% Maximum frequency is " xstr(PWM_MAX_FREQUENCY) ", and DUTY is in range [0..1]\r\n"
+          "% i.e. duty of 0.5 means 50%\r\n"
           "%\r\n"
-          "% DUTY is optional and its default value is 50% (if not specified) and\r\n"
-          "% its resolution is 0.005 (0.5%)"
+          "% DUTY is optional and its default value is 50% (if not specified)\r\n"
+          "% Note that above 150kHz duty resolution drops to 8 bits, at 10MHz it is 2 bits\r\n"
+          "% Resolution is autoselected but can be overriden with \"var ledc_res BITS\"\r\n"
           "%\r\n"
-          "% Ex.: pwm 2 1000     - enable PWM of 1kHz, 50% duty on pin 2\r\n"
-          "% Ex.: pwm 2          - disable PWM on pin 2\r\n"
-          "% Ex.: pwm 2 6400 0.1 - enable PWM of 6.4kHz, duty cycle of 10% on pin 2\r\n"),
+          "% pwm 2 1000     - enable PWM of 1kHz, 50% duty on pin 2\r\n"
+          "% pwm 2          - disable PWM on pin 2\r\n"
+          "% pwm 2 6400 0.1 - enable PWM of 6.4kHz, duty cycle of 10% on pin 2\r\n"),
     "PWM output" },
 
   { "pwm", cmd_pwm, 2, HIDDEN_KEYWORD },
   { "pwm", cmd_pwm, 1, HIDDEN_KEYWORD },
 
   // Pulse counting/frequency meter
-  { "count", cmd_count, 3,
-    HELPK("% \"<b>count PIN clear</>\"\r\n"
-          "% \"<b>count PIN</> [<o>DURATION</>] [<o>trigger</>]\"\r\n%\r\n"
-          "% Count pulses on pin PIN within DURATION time, time is measured in\r\n"
-          "% milliseconds (defaults to 1000 milliseconds if omitted)\r\n"
-          "% The \"trigger\" keyword suspends the counter until the first pulse\r\n"
+  { "count", cmd_count, MANY_ARGS,
+    HELPK("% \"<b>count PIN</> [<o>NUMBER</>] [<o>trigger</> | <o>filter LENGTH</>]*\"\r\n%\r\n"
+          "% Count pulses on pin PIN for NUMBER milliseconds (default value is 1 second)\r\n"
+          "% Optional \"trigger\" keyword suspends the counter until the first pulse\r\n"
+          "% Optional \"filter LENGTH\" keyword ignores pulses <u>shorter than</> LENGTH nanoseconds\r\n"
           "%\r\n"
-          "% Ex.: \"<b>count 4</>\"         - Count pulses & measure frequency on pin4 for 1000ms\r\n"
-          "% Ex.: \"<b>count 4 2000</>\"    - Same as above but measurement time is 2 seconds\r\n"
-          "% Ex.: \"<b>count 4 999999 &</>\"- Count pulses in <u>a background</> for 1000 seconds\r\n"
-          "% Ex.: \"<b>count 4 trigger</>\" - Wait for the first pulse, then start to count\r\n"
-          "% Ex.: \"<b>count 4 clear</>\"   - Set counter to 0 (running or stopped)\r\n"
-          "% Ex.: \"<b>count 4 2000 trigger &</>\" - Wait for the pulse, then start to count for\r\n"
-          "%                                   2 seconds in a background"),
-    "Pulse counter" },
+          "% Examples: \r\n"
+          "% \"<b>count 4</>\"             - Count pulses & measure frequency on GPIO4 for 1000ms\r\n"
+          "% \"<b>count 4 2000</>\"        - Same as above but measurement time is 2 seconds\r\n"
+          "% \"<b>count 4 filter 100</>\"  - Count pulses which are <u>not shorter than</> 100ns, ignore others)\r\n"
+          "% \"<b>count 4 999999 &</>\"    - Count pulses in <u>a background</> for ~1000 seconds\r\n"
+          "% \"<b>count 4 trigger</>\"     - Wait for the first pulse, then start to count\r\n"
+          "% \"<b>count 4 2000 trig &</>\" - Wait for the 1st pulse pulse, then start to count pulses for\r\n"
+          "%                                 2 seconds in a background"), "Pulse counter" },
 
-  { "count", cmd_count, 2, HIDDEN_KEYWORD },   //hidden with 2 arg
-  { "count", cmd_count, 1, HIDDEN_KEYWORD },   //hidden with 1 arg
-
+  { "count", NULL, 2,
+    HELPK("% \"<b>count PIN clear</>\"\r\n"
+          "% Clear counters associated with pin PIN. These may be stopped, running or in \"trigger\" state\r\n"
+          "%\r\n"
+          "% \"<b>count 4 clear</>\"       - Clear all counters associated with GPIO4\r\n"), NULL },
+    
 #if WITH_ESPCAM
   { "camera", cmd_cam, 1, 
     HELPK("% \"camera up|down|settings|capture|filesize|transfer\" - Camera commands:\n\r" \
@@ -809,19 +812,19 @@ static const struct keywords_t keywords_main[] = {
           "% NUMBER can be anything that converts to a number. Use \"0b\",\"0x\" or \"0\"\r\n"
           "% prefixes to enter binary, hexadecimal or octal numbers."
           "%\r\n"
-          "% Ex.: \"var -1234\"        - Get information on a decimal number -1234\r\n"
-          "% Ex.: \"var 0x1234\"      - on a hex number..\r\n"
-          "% Ex.: \"var 01234\"       - on an octal number..\r\n"
+          "% Ex.: \"var -1234\"       - Get information on a decimal number -1234\r\n"
+          "% Ex.: \"var 0x1234\"      -                 on a hex number..\r\n"
+          "% Ex.: \"var 01234\"       -                 on an octal number..\r\n"
           "% Ex.: \"var 0b1001110\"   - and on a binary number"), NULL },
 
   { "var", cmd_var_show, NO_ARGS, HIDDEN_KEYWORD },
 
 
   { "history", cmd_history, 1, HIDDEN_KEYWORD },
-  { "history", cmd_history, 0, HIDDEN_KEYWORD },
+  { "history", cmd_history, NO_ARGS, HIDDEN_KEYWORD },
 #if WITH_COLOR
   { "colors", cmd_colors, 1, HIDDEN_KEYWORD },
-  { "colors", cmd_colors, 0, HIDDEN_KEYWORD },
+  { "colors", cmd_colors, NO_ARGS, HIDDEN_KEYWORD },
 #endif
 
   KEYWORDS_END
@@ -853,7 +856,7 @@ static void change_command_directory(unsigned int context, const struct keywords
 
 //"exit"
 //"exit exit"
-// exists from command subderictory or closes the shell ("exit exit")
+// exits from command subderictory or closes the shell ("exit exit")
 //
 static int exit_command_directory(int argc, char **argv) {
 

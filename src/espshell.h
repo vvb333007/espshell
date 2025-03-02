@@ -51,8 +51,9 @@
 #define SEQUENCES_NUM 10         // Max number of sequences available for command "sequence"
 
 // Developer options, keep default
-#define MEMTEST 0                // hunt for espshell's memory leaks
-#define CMD_STATS 0               // register NCmds, NHandlers and NTrees variables which hold espshell's keyword stats
+#define WITH_VERBOSE 1          // Enable VERBOSE() macro
+#define MEMTEST 0               // hunt for espshell's memory leaks
+#define CMD_STATS 0             // register NCmds, NHandlers and NTrees variables which hold espshell's keyword stats
 
 // -- ESPShell public API --
 

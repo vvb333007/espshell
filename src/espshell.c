@@ -9,6 +9,7 @@
 #define COMPILING_ESPSHELL 1  // dont touch this!
 
 // Limits 
+#define PWM_MAX_FREQUENCY 10000000     // Max frequency for PWM
 #define MAX_PROMPT_LEN 16              // Prompt length ( except for PROMPT_FILES), max length of a prompt
 #define MAX_PATH 256                   // max filesystem path len
 #define MAX_FILENAME MAX_PATH          // max filename len (equal to MAX_PATH for now)
@@ -108,6 +109,12 @@
 #  define STARTUP_HOOK __attribute__((constructor))
 #else
 #  define STARTUP_HOOK
+#endif
+
+#if WITH_VERBOSE
+#  define VERBOSE( ... ) __VA_ARGS__
+#else
+#  define VERBOSE( ... ) { /* Nothing here */ }
 #endif
 
 // gcc stringify which accepts macro names
@@ -466,7 +473,8 @@ static  void espshell_initonce() {
     convar_add(pcnt_unit);         // PCNT unit which is used by "count" command
     convar_add(bypass_qm);         // enable/disable "?" as a context help hotkey
     convar_add(tbl_min_len);       // buffers whose length is > printhex_tbl (def: 16) are printed as fancy tables
-
+    convar_add(ledc_res);          // Override PWM duty cycle resolution bitwidth: Duty range is from 0 to (2**ledc_res-1)
+    
     // init subsystems
     seq_init();
   }

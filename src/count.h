@@ -356,6 +356,8 @@ static int cmd_count(int argc, char **argv) {
   int16_t       count;               // Contents of a PCNT counter
   int           unit,                // PCNT unit number
                 i;                   // Index to argv
+  bool          filter = false;      // enable filtering
+  unsigned short val;                // Filter value (0..1023)
   
   if (argc < 2)
     return CMD_MISSING_ARG;
@@ -389,7 +391,25 @@ static int cmd_count(int argc, char **argv) {
   // Read rest of the parameters: DURATION and/or keyword "trigger"
   i = 1;
   while (++i < argc) {
-
+    if (!q_strcmp(argv[i],"filter")) {
+      if (i + 1 >= argc) {
+bad_filter:        
+        q_print("% Pulse witdth in nanoseconds [13 .. 12787] is expected\r\n");
+        return CMD_MISSING_ARG;
+      }
+      i++;
+      // Magic numbers below: We assume that APB_CLK is 80 Mhz; PCNT filter value register is 10-bit wide;
+      // 1 APB cycle is 12.5ns, 1023 APB cycles is 12787 ns.
+      // TODO: read real APB clock value and calculate magic numbers
+      if (isnum(argv[i])) {
+        val = q_atol(argv[i],0);
+        val = (val < 13 ? 13
+                        : (val > 12787 ? 12787
+                                       : val)) / 13;
+        filter = true;
+      } else
+        goto bad_filter;
+    } else
     if (!q_strcmp(argv[i],"trigger"))
       units[unit].trigger = 1;
     else
@@ -413,6 +433,14 @@ static int cmd_count(int argc, char **argv) {
   pcnt_unit_config(&cfg);
   pcnt_counter_pause(unit);
   pcnt_counter_clear(unit);
+
+  if (filter) {
+    pcnt_set_filter_value(unit, val );
+    pcnt_filter_enable(unit);
+    q_printf("%% PCNT filter is enabled, %u APB cycles\r\n",(uint16_t)val);
+  } else
+    pcnt_filter_disable(unit);
+
 
   // Allocate & attach interrupt handler for the unit. Unit is configured to generate an interrupt every 20000 pulses.
   count_claim_interrupt(unit);

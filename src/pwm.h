@@ -17,38 +17,86 @@
 //
 #if COMPILING_ESPSHELL
 
-#define MAGIC_FREQ 312000  // max allowed frequency for the "pwm" command. TODO: cover all frequency ranges up to 10MHz
+#ifndef LEDC_CHANNEL_MAX
+#  define LEDC_CHANNEL_MAX SOC_LEDC_CHANNEL_NUM
+#endif
+
+//ESP32 has HS mode support while ESP32S3 doesn't
+// TODO: test channels 8..16 (slow group)
+#ifdef SOC_LEDC_SUPPORT_HS_MODE
+#  define LEDC_CHANNELS (LEDC_CHANNEL_MAX * 2)
+#else
+#  define LEDC_CHANNELS (LEDC_CHANNEL_MAX * 1)
+#endif
+
+// We assume here that Arduino Core selects XTAL as a clock source whenever it is possible. At least Arduino Core 3.0.7 does that.
+// If this is not the case then Arduino Core uses CLK_AUTO which **probably** translates to CLK_APB
+// We need to know the source clock frequency to find out maximum duty bitwidth allowed for given frequency
+//
+// TODO: which clock source is used for slow speed channels? Are they capable of 10Mhz?
+//
+#ifdef SOC_LEDC_SUPPORT_XTAL_CLOCK
+   EXTERN uint32_t getXtalFrequencyMhz();
+#  define SRC_CLK (getXtalFrequencyMhz() * 1000000UL)
+#else
+   EXTERN uint32_t getApbFrequency();
+#  define SRC_CLK getApbFrequency()
+#endif
+
+static unsigned char ledc_res = 0; // convar
 
 // Enable or disable (freq==0) PWM generation on given pin. 
-// Frequency must be in range (0..312kHz), duty is floating point number in range [0..1]. Depending on the frequency
-// different LEDC resolution may be choosen.
+// Frequency must be in range (0..10 000 000 Hz), duty is floating point number in range [0..1]. Depending on the frequency
+// different LEDC resolution may be choosen. This function cycles through PWM channels and selects only EVEN channel number for
+// its operation to be able to generate 4 different frequencies at the same time. TODO: should we add a channel_number argument to the command?
 //
 // This function is used by command "pwm" (see cmd_pwm()) and it is also used by "pin" command (see cmd_pin())
 //
 static int pwm_enable(unsigned int pin, unsigned int freq, float duty) {
 
-  int resolution = 8;
+  unsigned int resolution;
+  static int channel = 0;
 
   if (!pin_exist(pin))
     return -1;
 
-  // Sanity checks on arguments
-  if (freq > MAGIC_FREQ) freq = MAGIC_FREQ;
-  if (duty > 1.0f) duty = 1.0f;
+  // Clamp arguments
+  if (freq > PWM_MAX_FREQUENCY)
+    freq = PWM_MAX_FREQUENCY;
 
-  // Choose 10 bit duty resolution if frequency is low enough
-  if (freq < 78722) resolution = 10;
+  if (duty > 1.0f)
+    duty = 1.0f;
 
-  // pinMode() calls periman's deinit()stuff effectively detaching a pin from the LEDC driver
-  // so we don't need to call ledcDetach()
-  pinMode(pin, OUTPUT);
-  //ledcDetach(pin);
-
-  if (freq) {
-    ledcAttach(pin, freq, resolution);
-    ledcWrite(pin, (unsigned int)(duty * ((1 << resolution) - 1)));
+  // Find suitable duty resolution
+  if (ledc_res)
+    resolution = ledc_res;
+  else if ((resolution = ledc_find_suitable_duty_resolution(SRC_CLK, freq)) == 0) {
+      q_printf("%% <e>Can not find suitable duty resolution for the requested frequency</>\r\n"
+               "%% Frequency is either too high or too low(SRC_CLK=%u Hz, PWM_FREQ=%u Hz)\r\n", (unsigned int)SRC_CLK, freq);
+      return -1;
   }
 
+  VERBOSE(q_printf("%% Selected duty cycle resolution is %u bits\r\n",resolution));  
+
+  ledcDetach(pin);
+  pinMode(pin, OUTPUT);
+
+  if (freq) {
+    if (ledcAttachChannel(pin, freq, resolution, channel)) {
+      // duty is in the range of [0..1], so we scale it up to fit desired bit width
+      duty = (duty * ((1 << resolution) - 1));
+      if (ledcWrite(pin, (unsigned int)duty)) {
+        // TODO: refactor the code to track frequencies: if there are two pins at the same frequency with differend duty cycles
+        // then we can allocate adjacent channels for this
+        if ((channel += 2) >= LEDC_CHANNELS)
+          channel = 0;
+        return 0;
+      }
+      ledcDetach(pin);
+      q_printf("%% Failed to set the duty cycle value to %u\r\n",(unsigned int)duty);
+    }
+    return -1;
+  }
   return 0;
 }
 
@@ -70,8 +118,8 @@ static int cmd_pwm(int argc, char **argv) {
     if ((freq = q_atol(argv[2], 0)) == 0)
       return 2;
 
-    if (freq > MAGIC_FREQ)
-      HELP(q_print("% Frequency will be adjusted to its maximum which is " xstr(MAGIC_FREQ) "] Hz\r\n"));
+    if (freq > PWM_MAX_FREQUENCY)
+      HELP(q_print("% Frequency will be adjusted to its maximum which is " xstr(PWM_MAX_FREQUENCY) "] Hz\r\n"));
   }
 
   // duty is the third argument (optional)

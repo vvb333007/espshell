@@ -81,7 +81,7 @@ static int cmd_cpu(int argc, char **argv) {
            getXtalFrequencyMhz(),
            getApbFrequency() / 1000000,
            temperatureRead());
-  q_print("SoC features: ");
+  q_print("% SoC features: ");
 
   if (chip_info.features & CHIP_FEATURE_EMB_FLASH)
     q_print("Embedded flash, ");
@@ -96,7 +96,7 @@ static int cmd_cpu(int argc, char **argv) {
   if (chip_info.features & CHIP_FEATURE_EMB_PSRAM)
     q_print("embedded PSRAM");
 
-  q_print("%\r\n% <u>Firmware:</>\r\n");
+  q_print("\r\n%\r\n% <u>Firmware:</>\r\n");
   q_printf( "%% Sketch is running on " ARDUINO_BOARD ", (an " ARDUINO_VARIANT " variant), uses:\r\n"
             "%% Arduino Core version <i>%s</>, which uses\r\n"
             "%% Espressif ESP-IDF version \"%s\"\r\n"
