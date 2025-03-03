@@ -134,10 +134,19 @@ For "trigger" counters, the measurement interval starts upon reception of a firs
 keyword in "count" command if you want Frequency column to be more precise. Don't use "trigger" keyword
 if you want only pulse count, not frequency value
 
-One can clear any counter (stopped or running) by issuing "count PIN clear" command. Stopped counters
-(stopped)
+One can clear any counter (stopped or running) by issuing "count PIN clear" command. 
 
 
 NOTE: Use "pin X save" and "pin X load" to save/restore pin state. Configuring
 pin as a squarewave generator rewrites pin settings so previous settings can be
 lost. On "pin save" and "pin load" please refer to Pin_Commands.txt
+
+FILTERING OF INCOMING PULSES
+----------------------------
+
+It is possible to ignore (not count) pulses whose length is shorter than some specified
+value. This value can be set using "filter NUM" keyword as follows:
+
+  esp32#> count 4 filter 100
+
+The command above IGNORES pulses which are shorter than 100ns
