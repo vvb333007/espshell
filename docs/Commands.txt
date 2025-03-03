@@ -60,7 +60,7 @@ KEYBOARD: KEYS USED AND THEIR MEANING IN ESPSHELL (COMMAND LINE EDITING)
 
 Key            | Meaning / Action performed
 ---------------+---------------------------------------------------------------
-<ENTER>        | Execute commands, interrupt some running commands
+<ENTER>        | Execute commands, interrupt running commands
                |
 <- -> /\  \/   | Arrows: move cursor left or right. Up and down arrows scroll 
                | through the command history.
@@ -69,7 +69,7 @@ Key            | Meaning / Action performed
                |
 <BACKSPACE>    | As in Notepad
                |
-<HOME>, <END>  | The two do not work. Instead use Ctrl+A as <HOME> and Ctrl+E
+<HOME>, <END>  | These two do not work. Instead use Ctrl+A as <HOME> and Ctrl+E
                | as <END>.
                |
 <TAB>          | Quick jump from one word in the line to another. Fast switching
@@ -81,7 +81,7 @@ Ctrl+R         | History search. Press Ctrl+R and start typing. Press <ENTER>
                |
 Ctrl+K         | Clear the line from cursor to the end
                |
-Ctrl+L         | Clear the screen, keep user input
+Ctrl+L         | Clear the screen, keep user input, enable colors and show a hint
                |
 Ctrl+Z         | Same as entering "exit" and pressing <ENTER> : moves up one level
                | in command hierarchy. There are main commands and commands that 
