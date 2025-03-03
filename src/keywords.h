@@ -839,21 +839,28 @@ static const struct keywords_t *keywords = keywords_main;
 // Called by cmd_uart_if, cmd_i2c_if,cmd_seq_if, cam_settings and cmd_files_if and others to
 // set new command list (command directory); displays user supplied text
 //
-// /Context/ - arbitrary number which will be stored. TODO: change it to "void *" for future extensions
-// /dir/     - new keywords list (one of keywords_main[], count"[] tc)
-// /prom/    - prompt to use
-// /text/    - text to be displayed when switching command directory
-//
-static void change_command_directory(unsigned int context, const struct keywords_t *dir, const char *prom, const char *text) {
+static const struct keywords_t *change_command_directory(
+                                    unsigned int context,         // An arbitrary number which will be stored. Until next directory change
+                                    const struct keywords_t *dir, // New command list 
+                                    const char *prom,             // New prompt
+                                    const char *text) {           // User-defined text which will be displayed after entering new directory
+  struct keywords_t *old_dir;
 
   barrier_lock(keywords_mux);
+
   Context = context;
+  old_dir = keywords;
   keywords = dir;
   prompt = prom;
+
   barrier_unlock(keywords_mux);
 
-  HELP(q_printf("%% Entering %s mode. Ctrl+Z or \"exit\" to return\r\n"
-                "%% Main commands are still available (but not visible in \"?\" command list)\r\n", text));
+  if (text) {
+    HELP(q_printf("%% Entering %s mode. Ctrl+Z or \"exit\" to return\r\n"
+                  "%% Main commands are still available (but not visible in \"?\" command list)\r\n", text));
+  }
+
+  return old_dir;
 }
 
 
@@ -862,21 +869,13 @@ static void change_command_directory(unsigned int context, const struct keywords
 // exits from command subderictory or closes the shell ("exit exit")
 //
 static int exit_command_directory(int argc, char **argv) {
-
-  barrier_lock(keywords_mux);
-  if (keywords != keywords_main) {
-    // restore prompt & keywords list to use
-    keywords = keywords_main;
-    prompt = PROMPT;
-    barrier_unlock(keywords_mux);
-  } else {
-    barrier_unlock(keywords_mux);
-    // close espshell. mounted filesystems are left mounted, background commands are left running
-    // memory is not freed. It all can/will be reused on espshell restart via espshell_start() call
+  // Change directory to main, leave Context untouched, restore main prompt
+  // If "exit" was executed from the main tree, then either exit shell or display a hint
+  if (change_command_directory(Context, keywords_main, PROMPT, NULL) == keywords_main) {
     if (argc > 1 && !q_strcmp(argv[1], "exit"))
       Exit = true;
     else
-      q_print("% Use \"exit ex\" to close the shell\r\n");
+      q_print("% Not in a subdirectory; (to close the shell use \"exit ex\")\r\n");
   }
   return 0;
 }
