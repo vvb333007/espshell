@@ -870,7 +870,7 @@ static const struct keywords_t *change_command_directory(
 //
 static int exit_command_directory(int argc, char **argv) {
   // Change directory to main, leave Context untouched, restore main prompt
-  // If "exit" was executed from the main tree, then either exit shell or display a hint
+  // If "exit" was executed from the main tree, then either exit the shell or display a hint
   if (change_command_directory(Context, keywords_main, PROMPT, NULL) == keywords_main) {
     if (argc > 1 && !q_strcmp(argv[1], "exit"))
       Exit = true;
