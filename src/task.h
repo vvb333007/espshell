@@ -123,7 +123,8 @@ static void espshell_async_task(void *arg) {
     if (ret < 0) {
       if (ret == CMD_MISSING_ARG)
         q_print("\r\n% <e>Wrong number of arguments</>");
-      // Keep silent on other errors
+      // Keep silent on other error codes which are <0 :
+      // CMD_FAILED return code assumes that handler did display error message before returning CMD_FAILED
     }
     else if (ret > 0)
       q_printf("\r\n%% <e>Invalid %u%s argument \"%s\"</>", NEE(ret), ret < aa->argc ? aa->argv[ret] : "FIXME:");

@@ -186,7 +186,7 @@ static const char *i2cIsDown = "%% I2C%u bus is not initialized. Use command \"u
 static const char *uartIsDown = "%% UART%u is down. Use command \"up\" to initialize it\r\n";
 
 static const char *WelcomeBanner = "\033[H\033[2J%\r\n"
-                                   "% ESP32Shell " ESPSHELL_VERSION "\r\n"
+                                   "% ESPShell " ESPSHELL_VERSION "\r\n"
                                    "% Type \"?\" and press <Enter> for help\r\n"
                                    "% Press <Ctrl+L> to clear the screen, enable colors and show \"tip of the day\"\r\n";
 
@@ -342,7 +342,7 @@ one_more_try:
               q_printf("%% <e>Invalid %u%s argument \"%s\" (\"? %s\" for help)</>\r\n",NEE(bad), bad < argc ? argv[bad] : "FIXME", argv[0]);
             else if (bad < 0) {
               if (bad == CMD_MISSING_ARG)
-                q_printf("%% <e>One or more arguments missing(\"? %s\" for help)</>\r\n", argv[0]);
+                q_printf("%% <e>One or more arguments are missing(\"? %s\" for help)</>\r\n", argv[0]);
               // Keep silent on other error codes which are <0
             }
             else
@@ -493,5 +493,5 @@ void STARTUP_HOOK espshell_start() {
     HELP(q_print("% ESPShell is started already, exiting\r\n"));
   }
   else
-    espshell_task((const void *)1);
+    espshell_task((const void *)1); // defined in task.h
 }

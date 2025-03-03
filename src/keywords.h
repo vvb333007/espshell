@@ -106,6 +106,7 @@ static int cmd_var_show(int, char **);
 
 // generic "show" command
 static int cmd_show(int, char **);
+static int cmd_show_address(int, char **);
 
 // common entries. these are in misc.c
 static int exit_command_directory(int, char **);
@@ -394,7 +395,7 @@ static const struct keywords_t keywords_files[] = {
   { "mount", cmd_files_mount0, NO_ARGS,
     HELPK("% \"<b>mount</>\"\r\n"
           "%\r\n"
-          "% Command \"mount\" **without arguments** displays information about partitions\r\n"
+          "% Command \"mount\" <u>without arguments</> displays information about partitions\r\n"
           "% and mounted file systems (mount point, FS type, total/used counters)"),
     NULL },
 
@@ -774,21 +775,21 @@ static const struct keywords_t keywords_main[] = {
           "%                                 2 seconds in a background"), "Pulse counter" },
 
   { "count", NULL, 2,
-    HELPK("% \"<b>count PIN clear</>\"\r\n"
+    HELPK("% \"<b>count PIN</> <i>clear</>\"\r\n"
           "% Clear counters associated with pin PIN. These may be stopped, running or in \"trigger\" state\r\n"
           "%\r\n"
           "% \"<b>count 4 clear</>\"       - Clear all counters associated with GPIO4\r\n"), NULL },
     
 #if WITH_ESPCAM
   { "camera", cmd_cam, 1, 
-    HELPK("% \"camera up|down|settings|capture|filesize|transfer\" - Camera commands:\n\r" \
+    HELPK("% \"<b>camera</> <i>up|down|settings|capture|filesize|transfer</>\" - Camera commands:\n\r" \
           "%\n\r" \
-          "% setting  - Enter ESPCam setting\n\r" \
-          "% capture  - Capture a single shot (JPEG)\n\r" \
-          "% filesize - Display last captured shot file size\n\r" \
-          "% transfer - Transmit the last shot over uart\n\r" \
-          "% up       - Detect & initialize the camera\n\r" \
-          "% down     - Camera shutdown & power-off"),
+          "% <b>setting</>  - Enter ESPCam setting\n\r" \
+          "% <b>capture</>  - Capture a single shot (JPEG)\n\r" \
+          "% <b>filesize</> - Display last captured shot file size\n\r" \
+          "% <b>transfer</> - Transmit the last shot over uart\n\r" \
+          "% <b>up</>       - Detect & initialize the camera\n\r" \
+          "% <b>down</>     - Camera shutdown & power-off"),
    HELPK("ESP32Cam commands") },
 #endif
   // TODO: split helplines between different entries
@@ -830,13 +831,13 @@ static const struct keywords_t keywords_main[] = {
   KEYWORDS_END
 };
 
-//current keywords list to use and a barrier.
+//current keywords list in use and a barrier to protect it.
 static BARRIER(keywords_mux);
 static const struct keywords_t *keywords = keywords_main;
 
 
 // Called by cmd_uart_if, cmd_i2c_if,cmd_seq_if, cam_settings and cmd_files_if and others to
-// set new command list (command directory) and displays user supplied text
+// set new command list (command directory); displays user supplied text
 //
 // /Context/ - arbitrary number which will be stored. TODO: change it to "void *" for future extensions
 // /dir/     - new keywords list (one of keywords_main[], count"[] tc)
@@ -844,13 +845,15 @@ static const struct keywords_t *keywords = keywords_main;
 // /text/    - text to be displayed when switching command directory
 //
 static void change_command_directory(unsigned int context, const struct keywords_t *dir, const char *prom, const char *text) {
+
   barrier_lock(keywords_mux);
   Context = context;
   keywords = dir;
   prompt = prom;
   barrier_unlock(keywords_mux);
-  HELP(q_printf("%% Entering %s mode. Ctrl+Z or \"exit\" to return\r\n", text));
-  HELP(q_print("% Hint: Main commands are still avaiable (but not visible in \"?\" command list)\r\n"));
+
+  HELP(q_printf("%% Entering %s mode. Ctrl+Z or \"exit\" to return\r\n"
+                "%% Main commands are still available (but not visible in \"?\" command list)\r\n", text));
 }
 
 
