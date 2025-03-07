@@ -716,25 +716,34 @@ static const struct keywords_t keywords_main[] = {
     HELPK("% \"<b>pin X</>\"\r\n"
           "% Show pin X configuration and digital value\r\n"
           "% Ex.: \"pin 2\" - show GPIO2 information"), 
-    HELPK("Pins (GPIO) commands") },
+    HELPK("GPIO commands") },
 
   { "pin", cmd_pin, MANY_ARGS,
-    HELPK("% \"<b>pin X [<o>hold|release|up|down|out|in|open|high|low|save|load|read|aread|delay|loop|pwm|seq|iomux|matrix]*</>...\"\r\n"
-          "% Multipurpose command which can be used to:\r\n"
-          "%  1. Set/Save/Load pin configuration and settings\r\n"
-          "%  2. Enable/disable PWM and pattern generation on any pin\r\n"
-          "%  3. Set/read digital and/or analog pin values\r\n"
-          "%  4. IO_MUX function and GPIO_Matrix signals\r\n"
+    HELPK("% \"<b>pin X [<o>ARG1 | ARG2 | ... | ARGn]*</>\"\r\n"
+          "% Manipulate pin (GPIO) state, configuration, level, signal routing, etc\r\n"
+          "% Accepts a list of keywords (or just 1 keyword): \r\n"
           "%\r\n"
-          "% Multiple arguments must be separated with spaces, see examples below:\r\n%\r\n"
-          "% Ex.: pin 1 read aread         -pin1: read digital and then analog values\r\n"
-          "% Ex.: pin 1 in out up          -pin1 is INPUT and OUTPUT with PULLUP\r\n"
-          "% Ex.: pin 1 save high load     -save pin state, set HIGH(1), restore pin state\r\n"
-          "% Ex.: pin 1 high               -pin1 set to logic \"1\"\r\n"
-          "% Ex.: pin 1 high delay 100 low -set pin1 to logic \"1\", after 100ms to \"0\"\r\n"
-          "% Ex.: pin 1 pwm 5000 0.3       -set 5kHz, 30% duty square wave output\r\n"
-          "% Ex.: pin 1 pwm 0 0            -disable PWN on GPIO1\r\n"
-          "% Ex.: pin 1 high delay 500 low delay 500 loop 10 - Blink a led 10 times\r\n%\r\n"
+          "% \"<i>high</>\" & \"<i>low</>\"  - Set pin to \"1\" or \"0\"\r\n"
+          "% \"<i>up</>\", \"<i>down</>\", \"<i>out</>\", \"<i>in</>\" and \"<i>open</>\" - enable PULL_UP, PULL_DOWN\r\n"
+          "%                     OUTPUT, INPUT or OPEN_DRAIN mode for the pin\r\n"
+          "% \"<i>save</>\" & \"<i>load</>\" - Save / Restore pin configuration\r\n"
+          "% \"<i>read</>\" & \"<i>aread</>\" - Perform digital or analog read\r\n"
+          "% \"<i>pwm</>\"Enable PWM signal on the pin (generator)\r\n"
+          "% \"<i>sequence</>\"  - Send an RMT (IR_Remote) sequence\r\n"
+          "% \"<i>matrix</>\" & \"<i>iomux</>\" - GPIO_Matrix and IO_MUX functions\r\n"
+          "% \"<i>hold</>\" & \"<i>release</>\" - freeze/unfreeze pin state and level.\r\n"          
+          "% \"<i>delay</>\"  - Next keyword will be delayed\r\n"
+          "% \"<i>loop</>\"  - Execute whole \"pin\" command multiple times\r\n"
+          "%\r\n"
+          "% Examples:\r\n%\r\n"
+          "% pin 1 read aread         -pin1: read digital and then analog values\r\n"
+          "% pin 1 in out up          -pin1 is INPUT and OUTPUT with PULLUP\r\n"
+          "% pin 1 save high load     -save pin state, set HIGH(1), restore pin state\r\n"
+          "% pin 1 high               -pin1 set to logic \"1\"\r\n"
+          "% pin 1 high delay 100 low -set pin1 to logic \"1\", after 100ms to \"0\"\r\n"
+          "% pin 1 pwm 5000 0.3       -set 5kHz, 30% duty square wave output\r\n"
+          "% pin 1 pwm 0 0            -disable PWN on GPIO1\r\n"
+          "% pin 1 high delay 500 low delay 500 loop 10 - Blink a led 10 times\r\n%\r\n"
           "% (see \"docs/Pin_Commands.txt\" for more details & examples)\r\n"),
     NULL },
 
@@ -838,13 +847,14 @@ static const struct keywords_t *keywords = keywords_main;
 
 // Called by cmd_uart_if, cmd_i2c_if,cmd_seq_if, cam_settings and cmd_files_if and others to
 // set new command list (command directory); displays user supplied text
+// Returns a pointer to the keywords tree used before
 //
 static const struct keywords_t *change_command_directory(
                                     unsigned int context,         // An arbitrary number which will be stored. Until next directory change
                                     const struct keywords_t *dir, // New command list 
                                     const char *prom,             // New prompt
                                     const char *text) {           // User-defined text which will be displayed after entering new directory
-  struct keywords_t *old_dir;
+  const struct keywords_t *old_dir;
 
   barrier_lock(keywords_mux);
 
@@ -866,7 +876,7 @@ static const struct keywords_t *change_command_directory(
 
 //"exit"
 //"exit exit"
-// exits from command subderictory or closes the shell ("exit exit")
+// exits from a command subderictory or closes the shell ("exit exit")
 //
 static int exit_command_directory(int argc, char **argv) {
   // Change directory to main, leave Context untouched, restore main prompt

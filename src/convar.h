@@ -222,10 +222,10 @@ static const char *convar_typename2(struct convar *var) {
   //
   if (var->isp) {
     MUST_NOT_HAPPEN(out[i - 1] != '*'); // must not happen
-    sprintf(&out[i - 1],"%s[%u]",var->name,var->counta); // TODO: this is unsafe! Limit variable name length to something real like 64 characters
+    sprintf(&out[i - 1],"%s[%u]",var->name,var->counta); // TODO: review is needed for buffer overrun
   } else {
     out[i] = ' ';
-    strcpy(&out[i + 1],var->name); // TODO: this is unsafe! Limit variable name length to something real like 64 characters
+    strcpy(&out[i + 1],var->name); // TODO: review is needed for buffer overrun
   }
 
   return out;

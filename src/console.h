@@ -36,7 +36,10 @@ static INLINE int console_available() {
   size_t av;
   return ESP_OK == uart_get_buffered_data_len(uart, &av) ? (int)av : -1;
 }
-// read user input, with timeout
+
+// Read user input, with a timeout.
+// Returns number of bytes read on success or <0 on error
+//
 static INLINE int console_read_bytes(void *buf, uint32_t len, TickType_t wait) {
   return uart_read_bytes(uart, buf, len, wait);
 }
@@ -57,19 +60,15 @@ static INLINE int console_here(int i) {
                                    : (uart = i));
 }
 
-//Detects if ANY key is pressed in serial terminal
-//or any character was sent in Arduino IDE Serial Monitor.
-// IDEA: rewrite to use NotifyDelay only and make anykey_pressed sending notifications? Then we don't need 250ms polling thing
+// Detects if ANY key is pressed in serial terminal, or any character was sent in Arduino IDE Serial Monitor.
+//
+// TODO: Change polling logic to a TaskNotify. This will significally increases delay_interruptible() accuracy
+//       Probably there should be a separate task doing this
 static bool anykey_pressed() {
 
-  int av;
-  if ((av = console_available()) > 0) {
-    // read & discard a keypress
-    unsigned char c;
-    console_read_bytes(&c, 1, 0);
-    return true;
-  }
-  return false;
+  unsigned char c;
+  return console_available() > 0 ? console_read_bytes(&c, 1, 0) >= 0
+                                 : false;
 }
 #endif // #if COMPILING_ESPSHELL
 

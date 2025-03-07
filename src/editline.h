@@ -788,11 +788,12 @@ editinput() {
       break;
     }
   }
-  if (strlen((char *)Line))
+
+  // TODO: review this code. Does it ever get control?
+  //if (strlen((char *)Line))
+  if (Line[0])
     return Line;
 
-  //Original code has a bug here: Line was not set to NULL causing random heap corruption
-  //on ESP32
   q_free(Line);
   return (Line = NULL);
 }

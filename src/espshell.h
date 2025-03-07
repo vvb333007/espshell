@@ -28,7 +28,7 @@
 #define STACKSIZE (5 * 1024)     // Shell task stack size
 
 #define WITH_HELP 1              // Set to 0 to save some program space by excluding help strings/functions
-#define WITH_HISTORY 1           // Set to 0 to when looking for memory leaks
+#define WITH_HISTORY 1           // Enable command history (!! set to 0 when using MEMTEST !!)
 #define HIST_SIZE 20             // History buffer size (number of commands to remember)
 
 #define WITH_ESPCAM 0            // Include AiThinker ESP32CAM commands
@@ -48,7 +48,7 @@
 #define WITH_SD 1                // Support FAT filesystem on SD/TF card over SPI
 #define DIR_RECURSION_DEPTH 127  // Max directory depth TODO: make a test with long "/a/a/a/.../a" path
 
-#define SEQUENCES_NUM 10         // Max number of sequences available for command "sequence"
+#define SEQUENCES_NUM 10         // Max number of sequences available for the command "sequence"
 
 // Developer options, keep default
 #define WITH_VERBOSE 1          // Enable VERBOSE() macro
@@ -77,7 +77,7 @@
 //    Example: register sketch variables in ESPShell
 //    ...
 //    int some_variable;
-//    const int *ptr = ptr;
+//    const int *ptr = &some_variable;
 //    static float volatile another_variable;
 //    int arr[] = {1,2,3};
 //    void **bb = &ptr;
@@ -91,7 +91,7 @@
 //
 #if WITH_VAR
 extern float dummy_float;
-
+// TODO: use GCC's _Generic to make one single macro for all cases
 // Any non-pointer variable of simple (builtin) type (e.g. float, unsigned int, signed char, bool and so on)
 #  define convar_add( VAR ) do { \
           __typeof__(VAR) __x = ( __typeof__(VAR) )(-1); \

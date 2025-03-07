@@ -9,7 +9,7 @@
 #define COMPILING_ESPSHELL 1  // dont touch this!
 
 // Limits 
-#define PWM_MAX_FREQUENCY 10000000     // Max frequency for PWM
+#define PWM_MAX_FREQUENCY 10000000     // Max frequency for PWM, 10Mhz. Must be below XTAL clock and well below APB frequency. 
 #define MAX_PROMPT_LEN 16              // Prompt length ( except for PROMPT_FILES), max length of a prompt
 #define MAX_PATH 256                   // max filesystem path len
 #define MAX_FILENAME MAX_PATH          // max filename len (equal to MAX_PATH for now)
