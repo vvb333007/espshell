@@ -82,6 +82,16 @@ HOW TO USE IT IN MY PROJECT?
  (**NOTE: SerialMonitor is not the best option. Preferred way is to use
     a dedicated terminal software like **Tera Term**)
 
+CAN I EXECUTE SHELL COMMANDS DIRECTLY FROM MY SKETCH?
+-----------------------------------------------------
+
+Yes, there is a function **espshell_exec(const char *) ** which executes and arbitrary
+shell command(s). Multiple commands are allowed (in single call) as far as they are 
+separated with a newline character. The function above is an asyncronous call (returns immediately).
+To check, if command was executed, one can use **espshell_exec_finished()** call.
+
+
+
 WHAT IS ESPSHELL MEMORY/CPU FOOTPRINT?
 ----------------------------------
 
