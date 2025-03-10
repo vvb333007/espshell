@@ -110,21 +110,22 @@ sketch execution
 DOCUMENTATION
 -------------
 
-    English (mostly up to date) is in "espshell/docs/"
+English (mostly up to date) is in "espshell/docs/"
                         and
-    Russian (outdated) is in "espshell/docs/ru_RU/"
+Russian (outdated) is in "espshell/docs/ru_RU/"
 
-    Files named "Commands.txt" and "Pin_Commands.txt" are essential chapters
-    and it is a good idea to spend some of your time reading it.
+Files named "Commands.txt" and "Pin_Commands.txt" are essential chapters
+and it is a good idea to spend some of your time reading it.
 
 ESPSHELL DEVELOPMENT
 --------------------
 
-    ESPShell code is written in pure C, developer friendly and well-commented. 
-    There are few areas which calls for attention and they are can be found as 
-    "TODO:" throughout the code. There are docs/PROBLEMS.txt and docs/PLANS.txt
-    for further reading
+ESPShell code is written in pure C, developer friendly and well-commented. 
 
-    The code itself is quite simple and linear, with non-obvious parts well 
-    commented. Please note that author is not a native English speaker and thats
-    why comments in the code have mistakes, language misuse, etc.
+There are few areas which calls for attention and they are can be found as 
+"TODO:" throughout the code. There are docs/PROBLEMS.txt and docs/PLANS.txt
+for further reading
+
+The code itself is quite simple and linear, with non-obvious parts well 
+commented. Please note that author is not a native English speaker and thats
+why comments in the code have mistakes, language misuse, etc.
