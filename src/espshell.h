@@ -18,11 +18,15 @@
 #define espshell_h
 
 // Code version, dont change. 
-#define ESPSHELL_VERSION "0.99.6"
+#define ESPSHELL_VERSION "0.99.7"
 
 // -- Compile-time ESPShell settings --
 //
-#define SERIAL_IS_USB 0          // Set to 1 for Hardware CDC boards (Nano ESP32)
+#if ARDUINO_USB_CDC_ON_BOOT
+#  define SERIAL_IS_USB 1
+#else
+#  define SERIAL_IS_USB 0
+#endif
 
 #define AUTOSTART 1              // Set to 0 for manual shell start via espshell_start().
 #define STACKSIZE (5 * 1024)     // Shell task stack size
@@ -40,6 +44,7 @@
 #else
 #  define STARTUP_PORT UART_NUM_0  // Uart number (or 99 for USBCDC) where shell will be deployed at startup
 #endif
+
 #define STARTUP_ECHO 1           // echo mode at espshell startup (-1=blackhole, 0=no echo or 1=echo)
 #define WITH_COLOR 1             // Enable terminal colors support 
 #define AUTO_COLOR 1             // Let ESPShell decide wheither to enable coloring or not. Command "color on|off|auto" is about that
