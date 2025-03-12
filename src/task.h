@@ -12,6 +12,80 @@
 //
 #if COMPILING_ESPSHELL
 
+#if WITH_WRAP
+//
+// Intercept calls to FreeRTOS to get and maintain a list of started tasks.
+//
+// It is a link-time interception and it is done by linker: calls to real functions gets replaced with calls to __wrap_ equivalents;
+// Original function is still available through __real_vTaskDelete (as an example)
+//
+// In order to work, LD_FLAGS must be set to -Wl,--wrap=vTaskDelete -Wl,--wrap=xTaskCreatePinnedToCore -Wl,--wrap=xTaskCreateStaticPinnedToCore
+// Unfortunately, as of Arduino IDE v2.3.4 there is no way to pass these linker flags: instead, one had to modify "ld_flags" file in the shipped
+// (precompiled) ESP-IDF
+//
+#warning "Don't forget to add -Wl,--wrap=vTaskDelete -Wl,--wrap=xTaskCreatePinnedToCore -Wl,--wrap=xTaskCreateStaticPinnedToCore to your ld_flags file!!!"
+static TaskHandle_t Tasks[20] = { 0 };
+
+// Declare task creation / deletion functions as **possibly** unresolved external.
+// Declare wrappers & "real" functions.
+// Linker will replace all calls to vTaskDelete with __wrap_vTaskDelete(), which does statistics and pass control to the "real" vTaskDelete()
+//
+extern void vTaskDelete(TaskHandle_t h);
+extern BaseType_t xTaskCreatePinnedToCore( TaskFunction_t pxTaskCode,const char * const pcName,const configSTACK_DEPTH_TYPE usStackDepth,void * const pvParameters,UBaseType_t uxPriority,TaskHandle_t * const pvCreatedTask,const BaseType_t xCoreID );
+extern TaskHandle_t xTaskCreateStaticPinnedToCore( TaskFunction_t pxTaskCode,const char * const pcName,const uint32_t ulStackDepth,void * const pvParameters,UBaseType_t uxPriority,StackType_t * const pxStackBuffer,StaticTask_t * const pxTaskBuffer,const BaseType_t xCoreID );
+extern void __real_vTaskDelete(TaskHandle_t h);
+extern BaseType_t __real_xTaskCreatePinnedToCore( TaskFunction_t pxTaskCode,const char * const pcName,const configSTACK_DEPTH_TYPE usStackDepth,void * const pvParameters,UBaseType_t uxPriority,TaskHandle_t * const pvCreatedTask,const BaseType_t xCoreID );
+extern TaskHandle_t __real_xTaskCreateStaticPinnedToCore( TaskFunction_t pxTaskCode,const char * const pcName,const uint32_t ulStackDepth,void * const pvParameters,UBaseType_t uxPriority,StackType_t * const pxStackBuffer,StaticTask_t * const pxTaskBuffer,const BaseType_t xCoreID );
+
+// Remember unique task ID
+static int taskid_store(TaskHandle_t h) {
+  for (int i = 0; i < sizeof(Tasks)/sizeof(Tasks[0]); i++)
+    if (Tasks[i] == h || !Tasks[i]) {
+      Tasks[i] = h;
+      return i;
+    }
+  return -1;
+}
+
+// Forget task ID
+static void taskid_forget(TaskHandle_t h) {
+  for (int i = 0; i < sizeof(Tasks)/sizeof(Tasks[0]); i++)
+    if (Tasks[i] == h) {
+      Tasks[i] = 0;
+      break;
+    }
+}
+
+
+// Sumple proxy wrappers to maintain currently running tasks list
+// The list is accessible via "var Tasks"
+//
+void __wrap_vTaskDelete(TaskHandle_t h) {
+  taskid_forget(h);
+  __real_vTaskDelete(h);
+}
+
+BaseType_t __wrap_xTaskCreatePinnedToCore( TaskFunction_t pxTaskCode,const char * const pcName,const configSTACK_DEPTH_TYPE usStackDepth,void * const pvParameters,UBaseType_t uxPriority,TaskHandle_t * const pvCreatedTask,const BaseType_t xCoreID ) {
+
+  TaskHandle_t tmp, *h;
+  BaseType_t ret;
+
+  if ((h = pvCreatedTask) == NULL)
+    h = &tmp;
+
+  ret = __real_xTaskCreatePinnedToCore(pxTaskCode,pcName,usStackDepth,pvParameters,uxPriority,h,xCoreID );
+  taskid_store(*h);
+  return ret;
+}
+
+TaskHandle_t __wrap_xTaskCreateStaticPinnedToCore( TaskFunction_t pxTaskCode,const char * const pcName,const uint32_t ulStackDepth,void * const pvParameters,UBaseType_t uxPriority,StackType_t * const pxStackBuffer,StaticTask_t * const pxTaskBuffer,const BaseType_t xCoreID ) {
+  TaskHandle_t ret = __real_xTaskCreateStaticPinnedToCore(pxTaskCode,pcName,ulStackDepth,pvParameters,uxPriority,pxStackBuffer,pxTaskBuffer,xCoreID );
+  if (ret)
+    taskid_store(ret);
+  return ret;
+}
+#endif //WITH_WRAP
+
 #define CONSOLE_UP_POLL_DELAY 1000   // 1000ms. 
 
 EXTERN TaskHandle_t loopTaskHandle;  // task handle of a task which calls Arduino's loop(). Defined somewhere in the ESP32 Arduino Core
@@ -218,6 +292,7 @@ static int cmd_suspend(int argc, char **argv) {
       return 1;
   }
   vTaskSuspend(sus);
+  
   return 0;
 }
 

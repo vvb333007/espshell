@@ -790,16 +790,33 @@ static const struct keywords_t keywords_main[] = {
           "% \"<b>count 4 clear</>\"       - Clear all counters associated with GPIO4\r\n"), NULL },
     
 #if WITH_ESPCAM
-  { "camera", cmd_cam, 1, 
-    HELPK("% \"<b>camera</> <i>up|down|settings|capture|filesize|transfer</>\" - Camera commands:\n\r" \
+  { "camera", cmd_cam, MANY_ARGS, 
+    HELPK("% \"<b>camera</> <i>down|pinout|settings|capture|filesize|transfer</>\" - Camera commands:\n\r" \
           "%\n\r" \
-          "% <b>setting</>  - Enter ESPCam setting\n\r" \
-          "% <b>capture</>  - Capture a single shot (JPEG)\n\r" \
-          "% <b>filesize</> - Display last captured shot file size\n\r" \
-          "% <b>transfer</> - Transmit the last shot over uart\n\r" \
-          "% <b>up</>       - Detect & initialize the camera\n\r" \
-          "% <b>down</>     - Camera shutdown & power-off"),
-   HELPK("ESP32Cam commands") },
+          "% <i>settings</> - Enter camera setting\n\r" \
+          "% <i>capture</>  - Capture a single shot\n\r" \
+          "% <i>filesize</> - Display last captured shot file size\n\r" \
+          "% <i>transfer</> - Transmit the last shot over uart\n\r" \
+          "% <i>down</>     - Camera shutdown & power-off"), HELPK("Camera commands") },
+
+  { "camera", cmd_cam, MANY_ARGS, 
+    HELPK("% \"<b>camera</> <i>up</> [<o>MODEL | custom</>] [<o>clock FREQUENCY</>] [<o>i2c NUMBERK</>]\r\n" \
+          "% Detect & initialize the camera\n\r" \
+          "%\n\r" \
+          "% <i>MODEL</>    - The camera model; Supported models list is here: \"show camera models\"\n\r" \
+          "%                  Use word \"custom\" to specify custom camera model. (see \"camera pinout\")\r\n" \
+          "% <i>clock HZ</> - Set XCLK frequency, Hertz. Default value is 16000000\n\r" \
+          "% <i>i2c NUM</>  - Use existing i2c interface, ignore SDA & SCL pins"), NULL},
+
+  { "camera", cmd_cam, MANY_ARGS, 
+    HELPK("% \"<b>camera</> <i>pinout</> <g>PWDN RESET XCLK SDA SCL D7 D6 D5 D4 D3 D2 D1 D0 VSYNC HREF PCLK</>\r\n"
+          "% Set custom pinout for the camera model \"custom\". Initialize it later with \"cam up custom\"\n\r"
+          "%\n\r"
+          "% Command requires 16 arguments (pin numbers). Use \"-1\" as a pin number to disable it:\r\n"
+          "% Ex.: <b>camera pinout -1 -1 1 2 3 4 5 6 7 8 9 10 11 12 13 14</b> - pins PWDN & RESET are not used\r\n"
+          "% Note on names: pin names D7..D0 corresponds to Y9..Y2 \r\n"
+          ""), NULL},
+
 #endif
   // TODO: split helplines between different entries
   { "var", cmd_var, 2,

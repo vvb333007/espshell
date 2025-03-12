@@ -242,6 +242,7 @@ static const char *VarOops = "<e>% Oops :-(\r\n"
 #include "cpu.h"                // cpu-related command handlers  
 #include "filesystem.h"         // file manager
 #include "memory.h"             // memory component
+#include "espcam.h"             // Camera support
 
 // 6. These two must be included last as they are supposed to call functions from every other module
 #include "show.h"               // "show KEYWORD [ARG1 ARG2 ... ARGn]" command
@@ -474,7 +475,9 @@ static  void espshell_initonce() {
     convar_add(bypass_qm);         // enable/disable "?" as a context help hotkey
     convar_add(tbl_min_len);       // buffers whose length is > printhex_tbl (def: 16) are printed as fancy tables
     convar_add(ledc_res);          // Override PWM duty cycle resolution bitwidth: Duty range is from 0 to (2**ledc_res-1)
-    
+#if WITH_WRAP
+    convar_addap(Tasks);
+#endif    
     // init subsystems
     seq_init();
   }

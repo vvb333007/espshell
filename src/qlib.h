@@ -99,7 +99,7 @@ static const char *ansi_tags['z' - 'a' + 1] = {
   ['b' - 'a'] = "\07\033[1;97m",   // [b]old bright white
   ['e' - 'a'] = "\05\033[95m",     // [e]rror message (bright magenta)
   ['i' - 'a'] = "\010\033[33;93m", // [i]important information (eye-catching bright yellow)
-  ['n' - 'a'] = "\04\033[0m",      // [n]ormal colors
+  ['n' - 'a'] = "\04\033[0m",      // [n]ormal colors. cancels all tags
   ['r' - 'a'] = "\04\033[7m",      // [r]everse video
   ['w' - 'a'] = "\05\033[91m",     // [w]arning message ( bright red )
   ['o' - 'a'] = "\05\033[33m",     // [o]ptional dark yellow
@@ -229,13 +229,12 @@ static void *q_malloc(size_t size, int type) {
         ml->ptr = p;
         ml->len = size;
         ml->type = type;
-        //memlog_lock();
+        
         mutex_lock(mem_mux);
         ml->li.next = (list_t *)head;
         head = ml;
         allocated += size;
         internal += sizeof(memlog_t) + 2;
-        //memlog_unlock();
         mutex_unlock(mem_mux);
 
         // naive barrier. detects linear buffer overruns
@@ -411,7 +410,7 @@ static void q_memleaks(const char *text) {
 
 
 // strdup() + extra 256 bytes
-// TODO: make generic q_strdup_tailroom(const char *string, int tailroom)
+// TODO: This is bad. Make generic q_strdup_tailroom(const char *string, int tailroom)
 static char *q_strdup256(const char *ptr, int type) {
   char *p = NULL;
   if (ptr != NULL) {
@@ -689,9 +688,13 @@ static unsigned int q_atol(const char *p, unsigned int def) {
                                                                            : def)
                                                                : (isoct(p) ? octal2uint32(p)
                                                                            : def)))
-                                : (isnum(p) ? atol(p) 
-                                            : def))
-                 : def;
+                                 : (isnum(p) ? atol(p) 
+                                             : def))
+                  : def;
+}
+
+static inline int q_atoi(const char *p, int def) {
+  return isnum(p) ? atoi(p) : def;
 }
 
 // Safe conversion to /float/ type. Returns /def/ if conversion can not be done

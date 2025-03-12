@@ -19,14 +19,13 @@
 // espshell runs on this port:
 static uart_port_t uart = STARTUP_PORT; // either UART number OR 99 for USB-CDC
 
-#ifdef SERIAL_IS_USB
-#  error "console_write_bytes() is not implemented"
-#  error "console_read_bytes() is not implemented"
-#  error "console_available() is not implemented"
-static INLINE bool console_isup() {
-  return uart == 99 ? true : uart_isup(uart);
-}
+#if SERIAL_IS_USB
+extern bool console_isup();
+extern int  console_write_bytes(const void *buf, size_t len);
+extern int  console_available();
+extern int  console_read_bytes(void *buf, uint32_t len, TickType_t wait);
 #else
+
 // Send characters to user terminal
 static INLINE int console_write_bytes(const void *buf, size_t len) {
   return uart_write_bytes(uart, buf, len);

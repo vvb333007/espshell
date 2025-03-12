@@ -8,7 +8,7 @@
 
 
 // -- pin (GPIO) manipulation --
-// Pin is the synonim of GPIO throughout the espshell code & docs. There is no support for pin remapping simply because
+// Pin is the synonym of GPIO throughout the espshell code & docs. There is no support for pin remapping simply because
 // I don't have an appropriate board
 //
 // Main command here is "pin"
@@ -38,7 +38,10 @@ static struct {
 // Each pin of ESP32 can carry a function: be either a GPIO or be an periferial pin:
 // SD_DATA0 or UART_TX etc.
 //
-//TODO: add support for other Espressif ESP32 variants
+// Values like "0", "15" means GPIO function. E.g. "7" means "GPIO7"
+// Values of zero mean this function is undefined/unused
+//
+//TODO: add support for other Espressif ESP32 variants (namely C3, C6, C61, H2, and P4)
 //
 
 
@@ -49,6 +52,7 @@ static struct {
 
 // Classic ESP32 has 6 functions per pin. Function 0 selects IO_MUX GPIO mode, function 2 selects GPIO_MATRIX GPIO mode
 // All other ESP32 variants have only 5 functions with function 1 being GPIO_MATRIX selector
+//
 # undef IOMUX_NFUNC
 # define IOMUX_NFUNC 6
 static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][IOMUX_NFUNC] = {
@@ -589,7 +593,7 @@ static int cmd_pin_show(int argc, char **argv) {
       drv = 2;
   }
 #endif
-  q_printf("%% Maximum current is %u milliamps\r\n", (unsigned int)(5 * (1 << drv)));
+  q_printf("%% Maximum drive current is %u mA\r\n", (unsigned int)(5 * (1 << drv)));
   
 
   // enable INPUT if was not enabled before

@@ -22,7 +22,7 @@
 
 // -- Compile-time ESPShell settings --
 //
-//#define SERIAL_IS_USB          // Not yet
+#define SERIAL_IS_USB 0
 
 #define AUTOSTART 1              // Set to 0 for manual shell start via espshell_start().
 #define STACKSIZE (5 * 1024)     // Shell task stack size
@@ -31,11 +31,15 @@
 #define WITH_HISTORY 1           // Enable command history (!! set to 0 when using MEMTEST !!)
 #define HIST_SIZE 20             // History buffer size (number of commands to remember)
 
-#define WITH_ESPCAM 0            // Include AiThinker ESP32CAM commands
+#define WITH_ESPCAM 0            // Include camera commands. WARNING: only supports PSRAM-enabled boards. Working on it.
 
 #define WITH_VAR 1               // enable support for sketch variables
 
-#define STARTUP_PORT UART_NUM_0  // Uart number (or 99 for USBCDC) where shell will be deployed at startup
+#if SERIAL_IS_USB
+#  define STARTUP_PORT 99
+#else
+#  define STARTUP_PORT UART_NUM_0  // Uart number (or 99 for USBCDC) where shell will be deployed at startup
+#endif
 #define STARTUP_ECHO 1           // echo mode at espshell startup (-1=blackhole, 0=no echo or 1=echo)
 #define WITH_COLOR 1             // Enable terminal colors support 
 #define AUTO_COLOR 1             // Let ESPShell decide wheither to enable coloring or not. Command "color on|off|auto" is about that
@@ -54,6 +58,11 @@
 #define WITH_VERBOSE 1          // Enable VERBOSE() macro
 #define MEMTEST 0               // hunt for espshell's memory leaks
 #define CMD_STATS 0             // register NCmds, NHandlers and NTrees variables which hold espshell's keyword stats
+#define WITH_WRAP 0             // Wrap xTaskCreate...() functions to access all running tasks ("var Tasks"). Requires an update to ld_flags file
+
+#if WITH_ESPCAM
+# error "The ESPCAM code is broken and is under development now. Wait for 0.99.7"
+#endif
 
 // -- ESPShell public API --
 

@@ -16,20 +16,21 @@
 // everything that comes from the user goes to "remote" and  vice versa
 //
 // returns  when BREAK_KEY is pressed
-//
+// TODO: refactor, make BREAK_KEY a convar
 static void
 uart_tap(int remote) {
-  size_t av;
-
-  while (1) {
+  /* Infinite loop. Interrupted with Ctrl+C code on the UART*/
+  do {
     // 1. read all user input and send it to remote
     while (1) {
+      int av;
       // fails when interface is down. must not happen.
       if ((av = console_available()) <= 0)
         break;
       // must not happen unless UART FIFO sizes were changed in ESP-IDF
       if (av > UART_RXTX_BUF)
         av = UART_RXTX_BUF;
+        
       char buf[av];
       console_read_bytes(buf, av, portMAX_DELAY);
       // CTRL+C. most likely sent as a single byte (av == 1), so get away with
@@ -42,7 +43,7 @@ uart_tap(int remote) {
 
     // 2. read all the data from remote uart and echo it to the user
     while (1) {
-      // return here or we get flooded by driver messages
+      size_t av = 0;
       if (ESP_OK != uart_get_buffered_data_len(remote, &av)) {
         HELP(q_printf(uartIsDown, remote));
         return;
@@ -58,7 +59,7 @@ uart_tap(int remote) {
       console_write_bytes(buf, av);
       task_yield();
     }
-  }
+  } while ( true );
 }
 
 //check if UART has its driver installed
