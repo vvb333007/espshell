@@ -22,8 +22,8 @@ WHAT IS THIS:
  This is a debugging/development tool (a library for Arduino framework) for use 
  with Arduino projects on *ESP32 hardware*.
 
- Provides a command line interface (CLI) on serial port running in parallel 
- to your Arduino sketch. It is not standalone program - this tool attaches
+ Provides a command line interface (CLI) on serial port (uart or usb) running in 
+ parallel to your Arduino sketch. It is not standalone program - this tool attaches
  to the user sketch (at compile time) and enchances any sketch (even empty one)
  with a shell. ESPShell has ability to pause/resume sketch execution.
 
