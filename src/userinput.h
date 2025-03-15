@@ -1,9 +1,13 @@
 /* 
- * This file is a part of ESP32Shell for the Arduino Framework by vvb333007
- * Author: Viacheslav Logunov <vvb333007@gmail.com>, 
+ * This file is a part of the ESPShell Arduino library (Espressif's ESP32-family CPUs)
  *
- * Latest source code is at: https://github.com/vvb333007/espshell/
- * Feel free to use it as your wish, however credits would be greatly appreciated.
+ * Latest source code can be found at Github: https://github.com/vvb333007/espshell/
+ * Stable releases: https://github.com/vvb333007/espshell/tags
+ *
+ * Feel free to use this code as you wish: it is absolutely free for commercial and 
+ * non-commercial, education purposes.  Credits, however, would be greatly appreciated.
+ *
+ * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
 #if COMPILING_ESPSHELL
@@ -21,7 +25,7 @@
 //                   pointing somewhere inside /userinput/
 // /userinput/ is the raw user input with zeros inserted at whitespace positions by tokenizer
 // /ref/ is the reference counter (to support background commands)
-// /gpp/ is the pointer to the command handler function. it is used by cmd_async() to execute commands in background
+// /gpp/ is the pointer to the command handler function which supposed to be called (unly for background commands)
 //
 // Structure deallocated by userinput_unref()
 typedef struct {

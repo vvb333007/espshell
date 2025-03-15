@@ -1,9 +1,13 @@
 /* 
- * This file is a part of ESP32Shell for the Arduino Framework by vvb333007
- * Author: Viacheslav Logunov <vvb333007@gmail.com>, 
+ * This file is a part of the ESPShell Arduino library (Espressif's ESP32-family CPUs)
  *
- * Latest source code is at: https://github.com/vvb333007/espshell/
- * Feel free to use it as your wish, however credits would be greatly appreciated.
+ * Latest source code can be found at Github: https://github.com/vvb333007/espshell/
+ * Stable releases: https://github.com/vvb333007/espshell/tags
+ *
+ * Feel free to use this code as you wish: it is absolutely free for commercial and 
+ * non-commercial, education purposes.  Credits, however, would be greatly appreciated.
+ *
+ * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
 
@@ -265,8 +269,8 @@ static int pin_show_mux_functions() {
   HELP(q_print( "\r\n"
                 "% NOTE 1: To select GPIO matrix use function #" xstr(PIN_FUNC_GPIO) " or\r\n"
                 "%         use \"pin X matrix\" command where \"X\" is the pin number\r\n"
-                "% NOTE 2: Function, that is currently assigned to the pin is marked with \"*\"\r\n"
-                "% NOTE 3: Pins that are RESERVED are marked with \"!\"\r\n"));
+                "% NOTE 2: Function, that is currently assigned to the pin is <r>marked with \"*\"</>\r\n"
+                "% NOTE 3: Pins that are RESERVED are marked with \"<r>!</>\", avoid them\r\n"));
   return 0;
 }
 
@@ -289,7 +293,7 @@ static bool pin_set_iomux_function(unsigned char pin, unsigned char function) {
   
   // Sanity check for arguments
   if (function >= IOMUX_NFUNC) {
-    HELP(q_printf("%% <e>Valid function numbers are [0 .. %d]</>\r\n",IOMUX_NFUNC - 1));
+    HELP(q_printf("%% <e>Invalid function number! Good ones are these: [0 .. %d]</>\r\n",IOMUX_NFUNC - 1));
     return false;
   }
 
@@ -386,6 +390,12 @@ static inline bool pin_exist(unsigned char pin) {
   return ((pin < SOC_GPIO_PIN_COUNT) && (((uint64_t)1 << pin) & SOC_GPIO_VALID_GPIO_MASK))  ? true
                                                                                             : pin_exist_notice(pin);
 }
+
+// Same as above but does not print anything to terminal
+static inline bool pin_exist_silent(unsigned char pin) {
+  return ((pin < SOC_GPIO_PIN_COUNT) && (((uint64_t)1 << pin) & SOC_GPIO_VALID_GPIO_MASK));
+}
+
 
 
 // save pin state.
@@ -609,6 +619,7 @@ static int cmd_pin_show(int argc, char **argv) {
     gpio_ll_input_disable(&GPIO, pin);
 
   q_printf("%% Digital pin value is <i>%s</>\r\n", val ? "HIGH (1)" : "LOW (0)");
+
   return 0;
 }
 

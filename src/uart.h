@@ -1,9 +1,13 @@
 /* 
- * This file is a part of ESP32Shell for the Arduino Framework by vvb333007
- * Author: Viacheslav Logunov <vvb333007@gmail.com>, 
+ * This file is a part of the ESPShell Arduino library (Espressif's ESP32-family CPUs)
  *
- * Latest source code is at: https://github.com/vvb333007/espshell/
- * Feel free to use it as your wish, however credits would be greatly appreciated.
+ * Latest source code can be found at Github: https://github.com/vvb333007/espshell/
+ * Stable releases: https://github.com/vvb333007/espshell/tags
+ *
+ * Feel free to use this code as you wish: it is absolutely free for commercial and 
+ * non-commercial, education purposes.  Credits, however, would be greatly appreciated.
+ *
+ * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
 // -- UART interface command handlers & utility functions --
@@ -32,7 +36,7 @@ uart_tap(int remote) {
         av = UART_RXTX_BUF;
         
       char buf[av];
-      console_read_bytes(buf, av, portMAX_DELAY);
+      console_read_bytes(buf, av, portMAX_DELAY); // TODO: use shortest possible delay here
       // CTRL+C. most likely sent as a single byte (av == 1), so get away with
       // just checking if buf[0] == CTRL+C
       if (buf[0] == BREAK_KEY)

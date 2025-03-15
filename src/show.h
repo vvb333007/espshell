@@ -1,9 +1,13 @@
-/*                            
- * This file is a part of ESP32Shell for the Arduino Framework by vvb333007
- * Author: Viacheslav Logunov <vvb333007@gmail.com>, 
+/* 
+ * This file is a part of the ESPShell Arduino library (Espressif's ESP32-family CPUs)
  *
- * Latest source code is at: https://github.com/vvb333007/espshell/
- * Feel free to use it as your wish, however credits would be greatly appreciated.
+ * Latest source code can be found at Github: https://github.com/vvb333007/espshell/
+ * Stable releases: https://github.com/vvb333007/espshell/tags
+ *
+ * Feel free to use this code as you wish: it is absolutely free for commercial and 
+ * non-commercial, education purposes.  Credits, however, would be greatly appreciated.
+ *
+ * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
 #if COMPILING_ESPSHELL
@@ -19,6 +23,10 @@ static int cmd_show(int argc, char **argv) {
   // show version
   if (!q_strcmp(argv[1],"version"))
     return q_print("% ESPShell version " ESPSHELL_VERSION "\r\n"),0; // always return 0
+
+  // show pwm
+  if (!q_strcmp(argv[1],"pwm"))
+    return cmd_show_pwm(argc,argv);
 
   // show iomux
   if (!q_strcmp(argv[1],"iomux"))
@@ -53,6 +61,12 @@ static int cmd_show(int argc, char **argv) {
   if (!q_strcmp(argv[1],"counters"))
     return count_show_counters();
 
+#if WITH_ESPCAM
+  if (!q_strcmp(argv[1],"camera"))
+    return cmd_show_camera(argc, argv);
+#endif
+
+  HELP(q_print("% Show what?\r\n"));
 
   return 1; //  keyword argv[1] is bad
 }

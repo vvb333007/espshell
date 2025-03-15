@@ -1,10 +1,13 @@
 /* 
- * This file is a part of ESP32Shell for the Arduino Framework by vvb333007
- * Author: Viacheslav Logunov <vvb333007@gmail.com>, 
+ * This file is a part of the ESPShell Arduino library (Espressif's ESP32-family CPUs)
  *
- * Latest source code is at: https://github.com/vvb333007/espshell/
+ * Latest source code can be found at Github: https://github.com/vvb333007/espshell/
  * Stable releases: https://github.com/vvb333007/espshell/tags
- * Feel free to use it as your wish, however credits would be greatly appreciated.
+ *
+ * Feel free to use this code as you wish: it is absolutely free for commercial and 
+ * non-commercial, education purposes.  Credits, however, would be greatly appreciated.
+ *
+ * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
 #if COMPILING_ESPSHELL
@@ -12,25 +15,36 @@
 // --   "SHELL TO CONSOLE HARDWARE" GLUE --
 //
 // ESPShell uses abstract console_read../console_write.. and some other functions to print data or read user input.
-// Currently this abstraction layer is implemented for UARTs 
-// In order to implement support for another type of hardware (say USBCDC) one have to implement functions
-// below
+// Currently this abstraction layer is implemented for UARTs (natively) and USB (see hwcdc.cpp)
 
 // espshell runs on this port:
+//
 static uart_port_t uart = STARTUP_PORT; // either UART number OR 99 for USB-CDC
 
 #if SERIAL_IS_USB
+// Arduino Nano ESP32 and many others use USB as their primary serial port, in hardware CDC mode.
+// Here are console functions for such cases
+//
 extern bool console_isup();
 extern int  console_write_bytes(const void *buf, size_t len);
 extern int  console_available();
 extern int  console_read_bytes(void *buf, uint32_t len, TickType_t wait);
 #else
+// Generic ESP32 boards usually use UART0 as their default console device.
+// Below is the console interface for this
+//
+
 
 // Send characters to user terminal
+// Returns number of bytes written
+//
 static INLINE int console_write_bytes(const void *buf, size_t len) {
   return uart_write_bytes(uart, buf, len);
 }
-// How many characters are available for read without blocking?
+
+// How many characters are available for read right now?
+// Returns number of characters in the fifo (can be zero) or <0 on failure (uart shutdown)
+//
 static INLINE int console_available() {
   size_t av;
   return ESP_OK == uart_get_buffered_data_len(uart, &av) ? (int)av : -1;
@@ -42,7 +56,8 @@ static INLINE int console_available() {
 static INLINE int console_read_bytes(void *buf, uint32_t len, TickType_t wait) {
   return uart_read_bytes(uart, buf, len, wait);
 }
-// is UART (or USBCDC) driver installed and can be used?
+
+// Is console device ( UART ) is up and running (can be used) ?
 static INLINE bool console_isup() {
   return uart_isup(uart);
 }

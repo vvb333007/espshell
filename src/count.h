@@ -1,9 +1,13 @@
 /* 
- * This file is a part of ESP32Shell for the Arduino Framework by vvb333007
- * Author: Viacheslav Logunov <vvb333007@gmail.com>, 
+ * This file is a part of the ESPShell Arduino library (Espressif's ESP32-family CPUs)
  *
- * Latest source code is at: https://github.com/vvb333007/espshell/
- * Feel free to use it as your wish, however credits would be greatly appreciated.
+ * Latest source code can be found at Github: https://github.com/vvb333007/espshell/
+ * Stable releases: https://github.com/vvb333007/espshell/tags
+ *
+ * Feel free to use this code as you wish: it is absolutely free for commercial and 
+ * non-commercial, education purposes.  Credits, however, would be greatly appreciated.
+ *
+ * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
 
@@ -12,9 +16,10 @@
  // ESP32 has 8 pulse counter units (ESP32S3 has 4) each of which is equipped 
  // with 2 channels: channel#0 (is what espshell uses) and channel#1 (unused).
  //
-  // ESPShell selects first available unit for its operations: it checks for units in range [pcnt_unit .. PCNT_UNITS_MAX]
+ // ESPShell selects first available unit for its operations: it checks for units in range [pcnt_unit .. PCNT_UNITS_MAX]
  // By default /pcnt_unit/ is set to PCNT_UNIT_0 which allows ESPShell to use any of PCNT units. In case user sketch uses 
- // some units , the /pcnt_unit/ value can be adjusted to prevent ESPShell from using these reserved PCNT's.
+ // some units (say, sketch is using UNIT0), the /pcnt_unit/ value can be adjusted ("var pcnt_unit 1") to prevent ESPShell
+ // from accessing PCNT UNIT0.
  //
  // There are different types of counting:
  //
@@ -31,7 +36,9 @@
 #define TRIGGER_POLL   1000  // A keypress check interval, msec (better be >= PULSE_WAIT)
 #define PULSE_WAIT     1000  // Default measurement time, msec
 #define PCNT_OVERFLOW 20000  // PCNT interrupt every 20000 pulses (range is [1..2^16-1])
-#define UNUSED_PIN       -1  
+
+// UNUSED_PIN was moved to espshell.c
+//#define UNUSED_PIN       -1  
 
 static int               pcnt_unit = PCNT_UNIT_0;        // First PCNT unit which is allowed to use by ESPShell, convar (accessible thru "var" command)
 static int               pcnt_counters = 0;              // Number of counters currently running.

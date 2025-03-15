@@ -1,11 +1,14 @@
 /* 
- * This file is a part of ESP32Shell for the Arduino Framework by vvb333007
- * Author: Viacheslav Logunov <vvb333007@gmail.com>, 
+ * This file is a part of the ESPShell Arduino library (Espressif's ESP32-family CPUs)
  *
- * Latest source code is at: https://github.com/vvb333007/espshell/
- * Feel free to use it as your wish, however credits would be greatly appreciated.
+ * Latest source code can be found at Github: https://github.com/vvb333007/espshell/
+ * Stable releases: https://github.com/vvb333007/espshell/tags
+ *
+ * Feel free to use this code as you wish: it is absolutely free for commercial and 
+ * non-commercial, education purposes.  Credits, however, would be greatly appreciated.
+ *
+ * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
-
 
 // -- Q-Lib: helpful routines: ascii to number conversions,platform abstraction, etc --
 //
@@ -455,16 +458,21 @@ static bool isnum(const char *p) {
   if (p && *p) {
     if (*p == '-')
       p++;
-    while (*p >= '0' && *p <= '9')
-      p++;
-    return *p == '\0';  //if *p is 0 then all the chars were digits (end of line reached).
+    //just single "-" is not a valid number
+    if (*p) {
+      //only digits 0..9 are valid symbols
+      while (*p >= '0' && *p <= '9')
+        p++;
+      //if *p is 0 then all the chars were digits (end of line reached).
+      return *p == '\0';  
+    }
   }
   return false;
 }
 
-// Inlined optimized versions of isnum() and atoi(). These are called from cmd_pin() handler,
-// and this optimization is to decrease delays when processing multiple "pin" arguments
-//
+// Inlined optimized versions of isnum() and atoi() for special case: these are called from cmd_pin() handler,
+// and this optimization is to decrease delays when processing multiple "pin" arguments. Also the "-" sign is
+// not allowed. Functions below are intended to process small numbers, e.g. pin numbers 
 static inline bool isnum2(const char *p) {
   return p[0] >= '0' && p[0] <= '9' && (p[1] == 0 || (p[1] >= '0' && p[1] <= '9'));
 }
@@ -476,6 +484,9 @@ static inline int atoi2(const char *p) {
 
 // Check if ascii string represents a floating point number
 // "0.5" and "-.5" are both valid inputs
+// "-." and "." are both valid input also, however subsequent call to q_atof() will return 0
+// The same behavior for isnum() was fixed (i.e. isnum() does not accept single "-" character as a valid number).
+//
 static bool isfloat(const char *p) {
   if (p && *p) {
     bool dot = false;
@@ -515,6 +526,7 @@ static bool ishex(const char *p) {
 }
 
 // check only first 1-2 bytes (not counting "0x" if present)
+// 
 static bool ishex2(const char *p) {
 
   if (p && *p) {
@@ -600,6 +612,8 @@ static unsigned char hex2uint8(const char *p) {
   // Calculate the first nibble
   if (p[1] != '\0') {
     f = *p++;
+    // Code below will treat any unexpected symbol (e.g. letter "k") as a zero;
+    // Thus strings like "0xKK" will convert to 0, "0xAZ" -> 0xa0, "0xZA" -> 0x0a
     f = f - (f >= 'A' && f <= 'F' ? 'A' 
                                   : (f >= 'a' && f <= 'f' ? 'a' 
                                                           : (f >= '0' && f <= '9' ? '0' 
@@ -608,6 +622,8 @@ static unsigned char hex2uint8(const char *p) {
   }
   // ..and the last
   l = *p++;
+  // Code below expands either to a number or, if input was incorrect, zero is returned
+  // This leads to equaliuty between "0", "0x" and "0x0" - all of these strings get converted to zero
   l = l - (l >= 'A' && l <= 'F' ? 'A' 
                                 : (l >= 'a' && l <= 'f' ? 'a' 
                                                         : (l >= '0' && l <= '9' ? '0' 
@@ -615,9 +631,10 @@ static unsigned char hex2uint8(const char *p) {
   return f | l;
 }
 
-// convert a hex string to uint32_t
-// if string is too long then number converted will be equal
-// to last 4 bytes of the string
+// Convert a hex string to uint32_t
+// If string is too long then number converted will be equal to the last 4 bytes of the string
+// Returns zero if string contains unexpected characters
+//
 static unsigned int hex2uint32(const char *p) {
 
   unsigned int value = 0;
@@ -637,6 +654,10 @@ static unsigned int hex2uint32(const char *p) {
   return value;
 }
 
+// Same as above but for octal numbers (e.g. "012346773" with leading 0)
+// If string has symbols outside of the allowed range (`0`..`7`) then this
+// function return zero. Empty strings ("") gets converted to zero as well
+//
 static unsigned int octal2uint32(const char *p) {
   unsigned int value = 0;
   unsigned int three = 0;
@@ -655,6 +676,8 @@ static unsigned int octal2uint32(const char *p) {
 // Convert strings 0b10010101 and 10100101 (with or without leading "0b") to unsigned int values
 // If there are more than 32 bits in the string then only last 32 bits will be read, while some leading bits 
 // will be ignored
+// Empty strings or strings with characters other than '0' or '1' gets converted to zero
+//
 static unsigned int binary2uint32(const char *p) {
   unsigned int value = 0;
   unsigned int one = 0;

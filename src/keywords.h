@@ -1,11 +1,15 @@
 /* 
- * This file is a part of ESP32Shell for the Arduino Framework by vvb333007
- * Author: Viacheslav Logunov <vvb333007@gmail.com>, 
+ * This file is a part of the ESPShell Arduino library (Espressif's ESP32-family CPUs)
  *
- * Latest source code is at: https://github.com/vvb333007/espshell/
- * Feel free to use it as your wish, however credits would be greatly appreciated.
+ * Latest source code can be found at Github: https://github.com/vvb333007/espshell/
+ * Stable releases: https://github.com/vvb333007/espshell/tags
+ *
+ * Feel free to use this code as you wish: it is absolutely free for commercial and 
+ * non-commercial, education purposes.  Credits, however, would be greatly appreciated.
+ *
+ * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
-
+ 
 #if COMPILING_ESPSHELL
 
 // -- Shell commands handlers (prototypes) --
@@ -107,9 +111,10 @@ static int cmd_var_show(int, char **);
 // generic "show" command
 static int cmd_show(int, char **);
 static int cmd_show_address(int, char **);
+static int cmd_show_pwm(int, char **);
 
-// common entries. these are in misc.c
-static int exit_command_directory(int, char **);
+// common entries
+static int cmd_exit(int, char **);
 #if WITH_HELP
 static int cmd_question(int, char **);
 #endif
@@ -665,6 +670,12 @@ static const struct keywords_t keywords_main[] = {
           "% Display CPU ID information, used components versions and uptime\r\n"
           "% CPU temperature in Celsius is also displayed"),NULL},
 
+  { "show", HELP_ONLY,
+    HELPK("% \"<b>show <i>pwm</>\"\r\n"
+          "%\r\n"
+          "% Display currently active PWM generators:\r\n"
+          "% GPIO number, frequency and duty cycle"),NULL},
+
   { "show",  HELP_ONLY,
     HELPK("% \"<b>show <i>counters</>\"\r\n"
           "%\r\n"
@@ -783,7 +794,7 @@ static const struct keywords_t keywords_main[] = {
           "% \"<b>count 4 2000 trig &</>\" - Wait for the 1st pulse pulse, then start to count pulses for\r\n"
           "%                                 2 seconds in a background"), "Pulse counter" },
 
-  { "count", NULL, 2,
+  { "count", HELP_ONLY,
     HELPK("% \"<b>count PIN</> <i>clear</>\"\r\n"
           "% Clear counters associated with pin PIN. These may be stopped, running or in \"trigger\" state\r\n"
           "%\r\n"
@@ -791,31 +802,34 @@ static const struct keywords_t keywords_main[] = {
     
 #if WITH_ESPCAM
   { "camera", cmd_cam, MANY_ARGS, 
-    HELPK("% \"<b>camera</> <i>down|pinout|settings|capture|filesize|transfer</>\" - Camera commands:\n\r" \
-          "%\n\r" \
-          "% <i>settings</> - Enter camera setting\n\r" \
-          "% <i>capture</>  - Capture a single shot\n\r" \
-          "% <i>filesize</> - Display last captured shot file size\n\r" \
-          "% <i>transfer</> - Transmit the last shot over uart\n\r" \
-          "% <i>down</>     - Camera shutdown & power-off"), HELPK("Camera commands") },
-
-  { "camera", cmd_cam, MANY_ARGS, 
     HELPK("% \"<b>camera</> <i>up</> [<o>MODEL | custom</>] [<o>clock FREQUENCY</>] [<o>i2c NUMBERK</>]\r\n" \
           "% Detect & initialize the camera\n\r" \
           "%\n\r" \
           "% <i>MODEL</>    - The camera model; Supported models list is here: \"show camera models\"\n\r" \
           "%                  Use word \"custom\" to specify custom camera model. (see \"camera pinout\")\r\n" \
-          "% <i>clock HZ</> - Set XCLK frequency, Hertz. Default value is 16000000\n\r" \
-          "% <i>i2c NUM</>  - Use existing i2c interface, ignore SDA & SCL pins"), NULL},
+          "% <i>clock HZ</> - Set XCLK frequency, Hertz. Default value is 16000000 (16Mhz)\n\r" \
+          "% <i>i2c NUM</>  - Use existing i2c interface, ignore SDA & SCL pins\r\n%\r\n"
+          "% <i>camera up ai-thinker</>  - Initialize Ai-Thinker ESP32Cam\r\n"
+          "% <i>camera up custom clock 20000000</>  - Initialize custom pinout camera at 20Mhz"), HELPK("Camera commands")
+  },
 
-  { "camera", cmd_cam, MANY_ARGS, 
+  { "camera", HELP_ONLY,
+    HELPK("% \"<b>camera</> <i>down|settings|capture|filesize|transfer</>\" - Camera commands:\n\r" \
+          "%\n\r" \
+          "% <i>settings</> - Enter camera setting\n\r" \
+          "% <i>capture</>  - Capture a single shot\n\r" \
+          "% <i>filesize</> - Display last captured shot file size\n\r" \
+          "% <i>transfer</> - Transmit the last shot over uart\n\r" \
+          "% <i>down</>     - Camera shutdown & power-off"), NULL },
+
+
+  { "camera", HELP_ONLY,
     HELPK("% \"<b>camera</> <i>pinout</> <g>PWDN RESET XCLK SDA SCL D7 D6 D5 D4 D3 D2 D1 D0 VSYNC HREF PCLK</>\r\n"
           "% Set custom pinout for the camera model \"custom\". Initialize it later with \"cam up custom\"\n\r"
           "%\n\r"
           "% Command requires 16 arguments (pin numbers). Use \"-1\" as a pin number to disable it:\r\n"
-          "% Ex.: <b>camera pinout -1 -1 1 2 3 4 5 6 7 8 9 10 11 12 13 14</b> - pins PWDN & RESET are not used\r\n"
-          "% Note on names: pin names D7..D0 corresponds to Y9..Y2 \r\n"
-          ""), NULL},
+          "% Ex.: <b>camera pinout -1 -1 1 2 3 4 5 6 7 8 9 10 11 12 13 14</b>\r\n% In example above, pins PWDN & RESET are not used\r\n"
+          "% Note that pin names D7..D0 are synonyms for Y9..Y2: D0=Y2, D1=Y3 ..."), NULL},
 
 #endif
   // TODO: split helplines between different entries
@@ -895,14 +909,15 @@ static const struct keywords_t *change_command_directory(
 //"exit exit"
 // exits from a command subderictory or closes the shell ("exit exit")
 //
-static int exit_command_directory(int argc, char **argv) {
+static int cmd_exit(int argc, char **argv) {
   // Change directory to main, leave Context untouched, restore main prompt
   // If "exit" was executed from the main tree, then either exit the shell or display a hint
   if (change_command_directory(Context, keywords_main, PROMPT, NULL) == keywords_main) {
     if (argc > 1 && !q_strcmp(argv[1], "exit"))
       Exit = true;
-    else
-      q_print("% Not in a subdirectory; (to close the shell use \"exit ex\")\r\n");
+    else {
+      HELP(q_print("% Not in a subdirectory; (to close the shell use \"exit ex\")\r\n"));
+    }
   }
   return 0;
 }

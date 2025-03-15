@@ -1,9 +1,13 @@
 /* 
- * This file is a part of ESP32Shell for the Arduino Framework by vvb333007
- * Author: Viacheslav Logunov <vvb333007@gmail.com>, 
+ * This file is a part of the ESPShell Arduino library (Espressif's ESP32-family CPUs)
  *
- * Latest source code is at: https://github.com/vvb333007/espshell/
- * Feel free to use it as your wish, however credits would be greatly appreciated.
+ * Latest source code can be found at Github: https://github.com/vvb333007/espshell/
+ * Stable releases: https://github.com/vvb333007/espshell/tags
+ *
+ * Feel free to use this code as you wish: it is absolutely free for commercial and 
+ * non-commercial, education purposes.  Credits, however, would be greatly appreciated.
+ *
+ * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
 #if COMPILING_ESPSHELL
@@ -11,8 +15,20 @@
 
 //camera pinout PWDN RESET XCLK SIOD SIOC D7 D6 D5 D4 D3 D2 D1 D0 VSYNC HREF PCLK
 //camera up [MODEL | custom] [clock FREQUENCY] [i2c NUM]
+//camera settings
+//  gain auto|(0..30)
+//  balance none|auto|sunny|cloudy|office|home
+//  exposure auto [(-2..2)]
+//  exposure (0..1200)
+//  brightness (-2..2)
+//  saturation (-2..2)
+//  contrast (-2..2)
+//  sharpness (-2..2)
+//  size vga|svga|xga|hd|sxga|uxga
+//  quality (2..63)
 //show camera models
 //show camera pinout [MODEL | custom]
+//show camera settings
 //
 
 static camera_config_t config;      // camera config
@@ -21,8 +37,9 @@ static bool cam_good = false;       // initialized or not
 
 // Known camera/board models: pins database
 // This one must be kept in sync with ESP-IDF camera driver
+//
 static const struct campins {
-  const char *model;     // "aithinker"
+  const char *model;     // e.g. "aithinker"
   signed char pins[16];  // PWDN,RESET,  XCLK,  SIOD,SIOC,  D7,D6,D5,D4,D3,D2,D1,D0,  VSYNC,HREF,PCLK
 } Campins[ ] = {
   {"wrover-kit",         {-1,-1,   21,   26,27,   35,34,39,36,19,18,5,4,    25,23,22}},
@@ -42,8 +59,8 @@ static const struct campins {
   {"esp32s2-hcam-board", {1,2,     42,   41,18,    16,39,40,15,12,5,13,14,    38,4,3}},   // Connections through the header
   {"esp32s3-cam-lcd",    {-1,-1,   40,   17,18,   39,41,42,12,3,14,47,13,   21,38,11}},
   {"esp32s3-eye",        {-1,-1,   15,     4,5,    11,9,8,10,12,18,17,16,     6,7,13}},
-  {"firebeetle2-s3",     {-1,-1,   45,     1,2,    48,46,8,7,4,41,40,39,      6,42,5}},
-  {"romeo-s3",           {-1,-1,   45,     1,2,    48,46,8,7,4,41,40,39,      6,42,5}},
+  {"df-firebeetle2-s3",  {-1,-1,   45,     1,2,    48,46,8,7,4,41,40,39,      6,42,5}},
+  {"df-romeo-s3",        {-1,-1,   45,     1,2,    48,46,8,7,4,41,40,39,      6,42,5}},
   // Must be the last entry
   {NULL,                 {0,0,      0,    0,0,    0,0,0,0,0,0,0,0,           0,0,0}}
 };
@@ -59,7 +76,7 @@ static struct campins Custom = {"custom", {0,0,      0,    0,0,    0,0,0,0,0,0,0
 static bool cam_config_fill_pins(camera_config_t *cc, const char *model) {
 
   if (cc && model) {
-    struct campins *cp = NULL;
+    const struct campins *cp = NULL;
 
     // Special case: "custom" camera model
     if (!q_strcmp(model,"custom"))
@@ -101,18 +118,44 @@ static bool cam_config_fill_pins(camera_config_t *cc, const char *model) {
   return false;
 }
 
+// Show pins assignment for an arbitrary camera_config_t
+//
+static void cam_show_pinout(const camera_config_t *cc) {
+  if (cc) {
+    q_printf( "%% Pins assignment:\r\n"
+              "%% Power Down : %d\r\n"
+              "%% Reset      : %d\r\n"
+              "%% XCLK       : %d\r\n"
+              "%% I2C_SDA    : %d\r\n"
+              "%% I2C_SCL    : %d\r\n"
+              "%% D7..D0 (or Y9..Y2) : %d, %d, %d, %d, %d, %d, %d, %d\r\n"
+              "%% VSYNC      : %d\r\n"
+              "%% HREF       : %d\r\n"
+              "%% PCLK       : %d\r\n",
+              cc->pin_pwdn,
+              cc->pin_reset,
+              cc->pin_xclk,
+              cc->pin_sccb_sda,
+              cc->pin_sccb_scl,
+              cc->pin_d7, cc->pin_d6, cc->pin_d5, cc->pin_d4, cc->pin_d3, cc->pin_d2, cc->pin_d1, cc->pin_d0,
+              cc->pin_vsync,
+              cc->pin_href,
+              cc->pin_pclk);
+  }
+}
+
 //show camera models
 //show camera pinout [MODEL | custom]
 //show camera settings
-static int cmd_cam_show(int argc, char **argv) {
+static int cmd_show_camera(int argc, char **argv) {
 
   if (argc < 3)
     return CMD_MISSING_ARG;
 
   if (!q_strcmp(argv[2],"models")) {
-      q_print("% Supported boards:\r\n");
+      q_print("% Knoqn boards:\r\n");
       for (int i = 0; Campins[i].model ;i++)
-        q_printf("%% %u. \"%s\"\r\n",i,Campins[i].model);
+        q_printf("%% %u. \"%s\"\r\n",i + 1,Campins[i].model);
       return 0;
   } else if (!q_strcmp(argv[2],"pinout")) {
       if (argc == 3) {
@@ -123,7 +166,7 @@ static int cmd_cam_show(int argc, char **argv) {
         // Print current pinout
         cam_show_pinout(&config);
       } else {
-        struct camera_config_t tmp = { 0 };
+        camera_config_t tmp = { 0 };
         if (cam_config_fill_pins(&tmp,argv[3]))
           cam_show_pinout(&tmp);
         else
@@ -145,7 +188,9 @@ static int cmd_cam_pinout(int argc, char **argv) {
     return CMD_MISSING_ARG;
   }
 
-  for (int i = 2; i < 18; i++)
+  int i;
+  // read pin numbers (starting from 3rd argument: "0:camera 1:pinout 2:NUM")
+  for (i = 2; i < 18; i++)
     Custom.pins[i - 2] = q_atoi(argv[i],-1); // -1 means "don't use this pin", so it is safe choice for the default value
 
   if (i < argc)
@@ -356,11 +401,11 @@ static struct keywords_t keywords_espcam[] = {
                                         "% Set camera WB mode"),
     "White balance" },
 
-  { "exposure", cam_set_exposure, 2, HELPK("% exposure auto [-2..2]\n\r"
+  { "exposure", cam_set_exposure, 2, HELPK("% exposure auto (-2..2)\n\r"
                                           "% \n\r"
                                           "% Set camera exposure mode to auto & optional AE shift"),
     "Exposure" },
-  { "exposure", cam_set_exposure, 1, HELPK("% exposure 0..1200\n\r"
+  { "exposure", cam_set_exposure, 1, HELPK("% exposure (0..1200)\n\r"
                                           "%\n\r"
                                           "% Set camera exposure manually"),
     "Exposure" },
@@ -388,7 +433,7 @@ static struct keywords_t keywords_espcam[] = {
                                   "% uxga - 1600x1200 (Default)"),
     "Resolution" },
 
-  { "quality", cam_set_qbcss, 1, HELPK("% \"quality 2..63\"\n\r"
+  { "quality", cam_set_qbcss, 1, HELPK("% \"quality (2..63)\"\n\r"
                                       "% Set JPEG quality:\n\r"
                                       "% 2 - high ... 63 - low"),
     "Picture quality" },
@@ -479,35 +524,38 @@ static int cam_down(int argc, char **argv) {
   return 0;
 }
 
-//"camera up [MODEL|custom] [xclk FREQ] [i2c NUM]"
+//"camera up [MODEL|custom] [clock FREQ] [i2c NUM]"
 // powerup & initialize the camera
 //
 static int cmd_cam_up(int argc, char **argv) {
 
   esp_err_t err;
   const char *model = NULL;
-  unsigned int xclk = 0;
+  unsigned int xclk = 16000000,i = 2; //TODO: DEF_CAMERA_XCLOCK
+  signed char i2c = -1;
 
   if (cam_good)  // already initialized
     return 0;
 
-  if (argc > 2)
-    model = argv[2];
-
-  if (argc > 3)
-    xclk = q_atol(argv[3],DEF_BAD);
-  else if (isnum(model)) {
-    xclk = q_atol(model, DEF_BAD);
-    model = NULL;
+  while(i < argc) {
+    if (!q_strcmp(argv[i],"clock")) {
+      if (i + 1 >= argc) {
+        q_print("% <e>Camera clock frequency is expected, in Hz</>\r\n");
+        return CMD_MISSING_ARG;
+      }
+      i++;
+      xclk = q_atol(argv[i],xclk); 
+    } else if (!q_strcmp(argv[i],"i2c")) {
+      if (i + 1 >= argc) {
+        q_print("% <e>I2C bus number is expected</>\r\n");
+        return CMD_MISSING_ARG;
+      }
+      i++;
+      i2c = q_atoi(argv[i],-1); 
+    } else
+      model = argv[i];
+    i++;
   }
-
-  if (xclk == DEF_BAD) {
-    q_print("% <e>Frequency in hertz is expected; 0 means autoselect</>\r\n");
-    return 0;
-  }
-
-  if (xclk == 0)
-    xclk = 16000000; // 16Mhz enables EDMA on S3
 
   if (model == NULL)
 #ifdef CONFIG_IDF_TARGET_ESP32S2
@@ -525,12 +573,19 @@ static int cmd_cam_up(int argc, char **argv) {
     return 0;
   }
 
-  VERBOSE(q_printf("%% %s goes up with XCLK=%u\r\n",model,xclk));
+  VERBOSE(q_printf("%% Camera UP: Model=%s, XCLK=%u, I2C Bus=%d\r\n", model, xclk, i2c));
 
-  config.ledc_channel = LEDC_CHANNEL_0; //TODO: use channel #4
+  // i2c bus number specified: reset SDA pin number
+  if (i2c >= 0) {
+    config.sccb_i2c_port = i2c;
+    config.pin_sccb_sda = UNUSED_PIN;
+    //config.pin_sccb_scl = UNUSED_PIN;
+  } else
+    config.sccb_i2c_port = UNUSED_PIN;
+  config.ledc_channel = LEDC_CHANNEL_0; //TODO: add optional manual setting for the channel & timer; PWM module interferes with this code
   config.ledc_timer = LEDC_TIMER_0;
 
-  config.xclk_freq_hz = xclk;  // XCLK 20MHz or 10MHz for OV2640 double FPS (Experimental)
+  config.xclk_freq_hz = xclk;  //20MHz or 10MHz for OV2640 double FPS, 16MHz for S2/S3 EDMA experimental mode
 
   // TODO: code below must be rewritten. 
   config.pixel_format = PIXFORMAT_JPEG;
@@ -575,7 +630,7 @@ static int cmd_cam_up(int argc, char **argv) {
 
 
 //"camera ARG1 ARG2 ... ARGn"
-//TAG:cam
+// All camera commands are processed here, except for the "show camera"
 static int cmd_cam(int argc, char **argv) {
 
   int err = 0;
@@ -591,7 +646,7 @@ static int cmd_cam(int argc, char **argv) {
     return cmd_cam_up(argc, argv);
 
   if (!cam_good) {
-    q_printf("%% Initialize camera first (\"camera up\" command)\n\r");
+    q_print("% Initialize camera first (\"camera up\" command)\n\r");
     return 0;
   }
   // "camera settings"

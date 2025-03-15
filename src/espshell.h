@@ -18,15 +18,10 @@
 #define espshell_h
 
 // Code version, dont change. 
-#define ESPSHELL_VERSION "0.99.7"
+#define ESPSHELL_VERSION "0.99.8"
 
 // -- Compile-time ESPShell settings --
 //
-#if ARDUINO_USB_CDC_ON_BOOT
-#  define SERIAL_IS_USB 1
-#else
-#  define SERIAL_IS_USB 0
-#endif
 
 #define AUTOSTART 1              // Set to 0 for manual shell start via espshell_start().
 #define STACKSIZE (5 * 1024)     // Shell task stack size
@@ -35,15 +30,9 @@
 #define WITH_HISTORY 1           // Enable command history (!! set to 0 when using MEMTEST !!)
 #define HIST_SIZE 20             // History buffer size (number of commands to remember)
 
-#define WITH_ESPCAM 0            // Include camera commands. WARNING: only supports PSRAM-enabled boards. Working on it.
+#define WITH_ESPCAM 1            // Include camera commands. WARNING: only supports PSRAM-enabled boards. Working on it.
 
 #define WITH_VAR 1               // enable support for sketch variables
-
-#if SERIAL_IS_USB
-#  define STARTUP_PORT 99
-#else
-#  define STARTUP_PORT UART_NUM_0  // Uart number (or 99 for USBCDC) where shell will be deployed at startup
-#endif
 
 #define STARTUP_ECHO 1           // echo mode at espshell startup (-1=blackhole, 0=no echo or 1=echo)
 #define WITH_COLOR 1             // Enable terminal colors support 
@@ -59,15 +48,28 @@
 
 #define SEQUENCES_NUM 10         // Max number of sequences available for the command "sequence"
 
-// Developer options, keep default
+#if ARDUINO_USB_CDC_ON_BOOT      // USB mode?
+#  define SERIAL_IS_USB 1        // don't change this
+#  define STARTUP_PORT 99        // don't change this
+#else                             
+#  define SERIAL_IS_USB 0
+#  define STARTUP_PORT UART_NUM_0  // UART number, where shell will be deployed at startup. 
+#endif                            
+
+
+// Developer options, better keep default
+//
 #define WITH_VERBOSE 1          // Enable VERBOSE() macro
 #define MEMTEST 0               // hunt for espshell's memory leaks
 #define CMD_STATS 0             // register NCmds, NHandlers and NTrees variables which hold espshell's keyword stats
 #define WITH_WRAP 0             // Wrap xTaskCreate...() functions to access all running tasks ("var Tasks"). Requires an update to ld_flags file
 
+/*
 #if WITH_ESPCAM
-# error "The ESPCAM code is broken and is under development now. Wait for 0.99.7"
+# error "The ESPCAM code is broken and is under development now"
 #endif
+*/
+
 
 // -- ESPShell public API --
 

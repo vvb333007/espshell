@@ -95,16 +95,13 @@
 // Compile-time settings
 #include "espshell.h"
 
-// Common macros used throughout the code, GCC-specific stuff
+// Common macros used throughout the code, GCC-specific stuff, etc
 #define UNUSED __attribute__((unused))
 #define INLINE inline __attribute__((always_inline))
 #define NORETURN __attribute__((noreturn))
 #define PRINTF_LIKE __attribute__((format(printf, 1, 2)))
-#ifdef __cplusplus
-#  define EXTERN extern "C"
-#else
-#  define EXTERN extern
-#endif
+#define EXTERN extern //TODO: get rid of it, we don't need another macro
+
 #if AUTOSTART
 #  define STARTUP_HOOK __attribute__((constructor))
 #else
@@ -121,9 +118,14 @@
 #define xstr(s) ystr(s)   
 #define ystr(s) #s
 
-// These are not in IDF
+
 #define SERIAL_8N1 0x800001c
 #define BREAK_KEY 3
+
+// Special pin names.
+#define BAD_PIN    255 // Don't change! Non-existing pin number. 
+#define UNUSED_PIN  -1 // Don't change! A constant which is used to initialize ESP-IDF structures field, a pin number, when 
+                       // we want to tell ESP-IDF that we don't need / don't use this structure field. (see count.h)
 
 // enable -Wformat warnings. Turned off by Arduino IDE by default.
 #pragma GCC diagnostic warning "-Wformat"  
@@ -149,6 +151,7 @@ static int q_print(const char *);                    // puts()
 
 static bool pin_is_input_only_pin(int pin);
 static bool pin_exist(unsigned char pin);
+static bool pin_exist_silent(unsigned char pin);
 
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 3, 0)
 // TODO: rename
@@ -228,6 +231,7 @@ static const char *VarOops = "<e>% Oops :-(\r\n"
 #include "userinput.h"          // userinput tokenizer and reference counter
 
 // 5. ESPShell core
+// .h files contain actual code, not just declarations: this way Arduino IDE will not attempt to compile them
 #include "convar.h"             // code for registering/accessing sketch variables
 #include "task.h"               // main shell task, async task helper, misc. task-related functions
 #include "keywords.h"           // all command trees
@@ -410,6 +414,7 @@ bool espshell_exec_finished() {
 static bool call_once = false;
 
 #if CMD_STATS
+// Command tree stats, available as convars ("var NHa"...)
 static unsigned short NHandlers = 0;  // Number of command handlers
 static unsigned short NCmds = 2;     // "?" and "exit" only counted once, and it is done here
 static unsigned short NTrees = 0;    // Number of command directories
@@ -444,7 +449,10 @@ static  void espshell_initonce() {
 #if WITH_FS      
       keywords_files, 
 #endif      
-      keywords_main, 
+      keywords_main,
+#if WITH_ESPCAM      
+      keywords_espcam,
+#endif      
       NULL 
     }, *tree;
 
