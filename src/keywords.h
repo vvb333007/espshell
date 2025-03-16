@@ -802,7 +802,7 @@ static const struct keywords_t keywords_main[] = {
     
 #if WITH_ESPCAM
   { "camera", cmd_cam, MANY_ARGS, 
-    HELPK("% \"<b>camera</> <i>up</> [<o>MODEL | custom</>] [<o>clock FREQUENCY</>] [<o>i2c NUMBERK</>]\r\n" \
+    HELPK("% \"<b>camera</> <i>up</> [<o>MODEL | custom</>] [<o>clock FREQUENCY</>] [<o>i2c NUMBER</>]\r\n" \
           "% Detect & initialize the camera\n\r" \
           "%\n\r" \
           "% <i>MODEL</>    - The camera model; Supported models list is here: \"show camera models\"\n\r" \

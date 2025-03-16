@@ -128,19 +128,29 @@ static int pwm_enable(unsigned int pin, unsigned int freq, float duty/*TODO1.0: 
 }
 
 // "show pwm"
-static int cmd_show_pwm(int argc, char **argv) {
+// Display PWM generators currently active and their parameters
+// It is done via periman API, however it has issues and better to be rewritten in esp-idf
+//
+static int cmd_show_pwm(UNUSED int argc, UNUSED char **argv) {
 
-
-  q_print("% Currently active PWM generators:\r\n"
-          "%  GPIO | Frequency |  Duty   \r\n"
-          "% ------+-----------+---------\r\n");
+  q_print("%      -- Currently active PWM generators --\r\n"
+          "%<r>  GPIO | Frequency |  Duty  | Duty max | LEDC#  </>\r\n"
+          "% ------+-----------+--------+----------+--------\r\n");
   for (int pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++)
     if (pin_exist_silent(pin)) {
-      uint32_t freq;
-      if ((freq = ledcReadFreq(pin)) != 0)
+      uint32_t freq, duty_max;
+      uint8_t channel;
+      if ((freq = ledcReadFreq(pin)) != 0) {
+        ledc_channel_handle_t *bus = (ledc_channel_handle_t *)perimanGetPinBus(pin, ESP32_BUS_TYPE_LEDC); // TODO: is it safe to keep this pointer?
+        if (bus) {
+          duty_max = (1 << bus->channel_resolution) - 1;
+          channel = bus->channel;
+
 #pragma GCC diagnostic ignored "-Wformat"                
-        q_printf("%%   % 2lu  |  % 8lu | % 5lu \r\n",pin, freq, ledcRead(pin));
+          q_printf("%%   % 2lu  |  % 8lu |  % 5lu |    % 5lu | %u\r\n",pin, freq, ledcRead(pin), duty_max, channel);
 #pragma GCC diagnostic warning "-Wformat"                  
+        }
+      }
     }
 
     return 0;
