@@ -23,7 +23,7 @@ static uart_port_t uart = STARTUP_PORT; // either UART number OR 99 for USB-CDC
 
 #if SERIAL_IS_USB
 // Arduino Nano ESP32 and many others use USB as their primary serial port, in hardware CDC mode.
-// Here are console functions for such cases
+// Here are console functions for such cases (implemented in hwcdc.cpp)
 //
 extern bool console_isup();
 extern int  console_write_bytes(const void *buf, size_t len);

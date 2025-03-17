@@ -21,12 +21,22 @@
 // Handlers have access to user input via argc/argv mechanism. Return value is 0 if it was success, or contains an index of a failed
 // argument. Other return codes are in keywords_defs.h, see CMD_FAILED, CMD_SUCCESS.
 //
-// For code simplicity, the success value is returned as 0, not as CMD_SUCCESS. If the return value is CMD_FAIL, then it is up to handler
-// to give an explanation of a problem. ESPShell prints error messages for other error codes
+// For the code simplicity, the success value is returned as 0, not as CMD_SUCCESS. If the return value is CMD_FAIL, then it is up to handler
+// to give an explanation of a problem. ESPShell prints error messages for other error codes and keeps silent for CMD_FAIL
 
+// Camera commands
 #if WITH_ESPCAM
 static int cmd_cam(int, char **);
-#endif
+static int cmd_camera_set_gain(int argc, char **argv);
+static int cmd_camera_set_balance(int argc, char **argv);
+static int cmd_camera_set_exposure(int argc, char **argv);
+static int cmd_camera_set_qbcss(int argc, char **argv);
+static int cmd_camera_set_size(int argc, char **argv);
+static int cmd_camera_capture(int argc, char **argv);
+static int cmd_camera_filesize(int argc, char **argv);
+static int cmd_camera_transfer(int argc, char **argv);
+static int cmd_camera_down(int argc, char **argv);
+#endif // WITH_ESPCAM
 
 //i2c commands
 static int cmd_i2c_if(int, char **);
@@ -36,6 +46,7 @@ static int cmd_i2c_down(int, char **);
 static int cmd_i2c_read(int, char **);
 static int cmd_i2c_write(int, char **);
 static int cmd_i2c_scan(int, char **);
+
 #if WITH_SPI
 // spi commands
 static int cmd_spi_if(int, char **);
@@ -44,6 +55,7 @@ static int cmd_spi_up(int, char **);
 static int cmd_spi_down(int, char **);
 static int cmd_spi_write(int, char **);
 #endif //WITH_SPI
+
 // uart commands
 static int cmd_uart_if(int, char **);
 static int cmd_uart_baud(int, char **);
@@ -52,6 +64,7 @@ static int cmd_uart_up(int, char **);
 static int cmd_uart_down(int, char **);
 static int cmd_uart_read(int, char **);
 static int cmd_uart_write(int, char **);
+
 #if WITH_FS
 // filesystem commands
 static int cmd_files_if(int, char **);
@@ -73,6 +86,7 @@ static int cmd_files_cat(int, char **);
 static int cmd_files_touch(int, char **);
 static int cmd_files_format(int, char **);
 #endif  //WITH_FS
+
 // automation
 static int cmd_echo(int, char **);
 
@@ -108,7 +122,7 @@ static int cmd_seq_show(int argc, char **argv);
 static int cmd_var(int, char **);
 static int cmd_var_show(int, char **);
 
-// generic "show" command
+// "show" commands
 static int cmd_show(int, char **);
 static int cmd_show_address(int, char **);
 static int cmd_show_pwm(int, char **);
@@ -147,11 +161,23 @@ static const struct keywords_t keywords_uart[] = {
   KEYWORDS_BEGIN
 
   { "up", cmd_uart_up, 3,
-    HELPK("% \"<b>up</> <i>RX TX BAUD</>\"\r\n"
+    HELPK("% \"<b>up</> <i>RX TX SPEED</> <o>[BITS] [no|even|odd] [1|1.5|2]</>\"\r\n" 
           "%\r\n"
-          "% Initialize uart interface X on pins RX/TX,baudrate BAUD, 8N1 mode\r\n"
-          "% Ex.: <b>up 18 19 115200</> - Setup uart on pins rx=18, tx=19, at speed 115200"),
+          "% Initialize an UART interface on pins RX/TX, baudrate SPEED\r\n"
+          "% <i>RX</>    - Pin to use as RX\r\n"
+          "% <i>TX</>    - Pin to use as TX\r\n"
+          "% <i>SPEED</> - 9600, 115200 or any other standart baudrate\r\n"
+          "% Three optional parameters are:\r\n"
+          "% <o>BITS</>      - Number of data bits: 5,6,7 or 8. Default is 8\r\n"
+          "% Parity    - \"<o>no</>\", \"<o>even</>\" or \"<o>odd</>\"\r\n"
+          "% Stop bits - 1,2 or 1.5 stop bits\r\n"
+          "%\r\n"
+          "% Ex.: <b>up 18 19 115200</> - Setup uart on pins rx=18, tx=19, at speed 115200\r\n"
+          "% Ex.: <b>up 18 19 115200 <i>8 even 1.5</> - Eight bits, 1.5 stopbits, even parity" ),
     HELPK("Initialize uart (pins/speed)") },
+    { "up", cmd_uart_up, 4, HIDDEN_KEYWORD },
+    { "up", cmd_uart_up, 5, HIDDEN_KEYWORD },
+    { "up", cmd_uart_up, 6, HIDDEN_KEYWORD },
 
   { "baud", cmd_uart_baud, 1,
     HELPK("% \"<b>baud</> <i>SPEED</>\"\r\n"
@@ -589,21 +615,25 @@ static const struct keywords_t keywords_main[] = {
     HELPK("% \"<b>cpu</>\"\r\n% Show CPUID and CPU/XTAL/APB frequencies"), NULL },
 
   { "suspend", cmd_suspend, NO_ARGS,
-    HELPK("% \"<b>suspend</>\"\r\n% Suspend sketch execution (Hotkey: Ctrl+C). Resume with \"resume\""), "Suspend sketch execution" },
+    HELPK("% \"<b>suspend</>\"\r\n% Suspend sketch execution (Hotkey: Ctrl+C). Resume with \"resume\""), "Suspend sketch/task execution" },
 
   { "suspend", cmd_suspend, 1,
-    HELPK("% \"<b>suspend <i>TASK_ID</>\"\r\n% Suspend an arbitrary FreeRTOS task"), "Suspend sketch execution" },
+    HELPK("% \"<b>suspend <i>TASK_ID</>\"\r\n% Suspend an arbitrary FreeRTOS task"), NULL },
 
   { "resume", cmd_resume, NO_ARGS,
-    HELPK("% \"<b>resume</>\"\r\n% Resume sketch execution"), "Resume sketch execution" },
+    HELPK("% \"<b>resume</>\"\r\n% Resume sketch execution"), "Resume sketch/task execution" },
 
   { "resume", cmd_resume, 1,
-    HELPK("% \"<b>resume <i>TASK_ID</>\"\r\n% Resume an arbitrary FreeRTOS task"), "Resume sketch execution" },
+    HELPK("% \"<b>resume <i>TASK_ID</>\"\r\n% Resume an arbitrary FreeRTOS task"), NULL },
 
   { "kill", cmd_kill, 2,
     HELPK("% \"<b>kill <o>[-term|-kill|-9|-15] <i>TASK_ID</>\"\r\n"
-          "% Send a signal to a task. Default is SIGTERM (safely stop)\r\n"
-          "% If -9 or -kill option is used then task is deleted (use with care!)"), "Kill tasks" },
+          "% Send a signal to an arbitrary task\r\n"
+          "% If <i>-9</> (or <i>-kill</>) option is used then task is deleted (unsafe)\r\n"
+          "% No options, <i>-term</> or <i>-15</>: ask a task to finish (safe)\r\n"
+          "% Examples:\r\n"
+          "% kill 0x3fff0000      Terminates tasks in a safe way (using task notifications)\r\n"
+          "% kill -9 0x3fff0000 - Terminates tasks forcefully (task deletion)"),"Kill tasks" },
 
   { "kill", cmd_kill, 1, HIDDEN_KEYWORD },
 
@@ -623,6 +653,7 @@ static const struct keywords_t keywords_main[] = {
           "% Ex.: iic 0 - configure/use interface I2C0"),
     "I2C commands" },
 #if WITH_SPI
+#  warning "SPI submodule is barely functional and is under development now"
   { "spi", cmd_spi_if,1,
     HELPK("% \"<b>spi [fspi|hspi|vspi]</>\" \r\n%\r\n"
           "% Enter SPI interface configuration mode \r\n"
@@ -806,32 +837,41 @@ static const struct keywords_t keywords_main[] = {
           "% Detect & initialize the camera\n\r" \
           "%\n\r" \
           "% <i>MODEL</>    - The camera model; Supported models list is here: \"show camera models\"\n\r" \
-          "%                  Use word \"custom\" to specify custom camera model. (see \"camera pinout\")\r\n" \
-          "% <i>clock HZ</> - Set XCLK frequency, Hertz. Default value is 16000000 (16Mhz)\n\r" \
-          "% <i>i2c NUM</>  - Use existing i2c interface, ignore SDA & SCL pins\r\n%\r\n"
-          "% <i>camera up ai-thinker</>  - Initialize Ai-Thinker ESP32Cam\r\n"
-          "% <i>camera up custom clock 20000000</>  - Initialize custom pinout camera at 20Mhz"), HELPK("Camera commands")
+          "%            Use word \"custom\" to specify custom camera model. (see \"camera pinout\")\r\n" \
+          "% clock <i>HZ</> - Set XCLK frequency, Hertz. Default value is 16000000 (16Mhz)\n\r" \
+          "% i2c <i>NUM</>  - Use existing i2c interface, ignore SDA & SCL pins\r\n%\r\n"
+          "%\r\n"
+          "%Examples:\r\n"
+          "% camera up <i>ai-thinker</>  - Initialize Ai-Thinker ESP32Cam\r\n"
+          "% camera up <i>custom</> clock <i>20000000</>  - Initialize custom pinout camera at 20Mhz"), HELPK("Camera commands")
   },
 
   { "camera", HELP_ONLY,
     HELPK("% \"<b>camera</> <i>down|settings|capture|filesize|transfer</>\" - Camera commands:\n\r" \
           "%\n\r" \
-          "% <i>settings</> - Enter camera setting\n\r" \
-          "% <i>capture</>  - Capture a single shot\n\r" \
-          "% <i>filesize</> - Display last captured shot file size\n\r" \
-          "% <i>transfer</> - Transmit the last shot over uart\n\r" \
-          "% <i>down</>     - Camera shutdown & power-off"), NULL },
+          "% <b>settings</> - Enter camera setting\n\r" \
+          "% <b>capture</>  - Capture a single shot\n\r" \
+          "% <b>filesize</> - Display last captured shot file size\n\r" \
+          "% <b>transfer</> - Transmit the last shot over uart\n\r" \
+          "% <b>down</>     - Camera shutdown & power-off"), NULL },
 
 
   { "camera", HELP_ONLY,
     HELPK("% \"<b>camera</> <i>pinout</> <g>PWDN RESET XCLK SDA SCL D7 D6 D5 D4 D3 D2 D1 D0 VSYNC HREF PCLK</>\r\n"
-          "% Set custom pinout for the camera model \"custom\". Initialize it later with \"cam up custom\"\n\r"
+          "% Set custom pinout for the camera model \"<i>custom</>\"\r\n"
+          "% Later it can be initialized with \"cam up custom\"\n\r"
           "%\n\r"
-          "% Command requires 16 arguments (pin numbers). Use \"-1\" as a pin number to disable it:\r\n"
-          "% Ex.: <b>camera pinout -1 -1 1 2 3 4 5 6 7 8 9 10 11 12 13 14</b>\r\n% In example above, pins PWDN & RESET are not used\r\n"
+          "% Command requires 16 arguments (pin numbers): i2c bus, data pins, etc\r\n"
+          "% If your board don't have / don't use certain pins then use \"-1\" as\r\n"
+          "% a pin number to disable it.\r\n"
+          "% Example:\r\n"
+          "% camera <i>pinout</> <g>-1 -1 1 2 3 4 5 6 7 8 9 10 11 12 13 14</>\r\n"
+          "% In example above, pins PWDN & RESET are not used and thus set to -1\r\n"
+          "%\r\n"
+          "% This custom pinout can be activated via <i>camera up custom</>\r\n"
           "% Note that pin names D7..D0 are synonyms for Y9..Y2: D0=Y2, D1=Y3 ..."), NULL},
 
-#endif
+#endif //WITH_ESPCAM
   // TODO: split helplines between different entries
   { "var", cmd_var, 2,
     HELPK("% \"<b>var</> [<o>VARIABLE_NAME</> [<o>NEW_VALUE</>]]</>\"\r\n%\r\n"
@@ -839,24 +879,27 @@ static const struct keywords_t keywords_main[] = {
           "% VARIABLE_NAME is the variable name (\"var\" to see the list of all vars)\r\n"
           "% NEW_VALUE can be integer or float point values, positive or negative\r\n"
           "%\r\n"
-          "% Ex.: \"var\"             - List all registered sketch variables\r\n"
-          "% Ex.: \"var button1\"     - Display current value of \"button1\" sketch variable\r\n"
-          "% Ex.: \"var angle -12.3\" - Set sketch variable \"angle\" to \"-12.3\"\r\n"
+          "% Examples:\r\n"
+          "% <b>var</>             - List all registered sketch variables\r\n"
+          "% <b>var</> <i>button1</>     - Display current value of \"button1\" sketch variable\r\n"
+          "% <b>var</> <i>angle</> <g>-12.3</> - Set sketch variable \"angle\" to \"-12.3\"\r\n"
           "%\r\n"
           "% Note#1: Partial (shortened) variable names can be used\r\n"
           "% Note#2: Use prefix \"0x\" for hex, \"0\" for octal or \"0b\" for binary numbers"), "Sketch variables" },
 
   { "var", cmd_var, 1,
-    HELPK("% \"<b>var <i>NUMBER</>\"\r\n%\r\n"
+    HELPK("% \"<b>var</> <g>NUMBER</>\"\r\n"
+          "%\r\n"
           "% Display a NUMBER in differtent bases and perform unsafe C-style\r\n"
           "% cast of a memory content\r\n"
           "% NUMBER can be anything that converts to a number. Use \"0b\",\"0x\" or \"0\"\r\n"
           "% prefixes to enter binary, hexadecimal or octal numbers."
           "%\r\n"
-          "% Ex.: \"var -1234\"       - Get information on a decimal number -1234\r\n"
-          "% Ex.: \"var 0x1234\"      -                 on a hex number..\r\n"
-          "% Ex.: \"var 01234\"       -                 on an octal number..\r\n"
-          "% Ex.: \"var 0b1001110\"   - and on a binary number"), NULL },
+          "% Examples:\r\n"
+          "% var -1234       - Get information on a decimal number -1234\r\n"
+          "% var 0x1234      -                 on a hex number..\r\n"
+          "% var 01234       -                 on an octal number..\r\n"
+          "% var 0b1001110   - and on a binary number"), NULL },
 
   { "var", cmd_var_show, NO_ARGS, HIDDEN_KEYWORD },
 
@@ -870,6 +913,82 @@ static const struct keywords_t keywords_main[] = {
 
   KEYWORDS_END
 };
+
+#if WITH_ESPCAM
+// Commands for dealing with video camera (ai-thinker, m5stack, dfrobot etc or custom)
+// Main commands are located in keywords_main and handled by cmd_cam(). Keywords below is extra commands 
+// under "camera settings" subdirectory
+//
+static struct keywords_t keywords_espcam[] = {
+
+  KEYWORDS_BEGIN
+
+  { "gain", cmd_camera_set_gain, 1, 
+    HELPK("\"<b>gain</> <i>auto</>|(0..30)\"\n\r"
+          "% Set camera sensetivity (auto or 0..30)"), "Gain" },
+
+  { "balance", cmd_camera_set_balance, 1, 
+    HELPK("% <b>balance</> <i>none</>|<i>auto</>|<i>sunny</>|<i>cloudy</>|<i>office</>|<i>home</>\n\r"
+          "% Set camera White Balance correction"),  "White balance" },
+
+  { "exposure", cmd_camera_set_exposure, 2, 
+    HELPK("% exposure auto [-2..2]\n\r"
+          "% \n\r"
+          "% Set camera exposure mode to auto & optional AE shift:\r\n"
+          "% exposure auto     - set exposure to auto\r\n"
+          "% exposure auto -2  - same as above + correction factor of -2"), "Exposure" },
+
+  { "exposure", cmd_camera_set_exposure, 1, 
+    HELPK("% exposure (0..1200)\n\r"
+          "%\n\r"
+          "% Set manual camera exposure:\r\n"
+          "% exposure 800 - Set exposure parameter to 800"),"Exposure" },
+
+
+  { "brightness", cmd_camera_set_qbcss, 1,
+      HELPK("% brightness (-2..2)\n\r"
+          "%\n\r"
+          "% Set brightness correction (gamma):\r\n"
+          "% exposure -1 - Make things darker"), "Brightness" },
+
+  { "saturation", cmd_camera_set_qbcss, 1,
+      HELPK("% saturation (-2..2)\n\r"
+          "%\n\r"
+          "% Set saturation correction (vivid colors):\r\n"
+          "% saturation 2 - Set saturation to its maximum"), "Saturation" },
+
+  { "contrast", cmd_camera_set_qbcss, 1,
+      HELPK("% contrast (-2..2)\n\r"
+          "%\n\r"
+          "% Set contrast correction:\r\n"
+          "% contrast 2 - Set contrast parameter to its maximum"), "Contrast" },
+
+  { "sharpness", cmd_camera_set_qbcss, 1,
+      HELPK("% sharpness (-2..2)\n\r"
+          "%\n\r"
+          "% Set image sharpness correction:\r\n"
+          "% sharpness -2 - Decrease sharpness to its minimum"), "Sharpness" },
+
+  { "compression", cmd_camera_set_qbcss, 1,
+      HELPK("% compression (2..63)\n\r"
+          "%\n\r"
+          "% Set JPEG compression factor (2 - best quality, 63 - smallest size)\r\n"
+          "% compression 4 - Higher picture quality, larger file"), "compression" },
+
+  { "size", cmd_camera_set_size, 1, 
+    HELPK("% \"size vga|svga|xga|hd|sxga|uxga\"\n\r"
+          "\n\r"
+          "% Set picture size:\n\r"
+          "% vga  - 640x480\n\r"
+          "% svga - 800x600\n\r"
+          "% xga  - 1024x760\n\r"
+          "% hd   - 1280x720\n\r"
+          "% sxga - 1280x1024\n\r"
+          "% uxga - 1600x1200 (Default)"), "Resolution / Picture size" },
+
+  KEYWORDS_END
+};
+#endif // WITH_ESPCAM
 
 //current keywords list in use and a barrier to protect it.
 static BARRIER(keywords_mux);

@@ -16,6 +16,16 @@
 
 #if COMPILING_ESPSHELL
 
+
+// Create a 32-bit number which stores UART configuration. Arduino Core passes it directly to the ESP-IDF UART driver.
+//  bits   - 5,6,7 or 8
+//  parity - 0,2 or 3  (no-parity, even or odd)
+//  sbits  - 1,2,3 (1 bit, 1.5 bits and 2 bits respectively)
+//
+static uint32_t __attribute__((const)) make_config(char bits, char parity, char sbits) {
+    return 0x80000000 | (((bits - 5) << 2) | parity | (sbits << 4));
+}
+
 // uart_tap() : create uart-to-uart bridge between user's serial and "remote"
 // everything that comes from the user goes to "remote" and  vice versa
 //
@@ -116,20 +126,59 @@ static int cmd_uart_baud(int argc, char **argv) {
 }
 
 
-//"up RX TX BAUD"
+//"up RX TX BAUD [BITS] [no|even|odd] [1|1.5|2]"
 // Initialize UART interface (RX/TX, no hw flowcontrol) baudrate BAUD
-// TODO: support stopbits, parity, databits
+// Optional parameters are data width (5,6,7 or 8), parity and stopbits
+//
 static int cmd_uart_up(int argc, char **argv) {
 
-  unsigned char u = Context;
+  unsigned char u = Context, bits = 8, parity = 0, sbits = 1;
   unsigned int rx, tx, speed;
 
-  if (argc < 4) return CMD_MISSING_ARG;
-  if (!pin_exist((rx = q_atol(argv[1], 999)))) return 1;
-  if (!pin_exist((tx = q_atol(argv[2], 999)))) return 2;
-  if ((speed = q_atol(argv[3], 0)) == 0) return 3;
-  if (NULL != uartBegin(u, speed, SERIAL_8N1, rx, tx, 256, 0, false, 112))
-    HELP(q_printf("%% UART%u is initialized (RX=pin%u, TX=pin%u, speed=%u, bits: 8N1)\r\n", u, rx, tx, speed));
+  if (argc < 4)
+    return CMD_MISSING_ARG;
+
+  if (!pin_exist((rx = q_atol(argv[1], BAD_PIN))))
+    return 1;
+
+  if (!pin_exist((tx = q_atol(argv[2], BAD_PIN))))
+    return 2;
+
+  if ((speed = q_atol(argv[3], 0)) == 0)
+    return 3;
+
+  // Optional 'data bits' parameter. Non-numeric values have no effect.
+  // Default value is 8
+  if (argc > 4) {
+    bits = q_atol(argv[4],bits);
+    if (bits < 5 || bits > 8) {
+      q_print("% <e>Data bits can be 5,6,7 or 8</>\r\n");
+      return 4;
+    }
+  }
+
+  // Optional Parity parameter
+  // Default value is "No Parity"
+  if (argc > 5) { // expected: "no" "odd" "even"
+    if (argv[5][0] == 'e')
+      parity = 3;
+    else if (argv[5][0] == 'o')
+      parity = 2;
+  }
+
+  // Optional stopbits count
+  // Default value is 1
+  if (argc > 6) { // expected: "1" "1.5" "2"
+    if (argv[6][0] == '1' && argv[6][1] == '.')
+      sbits = 2;
+    else if (argv[6][0] == '2')
+      sbits = 3;
+  }
+  
+  //VERBOSE(q_printf("%% uart%u up: Config word is %08x\r\n",u,make_config(bits, parity, sbits)));
+
+  if (NULL != uartBegin(u, speed, make_config(bits, parity, sbits), rx, tx, 256, 0, false, 112))
+    HELP(q_printf("%% UART%u is initialized (RX=pin%u, TX=pin%u, speed=%u)\r\n", u, rx, tx, speed));
   else
     q_print(Failed);
 

@@ -55,7 +55,7 @@ static const char *Hints[] = {
   "% Use \"var ls_show_dir_size 0\" to disable dirs size counting by \"ls\" command:\r\n"
   "% filesystems with huge amount of files & dirs can slow things down",
 
-  "% To use spaces in filenames, replace spasces with asteriks (*): \"mkdir A*Path\"",
+  "% To use spaces in filenames, replace spaces with asterisk (*): \"mkdir A*Path\"",
 
   "% Main commands are available in every command subdirectory: one can execute\r\n"
   "% command \"pin\" while in UART configuration mode, without need to \"exit\"",
@@ -69,6 +69,9 @@ static const char *Hints[] = {
   "% pattern is matched from the beginning of the string (i.e. regexp-like \"^\")",
 
   "% Press Ctrl+L to clear the screen and enable terminal colors",
+
+  "% Adding an \"&\" at the end of any command makes that command run in a <u>background</>,\r\n"
+  "% just like in Bash/Linux:  \"count 4 &\""
 };
 
 // Display useful hints. 

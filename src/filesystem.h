@@ -18,9 +18,9 @@
 //
 // Command handlers names start with "cmd_files_...", utility & helper functions are all have names which start with "files_"
 //
-// TODO: "cp" command can't copy folders
-// TODO: "mv" command is not implemented
-// TODO: ftp file server
+// TODO: 1.0: "cp" command can't copy folders
+// TODO: 1.0: "mv" command is not implemented
+// TODO: 1.0:  ftp file server, passive mode
 
 #if WITH_FS
 // Current working directory. Must start and end with "/". 
@@ -182,11 +182,11 @@ static inline const char *files_get_cwd() {
   return Cwd ? Cwd : files_set_cwd("/");
 }
 
-// Convert "*" to spaces in paths. Spaces in paths are entered as asteriks
+// Convert "*" to spaces in paths. Spaces in paths are entered as asterisk
 // "path" must be writeable memory.
 //"Program*Files*(x64)" gets converted to "Program Files (x64)"
 //
-static void files_asteriks2spaces(char *path) {
+static void files_asterisk2spaces(char *path) {
   if (path) {
     while (*path != '\0') {
       if (*path == '*')
@@ -282,17 +282,17 @@ const esp_partition_t *files_partition_by_label(const char *label) {
 // without copying the result to stack
 //
 // /path/ absolute or relative path
-// /do_asteriks/ should convert asteriks to spaces or not
+// /do_asterisk/ should convert asterisk to spaces or not
 //
 // returns pointer to a buffer (extendable up to 16 bytes) with full path or "/" if
 // errors happened
 //
-#define PROCESS_ASTERIKS true
-#define IGNORE_ASTERIKS false
+#define PROCESS_ASTERISK true
+#define IGNORE_ASTERISK false
 
 // TODO: process ".." in the path
 //
-static char *files_full_path(const char *path, bool do_asteriks) {
+static char *files_full_path(const char *path, bool do_asterisk) {
 
   static char out[MAX_PATH + 16];
   int len, cwd_len;
@@ -318,8 +318,8 @@ static char *files_full_path(const char *path, bool do_asteriks) {
     }
   }
 
-  if (do_asteriks)
-    files_asteriks2spaces(out);
+  if (do_asterisk)
+    files_asterisk2spaces(out);
   return out;
 }
 
@@ -511,7 +511,7 @@ static unsigned int files_dirwalk(const char *path0, files_walker_t files_cb, fi
     return 0;
 
   // figure out full path, if needed
-  if ((path = q_strdup256(files_full_path(path0, PROCESS_ASTERIKS), MEM_PATH)) == NULL)
+  if ((path = q_strdup256(files_full_path(path0, PROCESS_ASTERISK), MEM_PATH)) == NULL)
     return 0;
 
   if ((len = strlen(path)) > 0) {
@@ -586,7 +586,7 @@ static int files_remove(const char *path0, int depth) {
     return 0;
 
   // make a copy of full path as files_full_path()'s buffer is not reentrant (static)
-  strcpy(path, files_full_path(path0, PROCESS_ASTERIKS));
+  strcpy(path, files_full_path(path0, PROCESS_ASTERISK));
 
   if (files_path_exist_file(path))  // a file?
     return unlink(path) == 0 ? 1 : 0;
@@ -616,7 +616,7 @@ static unsigned int files_size(const char *path) {
   struct stat st;
   char p[MAX_PATH + 16] = { 0 };
 
-  strcpy(p, files_full_path(path, PROCESS_ASTERIKS));
+  strcpy(p, files_full_path(path, PROCESS_ASTERISK));
 
   // size of a file requested
   if (files_path_exist_file(p)) {
@@ -751,9 +751,9 @@ static int files_create_dirs(const char *path0, bool last_is_file) {
   char **argv = NULL, *path;
   char buf[MAX_PATH + 16] = { 0 };
 
-  // don't process asteriks now: this will interfere with argify() as argify() uses spaces
-  // as toen separator. Convert asteriks later.
-  if ((len = strlen((path = files_full_path(path0, IGNORE_ASTERIKS)))) > 0) {
+  // don't process asterisk now: this will interfere with argify() as argify() uses spaces
+  // as toen separator. Convert asterisk later.
+  if ((len = strlen((path = files_full_path(path0, IGNORE_ASTERISK)))) > 0) {
 
     // replace all path separators with spaces: this way we can use argify()
     // to split it to components.
@@ -769,7 +769,7 @@ static int files_create_dirs(const char *path0, bool last_is_file) {
         // walk thru all path components and create them if do not exist
         for (i = 0; i < argc; i++) {
           strcat(buf, "/");
-          files_asteriks2spaces(argv[i]);
+          files_asterisk2spaces(argv[i]);
           strcat(buf, argv[i]);
           if (!files_path_exist_dir(buf)) {
             if (mkdir(buf, 0777) != 0) {
@@ -1025,7 +1025,7 @@ static int cmd_files_unmount(int argc, char **argv) {
   files_strip_trailing_slash(path);
 
   // expand name if needed
-  path = files_full_path(path, PROCESS_ASTERIKS);
+  path = files_full_path(path, PROCESS_ASTERISK);
 
   // find a corresponding mountpoint
   if ((i = files_mountpoint_by_path(path, true)) < 0) {
@@ -1545,7 +1545,7 @@ static int cmd_files_cd(int argc, char **argv) {
   }
 
   // Replace all "*" with spaces " "
-  files_asteriks2spaces(argv[1]);
+  files_asterisk2spaces(argv[1]);
 
   // Path is absolute: check if it exists and
   // store it as current working directory
@@ -1602,7 +1602,7 @@ static int cmd_files_ls(int argc, char **argv) {
   char path[MAX_PATH + 16], *p;
   int plen;
 
-  p = (argc > 1) ? files_full_path(argv[1], PROCESS_ASTERIKS) : files_full_path(Cwd, IGNORE_ASTERIKS);
+  p = (argc > 1) ? files_full_path(argv[1], PROCESS_ASTERISK) : files_full_path(Cwd, IGNORE_ASTERISK);
 
   if ((plen = strlen(p)) == 0)
     return 0;
@@ -1704,7 +1704,7 @@ static int cmd_files_rm(int argc, char **argv) {
 
   int i, num;
   for (i = 1, num = 0; i < argc; i++) {
-    files_asteriks2spaces(argv[i]);
+    files_asterisk2spaces(argv[i]);
     num += files_remove(argv[i], DIR_RECURSION_DEPTH);
   }
   if (num)
@@ -1757,7 +1757,7 @@ static int cmd_files_write(int argc, char **argv) {
 
       // files_create_dirs() destroys /path/ as it is static buffer of files_full_path
       // instead of q_strdup just reevaluate it
-      path = files_full_path(argv[1], PROCESS_ASTERIKS);
+      path = files_full_path(argv[1], PROCESS_ASTERISK);
 
       // ceate file and write TEXT
       if ((fd = open(path, flags)) > 0) {
@@ -1803,7 +1803,7 @@ static int cmd_files_insdel(int argc, char **argv) {
     return 2;
   }
 
-  if (!files_path_exist_file((path = files_full_path(argv[1], PROCESS_ASTERIKS)))) {
+  if (!files_path_exist_file((path = files_full_path(argv[1], PROCESS_ASTERISK)))) {
     HELP(q_printf("%% <e>Path \"%s\" does not exist</>\r\n", path));  //TODO: Path does not exist is a common string.
     return 1;
   }
@@ -1935,7 +1935,7 @@ static int cmd_files_touch(int argc, char **argv) {
       return 0;
     }
 
-    argv[i] = files_full_path(argv[i], PROCESS_ASTERIKS);
+    argv[i] = files_full_path(argv[i], PROCESS_ASTERISK);
 
     // try to open file, creating it if it doesn't exist
     if ((fd = open(argv[i], O_CREAT | O_WRONLY, 0666)) > 0) {
@@ -2069,8 +2069,8 @@ static int cmd_files_cp(int argc, char **argv) {
     return CMD_MISSING_ARG;
 
   char spath[MAX_PATH], dpath[MAX_PATH];
-  strcpy(spath, files_full_path(argv[1], PROCESS_ASTERIKS));
-  strcpy(dpath, files_full_path(argv[2], PROCESS_ASTERIKS));
+  strcpy(spath, files_full_path(argv[1], PROCESS_ASTERISK));
+  strcpy(dpath, files_full_path(argv[2], PROCESS_ASTERISK));
   files_strip_trailing_slash(spath);
   files_strip_trailing_slash(dpath);
 
@@ -2142,7 +2142,7 @@ static int cmd_files_cat(int argc, char **argv) {
   if (i >= argc)
     return CMD_MISSING_ARG;
 
-  if (!files_path_exist_file((path = files_full_path(argv[i], PROCESS_ASTERIKS)))) {
+  if (!files_path_exist_file((path = files_full_path(argv[i], PROCESS_ASTERISK)))) {
     q_printf("%% File not found:\"<e>%s</>\"\r\n", path);
     return 1;
   }

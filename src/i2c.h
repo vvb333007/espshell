@@ -177,7 +177,7 @@ static int cmd_i2c_scan(int argc, char **argv) {
   int i;
 
   if (i2c_isup(iic)) {
-    HELP(q_printf("%% Scanning I2C bus %d...\r\n", iic));
+    HELP(q_printf("%% Scanning I2C%d bus...\r\n", iic));
 
     for (addr = 1, i = 0; addr < 128; addr++) {
       unsigned char b;

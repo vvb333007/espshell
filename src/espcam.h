@@ -31,7 +31,7 @@
 //show camera settings
 //
 
-static camera_config_t config;      // camera config
+static camera_config_t config;      // camera config TODO: rename
 static camera_fb_t *cam_fb = NULL;  // last captured picture
 static bool cam_good = false;       // initialized or not
 
@@ -201,7 +201,7 @@ static int cmd_cam_pinout(int argc, char **argv) {
 
 //"gain auto"
 //"gain 0..30"
-static int cmd_cam_set_gain(int argc, char **argv) {
+static int cmd_camera_set_gain(int argc, char **argv) {
 
   sensor_t *cam;
 
@@ -234,7 +234,7 @@ static int cmd_cam_set_gain(int argc, char **argv) {
 }
 
 //"balance auto|sunny|cloudy|office|home|none"
-static int cam_set_balance(int argc, char **argv) {
+static int cmd_camera_set_balance(int argc, char **argv) {
 
   sensor_t *cam;
 
@@ -270,7 +270,7 @@ static int cam_set_balance(int argc, char **argv) {
 //"exposure auto -2..2"
 //"exposure 0..1200"
 //
-static int cam_set_exposure(int argc, char **argv) {
+static int cmd_camera_set_exposure(int argc, char **argv) {
 
   int exposure, ae_shift = 0;
   sensor_t *cam;
@@ -318,9 +318,9 @@ static int cam_set_exposure(int argc, char **argv) {
 }
 
 //"brightness|saturation|constrast?sharpness -2..2"
-//"quality 2..63"
+//"compression 2..63"
 //
-static int cam_set_qbcss(int argc, char **argv) {
+static int cmd_camera_set_qbcss(int argc, char **argv) {
 
   int val;
   sensor_t *cam;
@@ -348,19 +348,19 @@ static int cam_set_qbcss(int argc, char **argv) {
     q_print(Failed);
     return 0;
   }
-  if (!q_strcmp(argv[0], "quality")) cam->set_quality(cam, val);
+  if (!q_strcmp(argv[0], "compression")) cam->set_quality(cam, val);
   else if (!q_strcmp(argv[0], "brightness")) cam->set_brightness(cam, val);
   else if (!q_strcmp(argv[0], "contrast")) cam->set_contrast(cam, val);
   else if (!q_strcmp(argv[0], "saturation")) cam->set_saturation(cam, val);
   else if (!q_strcmp(argv[0], "sharpness")) cam->set_sharpness(cam, val);
-  else q_printf("%%  unexpected token \"%s\"\n\r", argv[0]);
+  else q_printf("%%  <e>Unexpected token \"%s\"</>\n\r", argv[0]);
 
   return 0;
 }
 
 //"size vga|svga|xga|uxga|hd|sxga"
 //
-static int cam_set_size(int argc, char **argv) {
+static int cmd_camera_set_size(int argc, char **argv) {
 
   sensor_t *cam;
   int size;
@@ -387,61 +387,6 @@ static int cam_set_size(int argc, char **argv) {
 }
 
 
-
-// extra commands under camera settings subdirectory
-static struct keywords_t keywords_espcam[] = {
-
-  KEYWORDS_BEGIN
-
-  { "gain", cmd_cam_set_gain, 1, HELPK("\"gain auto|(0..30)\"\n\r"
-                                                "% Set camera sensetivity (auto or 0..30)"),
-                  "Gain" },
-
-  { "balance", cam_set_balance, 1, HELPK("% whitebalance none|auto|sunny|cloudy|office|home\n\r"
-                                        "% Set camera WB mode"),
-    "White balance" },
-
-  { "exposure", cam_set_exposure, 2, HELPK("% exposure auto (-2..2)\n\r"
-                                          "% \n\r"
-                                          "% Set camera exposure mode to auto & optional AE shift"),
-    "Exposure" },
-  { "exposure", cam_set_exposure, 1, HELPK("% exposure (0..1200)\n\r"
-                                          "%\n\r"
-                                          "% Set camera exposure manually"),
-    "Exposure" },
-
-
-  { "brightness", cam_set_qbcss, 1, HELPK("% Adjust brightness: -2..2"),
-    "Brightness" },
-
-  { "saturation", cam_set_qbcss, 1, HELPK("% \"saturation X\" - Adjust saturation: -2..2"),
-    "Saturation" },
-
-  { "contrast", cam_set_qbcss, 1, HELPK("% \"contrast X\" - Adjust contrast: -2..2"),
-    "Contrast" },
-
-  { "sharpness", cam_set_qbcss, 1, HELPK("% \"sharpness\" - Adjust sharpness: -2..2"),
-    "Sharpness" },
-
-  { "size", cam_set_size, 1, HELPK("% \"size vga|svga|xga|hd|sxga|uxga\"\n\r\n\r"
-                                  "% Set frame size:\n\r"
-                                  "% vga  - 640x480\n\r"
-                                  "% svga - 800x600\n\r"
-                                  "% xga  - 1024x760\n\r"
-                                  "% hd   - 1280x720\n\r"
-                                  "% sxga - 1280x1024\n\r"
-                                  "% uxga - 1600x1200 (Default)"),
-    "Resolution" },
-
-  { "quality", cam_set_qbcss, 1, HELPK("% \"quality (2..63)\"\n\r"
-                                      "% Set JPEG quality:\n\r"
-                                      "% 2 - high ... 63 - low"),
-    "Picture quality" },
-
-
-  KEYWORDS_END
-};
-
 //"capture"
 //
 //framebuffer stored in cam_fb. there are 2 fb
@@ -449,7 +394,7 @@ static struct keywords_t keywords_espcam[] = {
 //good idea or not. May be should make a copy and
 //return the fb asap.
 //
-static int cam_capture(int argc, char **argv) {
+static int cmd_camera_capture(int argc, char **argv) {
 
   if (cam_fb)
     esp_camera_fb_return(cam_fb);
@@ -463,9 +408,9 @@ static int cam_capture(int argc, char **argv) {
 //"filesize"
 //
 // return captured frame size in bytes. frame
-// must be captured with cam_capture()
+// must be captured with cmd_camera_capture()
 //
-static int cam_filesize(int argc, char **argv) {
+static int cmd_camera_filesize(int argc, char **argv) {
 
   unsigned int len = 0;
   if (cam_fb)
@@ -479,10 +424,10 @@ static int cam_filesize(int argc, char **argv) {
 // really slow byte-by-bute sender: we dont want
 // reciever fifo overrun
 //
-static int cam_transfer(int argc, char **argv) {
+static int cmd_camera_transfer(int argc, char **argv) {
 
   unsigned char *p;
-  cam_filesize(argc, argv);
+  cmd_camera_filesize(argc, argv);
   if (cam_fb && cam_fb->len) {
     p = (unsigned char *)cam_fb->buf;
     for (int i = 0; i < cam_fb->len; i++)
@@ -498,7 +443,7 @@ static int cam_transfer(int argc, char **argv) {
 // using "pin" commands
 // POWERDOWN pin of ESP32Cam is GPIO32:
 //
-static int cam_down(int argc, char **argv) {
+static int cmd_camera_down(int argc, char **argv) {
 
   if (cam_good) {
     cam_good = false;
@@ -645,21 +590,22 @@ static int cmd_cam(int argc, char **argv) {
   if (!q_strcmp(argv[1], "up"))
     return cmd_cam_up(argc, argv);
 
+  // any other camera commands require camera to be initialized
   if (!cam_good) {
     q_print("% Initialize camera first (\"camera up\" command)\n\r");
     return 0;
   }
+
   // "camera settings"
-  if (!q_strcmp(argv[1], "settings")) change_command_directory(0, keywords_espcam, PROMPT_ESPCAM, "ESP32Cam");
+  if (!q_strcmp(argv[1], "settings")) change_command_directory(0, keywords_espcam, PROMPT_ESPCAM, "camera"); else
   // camera capture
-  else if (!q_strcmp(argv[1], "capture")) err = cam_capture(argc, argv);
+  if (!q_strcmp(argv[1], "capture")) err = cmd_camera_capture(argc, argv);
   // camera filesize
-  else if (!q_strcmp(argv[1], "filesize")) err = cam_filesize(argc, argv);
+  if (!q_strcmp(argv[1], "filesize")) err = cmd_camera_filesize(argc, argv);
   // camera transfer
-  else if (!q_strcmp(argv[1], "transfer")) err = cam_transfer(argc, argv);
+  if (!q_strcmp(argv[1], "transfer")) err = cmd_camera_transfer(argc, argv);
   // camera down
-  else if (!q_strcmp(argv[1], "down")) err = cam_down(argc, argv);
-  else err = 1;  // unrecoginzed argument
+  if (!q_strcmp(argv[1], "down")) err = cmd_camera_down(argc, argv);  else err = 1;  // unrecoginzed argument
 
   return err;
 }

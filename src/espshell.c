@@ -118,8 +118,6 @@
 #define xstr(s) ystr(s)   
 #define ystr(s) #s
 
-
-#define SERIAL_8N1 0x800001c
 #define BREAK_KEY 3
 
 // Special pin names.
@@ -201,7 +199,7 @@ static const char *SpacesInPath = "<e>% Too many arguments.\r\n"
                                   "% Examples: \"cd Path*With*Spaces\",  \"rm /ffat/Program*Files\"</>\r\n";
 
 static const char *MultipleEntries = "% Processing multiple paths.\r\n"
-                                     "% Not what you want? Use asteriks (*) instead of spaces in the path\r\n";
+                                     "% Not what you want? Use asterisk (*) instead of spaces in the path\r\n";
 
 static const char *VarOops = "<e>% Oops :-(\r\n"
                              "% No registered variables to play with</>\r\n"
