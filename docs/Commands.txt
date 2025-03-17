@@ -126,6 +126,28 @@ AUTOCOMPLETION vs SHORTENING
 And yes, filename / path autocompletion is missing as well
 
 
+BACKGROUND EXECUTION
+--------------------
+
+ By default all ESPShell commands are blocking (well, most of them, not all). That
+ means that the shell will wait for command execution before starting to accept new 
+ input: commands executed in sequence, one by one. Sometimes however we would like
+ to run a number of commands in parallel: lets say we want to run multiple "count"
+ commands to measure frequency on number of pins.
+
+ Adding "&" as very last argument to ANY command instructs ESPShell to execute this 
+ command in separate task context, in parallel to other processes. This behaviour
+ is well known to Linux users, where "&" is used in exactly same way: to run  
+ commands in background.
+
+ This option (background execution) is especially useful with commands "pin" and 
+ "count" which may take long time to finish. Every running background command 
+ allocates around 5000 bytes of stack memory which is freed after execution
+
+ Background commands can be stopped by using command "kill" (see command list 
+ below)
+
+
 BUILT-IN HELP SYSTEM
 --------------------
 
@@ -157,27 +179,47 @@ In order to decrease the library memory footprint one can edit "espshell.h" file
 and change line "#define WITH_HELP 1" to "#define WITH_HELP 0". This will completely
 disble help & hint system, leaving only error/warning messages.
 
+HELP PAGE SYNTAX
+----------------
 
-BACKGROUND EXECUTION
---------------------
+When typical help page is displayed, one may notice special symbols (along with
+colors) are used to describe command syntax. Command syntax is always at the
+beginning of any help page. Lets look at some random help page:
 
-By default all ESPShell commands are blocking (well, most of them, not all). That
-means that the shell will wait for command execution before starting to accept new 
-input: commands executed in sequence, one by one. Sometimes however we would like
-to run a number of commands in parallel: lets say we want to run multiple "count"
-commands to measure frequency on number of pins.
+  1. count PIN [TIME] [trigger | filter LENGTH]*
 
-Adding "&" as very last argument to ANY command instructs ESPShell to execute this 
-command in separate task context, in parallel to other processes. This behaviour
-is well known to Linux users, where "&" is used in exactly same way: to run  
-commands in background.
+  This is the very first line of a help page "? count". Here we can see a couple
+  of special symbols: square brackets "[" and "]", a vertical bar "|", an 
+  asterisk "*" and some words typed in UPPERCASE.
 
-This option (background execution) is especially useful with commands "pin" and 
-"count" which may take long time to finish. Every running background command 
-allocates around 5000 bytes of stack memory which is freed after execution
+  UPPERCASE - A number or some text string. Any user input. In example above we have
+              3 parameters, numbers: pin number, measurement time and length.  In 
+              majority of commands an UPPERCASE argument is a number
 
-Background commands can be stopped by using command "kill" (see command list 
-below)
+  lowercase - These are keywords: command name itself, "trigger" and "filter"
+
+  [   ]     - Square brackets are used to denote OPTIONAL parameters.
+              Example above has only 1 mandatory parameter (pin number) while
+              rest are optional and can be omitted
+
+    |       - This is simply "OR". In sence "this OR that"
+
+    *       - Located next to closing bracket and says, that anything within
+              brackets can appear multiple times (including zero).
+              For example text "[hello|world|123]*" can be read as (but not 
+              limited to):
+
+                  hello
+                  hello hello
+                  world hello 123 world
+                  ...
+              and so on
+
+Other symbols used in ESPShell are:
+
+  [1..10]   - Optional argument: a number from a range (1 to 10)
+  (1..10)   - Same as above but mandatory
+              
 
 
 ESPSHELL BUILT-IN COMMANDS
@@ -337,4 +379,17 @@ COMMANDS (MAIN COMMAND DIRECTORY)
 "echo silent" - Completely disable ALL espshell output to the terminal. No error
                 messages will be displayed. Commands being executed will not
                 display anything.
+
+
+"suspend"
+"resume"
+"kill"   - Process control command: kill, suspend or resume a task. These 3 
+           commands are described in "docs/Kill_Suspend_Resume.txt"
+
+"show"   - Display various information. See "docs/Show.txt"
+
+"pwm"
+"count"  - PWM generator and pulse counter. See "docs/Tone_Generator_And_Counter.txt"for these 2 commands
+
+"var"    - Sketch variables manipulation. See "docs/Sketch_Variables.txt"
 
