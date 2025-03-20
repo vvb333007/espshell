@@ -1,0 +1,134 @@
+ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
+
+
+PULSE COUNTER / FREQUENCY METER
+-------------------------------
+
+ESP32 has built-in (hardware) pulse counting feature with 8 (original ESP32) or
+less (newer models) counters (PCNT units, see ESP32 Technical Reference). These 
+counters can be run in parallel providing up to 8 frequency meters.
+
+Counters are controlled via "count" and "show counters" commands
+
+Command "count" is used to count pulses on given pin. Command takes up several 
+arguments: A pin number (to count pulses on), a time interval during which 
+pulses are counted, special keywords ("trigger" and "filter").
+
+Command syntax is: "count PIN [TIME_MS] [trigger | filter LENGTH_NS]" where PIN
+is a pin number and TIME_MS is the time during which measurements are made 
+(default is 1000 ms). Keyword "trigger"can be used to instruct counter to "wait
+until first pulse and once captured, start counting". Keyword "filter" allows
+for rejecting pulses which are too short (see PULSE FILTERING below)
+
+
+  Example: (Count pulses & measure frequency on pin#2)
+
+  esp32#>count 2
+  % Counting pulses on GPIO2...(press <Enter> to abort)
+  % 0 pulses in 1.000 seconds (0.0 Hz, 0 interrupts)
+  esp32#>
+
+Pulse counting can be interrupted at any moment by pressing <Enter> in either 
+termianl software or in Arduino IDE Serial Monitor. If command "count" was run 
+in a background mode, then the only way to stop such a counter is to use "kill"
+ command.
+
+Lets connect pin2 and pin4 with a jumper. Start a squarewave generator on pin2 
+and count pulses on pin4:
+
+  Example: (Start PWM & measure its output)
+
+  esp32#>pwm 2 2
+  esp32#>count  4
+  % Counting pulses on GPIO4...(press <Enter> to abort)
+  % 2 pulses in 1.001 seconds (2.0 Hz, 0 interrupts)
+  esp32#>
+
+
+"count" is a blocking command: it blocks user from executing next commands until
+this one finishes. It is ok for most of use cases but sometimes we want to count 
+irregular pulses for a long period of time but still be able to use espshell 
+command line.  Use background execution flag ("&") to run multiple counters at
+the same time (see "docs/Commands.txt",  "BACKGROUND EXECUTION" chapter).
+
+Typical scenario is to count pulses for indefinite long time and being able to 
+read the counter at any time and execute other commands. I.e. running "count" 
+command in a background.
+
+One of such examples is counting pulses from the "door open/door closed" sensor: 
+we don't know how often pulses will arrive, we don't know for how long we need 
+to count it.
+
+  Example: (Count pulses for 1 million seconds, in a background)
+
+  esp32#>count  4  1000000 &     <------- start counting
+  % Background task started
+  % Copy/paste "kill 0x3ffb8ce4" command to stop execution
+  % Counting pulses on GPIO4...
+  esp32#>
+  esp32#>
+  esp32#>
+  esp32#>
+  esp32#>kill 0x3ffb8ce4          <------- stop counting
+  % 0 pulses in 11.895 seconds (0.0 Hz, 0 interrupts)
+  % Background command "count" has finished its job
+  esp32#>
+  
+  Hint:  use mouse to copy/paste "kill" command
+
+To check counters value during counting process one can use "show" command with 
+"counters" argument. Obviously counters must be run in background mode for user 
+to be able to execute "show" command:
+
+  esp32#>sh co
+  %PCNT|GPIO#|  Status |   TaskID   | Pulse count | Time, msec | Frequency
+  %----+-----+---------+------------+-------------+------------+------------
+  %  0 |   4 | Running | 0x3ffb8ce4 |          51 |      25226 |        2 Hz
+  %  1 |  18 | Running | 0x3ffb9044 |           0 |      20803 |        0 Hz
+  %  2 |  19 | Stopped | 0x00000000 |           0 |       1001 |        0 Hz
+  %  3 |   0 | Unused! | 0x00000000 |           0 |          0 |        0 Hz
+  %  4 |   0 | Unused! | 0x00000000 |           0 |          0 |        0 Hz
+  %  5 |   0 | Unused! | 0x00000000 |           0 |          0 |        0 Hz
+  %  6 |   0 | Unused! | 0x00000000 |           0 |          0 |        0 Hz
+  %  7 |   0 | Unused! | 0x00000000 |           0 |          0 |        0 Hz
+  % 2 counters is currently in use
+  % Use command "kill TASK_ID" to stop a running counter
+  esp32#>
+
+"PCNT" column tells which PCNT hardware unit is allocated for counting, "Status" 
+is one of 3 possible states: "Trigger", "Running" and "Stopped". TaskID column 
+can be used for "kill" command. It also can be used as argument to "suspend" or 
+"resume" commands, but these commands only affect software, not hardware 
+counters.
+
+"Time, msec" column keeps track of time (in milliseconds) which has passed since
+counting has started. For "trigger" counters, the measurement interval starts 
+upon reception of a first pulse. Use "trigger" keyword in "count" command if you
+want Frequency column to be more precise. Don't use "trigger" keyword if you want
+only pulse count, not frequency value
+
+One can clear any counter (stopped or running) by issuing "count PIN clear"
+command. 
+
+
+NOTE: Use "pin X save" and "pin X load" to save/restore pin state. Configuring
+pin as a squarewave generator rewrites pin settings so previous settings can be
+lost. On "pin save" and "pin load" please refer to Pin_Commands.txt
+
+PULSE FILTERING
+---------------
+
+It is possible to ignore (not to count) pulses whose length is shorter than some
+specified threshold value. This value can be set using "filter" keyword as 
+follows:
+
+  esp32#> count 4 filter 100
+
+  The command above **ignores** pulses which are shorter than 100ns. 
+
+Lowest possible threshold value depends on APB bus frequency and, for most of 
+ESP32 designs is 80MHz, which means 13 nanoseconds. Largest filter value one can
+set is 12787 ns.
+
+The filter feature can be used to filter out pulses on mechanical contacts (push
+buttons or switches). 

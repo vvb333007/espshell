@@ -367,7 +367,7 @@ Example 5, Save pin state, configure it for OUTPUT, set pin HIGH for 250
   NOTE: although you can create simple signal patters with "delay" it is normally 
         used for something simple, like relay control. Complex signal sequences 
         could be configured with use of Pulse Generator see documentation files
-        "docs/Pulse_Generator.txt" and "docs/Tone_Generator_And_Counter.txt"
+        "docs/Pulse_Generator.txt"
 
   NOTE: Command "pin" can be interrupted during long (>5seconds) delays
         by pressing any key in your terminal or sending any character in your

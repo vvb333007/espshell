@@ -388,8 +388,14 @@ COMMANDS (MAIN COMMAND DIRECTORY)
 
 "show"   - Display various information. See "docs/Show.txt"
 
-"pwm"
-"count"  - PWM generator and pulse counter. See "docs/Tone_Generator_And_Counter.txt"for these 2 commands
+"pwm"    -  PWM generator. Enable/Disable PWM output on arbitrary pin. Frequency, 
+            duty cycle and a hardware channel are selectable. Full description
+            can be found in  "docs/PWM.txt"
+
+"count"  - Pulse counter / frequency meter. Allows for counting pulses / frequency
+           measurement on an arbitrary pin. There are 8 hardware counters on ESP32
+           (ESP32-S3 has only 4) which can be run simultaneously. Supports delayed
+           counting. For details refer to "docs/Pulse_Counter.txt"
 
 "var"    - Sketch variables manipulation. See "docs/Sketch_Variables.txt"
 

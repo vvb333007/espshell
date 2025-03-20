@@ -224,7 +224,7 @@ To display 3 elements of the same array:
 
 "counters" - displays frequency meters / pulse counters states & values. Counters are created
 and started by using "count" command. Details on the frequency meter / pulse counter use can
-be found in "docs/Tone_Generator_And_Counter.txt"
+be found in "docs/Pulse_Counter.txt"
 
 Typical output looks like that:
 
