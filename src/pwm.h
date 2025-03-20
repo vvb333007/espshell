@@ -50,7 +50,7 @@ static signed char ledc_res = 0; // Duty resolution override
 // different LEDC resolution may be choosen. This function cycles through PWM channels and selects only EVEN channel number for
 // its operation to be able to generate 4 different frequencies at the same time.
 //
-// This function is used by command "pwm" (see cmd_pwm()) and it is also used by "pin" command (see cmd_pin())
+// This function is used by command "pwm" (see cmd_pwm())
 //
 static int pwm_enable_channel(unsigned int pin, unsigned int freq, float duty, signed char chan) {
 
@@ -109,7 +109,7 @@ static int pwm_enable_channel(unsigned int pin, unsigned int freq, float duty, s
 
   if (freq) {
     // duty is in the range of [0..1], so we scale it up to fit desired bit width
-    duty_abs = (unsigned int)(duty * ((1 << resolution) - 1)) + 1; // +1 here is a dirty hack to roundup duty cycle value;
+    duty_abs = (unsigned int)(duty * (float )((1 << resolution) - 1) + 0.5f); //  roundup duty cycle value; TODO: check how it works on low resolution frequencies
         
     if (ledcAttachChannel(pin, freq, resolution, channel)) {
       if (ledcWrite(pin, duty_abs)) {
@@ -134,6 +134,8 @@ static int pwm_enable_channel(unsigned int pin, unsigned int freq, float duty, s
 }
 
 // Same as above but autoselects PWM channel number.
+// Used by "pin" command (see cmd_pin())
+//
 static inline int pwm_enable(unsigned int pin, unsigned int freq, float duty) {
   return pwm_enable_channel(pin, freq, duty, -1);
 }
