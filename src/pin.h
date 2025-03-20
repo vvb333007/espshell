@@ -735,13 +735,12 @@ static int cmd_pin_matrix(int argc, char **argv,unsigned int pin, unsigned int *
 static int cmd_pin_loop(int argc, char **argv,unsigned int pin, unsigned int *start, unsigned int *count) {
 
   unsigned int i = *start;
-
-  //must have an extra argument (loop count)
+  
   if ((i + 1) >= argc) {
     HELP(q_print("% <e>Loop count expected after keyword \"loop\"</>\r\n"));
     return CMD_MISSING_ARG;
   }
-
+  
   *start = ++i;
 
   // loop must be the last keyword, so we can strip it later
@@ -749,11 +748,10 @@ static int cmd_pin_loop(int argc, char **argv,unsigned int pin, unsigned int *st
     HELP(q_print("% <e>\"loop\" must be the last keyword</>\r\n"));
     return i + 1;
   }
-  //read loop count
-  if ((*count = q_atol(argv[i], 0)) == 0)
-    return i;
+  //read loop count or "infinite"
+  *count = q_atol(argv[i], (unsigned int)(-1));
 
-  HELP(q_printf("%% Repeating whole command %u times%s\r\n", *count,is_foreground_task() ? ", press <Enter> to abort" : ""));
+  HELP(q_printf("%% Repeating whole command %u times%s\r\n", *count - 1,is_foreground_task() ? ", press <Enter> to abort" : ""));
 
   return 0;
 }

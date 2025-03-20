@@ -790,36 +790,40 @@ static const struct keywords_t keywords_main[] = {
     NULL },
 
   // PWM generation
-  { "pwm", cmd_pwm, 3,
-    HELPK("% \"<b>pwm X</> [<o>FREQ</> [<o>DUTY</>]]\"\r\n"
+  { "pwm", cmd_pwm, 4,
+    HELPK("% \"<b>pwm PIN</> <o>FREQ</> [<o>DUTY</> [CHANNEL]]\"\r\n"
+          "% \"<b>pwm PIN</> <i>off</>\"\r\n"
           "%\r\n"
-          "% Start PWM generator on pin X, frequency FREQ Hz and duty cycle of DUTY\r\n"
-          "% Maximum frequency is " xstr(PWM_MAX_FREQUENCY) ", and DUTY is in range [0..1]\r\n"
-          "% i.e. duty of 0.5 means 50%\r\n"
+          "% Start or stop a PWM generator on pin PIN, frequency FREQ Hz and duty cycle\r\n"
+          "%of DUTY. Keywords \"<b>off</>\" or \"0\" are used to stop PWM output.\r\n"
+          "% FREQ is in range [0 .. " xstr(PWM_MAX_FREQUENCY) "] Hz\r\n"
           "%\r\n"
-          "% DUTY is optional and its default value is 50% (if not specified)\r\n"
-          "% Note that above 150kHz duty resolution drops to 8 bits, at 10MHz it is 2 bits\r\n"
+          "% DUTY is optional (0.5 (50%) if omitted); DUTY range is [0.00 .. 1.00])\r\n"
+          "% Note that above 150kHz duty resolution may drops to 8 bits, at 10MHz it is 2 bits\r\n"
           "% Resolution is autoselected but can be overriden with \"var ledc_res BITS\"\r\n"
           "%\r\n"
-          "% pwm 2 1000     - enable PWM of 1kHz, 50% duty on pin 2\r\n"
-          "% pwm 2          - disable PWM on pin 2\r\n"
-          "% pwm 2 6400 0.1 - enable PWM of 6.4kHz, duty cycle of 10% on pin 2\r\n"),
-    "PWM output" },
+          "% CHANNEL is optional parameter, selects PWM channel to be used (0..15)\r\n"
+          "%Examples:\r\n"
+          "% pwm <g>2 <i>1000</>      - enable PWM of 1kHz, 50% duty cycle on pin 2\r\n"
+          "% pwm <g>2</> <i>100 0.15</> - enable PWM of 100 Hz, 15% duty cycle on pin 2\r\n"
+          "% pwm <g>2</>                 - disable PWM on pin 2\r\n"
+          "% pwm <g>2</> <i>off</>             - same as above"),  "PWM output" },
 
-  { "pwm", cmd_pwm, 2, HIDDEN_KEYWORD },
-  { "pwm", cmd_pwm, 1, HIDDEN_KEYWORD },
+  { "pwm", cmd_pwm, 3, HIDDEN_KEYWORD }, // pwm PIN FREQ DUTY
+  { "pwm", cmd_pwm, 2, HIDDEN_KEYWORD }, // pwm PIN FREQ, pwm PIN off, pwm PIN 0
+  { "pwm", cmd_pwm, 1, HIDDEN_KEYWORD }, // pwm PIN
 
   // Pulse counting/frequency meter
   { "count", cmd_count, MANY_ARGS,
     HELPK("% \"<b>count PIN</> [<o>NUMBER</>] [<o>trigger</> | <o>filter LENGTH</>]*\"\r\n%\r\n"
           "% Count pulses on pin PIN for NUMBER milliseconds (default value is 1 second)\r\n"
           "% Optional \"trigger\" keyword suspends the counter until the first pulse\r\n"
-          "% Optional \"filter LENGTH\" keyword ignores pulses <u>shorter than</> LENGTH nanoseconds\r\n"
+          "% Optional \"filter LEN\" keyword ignores pulses <u>shorter than</> LEN nanoseconds\r\n"
           "%\r\n"
           "% Examples: \r\n"
           "% \"<b>count 4</>\"             - Count pulses & measure frequency on GPIO4 for 1000ms\r\n"
           "% \"<b>count 4 2000</>\"        - Same as above but measurement time is 2 seconds\r\n"
-          "% \"<b>count 4 filter 100</>\"  - Count pulses which are <u>not shorter than</> 100ns, ignore others)\r\n"
+          "% \"<b>count 4 filter 100</>\"  - Count pulses, discarding those <u>shorter than</> 100ns\r\n"
           "% \"<b>count 4 999999 &</>\"    - Count pulses in <u>a background</> for ~1000 seconds\r\n"
           "% \"<b>count 4 trigger</>\"     - Wait for the first pulse, then start to count\r\n"
           "% \"<b>count 4 2000 trig &</>\" - Wait for the 1st pulse pulse, then start to count pulses for\r\n"
@@ -919,6 +923,8 @@ static const struct keywords_t keywords_main[] = {
 // Main commands are located in keywords_main and handled by cmd_cam(). Keywords below is extra commands 
 // under "camera settings" subdirectory
 //
+// Handlers are implemented in espcam.h
+//
 static struct keywords_t keywords_espcam[] = {
 
   KEYWORDS_BEGIN
@@ -981,7 +987,7 @@ static struct keywords_t keywords_espcam[] = {
           "% Set picture size:\n\r"
           "% vga  - 640x480\n\r"
           "% svga - 800x600\n\r"
-          "% xga  - 1024x760\n\r"
+          "% xga  - 1024x768\n\r"
           "% hd   - 1280x720\n\r"
           "% sxga - 1280x1024\n\r"
           "% uxga - 1600x1200 (Default)"), "Resolution / Picture size" },
@@ -995,12 +1001,11 @@ static BARRIER(keywords_mux);
 static const struct keywords_t *keywords = keywords_main;
 
 
-// Called by cmd_uart_if, cmd_i2c_if,cmd_seq_if, cam_settings and cmd_files_if and others to
-// set new command list (command directory); displays user supplied text
-// Returns a pointer to the keywords tree used before
+// Called from cmd_uart_if(), cmd_i2c_if(),cmd_seq_if() and cmd_files_if and others to set a new command list (command directory); 
+// displays user supplied text,  returns a pointer to the keywords tree used before
 //
 static const struct keywords_t *change_command_directory(
-                                    unsigned int context,         // An arbitrary number which will be stored. Until next directory change
+                                    unsigned int context,         // An arbitrary number which will be stored until next directory change
                                     const struct keywords_t *dir, // New command list 
                                     const char *prom,             // New prompt
                                     const char *text) {           // User-defined text which will be displayed after entering new directory

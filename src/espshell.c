@@ -475,12 +475,14 @@ static  void espshell_initonce() {
     convar_add(NTrees);
     convar_add(NHandlers);
 #endif // CMD_STATS
+
     // add internal variables ()
     convar_add(ls_show_dir_size);  // enable/disable dir size counting for "ls" command
     convar_add(pcnt_unit);         // PCNT unit which is used by "count" command
     convar_add(bypass_qm);         // enable/disable "?" as a context help hotkey
     convar_add(tbl_min_len);       // buffers whose length is > printhex_tbl (def: 16) are printed as fancy tables
     convar_add(ledc_res);          // Override PWM duty cycle resolution bitwidth: Duty range is from 0 to (2**ledc_res-1)
+    convar_add(pwm_ch_inc);        // 1 or 2: hop over odd or even channel numbers.
 #if WITH_WRAP
     convar_addap(Tasks);
 #endif    

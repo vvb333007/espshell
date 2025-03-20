@@ -23,12 +23,8 @@
 // "var VARIABLE_NAME VALUE" - set variable to a new value
 // Individual array elements (real array or a pointer) can be referred to as VARIABLE_NAME[INDEX]
 
-// TODO: Do we really need to malloc() variable descriptors? Can we declare them as static variables?
 // TODO: This code needs a review. There may be buffer overflows because of strcpy and sprintf. These should be changed to strlcpy & snprintf
 // TODO: Verify that no variables with names longer than CONVAR_NAMELEN_MAX-1 can be registered
-// TODO: Pointer to a pointer or array of pointers are unsupported data structures. (convar_addpp(), convar_addap() ?)
-// TODO: Find out why cant we use _Generic with this xtensa gcc
-
 
 // "Console Variable" (convar) descriptor. These are created by convar_add() and linked into SL list
 // The head of the list is "var_head". 

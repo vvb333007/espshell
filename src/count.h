@@ -401,13 +401,14 @@ static int cmd_count(int argc, char **argv) {
     if (!q_strcmp(argv[i],"filter")) {
       if (i + 1 >= argc) {
 bad_filter:        
-        q_print("% Pulse witdth in nanoseconds [13 .. 12787] is expected\r\n");
+        q_print("% Pulse width in nanoseconds [13 .. 12787] is expected\r\n");
         return CMD_MISSING_ARG;
       }
       i++;
       // Magic numbers below: We assume that APB_CLK is 80 Mhz; PCNT filter value register is 10-bit wide;
       // 1 APB cycle is 12.5ns, 1023 APB cycles is 12787 ns.
       // TODO: read real APB clock value and calculate magic numbers
+      // TODO: test it with sequence generator
       if (isnum(argv[i])) {
         val = q_atol(argv[i],0);
         val = (val < 13 ? 13
