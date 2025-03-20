@@ -294,9 +294,11 @@ NUMBER    A pin number to work with (see Example 7). The very first argument
 
 "loop X"
   Repeat whole command X times. The "loop X" keyword must be the last argument of the 
-  command. 
+  command. X can be "infinite", to specify very big loop count (2^32-1) which for most
+  cases will be synonym for infinity.
 
-
+    esp32#>pin 2 delay 1000 loop inf &  <-- Background command, loops infinitely
+    esp32#>pin 2 delay 1000 loop 10 &  <-- Background command, loops 10 times
 
 
 EXAMPLES:
