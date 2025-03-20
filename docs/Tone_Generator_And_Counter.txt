@@ -40,6 +40,79 @@ parameter. Example below shows how to stop squarewave generation on pin 2
 
   esp32#>pwm 2
 
+PWM DUTY CYCLE RESOLUTION
+-------------------------
+
+One important thing to consider is the *duty cycle resolution*. Although
+ESPShell expects a floating point number as a duty cycle (e.g. 0.721), the
+hardware has its limits: the higher the PWM frequency is the less precise 
+we can set a duty cycle. For example, 1000 Hz frequency generator has
+14 bit precision for duty cycle. That means, the duty cycle can be anything
+from zero to 2^14-1. With frequency of 10MHz we have only 2 bits to represent
+our duty cycle: only 4 values are available.
+
+ESPShell selects best available duty cycle precision (resolution) for
+given frequency. This default behaviour however, can be overriden with 
+"var ledc_res" command: being set to a positive value it overrides calculated 
+duty resolution.
+
+Example:
+  esp32#>var ledc_res 8
+
+  The command above sets PWM duty cycle resolution to 8 bits. Attempt to start
+  10Mhz PWM will fail in this case
+
+
+PWM CHANNELS
+------------
+
+ESP32 has 16 (while ESP32S3 has 8) so-called LEDC (PWM) channels. Adjacent 
+channels (i.e. channel0 and channel1  or channel6 and channel7) share same timer 
+thus not able to generate 2 different frequencies: instead, changing channel 
+frequency immediately changes frequency on its adjacent channel.
+
+Because of this, ESPShell selects only **even** channel numbers for its operation.
+Doing so guarantees that every other PWM output has its unique frequency; however it
+reduces the number of available channels: instead of 8 only 4 are available on ESP32S3.
+
+For many PWM applications involving many PWM outputs, the frequency is usually the same, while 
+duty cycle can vary: one of such example is a multiple led strips. Multiple-output regulated
+power inverter is the another example.
+
+In such cases ESPShell can be set to use both odd and even numbers so all available channels
+can be used: this is done by executing "var pwm_ch_inc 1" shell command.
+
+Additionally one can manually set hardware channel number to use.
+In most cases we don't need to specify this channel number: it is autoselected by cycling
+through numbers 0, 2, 4, ...; Shell uses simple formula to select channels to use:
+
+
+        Channel_To_Use_Next_Time = Current_Channel + "var pwm_ch_inc"
+
+Below is the command to enable 1kHz 50% duty PWM on pin1, using hardware channel 2:
+
+  esp32#>pwm 1 1000 0.5 2     <--- 4th argument is a channel number
+
+Doing so results in altering internal espshell channel counter:
+
+  esp32#>pwm 2 1000 0.5 5
+  % PWM on pin#2, 1000 Hz (0.5% duty cycle, channel#5) is enabled
+  % PWM channel 7 is to be used next, if not explicitly set
+
+Channel #7 was selected because of pwm_ch_inc default value which is 2. Lets look
+at example below to see how changing this variable affects channel selection behaviour:
+
+  esp32#>pwm 2 1000 0.5 5
+  % PWM on pin#2, 1000 Hz (0.5% duty cycle, channel#5) is enabled
+  % PWM channel 7 is to be used next, if not explicitly set         <------ channel 7
+
+  esp32#>var pwm_ch_inc 1
+
+  esp32#>pwm 2 1000 0.5 5
+  % PWM on pin#2, 1000 Hz (0.5% duty cycle, channel#5) is enabled
+  % PWM channel 6 is to be used next, if not explicitly set        <------- channel 6
+
+
 
 PULSE COUNTER / FREQUENCY METER
 -------------------------------
@@ -141,12 +214,18 @@ NOTE: Use "pin X save" and "pin X load" to save/restore pin state. Configuring
 pin as a squarewave generator rewrites pin settings so previous settings can be
 lost. On "pin save" and "pin load" please refer to Pin_Commands.txt
 
-FILTERING OF INCOMING PULSES
-----------------------------
+PULSE FILTERING
+---------------
 
-It is possible to ignore (not count) pulses whose length is shorter than some specified
-value. This value can be set using "filter NUM" keyword as follows:
+It is possible to ignore (not to count) pulses whose length is shorter than some specified
+threshold value. This value can be set using "filter" keyword as follows:
 
   esp32#> count 4 filter 100
 
-The command above IGNORES pulses which are shorter than 100ns
+  The command above **ignores** pulses which are shorter than 100ns. 
+
+Lowest possible threshold value depends on APB bus frequency and, for most of ESP32 designs
+is 80MHz, which means 13 nanoseconds. Largest filter value one can set is 12787 ns.
+
+The filter feature can be used to filter out pulses on mechanical contacts (push buttons or 
+switches). 

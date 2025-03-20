@@ -1,6 +1,6 @@
 Known problems not solved yet
 -----------------------------
-++1. console_read_bytes() and console_write_bytes() for USBCDC boards 
+(SOLVED)1. console_read_bytes() and console_write_bytes() for USBCDC boards 
    (like Nano ESP32, or generic ESP32-S3 devboards with USB-OTG enabled)
 
 
@@ -8,6 +8,6 @@ Known problems not solved yet
    <TAB> is pressed - tab_pressed() is called so one wishing to help 
    can start from there
 
-++3. PWM mystery (see pwm_enable() code) (solved?)
+(SOLVED)3. PWM mystery (see pwm_enable() code) (solved?)
 
 

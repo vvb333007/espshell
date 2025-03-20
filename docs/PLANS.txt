@@ -1,4 +1,3 @@
-++1. Support for SD memory cards on SPI interfaces.
 
 2. Make file manager be able to send/receive files over ftp protocol (simpliest ftp server). 
    FTP can handle bulk file operations (mass file transfer, directory structure creation)
