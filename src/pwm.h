@@ -21,7 +21,7 @@
 //
 // This approach, however, reduces the number of simultaneously working generators from 8 to 4 (on ESP32S3)
 // This behaviour can be changed by setting /pwm_ch_inc/ to 1: you'll get 2 times more PWM channels but adjacent
-// channels will be oscillating at the same frequencies
+// channels will be oscillating at the same frequency
 //
 #if COMPILING_ESPSHELL
 
@@ -47,17 +47,19 @@ static signed char ledc_res = 0; // Duty resolution override
 
 // Enable or disable (freq==0) PWM generation on given pin. 
 // Frequency must be in range (0..10 000 000 Hz), duty is floating point number in range [0..1]. Depending on the frequency
-// different LEDC resolution may be choosen. This function cycles through PWM channels and selects only EVEN channel number for
-// its operation to be able to generate 4 different frequencies at the same time.
+// different LEDC resolution may be choosen. 
 //
-// This function is used by command "pwm" (see cmd_pwm())
+// If /chan/ is less than zero then channel number is autoselected. Autoselecting is a simple cycling through available
+// PWM channels with increments of 1 or 2(Default).
 //
+// 
 static int pwm_enable_channel(unsigned int pin, unsigned int freq, float duty, signed char chan) {
 
-  unsigned int resolution;    // channel duty resolution, bits
-  static int channel = 0;     // LEDC channel# to use
+  unsigned int resolution;  // Channel duty resolution, bits
+  static int channel = 0;   // LEDC channel# to use
   unsigned int duty_abs;    // Scaled duty parameter
 
+  // <0 means "auto"
   if (chan >= 0)
     channel = chan;
 
@@ -65,7 +67,7 @@ static int pwm_enable_channel(unsigned int pin, unsigned int freq, float duty, s
     return -1;
 
   if (freq) {
-    // Clamp arguments
+    // Clamp arguments. (we don't do it in cmd_pwm() for a reason)
     if (freq > PWM_MAX_FREQUENCY)
       freq = PWM_MAX_FREQUENCY;
 
@@ -74,9 +76,11 @@ static int pwm_enable_channel(unsigned int pin, unsigned int freq, float duty, s
 
     unsigned long ledc_clock = 0; // LEDC clock frequency.
 
-    // Find out the frequency of currently used LEDC clock: we need it to calculate optiomal duty resolution.
-    // There are many different clock sources however XTAL & APB are mmost frequently used
-    // TODO: we don't need to calculate it every time in case of XTAL
+    // Find out the frequency of currently used LEDC clock: we need it to calculate optimal duty resolution.
+    // According to the latest Arduino Core (3.1.2) we are limited to APB and XTAL here.
+    // Don't do anything if /ledc_res/ is set.
+    // TODO: verify this code on ESP32-H2 or ESP32-P4
+    // TODO: we don't need to calculate it every time
     if (ledc_res < 1) {
       switch( ledcGetClockSource() ) {
         case LEDC_USE_APB_CLK:  ledc_clock = getApbFrequency(); break;                   // usually 80mhz
@@ -97,14 +101,15 @@ static int pwm_enable_channel(unsigned int pin, unsigned int freq, float duty, s
         // ESP32 can go down to 1 Hz, while ESP32S3 can't go below 3Hz. Others from the family probably have their low limits as well
         if (freq < 10) {
           HELP(q_print("%\r\n% You can use \"<i>pin</>\" command to generate low-frequency PWM:\r\n"
-                      "% Example 1 Hz, 70% duty PWM on pin0 \"<i>pin 0 high delay 700 low delay 300 loop &</>\"\r\n"));
+                      "% 1 Hz, 70% duty PWM on pin0: \"<i>pin 0 high delay 700 low delay 300 loop inf &</>\"\r\n"
+                      "% 0.1 Hz, 50% duty, pin2: \"<i>pin 2 high delay 5000 low delay 5000 loop inf&</>\"\r\n"));
         }
         return -1;
     }
     VERBOSE(q_printf("%% Selected duty cycle resolution is %u bits, LEDC channel is %u\r\n",resolution, channel));  
   }
 
-  ledcDetach(pin);      // ignore ret val
+  ledcDetach(pin);
   pinMode(pin, OUTPUT); // TODO: investigate if it can be replaced with pinForceMode(pin, OUTPUT_ONLY)
 
   if (freq) {
@@ -114,18 +119,22 @@ static int pwm_enable_channel(unsigned int pin, unsigned int freq, float duty, s
     if (ledcAttachChannel(pin, freq, resolution, channel)) {
       if (ledcWrite(pin, duty_abs)) {
         VERBOSE(q_printf("%% PWM on pin#%u, %u Hz (%.1f%% duty cycle, channel#%u) is enabled\r\n",pin,freq,duty,channel));
-        // Advance to the next channel
+        
+        // Advance to the next channel.
+        // Setting pwm_ch_inc to 0 will cause channel number to remain the same unless 4th argument is passed
         channel += pwm_ch_inc;
-        if (channel >= PWM_CHANNELS_NUM || channel < 0)
+        if (channel >= PWM_CHANNELS_NUM)
           channel = 0;
-        // If PWM channel number was specified
-        if (chan >= 0) {
+        else if (channel < 0)
+          channel = PWM_CHANNELS_NUM - 1;
+        
+        if (chan >= 0) { // 4th argument triggers helpline
           HELP(q_printf("%% PWM channel %u is to be used next, if not explicitly set\r\n", channel));
         }
         return 0;
       }
       ledcDetach(pin);
-      q_printf("%% Failed to set the duty cycle value to %u\r\n",duty_abs);
+      q_printf("%% Failed to set absolute duty cycle value to %u\r\n",duty_abs);
     } else
       q_printf("%% Failed to attach to LEDC (channel=%u, resolution=%u, freq=%u, duty_abs=%u)\r\n",channel,resolution,freq,duty_abs);
     return -1;
@@ -140,23 +149,31 @@ static inline int pwm_enable(unsigned int pin, unsigned int freq, float duty) {
   return pwm_enable_channel(pin, freq, duty, -1);
 }
 
-// "show pwm"
-// Display PWM generators currently active and their parameters
-// It is done via periman API, however it has issues and better to be rewritten in esp-idf
+// Handles "show pwm"
+// Displays PWM generators currently active and their parameters
+// It is done via periman API and needs a review
 //
 static int cmd_show_pwm(UNUSED int argc, UNUSED char **argv) {
 
+  // Header
   q_print("%      -- Currently active PWM generators --\r\n"
           "%<r>  GPIO | Frequency |  Duty  | Duty  %  | Channel  </>\r\n"
           "% ------+-----------+--------+----------+----------\r\n");
+
+  // Go through all existing pins and try to fetch PWM parameters using ArduinoCore API
   for (int pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++)
     if (pin_exist_silent(pin)) {
-      uint32_t freq, duty, duty_max;
-      uint8_t channel,percent;
+
+      uint32_t freq,       // PWM frequency as read "from the pin"
+               duty,       // PWM duty --
+               duty_max;   // Maximum possible duty (absolute value) for given frequency
+      uint8_t  channel,    // PWM channel that is associated with given pin
+               percent;    // PWM %, calculated
+
       if ((freq = ledcReadFreq(pin)) != 0) {
-        ledc_channel_handle_t *bus = (ledc_channel_handle_t *)perimanGetPinBus(pin, ESP32_BUS_TYPE_LEDC); 
-        // TODO: I suspect we need a semaphore here. Arduino Core should have one
-        if (bus) {
+        ledc_channel_handle_t *bus; 
+        // TODO: Need a semaphore here. Arduino Core should have one
+        if ((bus = (ledc_channel_handle_t *)perimanGetPinBus(pin, ESP32_BUS_TYPE_LEDC)) != NULL) {
           // these local variables will be eliminated by GCC; they are here to make the code more readable
           duty_max = (1 << bus->channel_resolution) - 1;
           channel = bus->channel;
@@ -182,46 +199,52 @@ static int cmd_show_pwm(UNUSED int argc, UNUSED char **argv) {
 //
 static int cmd_pwm(int argc, char **argv) {
 
-  unsigned int freq = 0;
-  float duty = 0.5f;
-  unsigned pin;
+  unsigned int freq = 0;     // frequency to set. 0 - means PWM stop
+  float        duty = 0.5f;  // duty cycle [0..1]
+  unsigned     pin;          
 
   if (argc < 2) 
     return CMD_MISSING_ARG;
 
   // first parameter is pin number
+  // we don't assert pin_exist() here since it is done in pwm_enable_channel()
   pin = q_atol(argv[1], BAD_PIN);  
 
-  //frequency is the second one
+  //frequency is the second argument. optional.
   if (argc > 2)
     if ((freq = q_atol(argv[2], 0)) > PWM_MAX_FREQUENCY)
       HELP(q_print("% Frequency will be adjusted to its maximum which is " xstr(PWM_MAX_FREQUENCY) "] Hz\r\n"));
 
-  // duty is the third. process it only if frequency is non-zero
+  // Duty is the third optional argument. 
+  // Process it only if frequency is non-zero
   if (freq != 0) {
     if (argc > 3) {
       duty = q_atof(argv[3], -1);
       if (duty < 0 || duty > 1) {
-        HELP(q_print("% <e>Duty cycle, a number in range [0.000 .. 1.000] is expected</>\r\n"));
+        HELP(q_print("% <e>Duty cycle is a number in range [0..1] (default is 0.5, i.e. 50%)</>\r\n"));
         return 3;
       }
     }
 
-    // Is LEDC channel specified?
+    // Is PWM (LEDC) channel specified? Fourth optional argument.
     if (argc > 4) {
       if (isnum(argv[4])) {
-        signed char channel = q_atoi(argv[4],-1);
-        if (channel >= 0 && channel < PWM_CHANNELS_NUM ) {
+        
+        // If user enters garbage (i.e. non-numeric value, or it is numeric but less than "-1") then we reject it with error
+        // Numbers from -1 to PWM_CHANNELS_NUM-1 are ok. (ESP32 valid numbers are -1..15, ESP32-s3 only has -1..7).
+        // Channel number of "-1" means "channel autoselect".
+        signed char channel = q_atoi(argv[4],-2);
+        if (channel > -2 && channel < PWM_CHANNELS_NUM ) {
           pwm_enable_channel(pin, freq, duty, channel);
           return 0;
         }
       }
-      q_printf("%% <e>Channel number [0..%d] is expected</>", PWM_CHANNELS_NUM - 1);
+      q_printf("%% <e>Channel number [0..%d] is expected, instead of \"%s\"</>", PWM_CHANNELS_NUM - 1, argv[4]);
       return 4;
     }
   }
 
-  // don't check the return code as pwm_enable() do diagnostic printfs
+  // don't check the return code as pwm_enable() does diagnostic printfs
   pwm_enable(pin, freq, duty); 
 
   return 0;
