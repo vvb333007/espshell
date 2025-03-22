@@ -12,7 +12,14 @@
 
 
 // Example command:
-static const char *command = "pin " LED " high delay 250 low delay 250 loop 100";
+// IMPORTANT NOTE: "\n" is an important part! Removing it prevents exec from happening!
+//                 Multiple commands can be separated with "\n" as well, but the last command must ends with "\n"
+//
+//static const char *command = "pin " LED " read\n"
+//                             "pin " LED " save\n"
+//                             "pin " LED " load\n"
+
+static const char *command = "pin " LED " high delay 250 low delay 250 loop 100\n";
 
 
 // Setup our serial port
@@ -24,14 +31,14 @@ void setup() {
 // Main loop
 void loop() {
 
-  printf("Sending command \"%s\"to the shell...\r\n",command);
+  Serial.printf("Sending command \"%s\"to the shell...\r\n",command);
 
   espshell_exec(command);
 
   while (!espshell_exec_finished())
     delay(1);
 
-  Serial.println("Blinking LED on GPIO" LED "\r\n");
+  Serial.printf("Blinking LED on GPIO" LED "\r\n");
 
   while (1)
     delay(1000);
