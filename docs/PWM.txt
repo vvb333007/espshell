@@ -19,8 +19,21 @@ different frequences can be generated at the same time through 4 different
 pins. It is little better with basic ESP32 which has 16 channels thus
 allowing for 8 frequencies. 
 
+There are 4 commands that are used to start/stop PWM generation, change
+some settings and displaying information:
 
-Command "pwm" starts squarewave output on given pin:
+  1. "pwm PIN FREQ [ DUTY [ CHANNEL ] ]"
+      E.g.: "pin 2 1000",  "pin 10 2000 0.7" or "pin 0 333 .5 4"
+
+  2. "show pwm" (all "show..." commands are here: "docs/Show.txt")
+
+  3. "var ledc_res"
+
+  4. "var pwm_ch_inc"
+
+
+
+Command "pwm" starts a squarewave output on given pin:
 
   esp32#>pwm 2 1000
 
@@ -37,11 +50,13 @@ command: lets set frequency on pin 2 to 5000Hz, duty cycle around 30%:
 To stop a squarewave generator on given pin use "pwm" command with just one 
 parameter. Example below shows how to stop squarewave generation on pin 2
 
-
   esp32#>pwm 2
 
-PWM DUTY CYCLE RESOLUTION
--------------------------
+Setting frequency to 0 Hz or using a keyword "off" in place of frequency
+will have the same effect: disabling PWM on pin
+
+PWM DUTY CYCLE AND ITS RESOLUTION
+---------------------------------
 
 One important thing to consider is the *duty cycle resolution*. Although
 ESPShell expects a floating point number as a duty cycle (e.g. 0.721), the
@@ -113,4 +128,5 @@ at example below to see how changing this variable affects channel selection beh
   % PWM channel 6 is to be used next, if not explicitly set        <------- channel 6
 
 
-
+Setting "pwm_ch_inc "to 0 will prevent channel number from changing (unless /channel/
+argument is used)
