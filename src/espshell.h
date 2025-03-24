@@ -59,7 +59,7 @@
 
 // Developer options, better keep default
 //
-#define WITH_VERBOSE 1          // Enable VERBOSE() macro
+#define WITH_VERBOSE 1          // Enable VERBOSE() macro. Only for hunting bugs in espshell code.
 #define MEMTEST 0               // hunt for espshell's memory leaks
 #define CMD_STATS 0             // register NCmds, NHandlers and NTrees variables which hold espshell's keyword stats
 #define WITH_WRAP 0             // Wrap xTaskCreate...() functions to access all running tasks ("var Tasks"). Requires an update to ld_flags file

@@ -18,6 +18,16 @@ EXTERN bool setCpuFrequencyMhz(uint32_t);
 EXTERN uint32_t getXtalFrequencyMhz();
 EXTERN uint32_t getApbFrequency();
 
+#if 0
+// For Tensilica profiling 
+//
+static inline __attribute__((always_inline)) uint32_t cpu_ticks() {
+  uint32_t register ccount;
+  asm ( "rsr.ccount %0;" : "=a"(ccount) /*Out*/ : /*In*/ : /* Clobber */);
+  return ccount;
+}
+#endif
+
 
 //"cpu"
 //
@@ -100,8 +110,12 @@ static int cmd_cpu(int argc, char **argv) {
   if (chip_info.features & CHIP_FEATURE_EMB_PSRAM)
     q_print("embedded PSRAM");
 
+  unsigned long psram;
+  if ((psram = heap_caps_get_total_size(MALLOC_CAP_SPIRAM)) > 0)
+    q_printf("\r\n%% PSRAM (SPIRAM) size: %u Mbytes\r\n", psram / (1024 * 1024));
+
   q_print("\r\n%\r\n% <u>Firmware:</>\r\n");
-  q_printf( "%% Sketch is running on " ARDUINO_BOARD ", (an " ARDUINO_VARIANT " variant), uses:\r\n"
+  q_printf( "%% Sketch is running on <b>" ARDUINO_BOARD "</>, (an <b>" ARDUINO_VARIANT "</> variant), uses:\r\n"
             "%% Arduino Core version <i>%s</>, which uses\r\n"
             "%% Espressif ESP-IDF version \"%s\"\r\n"
             "%% ESPShell library <i>" ESPSHELL_VERSION "</>\r\n", 
@@ -192,7 +206,7 @@ static int cmd_nap(int argc, char **argv) {
       esp_sleep_enable_timer_wakeup(1000000UL * (unsigned long)sleep);
     }
   HELP(q_print("% Entering light sleep\r\n"));
-  q_delay(100);  // give a chance to printf above do its job
+  q_delay(100);  // give a chance to the printf above do its job
   esp_light_sleep_start();
   HELP(q_print("%% Resuming\r\n"));
   return 0;

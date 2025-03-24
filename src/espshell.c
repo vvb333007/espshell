@@ -21,7 +21,7 @@
 #define ESPSHELL_MAX_CNLEN 10          // Maximum length (strlen()) of a command name. 
                                        // NOTE!! If you change this, make sure initializer string is changed too in question.h:help_command_list()
 
-// Prompts used by command subdirectories
+// Prompts used by command subdirectories. Must be not longer than MAX_PROMPT_LEN
 #define PROMPT "esp32#>"                // Main prompt
 #define PROMPT_I2C "esp32-i2c%u>"       // I2C prompt
 #define PROMPT_SPI "esp32-spi%u>"       // SPI prompt
