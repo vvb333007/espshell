@@ -70,11 +70,16 @@ command can be used from within "esp32-uart#>" command tree)
 
 "up" - initializes UART. If UART is already UP then this command does nothing.
 The command has 3 parameters: RX pin number, TX pin number and baudrate. Other
-UART parameters like bit parity, number of stop bith, byte length are set by
-ESPShell to its defaults and can not be changed:  8 bit data, 1 stop bit,  no
-parity bits. Baudrate can be changed anytime later with "baud" command
+UART parameters like bit parity, number of stop bith, byte length can be also
+set; Baudrate can be changed anytime later with "baud" command
 
 All other commands are not available until this command is successfully executed
+
+Full syntax is:
+  "up RX TX BAUD [BITS [no|even|odd [1|1.5|2]]]"
+
+   Arguments BITS, parity and stopbits are all optional. Their default value
+   (when omitted) is 8, none, 1 respectively. BITS is expected to be 5,6,7 or 8.
 
 
 "down" - shutdowns previously initialized UART. If UART is not UP then this
@@ -83,14 +88,15 @@ Please note that running sketch may be reading and/or writing at the same time
 you enter "down" command. To prevent undefined behaviour of user sketch it is
 a good idea to suspend sketch execution by using global "suspend" command
 
-"baud" - changes speed of the UART. Executed on UART 0 will most likely result
-in lost connection between your serial monitor and your device and will require
-you to adjust your serial monitor baudrate
+"baud SPEED" - changes speed of the UART. Executed on UART 0 will most likely 
+result in lost connection between your serial monitor and your device and will 
+require you to adjust your serial monitor baudrate. Speed measured in bauds;
 
 "read" - read all bytes that were available at the moment of command execution.
 Bytes are printed as is if they are printable characters (including \t \n \r). 
 Non-printable characters are replaced with "\0xAB" sequences with AB being a 
 hexadecimal number.
+
 
 "write" - sends byte strings to the uart. Byte strings can be a printable 
 characters or special escape sequences: \n  \r \t \\ to send <LF>, <CR> and
@@ -100,6 +106,9 @@ commands "write A      B" and "write A B" are equivalent. To send multiple
 spaces one can use \20 to encode a space (ascii code 32): "write A\20\20\20B"
 Using this comman on UART0 results in sending these strings straight to your
 serial monitor
+
+Full syntax is:
+  "write ARG1 ARG2 ... ARGn"
 
  
   Example: Communicate with a device over uart2, send and receive text
