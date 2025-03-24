@@ -17,7 +17,7 @@
 //
 //static const char *command = "pin " LED " read\n"
 //                             "pin " LED " save\n"
-//                             "pin " LED " load\n"
+//                             "pin " LED " load\n";
 
 static const char *command = "pin " LED " high delay 250 low delay 250 loop 100\n";
 
