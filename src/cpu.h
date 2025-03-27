@@ -13,10 +13,7 @@
 #if COMPILING_ESPSHELL
 
 // not in .h files of ArduinoCore.
-EXTERN uint32_t getCpuFrequencyMhz();
 EXTERN bool setCpuFrequencyMhz(uint32_t);
-EXTERN uint32_t getXtalFrequencyMhz();
-EXTERN uint32_t getApbFrequency();
 
 #if 0
 // For Tensilica profiling 
@@ -28,6 +25,37 @@ static inline __attribute__((always_inline)) uint32_t cpu_ticks() {
 }
 #endif
 
+// Read and save CPU,APB and XTAL frequency values. These are used by espshell to calculate some intervals
+// and PWM duty cycle resolution.
+//
+// It is very unlikely that user app is changing CPU frequency at runtime.
+// If , however, it does, then "cpu NEW_FREQ" command will recache new values
+//
+// Changing the CPU frequency via shell command "cpu FREQ" will save new values automatically
+//
+#include <soc/rtc.h>
+
+// Globals
+static unsigned short CPUFreq  = 240,
+                      APBFreq  = 80, 
+                      XTALFreq = 40;
+
+// called at startup, before main()
+// called every time the cpu frequency gets changed (via "cpu" command)
+//
+static void __attribute__((constructor)) cpu_read_frequencies() {
+
+  rtc_cpu_freq_config_t conf;
+  rtc_clk_cpu_freq_get_config(&conf);
+
+  XTALFreq = rtc_clk_xtal_freq_get();
+  CPUFreq = conf.freq_mhz;
+#if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2
+  APBFreq = (conf.freq_mhz >= 80) ? 80 : conf.source_freq_mhz/conf.div;
+#else
+  APBFreq = APB_CLK_FREQ / 1000000;
+#endif
+}
 
 //"cpu"
 //
@@ -85,15 +113,18 @@ static int cmd_cpu(int argc, char **argv) {
   }
 #endif  //CONFIG_IDF_TARGET_XXX
 
+  // Just in case
+  cpu_read_frequencies();
+
   q_print("% <u>Hardware:</>\r\n");
-  q_printf("%% CPU ID: %s,%u core%s, Rev.: %d.%d\r\n%% CPU frequency is %luMhz, Xtal %luMhz, APB bus %luMhz\r\n%% Chip temperature: %.1fC\r\n",
+  q_printf("%% CPU ID: %s,%u core%s, Rev.: %d.%d\r\n%% CPU frequency is %uMhz, Xtal %uMhz, APB bus %uMhz\r\n%% Chip temperature: %.1fC\r\n",
            chipid,
            PPA(chip_info.cores),
            (chip_info.revision >> 8) & 0xf,
            chip_info.revision & 0xff,
-           getCpuFrequencyMhz(),
-           getXtalFrequencyMhz(),
-           getApbFrequency() / 1000000,
+           CPUFreq,
+           XTALFreq,
+           APBFreq,
            temperatureRead());
   q_print("% SoC features: ");
 
@@ -112,7 +143,7 @@ static int cmd_cpu(int argc, char **argv) {
 
   unsigned long psram;
   if ((psram = heap_caps_get_total_size(MALLOC_CAP_SPIRAM)) > 0)
-    q_printf("\r\n%% PSRAM (SPIRAM) size: %u Mbytes\r\n", psram / (1024 * 1024));
+    q_printf("\r\n%% PSRAM (SPIRAM) size: %lu (%lu MB)",psram,  psram / (1024 * 1024));
 
   q_print("\r\n%\r\n% <u>Firmware:</>\r\n");
   q_printf( "%% Sketch is running on <b>" ARDUINO_BOARD "</>, (an <b>" ARDUINO_VARIANT "</> variant), uses:\r\n"
@@ -148,7 +179,7 @@ static int cmd_cpu_freq(int argc, char **argv) {
   // additional frequencies
   while (freq != 240 && freq != 160 && freq != 120 && freq != 80) {
 
-    unsigned int xtal = getXtalFrequencyMhz();
+    unsigned int xtal = XTALFreq;
 
     if ((freq == xtal) || 
         (freq == xtal / 2) ||
@@ -166,6 +197,9 @@ static int cmd_cpu_freq(int argc, char **argv) {
 
   if (!setCpuFrequencyMhz(freq))
     q_print(Failed);
+
+  //reread what was actually set
+  cpu_read_frequencies();
 
   return 0;
 }

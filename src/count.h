@@ -30,6 +30,9 @@
  // "Trigger" feature uses simple and thus inaccurate logic which is not suitable to count **exact** number of high frequency pulses
  // When "trigger" keyword is specified, the counter blocks until an interrupt is received from the pin. After that count proceed
  // normally
+ //
+ // TODO: use CCOUNT register to compensate "trigger" logic: account for time from the "trigger" interrupt to the counter_resume() - it is significant
+ //       and thus causes measured values to be slighly bigger.
 
 #if COMPILING_ESPSHELL
 
@@ -52,16 +55,22 @@ static MUTEX(pcnt_mux); // protects access to units[] array
 // NOTE: /.overflow/ member is incremented in ISR 
 //
 static volatile struct {
-  unsigned int  overflow;    // incremented after every PCNT_OVERFLOW pulses
-  unsigned int  count;       // Pulses counted                         (only valid for stopped counters) 
-  unsigned int  interval;    // Measurement interval in milliseconds   (only valid for stopped counters) 
-  unsigned int  pin:8;       // Pin where pulses were counted
-  unsigned int  in_use:1;    // non-zero means pcnt unit is used by ESPShell
-  unsigned int  trigger:1;   // non-zero means pcnt unit is waiting for the first pulse to start counting. this flag is set to 0 by incoming pulse!
-  unsigned int  been_used:1; // Set to 1 on a first use, never set to 0 afterwards
-  unsigned int  been_triggered:1;
-  unsigned int  tsta;        // millis() just before counting starts
-  unsigned int  taskid;      // ID of the task responsible for counting
+  unsigned int overflow;    // incremented after every PCNT_OVERFLOW pulses
+  unsigned int count;       // Pulses counted                         (only valid for stopped counters) 
+  unsigned int interval;    // Measurement interval in milliseconds   (only valid for stopped counters) 
+
+  unsigned int pin:8;            // Pin where pulses were counted
+
+  unsigned int in_use:1;         // non-zero means pcnt unit is used by ESPShell
+  unsigned int trigger:1;        // non-zero means pcnt unit is waiting for the first pulse to start counting. this flag is set to 0 by incoming pulse!
+  unsigned int been_used:1;      // Set to 1 on a first use, never set to 0 afterwards
+  unsigned int been_triggered:1; // is "trigger" counter been triggered by a pulse or was interrupted by user?
+  unsigned int filter_enabled:1; // PCNT filter enabled?
+
+  unsigned int filter_value:16;  // PCNT filter value, nanoseconds;
+
+  unsigned int   tsta;           // millis() just before counting starts
+  unsigned int   taskid;         // ID of the task responsible for counting
 
 } units[PCNT_UNIT_MAX] = { 0 };
 
@@ -99,6 +108,7 @@ static int count_claim_unit() {
       units[i].tsta = 0;
       units[i].trigger = 0;
       units[i].been_triggered = 0;
+      units[i].filter_enabled = 0;
       units[i].taskid = (unsigned int)taskid_self(); 
       pcnt_counters++;
       mutex_unlock(pcnt_mux);
@@ -247,8 +257,8 @@ static int count_show_counters() {
 
   // Fancy header
   q_print("<r>"
-          "%PCNT|GPIO#|  Status |   TaskID   | Pulse count | Time, msec | Frequency  </>\r\n"
-          "%----+-----+---------+------------+-------------+------------+------------\r\n");
+          "%PCNT|Pin|  Status |   TaskID   | Pulse count | Time, msec |Frequency |Filter,ns</>\r\n"
+          "%----+---+---------+------------+-------------+------------+----------+---------\r\n");
 
   mutex_lock(pcnt_mux);
   for (i = 0; i < PCNT_UNIT_MAX; i++) {
@@ -256,7 +266,11 @@ static int count_show_counters() {
     
 // wish we can have #pragma in #define ..
   #pragma GCC diagnostic ignored "-Wformat"
-    q_printf("%%  %d | % 3u | %s | 0x%08x | % 11u | % 10u | % 8u Hz\r\n", i, units[i].pin, count_state_name(i), units[i].taskid, cnt, interval, freq);
+    q_printf("%%  %d |% 3u| %s | 0x%08x | % 11u | % 10u | % 8u | ", i, units[i].pin, count_state_name(i), units[i].taskid, cnt, interval, freq);
+    if (units[i].filter_enabled)
+      q_printf("<i>%u</>\r\n", units[i].filter_value);
+    else
+      q_print("-off-\r\n");
   #pragma GCC diagnostic warning "-Wformat"
   }
 
@@ -324,7 +338,7 @@ bool count_wait_for_the_first_pulse(unsigned int pin) {
   gpio_set_intr_type(pin, GPIO_INTR_ANYEDGE);
 
   // It is ok to call it multiple times, however IDF issues a warning; 
-  // the reason for calling it each time is to be sure that code will work as intended even if user sketch has uninstalled GPIO ISR service
+  // The reason for calling it each time is to be sure that code will work as intended even if user sketch has uninstalled GPIO ISR service
   gpio_install_isr_service((int)ARDUINO_ISR_FLAG);            
   gpio_isr_handler_add(pin, count_pin_anyedge_interrupt, &t);
 
@@ -365,6 +379,7 @@ static int cmd_count(int argc, char **argv) {
                 i;                   // Index to argv
   bool          filter = false;      // enable filtering
   unsigned short val;                // Filter value (0..1023)
+  short int low, high;               // min/max filter values. calculated from APB frequency. (TODO: do all Espressif chips have APB?)
   
   if (argc < 2)
     return CMD_MISSING_ARG;
@@ -399,22 +414,38 @@ static int cmd_count(int argc, char **argv) {
   i = 1;
   while (++i < argc) {
     if (!q_strcmp(argv[i],"filter")) {
+
+      MUST_NOT_HAPPEN(APBFreq == 0);
+
+      // PCNT filter value register is 10-bit wide, with max value of 1023.
+      low = (short int)(1000.0f * 1.0f / (float )(APBFreq/2) + 0.5f); //roundup
+      high = (short int)(1023 * 1000.0f * 1.0f / (float )(APBFreq/2));
+
       if (i + 1 >= argc) {
 bad_filter:        
-        q_print("% Pulse width in nanoseconds [13 .. 12787] is expected\r\n");
+        q_printf("%% Pulse width in nanoseconds [%d .. %d] is expected\r\n", low, high);
+        count_release_unit(unit);
         return CMD_MISSING_ARG;
       }
       i++;
-      // Magic numbers below: We assume that APB_CLK is 80 Mhz; PCNT filter value register is 10-bit wide;
-      // 1 APB cycle is 12.5ns, 1023 APB cycles is 12787 ns.
-      // TODO: read real APB clock value and calculate magic numbers
-      // TODO: test it with sequence generator
       if (isnum(argv[i])) {
-        val = q_atol(argv[i],0);
-        val = (val < 13 ? 13
-                        : (val > 12787 ? 12787
-                                       : val)) / 13;
+  
+        unsigned int val_ns;
+        val_ns = val = q_atol(argv[i],0);
+
+        // clamp filter value, convert it from nanoseconds to APB cycles (i.e. to 1..1023 range)
+        // We do substract 1 from the divisor to compensate for roundup of /low/ we did before. 
+        // This eventually may lead to values > 1023
+        val = (val < low ? low
+                         : (val > high ? high
+                                       : val) / (low - 1));
+        val = val < 1024 ? val : 1023;
+
         filter = true;
+        // these are purely for "show counters"
+        units[unit].filter_enabled = 1;
+        units[unit].filter_value = val_ns;
+        
       } else
         goto bad_filter;
     } else
@@ -445,7 +476,7 @@ bad_filter:
   if (filter) {
     pcnt_set_filter_value(unit, val );
     pcnt_filter_enable(unit);
-    q_printf("%% PCNT filter is enabled, %u APB cycles\r\n",(uint16_t)val);
+    VERBOSE(q_printf("%% PCNT filter is enabled, %u APB cycles\r\n",(uint16_t)val));
   } else
     pcnt_filter_disable(unit);
 
@@ -470,12 +501,15 @@ bad_filter:
   units[unit].tsta = q_millis();
   pcnt_counter_resume(unit);
 
-  // delay_interruptible() returns its argument if wasn't interrupted.
-  if (wait != delay_interruptible(wait))  
+  // delay_interruptible() returns its argument if wasn't interrupted;
+  unsigned int wait0 = delay_interruptible(wait);
+  // stop counting as soon as possible to get more accurate results, especially at higher frequencies
+  pcnt_counter_pause(unit);
+
+  if (wait != wait0)  
     wait = q_millis() - units[unit].tsta; // actual measurement time
 
-  // Stop
-  pcnt_counter_pause(unit);
+  
   
  // Free up resources associated with the counter. Free up interrupt, stop and clear counter, calculate
  // frequency, pulses count (yes it is calculated). Store calculated values & a timestamp in /units[]/ for later reference

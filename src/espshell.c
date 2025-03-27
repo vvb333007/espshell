@@ -234,6 +234,7 @@ static const char *VarOops = "<e>% Oops :-(\r\n"
 #include "task.h"               // main shell task, async task helper, misc. task-related functions
 #include "keywords.h"           // all command trees
 #include "sequence.h"           // RMT component (sequencer)   
+#include "cpu.h"                // cpu-related command handlers  
 #include "pwm.h"                // PWM component
 #include "pin.h"                // GPIO manipulation
 #include "count.h"              // Pulse counter / frequency meter
@@ -241,7 +242,7 @@ static const char *VarOops = "<e>% Oops :-(\r\n"
 #include "spi.h"                // spi generic interface
 #include "uart.h"               // uart generic interface
 #include "misc.h"               // misc command handlers
-#include "cpu.h"                // cpu-related command handlers  
+
 #include "filesystem.h"         // file manager
 #include "memory.h"             // memory component
 #include "espcam.h"             // Camera support
@@ -345,7 +346,7 @@ one_more_try:
               q_printf("%% <e>Invalid %u%s argument \"%s\" (\"? %s\" for help)</>\r\n",NEE(bad), bad < argc ? argv[bad] : "FIXME", argv[0]);
             else if (bad < 0) {
               if (bad == CMD_MISSING_ARG)
-                q_printf("%% <e>One or more arguments are missing(\"? %s\" for help)</>\r\n", argv[0]);
+                q_printf("%% <e>One or more arguments are missing. (\"? %s\" for help)</>\r\n", argv[0]);
               // Keep silent on other error codes which are <0
             }
             else

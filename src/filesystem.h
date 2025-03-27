@@ -137,6 +137,8 @@ static char *files_time2text(time_t t) {
   struct tm *info;
   info = localtime(&t);
 
+  // TODO: review all sprintf, strcat and strcpy's for buffer overruns
+  // TODO: may be implement q_  safe versions of these
   sprintf(buf, "%u-%02u-%02u %02u:%02u:%02u", info->tm_year + 1900, info->tm_mon + 1, info->tm_mday, info->tm_hour, info->tm_min, info->tm_sec);
   //strftime(buf, sizeof(buf), "%b %d %Y", info);
   //strftime(buf, sizeof(buf), "%b %d %H:%M", info);

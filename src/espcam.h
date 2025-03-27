@@ -122,7 +122,7 @@ static bool cam_config_fill_pins(camera_config_t *cc, const char *model) {
 //
 static void cam_show_pinout(const camera_config_t *cc) {
   if (cc) {
-    q_printf( "%% Pins assignment:\r\n"
+    q_printf( "%% Pins assignment (Camera pin : ESP32 pin)\r\n"
               "%% Power Down : %d\r\n"
               "%% Reset      : %d\r\n"
               "%% XCLK       : %d\r\n"
@@ -153,9 +153,10 @@ static int cmd_show_camera(int argc, char **argv) {
     return CMD_MISSING_ARG;
 
   if (!q_strcmp(argv[2],"models")) {
-      q_print("% Knoqn boards:\r\n");
+      q_print("% Known boards:\r\n");
       for (int i = 0; Campins[i].model ;i++)
         q_printf("%% %u. \"%s\"\r\n",i + 1,Campins[i].model);
+      q_printf("%% %u. \"custom\"\r\n",i + 1);
       return 0;
   } else if (!q_strcmp(argv[2],"pinout")) {
       if (argc == 3) {

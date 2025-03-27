@@ -319,7 +319,7 @@ void digitalForceWrite(int pin, unsigned char level) {
   gpio_set_level((gpio_num_t)pin, level == HIGH ? 1 : 0);
 }
 
-// ESP32 Arduino Core as of version 3.0.5 (latest I use) defines pin OUTPUT flag as both INPUT and OUTPUT
+// ESP32 Arduino Core as of version 3.0.5 (at the moment of writing) defines pin OUTPUT flag as both INPUT and OUTPUT
 #ifndef OUTPUT_ONLY
 #define OUTPUT_ONLY ((OUTPUT) & ~(INPUT))
 #endif
