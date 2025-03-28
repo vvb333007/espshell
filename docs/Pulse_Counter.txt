@@ -1,25 +1,43 @@
-ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
+ ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
 
 
-PULSE COUNTER / FREQUENCY METER
--------------------------------
+BRIEF: PULSE COUNTER / FREQUENCY METER
+--------------------------------------
 
 ESP32 has built-in (hardware) pulse counting feature with 8 (original ESP32) or
 less (newer models) counters (PCNT units, see ESP32 Technical Reference). These 
-counters can be run in parallel providing up to 8 frequency meters.
+counters can be run in parallel providing up to 8 frequency meters / pulse
+counters.
 
-Counters are controlled via "count" and "show counters" commands
+Counters are controlled via two commands: "count" and "show counters" commands.
 
-Command "count" is used to count pulses on given pin. Command takes up several 
-arguments: A pin number (to count pulses on), a time interval during which 
-pulses are counted, special keywords ("trigger" and "filter").
+Command "count" is used to count pulses on given pin. Command takes several 
+arguments:
 
-Command syntax is: "count PIN [TIME_MS] [trigger | filter LENGTH_NS]" where PIN
-is a pin number and TIME_MS is the time during which measurements are made 
-(default is 1000 ms). Keyword "trigger"can be used to instruct counter to "wait
-until first pulse and once captured, start counting". Keyword "filter" allows
-for rejecting pulses which are too short (see PULSE FILTERING below)
+  1. a pin number (to count pulses on), the only mandatory argument
+  2. a time interval during which pulses are counted (1 second, if omitted)
+  3. special keywords ("trigger" and "filter").
 
+Command syntax is: 
+
+  "count PIN [ TIME_MS | trigger | filter NANOSECONDS ]*" 
+
+where PIN is a pin number and TIME_MS is the time during which measurements
+are made, in milliseconds (default is 1000 ms). 
+
+Keyword "trigger" can be used to instruct counter to "wait until the first pulse
+and once captured, and then start counting/measuring". This keyword is used when
+our pulses source is not an oscillator like: pulses may or may not be generated,
+time interval between pulses are unknown and so on.
+
+Keyword "filter NANOSECONDS" allows for rejecting pulses which are too short 
+
+
+SIMPLE COUNTING & MEASUREMENTS INTERVAL
+---------------------------------------
+
+In its simpliest form, "count" command can be used like this, with just one 
+argument, a pin number where measurements are made.
 
   Example: (Count pulses & measure frequency on pin#2)
 
@@ -28,22 +46,90 @@ for rejecting pulses which are too short (see PULSE FILTERING below)
   % 0 pulses in 1.000 seconds (0.0 Hz, 0 interrupts)
   esp32#>
 
-Pulse counting can be interrupted at any moment by pressing <Enter> in either 
-termianl software or in Arduino IDE Serial Monitor. If command "count" was run 
-in a background mode, then the only way to stop such a counter is to use "kill"
- command.
+By default espshell measures frequency / count pulses for 1000ms and then prints
+the measurement results. If, however, measurement must be made over longer period
+of time (for ultra-low frequency pulses) the time interval can be set, as a next
+argument to the command:
 
-Lets connect pin2 and pin4 with a jumper. Start a squarewave generator on pin2 
-and count pulses on pin4:
+  Example: (Count pulses & measure frequency on pin#2 for 10 seconds)
 
-  Example: (Start PWM & measure its output)
-
-  esp32#>pwm 2 2
-  esp32#>count  4
-  % Counting pulses on GPIO4...(press <Enter> to abort)
-  % 2 pulses in 1.001 seconds (2.0 Hz, 0 interrupts)
+  esp32#>count 2 10000            <--- 10000 milliseconds measurement interval
+  % Counting pulses on GPIO2...(press <Enter> to abort)
+  % 0 pulses in 10.000 seconds (0.0 Hz, 0 interrupts)
   esp32#>
 
+NOTE: Special word "infinite" can be used instead of a number when specifying
+measurement interval, i.e. "count 2 inf"
+
+
+"TRIGGER" KEYWORD USE
+---------------------
+
+Lets look at another scenario: user starts a counter to measure frequency on pin#4;
+Then user connects the actual pulse source (PWM) to pin#4. There is a delay between
+counter start to count and actual PWM start to come in.
+
+Using command "count 4" for this is bad idea: counter starts to measure the time
+interval immediately, but PWM source gets connected a few seconds later; it will lead to
+wrong frequency values afterwards.
+
+Instead one can use "trigger" keyword: if espsheel sees this keyword then the counter
+gets suspended until the very first pulse. Once pulse is received, counter is resumed
+resulting in a more precise frequency values.
+
+"FILTER" KEYWORD: FILTERING OUT PULSES WHICH ARE TOO SHORT
+----------------------------------------------------------
+
+It is possible to ignore (i.e. not to count) pulses whose length is shorter than 
+some specified threshold value. This value can be set using "filter" keyword as 
+follows:
+
+  esp32#> count 4 filter 100
+
+The command above **ignores** pulses which are shorter than 100ns. 
+
+Lowest possible threshold value depends on APB bus frequency and, for most of 
+ESP32 designs is 80MHz, which means 25 nanoseconds. Largest filter value one can
+set is little above 25700 ns.
+
+The filter feature can be used to filter out pulses on mechanical contacts (push
+buttons or switches).
+
+The minimum and maximum pulse length varies with APB frequency and calculated
+dynamically. To see the range one can omit filter value in the command:
+
+    esp32#>count 4 filter
+    % Pulse width in nanoseconds [25 .. 25575] is expected
+    % Time interval precision is 25 ns; means 125ns and 149ns are the same
+    % One or more arguments are missing. ("? count" for help)
+    esp32#>
+
+Lets look at example below:
+We start a PWM generator at 10MHz on pin#2 which is connected by a jumper
+wire to pin#4, where we will start a counter:
+
+
+    esp32#>pwm 2 10000000
+    esp32#>
+    esp32#>count 4 filter 300
+    % Counting pulses on GPIO4...(press <Enter> to abort)
+    % 0 pulses in approx. 1.001 seconds (0 Hz, 0 interrupts)
+
+Counter started with a filter value of 300ns. That means that our PWM signal
+which has pulse length of a 100ns (1/10MHz) will be completely ignored, thats
+why there is 0 pulses counted
+
+Lets change our filter value to 50ns:
+
+    esp32#>count 4 filter 50  
+    % Counting pulses on GPIO4...(press <Enter> to abort)
+    % 10000000 pulses in approx. 1.000 seconds (10000000 Hz, 500 interrupts)
+
+Now our PWM pulses were counted.
+
+
+RUNNING COUNTERS IN PARALELL
+----------------------------
 
 "count" is a blocking command: it blocks user from executing next commands until
 this one finishes. It is ok for most of use cases but sometimes we want to count 
@@ -51,17 +137,15 @@ irregular pulses for a long period of time but still be able to use espshell
 command line.  Use background execution flag ("&") to run multiple counters at
 the same time (see "docs/Commands.txt",  "BACKGROUND EXECUTION" chapter).
 
-Typical scenario is to count pulses for indefinite long time and being able to 
+Typical scenario is to count pulses for indefinitely long time and being able to 
 read the counter at any time and execute other commands. I.e. running "count" 
-command in a background.
-
-One of such examples is counting pulses from the "door open/door closed" sensor: 
-we don't know how often pulses will arrive, we don't know for how long we need 
-to count it.
+command in a background: it can be counting pulses from the "door open/door closed"
+sensor. We don't know how often pulses will arrive, we don't know for how long we 
+need to count it.
 
   Example: (Count pulses for 1 million seconds, in a background)
 
-  esp32#>count  4  1000000 &     <------- start counting
+  esp32#>count  4  1000000 &     <------- start counting in a background
   % Background task started
   % Copy/paste "kill 0x3ffb8ce4" command to stop execution
   % Counting pulses on GPIO4...
@@ -75,6 +159,35 @@ to count it.
   esp32#>
   
   Hint:  use mouse to copy/paste "kill" command
+
+
+STOPPING A RUNNING COUNTER
+--------------------------
+Pulse counting can be interrupted at any moment by pressing <Enter> in either 
+termianl software or in Arduino IDE Serial Monitor. If command "count" was run 
+in a background mode, then the only way to stop such a counter is to use "kill"
+command:
+
+
+    Example: start counter for 999.999 msec, and "kill" it during counting
+
+    esp32#>count 4 999999 &                <----- count on pin#4 in a background
+    % Background task started
+    % Copy/paste "kill 0x3fca3914" command to abort
+    % Counting pulses on GPIO4...
+    esp32#>
+    esp32#>
+    esp32#>kill 0x3fca3914                 <----- Kill the counting process
+    % 0 pulses in approx. 8.984 seconds (0 Hz, 0 interrupts)
+    % Background command "count" has finished its job
+    esp32#>
+
+It is perfectly ok to "kill" or otherwhise interrupt any counter: being 
+interrupted it retains all its measurements made to the moment of interruption.
+
+
+DISPLAYING COUNTERS INFORMATION
+-------------------------------
 
 To check counters value during counting process one can use "show" command with 
 "counters" argument. Obviously counters must be run in background mode for user 
@@ -107,28 +220,37 @@ upon reception of a first pulse. Use "trigger" keyword in "count" command if you
 want Frequency column to be more precise. Don't use "trigger" keyword if you want
 only pulse count, not frequency value
 
+"Filter,ns", the last column (not shown on a listing above) contains filter
+value as set by "count ... filter NANOSECONDS". If filtering is disabled then
+it will be text "-off-" instead of a filter value.
+
+
+CLEARING A COUNTER
+------------------
 One can clear any counter (stopped or running) by issuing "count PIN clear"
-command. 
+command. This command will clear all counters which were/is associated with pin
+PIN
 
 
 NOTE: Use "pin X save" and "pin X load" to save/restore pin state. Configuring
 pin as a squarewave generator rewrites pin settings so previous settings can be
 lost. On "pin save" and "pin load" please refer to Pin_Commands.txt
 
-PULSE FILTERING
----------------
 
-It is possible to ignore (not to count) pulses whose length is shorter than some
-specified threshold value. This value can be set using "filter" keyword as 
-follows:
+USE CASE: PWM GENERATOR + COUNTER
+---------------------------------
 
-  esp32#> count 4 filter 100
+Lets connect pin2 and pin4 with a jumper. Start a squarewave generator on pin2 
+and count pulses on pin4:
 
-  The command above **ignores** pulses which are shorter than 100ns. 
+  Example: (Start PWM & measure its output)
 
-Lowest possible threshold value depends on APB bus frequency and, for most of 
-ESP32 designs is 80MHz, which means 13 nanoseconds. Largest filter value one can
-set is 12787 ns.
+  esp32#>pwm 2 20000
+  esp32#>count  4
+  % Counting pulses on GPIO4...(press <Enter> to abort)
+  % 20000 pulses in 1.000 seconds (20000.0 Hz, 0 interrupts)
+  esp32#>
 
-The filter feature can be used to filter out pulses on mechanical contacts (push
-buttons or switches). 
+Counters can be used to verify signals coming out from ESP32 pins as in example 
+above, with a jumper wire. 
+
