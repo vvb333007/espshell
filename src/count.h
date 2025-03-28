@@ -57,7 +57,7 @@ static MUTEX(pcnt_mux); // protects access to units[] array
 static volatile struct {
   unsigned int overflow;    // incremented after every PCNT_OVERFLOW pulses
   unsigned int count;       // Pulses counted                         (only valid for stopped counters) 
-  unsigned int interval;    // Measurement interval in milliseconds   (only valid for stopped counters) 
+  unsigned int interval;    // Measurement interval in microseconds   (only valid for stopped counters) 
 
   unsigned int pin:8;            // Pin where pulses were counted
 
@@ -69,7 +69,7 @@ static volatile struct {
 
   unsigned int filter_value:16;  // PCNT filter value, nanoseconds;
 
-  unsigned int   tsta;           // millis() just before counting starts
+  unsigned int   tsta;           // q_micros() just before counting starts
   unsigned int   taskid;         // ID of the task responsible for counting
 
 } units[PCNT_UNIT_MAX] = { 0 };
@@ -188,7 +188,7 @@ static unsigned int count_read_counter(int unit, unsigned int *freq, unsigned in
     if (!units[unit].trigger) {
       pcnt_get_counter_value(unit, &count);                               // current counter value ([0 .. 20000])
       cnt = units[unit].overflow * PCNT_OVERFLOW + (unsigned int)count;   // counter total. TODO: fix "if this counter was "trigger" then we miss 1 pulse here"
-      tsta = q_millis() - units[unit].tsta;                               // milliseconds elapsed so far (for the frequency calculation)
+      tsta = q_micros() - units[unit].tsta;                               // microseconds elapsed so far (for the frequency calculation)
     }
   } else {
     // 2) Counter is stopped; values are already in units[]
@@ -197,7 +197,7 @@ static unsigned int count_read_counter(int unit, unsigned int *freq, unsigned in
   }
 
   if (freq)
-    *freq = tsta ? (uint32_t)((uint64_t)cnt * 1000ULL / (uint64_t)tsta) : 0;
+    *freq = tsta ? (uint32_t)((uint64_t)cnt * 1000000ULL / (uint64_t)tsta) : 0;
 
   if (interval)
     *interval = tsta;
@@ -231,9 +231,9 @@ static int count_clear_counter(int pin) {
       units[unit].count = units[unit].overflow = units[unit].interval = 0;
 
       if (units[unit].in_use) {
+        units[unit].tsta = q_micros();
         if (!units[unit].trigger)
           pcnt_counter_resume(unit);
-        units[unit].tsta = q_millis();
       } else {
         // its ok to clear pin,taskid & tsta on stopped counter
         units[unit].pin = units[unit].taskid = units[unit].tsta = 0;
@@ -266,7 +266,7 @@ static int count_show_counters() {
     
 // wish we can have #pragma in #define ..
   #pragma GCC diagnostic ignored "-Wformat"
-    q_printf("%%  %d |% 3u| %s | 0x%08x | % 11u | % 10u | % 8u | ", i, units[i].pin, count_state_name(i), units[i].taskid, cnt, interval, freq);
+    q_printf("%%  %d |% 3u| %s | 0x%08x | % 11u | % 10u | % 8u | ", i, units[i].pin, count_state_name(i), units[i].taskid, cnt, interval / 1000, freq);
     if (units[i].filter_enabled)
       q_printf("<i>%u</>\r\n", units[i].filter_value);
     else
@@ -289,6 +289,7 @@ static int count_show_counters() {
 struct trigger_arg {
   TaskHandle_t taskid;  // counter's task id
   unsigned int pin;     // pin that has generated the interrupt
+  unsigned int ccount;  // CCOUNT register content
 };
 
 
@@ -306,6 +307,7 @@ static void IRAM_ATTR count_pin_anyedge_interrupt(void *arg) {
 
   struct trigger_arg *t = (struct trigger_arg *)arg;
 
+
   // Send an event to PCNT task blocking on TaskNotifyWait so it can unblock and start counting.
   task_signal_from_isr(t->taskid, SIGNAL_GPIO);
   // Disable further interrupts immediately
@@ -315,7 +317,7 @@ static void IRAM_ATTR count_pin_anyedge_interrupt(void *arg) {
 
 // This function blocks until at least 1 of 3 conditions is true:
 //
-// 1. A task notification SIGNAL_PIN is received (which is sent by a GPIO interrupt handler when (see function above)) 
+// 1. A task notification SIGNAL_PIN is received (which is sent by a GPIO interrupt handler) 
 // 2.                     SIGNAL_TERM is received (which means user issued "kill -9" command)
 // 3. A keypress is detected (not applicable for "background" commands)
 //
@@ -327,7 +329,8 @@ bool count_wait_for_the_first_pulse(unsigned int pin) {
 
   struct trigger_arg t = {          // An argument for the ISR
     taskid_self(),
-    pin
+    pin,
+    0
   };
 
   bool  ret = false,                // Return code. true= everything is ok, a pulse has been received. false=stop measurement, discard the result
@@ -365,10 +368,9 @@ bool count_wait_for_the_first_pulse(unsigned int pin) {
 }
 
 // Shell command handler
-//"count PIN [DELAY_MS] [trigger]"
+//"count PIN [DELAY_MS | trigger | filter NANOSECONDS]*"
 //"count PIN clear"
 //
-// TODO: investigate /filter/ feature and add appropriate arguments to the "count" command
 static int cmd_count(int argc, char **argv) {
 
   pcnt_config_t cfg = { 0 };         // PCNT unit configuration
@@ -378,14 +380,14 @@ static int cmd_count(int argc, char **argv) {
   int           unit,                // PCNT unit number
                 i;                   // Index to argv
   bool          filter = false;      // enable filtering
-  unsigned short val;                // Filter value (0..1023)
-  short int low, high;               // min/max filter values. calculated from APB frequency. (TODO: do all Espressif chips have APB?)
+  unsigned short val;                // Normalized filter value [1..1023]
   
+  // must be at least 2 tokens ("count" and a pin number)
   if (argc < 2)
     return CMD_MISSING_ARG;
 
-  if (!pin_exist((pin = q_atol(argv[1], 999))))
-    return 1;
+  if (!pin_exist((pin = q_atol(argv[1], 255))))
+    return 1; // arg1 is bad
 
   // "count X clear" command?
   if (argc > 2)
@@ -410,39 +412,54 @@ static int cmd_count(int argc, char **argv) {
   cfg.neg_mode = PCNT_COUNT_DIS;     // Do nothing on negative edge
   cfg.counter_h_lim = PCNT_OVERFLOW; // Higher limit is 20000 pulses and then an interrupt is generated
 
-  // Read rest of the parameters: DURATION and/or keyword "trigger"
-  i = 1;
+  // Read rest of the parameters: DURATION and/or keywords "trigger", "filter" and others
+  i = 1; 
+  // start from the 2nd argument to the command: if it is the "filter" keyword, then read and check filter value
   while (++i < argc) {
     if (!q_strcmp(argv[i],"filter")) {
 
+      
+      short int low, high;               // min/max filter values. calculated from APB frequency. (TODO: do all Espressif chips have APB?)
+
+      // APBFreq & friends are declared in cpu.h along with update function, which autofills these values
+      // Normally equals to 80
       MUST_NOT_HAPPEN(APBFreq == 0);
 
-      // PCNT filter value register is 10-bit wide, with max value of 1023.
-      low = (short int)(1000.0f * 1.0f / (float )(APBFreq/2) + 0.5f); //roundup
-      high = (short int)(1023 * 1000.0f * 1.0f / (float )(APBFreq/2));
-
+      // PCNT filter value register is 10-bit wide, with max value of 1023: the number is the "number of cycles of APB bus".
+      // Naive reading of Espressif docs on PCNT makes you think that 1 APB cycle is 1/80MHz, i.e. 12.5ns; Experiments with ESP32, however
+      // shows that APBFreq must be divided by 2 in order to get things working right.
+      // /low/     - lowest possible value for a register, i.e. 1 APB cycle, (25ns if APB is at 80MHz)
+      // /high/    - highest possible value, 1023 * 25 ns
+      // /1000.0f/ - a scalefactor to convert MHz to ns
+#define MAGIC_NUMBER 2      
+      low = (short int)(1000.0f * 1.0f / (float )(APBFreq/MAGIC_NUMBER) + 0.5f/* roundup */); 
+      high = (short int)(1023 * 1000.0f * 1.0f / (float )(APBFreq/MAGIC_NUMBER));
+#undef MAGIC_NUMBER
       if (i + 1 >= argc) {
 bad_filter:        
-        q_printf("%% Pulse width in nanoseconds [%d .. %d] is expected\r\n", low, high);
+        HELP(q_printf("%% Pulse width in nanoseconds [%d .. %d] is expected\r\n"
+                      "%% Time interval precision is %u ns; means %uns and %uns are the same\r\n", low, high, low, 5*low, 6*low - 1));
         count_release_unit(unit);
         return CMD_MISSING_ARG;
       }
+
+      // position to the next argument (a filter value "count 10 trigger filter VALUE")
+      // numeric argument is expected
       i++;
-      if (isnum(argv[i])) {
+      if (isnum(argv[i])) { // TODO: q_numeric()?
   
         unsigned int val_ns;
         val_ns = val = q_atol(argv[i],0);
 
         // clamp filter value, convert it from nanoseconds to APB cycles (i.e. to 1..1023 range)
-        // We do substract 1 from the divisor to compensate for roundup of /low/ we did before. 
+        // We do substract 1 from the divisor to compensate for roundup of /low/ we made before. 
         // This eventually may lead to values > 1023
-        val = (val < low ? low
-                         : (val > high ? high
-                                       : val) / (low - 1));
-        val = val < 1024 ? val : 1023;
+        if (val < low) val = low; else 
+        if (val > high) val = high;
+        if ((val = val / (low - 1)) > 1023) val = 1023;
 
         filter = true;
-        // these are purely for "show counters"
+        // these 2 are purely for "show counters"
         units[unit].filter_enabled = 1;
         units[unit].filter_value = val_ns;
         
@@ -452,12 +469,13 @@ bad_filter:
     if (!q_strcmp(argv[i],"trigger"))
       units[unit].trigger = 1;
     else
-    if ((wait = q_atol(argv[2], DEF_BAD)) == DEF_BAD) {
-      HELP(q_print("% A keyword \"trigger\" or a NUMBER (duration, msec) is expected\r\n"));
+    if ((wait = q_atol(argv[i], DEF_BAD)) == DEF_BAD) {
+      HELP(q_print("% Keywords \"<i>trigger</>\", \"<i>filter</>\" or a <i>NUMBER</> (duration, msec) is expected\r\n"));
       count_release_unit(unit);
       return i;
     }
   }
+  // Done processing command arguments.
 
   // Store counter parameters
   units[unit].pin = pin;
@@ -476,7 +494,7 @@ bad_filter:
   if (filter) {
     pcnt_set_filter_value(unit, val );
     pcnt_filter_enable(unit);
-    VERBOSE(q_printf("%% PCNT filter is enabled, %u APB cycles\r\n",(uint16_t)val));
+    VERBOSE(q_printf("%% PCNT filter is enabled, %u APB cycles (%u ns)\r\n",(uint16_t)val, units[unit].filter_value));
   } else
     pcnt_filter_disable(unit);
 
@@ -498,7 +516,7 @@ bad_filter:
   }
 
   // Record a timestamp and start counting pulses for /wait/ milliseconds.
-  units[unit].tsta = q_millis();
+  units[unit].tsta = q_micros();
   pcnt_counter_resume(unit);
 
   // delay_interruptible() returns its argument if wasn't interrupted;
@@ -506,8 +524,8 @@ bad_filter:
   // stop counting as soon as possible to get more accurate results, especially at higher frequencies
   pcnt_counter_pause(unit);
 
-  if (wait != wait0)  
-    wait = q_millis() - units[unit].tsta; // actual measurement time
+  //if (wait != wait0)  
+  wait = q_micros() - units[unit].tsta; // actual measurement time
 
   
   
@@ -528,7 +546,11 @@ release_hardware_and_exit:
   count_release_unit(unit);
 
   // print measurement results
-  q_printf("%% %u pulses in %.3f seconds (%.1f Hz, %u interrupts)\r\n", units[unit].count, (float)wait / 1000.0f, units[unit].count * 1000.0f / (float)wait,units[unit].overflow);
+  //q_printf("%% %u pulses in %.3f seconds (%.1f Hz, %u interrupts)\r\n", units[unit].count, (float)wait / 1000000.0f, count_unit_frequency,units[unit].overflow);
+  unsigned int freq;
+  count_read_counter(unit,&freq,NULL);
+  q_printf("%% %u pulses in approx. %.3f seconds (%u Hz, %u interrupts)\r\n", units[unit].count, (float )units[unit].interval / 1000000.0f, freq, units[unit].overflow);
+
   return 0;
 }
 #endif // #if COMPILING_ESPSHELL

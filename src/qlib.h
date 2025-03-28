@@ -28,6 +28,7 @@
 // inlined version of millis() & delay() for better accuracy on small intervals
 // because of decreased overhead. q_millis vs millis shows 196 vs 286 CPU cycles
 #define q_millis() ((unsigned long )(esp_timer_get_time() / 1000ULL))
+#define q_micros() ((unsigned long )esp_timer_get_time())
 #define q_delay(_Delay) vTaskDelay(_Delay / portTICK_PERIOD_MS);
 
 
