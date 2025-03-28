@@ -519,15 +519,11 @@ bad_filter:
   units[unit].tsta = q_micros();
   pcnt_counter_resume(unit);
 
-  // delay_interruptible() returns its argument if wasn't interrupted;
-  unsigned int wait0 = delay_interruptible(wait);
+  
+  delay_interruptible(wait);
   // stop counting as soon as possible to get more accurate results, especially at higher frequencies
   pcnt_counter_pause(unit);
-
-  //if (wait != wait0)  
   wait = q_micros() - units[unit].tsta; // actual measurement time
-
-  
   
  // Free up resources associated with the counter. Free up interrupt, stop and clear counter, calculate
  // frequency, pulses count (yes it is calculated). Store calculated values & a timestamp in /units[]/ for later reference

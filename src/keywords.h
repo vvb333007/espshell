@@ -826,13 +826,13 @@ static const struct keywords_t keywords_main[] = {
           "% \"<b>count 4 filter 100</>\"  - Count pulses, discarding those <u>shorter than</> 100ns\r\n"
           "% \"<b>count 4 999999 &</>\"    - Count pulses in <u>a background</> for ~1000 seconds\r\n"
           "% \"<b>count 4 trigger</>\"     - Wait for the first pulse, then start to count\r\n"
-          "% \"<b>count 4 2000 trig &</>\" - Wait for the 1st pulse pulse, then start to count pulses for\r\n"
-          "%                                 2 seconds in a background"), "Pulse counter" },
+          "% \"<b>count 4 2000 trig &</>\" - Wait for the 1st pulse pulse, then start to count\r\n"
+          "%              pulses for 2 seconds in a background"), "Pulse counter" },
 
   { "count", HELP_ONLY,
     HELPK("% \"<b>count PIN</> <i>clear</>\"\r\n"
-          "% Clear counters associated with pin PIN. These may be stopped, running or in \"trigger\" state\r\n"
-          "%\r\n"
+          "% Clear counters associated with pin PIN. These may be stopped, running or in \r\n"
+          "% \"trigger\" state\r\n"
           "% \"<b>count 4 clear</>\"       - Clear all counters associated with GPIO4\r\n"), NULL },
     
 #if WITH_ESPCAM
