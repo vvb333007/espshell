@@ -26,17 +26,10 @@
  // 1. Immediate counting: command "count PIN_NUMBER", a blocking call
  // 2. Background counting: command "count ... &", async call
  // 3. Triggered counting (either immediate or background: "count ... trigger" or  "count ... trigger &"
- //
- // "Trigger" feature uses simple and thus inaccurate logic which is not suitable to count **exact** number of high frequency pulses
- // When "trigger" keyword is specified, the counter blocks until an interrupt is received from the pin. After that count proceed
- // normally
- //
- // TODO: use CCOUNT register to compensate "trigger" logic: account for time from the "trigger" interrupt to the counter_resume() - it is significant
- //       and thus causes measured values to be slighly bigger.
-
+ 
 #if COMPILING_ESPSHELL
 
-#define TRIGGER_POLL   1000  // A keypress check interval, msec (better be >= PULSE_WAIT)
+#define TRIGGER_POLL   1000  // A keypress check interval, msec (better keep it >= PULSE_WAIT)
 #define PULSE_WAIT     1000  // Default measurement time, msec
 #define PCNT_OVERFLOW 20000  // PCNT interrupt every 20000 pulses (range is [1..2^16-1])
 
@@ -44,20 +37,22 @@
 //#define UNUSED_PIN       -1  
 
 static int               pcnt_unit = PCNT_UNIT_0;        // First PCNT unit which is allowed to use by ESPShell, convar (accessible thru "var" command)
-static int               pcnt_counters = 0;              // Number of counters currently running.
+static int               pcnt_counters = 0;              // Number of currently running counters.
 
 static MUTEX(pcnt_mux); // protects access to units[] array
 
-// Counter structure. Each element of the array corresponds to separate PCNT unit
-// (i.e. entry 5 corresponds to PCNT unit5). Counters currently running have their /.in_use/ set to 1. 
-// When counter stops, its information is filled in this structure: number of pulses received, pin number, measurement interval and so on
+// Hardware counters are described by /units/ array, whose elements are per-counter data;
+// units[0] is used for PCNT#0, unit[5] -> PCNT#5 and so on.
+// Active (running) counters have their /.in_use/ set to 1, corresponding /units[]/ entry holds an approximate information
+// When counter stops, its information is filled in its units[] entry: exact number of pulses received, pin number, measurement 
+// interval and so on.
 //
-// NOTE: /.overflow/ member is incremented in ISR 
+// Through the code every counter is referenced simply by its number. 
 //
 static volatile struct {
-  unsigned int overflow;    // incremented after every PCNT_OVERFLOW pulses
+  unsigned int overflow;    // incremented after every PCNT_OVERFLOW pulses in ISR 
   unsigned int count;       // Pulses counted                         (only valid for stopped counters) 
-  unsigned int interval;    // Measurement interval in microseconds   (only valid for stopped counters) 
+  uint64_t     interval;    // Measurement interval in microseconds   (precise value for stopped counters, approximate for running ones) 
 
   unsigned int pin:8;            // Pin where pulses were counted
 
@@ -69,16 +64,16 @@ static volatile struct {
 
   unsigned int filter_value:16;  // PCNT filter value, nanoseconds;
 
-  unsigned int   tsta;           // q_micros() just before counting starts
+  uint64_t tsta;           // q_micros() just before counting starts
   unsigned int   taskid;         // ID of the task responsible for counting
 
 } units[PCNT_UNIT_MAX] = { 0 };
 
 
 // PCNT interrupt handler. Fired when counting limit is reached (20000 pulses, PCNT_OVERFLOW)
-//
+// ISR accesses units[] array without using mutex because this increment won't disrupt any data nor generate illegal memoy access
 static void IRAM_ATTR pcnt_unit_interrupt(void *arg) {
-  pcnt_unit_t unit = (pcnt_unit_t )arg;
+  const pcnt_unit_t unit = (const pcnt_unit_t )arg;
   units[unit].overflow++;
   PCNT.int_clr.val = BIT(unit);
  }
@@ -173,11 +168,11 @@ static void count_claim_interrupt(pcnt_unit_t unit) {
 //
 // Returns number of pulses counted
 //
-static unsigned int count_read_counter(int unit, unsigned int *freq, unsigned int *interval) {
+static unsigned int count_read_counter(int unit, unsigned int *freq, uint64_t *interval) {
 
-  int16_t      count = 0;    // Content of a PCNT counter register (16 bit)
-  unsigned int cnt = 0,      // Calculated total number of pulses counted (Number_Of_Interrupts * 20000 + count)
-               tsta = 0;     // Total measurement time
+  int16_t      count = 0; // Content of a PCNT counter register (16 bit)
+  unsigned int cnt = 0;   // Calculated total number of pulses counted (Number_Of_Interrupts * 20000 + count)
+  uint64_t     tsta = 0;  // Total measurement time, usec
 
   MUST_NOT_HAPPEN(unit < 0  || unit >= PCNT_UNIT_MAX);
 
@@ -197,7 +192,7 @@ static unsigned int count_read_counter(int unit, unsigned int *freq, unsigned in
   }
 
   if (freq)
-    *freq = tsta ? (uint32_t)((uint64_t)cnt * 1000000ULL / (uint64_t)tsta) : 0;
+    *freq = tsta ? (uint32_t)((uint64_t)cnt * 1000000ULL / tsta) : 0;
 
   if (interval)
     *interval = tsta;
@@ -228,7 +223,8 @@ static int count_clear_counter(int pin) {
         pcnt_counter_pause(unit);
 
       pcnt_counter_clear(unit);
-      units[unit].count = units[unit].overflow = units[unit].interval = 0;
+      units[unit].count = units[unit].overflow = 0;
+      units[unit].interval = 0;
 
       if (units[unit].in_use) {
         units[unit].tsta = q_micros();
@@ -236,7 +232,8 @@ static int count_clear_counter(int pin) {
           pcnt_counter_resume(unit);
       } else {
         // its ok to clear pin,taskid & tsta on stopped counter
-        units[unit].pin = units[unit].taskid = units[unit].tsta = 0;
+        units[unit].pin = units[unit].taskid = 0;
+        units[unit].tsta = 0;
       }
       q_printf("%% Counter #%u (while is in %s state) has been cleared\r\n", unit, count_state_name(unit));
     }
@@ -253,7 +250,8 @@ static int count_clear_counter(int pin) {
 static int count_show_counters() {
 
   int i;
-  unsigned int cnt, interval,freq;
+  unsigned int cnt, freq;
+  uint64_t interval;
 
   // Fancy header
   q_print("<r>"
@@ -266,9 +264,9 @@ static int count_show_counters() {
     
 // wish we can have #pragma in #define ..
   #pragma GCC diagnostic ignored "-Wformat"
-    q_printf("%%  %d |% 3u| %s | 0x%08x | % 11u | % 10u | % 8u | ", i, units[i].pin, count_state_name(i), units[i].taskid, cnt, interval / 1000, freq);
+    q_printf("%%  %d |% 3u| %s | 0x%08x | <g>% 11u</> | % 10u | % 8u | ", i, units[i].pin, count_state_name(i), units[i].taskid, cnt, (unsigned int )(interval / 1000ULL), freq); // TODO: bad typecast
     if (units[i].filter_enabled)
-      q_printf("<i>%u</>\r\n", units[i].filter_value);
+      q_printf(" <i>%u</>\r\n", units[i].filter_value);
     else
       q_print("-off-\r\n");
   #pragma GCC diagnostic warning "-Wformat"
@@ -289,7 +287,6 @@ static int count_show_counters() {
 struct trigger_arg {
   TaskHandle_t taskid;  // counter's task id
   unsigned int pin;     // pin that has generated the interrupt
-  unsigned int ccount;  // CCOUNT register content
 };
 
 
@@ -306,8 +303,7 @@ struct trigger_arg {
 static void IRAM_ATTR count_pin_anyedge_interrupt(void *arg) {
 
   struct trigger_arg *t = (struct trigger_arg *)arg;
-
-
+  
   // Send an event to PCNT task blocking on TaskNotifyWait so it can unblock and start counting.
   task_signal_from_isr(t->taskid, SIGNAL_GPIO);
   // Disable further interrupts immediately
@@ -321,19 +317,18 @@ static void IRAM_ATTR count_pin_anyedge_interrupt(void *arg) {
 // 2.                     SIGNAL_TERM is received (which means user issued "kill -9" command)
 // 3. A keypress is detected (not applicable for "background" commands)
 //
-// Returns /false/ when the further processing is better to be stopped
-//         /true/  when it is ok to continue with counting.
-// /False/ is returned when this function was interrupted by one of conditions above.
+// Returns /0/ when the further processing is better to be stopped
+//         />0/  when it is ok to continue with counting.
+// /0/ is returned when this function was interrupted by one of conditions above.
 //
 bool count_wait_for_the_first_pulse(unsigned int pin) {
 
   struct trigger_arg t = {          // An argument for the ISR
     taskid_self(),
-    pin,
-    0
+    pin
   };
 
-  bool  ret = false,                // Return code. true= everything is ok, a pulse has been received. false=stop measurement, discard the result
+  unsigned long  ret = false,           // Return code. >0 everything is ok, a pulse has been received. 0=stop measurement, discard the result
         fg = is_foreground_task();  // Foreground task? if yes then we add possibility to interrupt it by a keypress
 
   uint32_t value = SIGNAL_TERM;     // Notification, sent by an ISR (GPIO interrupt handler) or sent by the "kill" command
@@ -360,22 +355,22 @@ bool count_wait_for_the_first_pulse(unsigned int pin) {
   // Either "kill" command (sends SIGNAL_TERM) or interrupted by a keypress (/value/ didn't change, so SIGNAL_TERM again)
   // In both cases we don't want to continue execution of calling function (i.e. cmd_count()) so return /false/ here
   if (value == SIGNAL_TERM) 
-    ret = false;
+    ret = 0;
     
   gpio_isr_handler_remove(pin);
 
   return ret;
 }
 
-// Shell command handler
+// Frequency meter / pulse counter main command
 //"count PIN [DELAY_MS | trigger | filter NANOSECONDS]*"
 //"count PIN clear"
 //
 static int cmd_count(int argc, char **argv) {
 
   pcnt_config_t cfg = { 0 };         // PCNT unit configuration
-  unsigned int  pin,                 // Which pin is used to count pulses on?
-                wait = PULSE_WAIT;   // Measurement time. Default is 1000ms
+  unsigned int  pin;                 // Which pin is used to count pulses on?
+  uint64_t      wait = PULSE_WAIT;   // Measurement time, in _milliseconds_. Default is 1000ms
   int16_t       count;               // Contents of a PCNT counter
   int           unit,                // PCNT unit number
                 i;                   // Index to argv
@@ -395,6 +390,7 @@ static int cmd_count(int argc, char **argv) {
         return count_clear_counter(pin);
 
   // Allocate new counter unit: find an index to units[] array which is free to use
+  // TODO: move it after options processing to get rid of count_release_unit() on errors
   if ((unit = count_claim_unit()) < 0) {
     q_print("% <e>All " xstr(PCNT_UNIT_MAX) "counters are in use</>\r\n% Use \"kill\" to free up counter resources\r\n");
     if (pcnt_unit != PCNT_UNIT_0)
@@ -417,12 +413,8 @@ static int cmd_count(int argc, char **argv) {
   // start from the 2nd argument to the command: if it is the "filter" keyword, then read and check filter value
   while (++i < argc) {
     if (!q_strcmp(argv[i],"filter")) {
-
-      
       short int low, high;               // min/max filter values. calculated from APB frequency. (TODO: do all Espressif chips have APB?)
 
-      // APBFreq & friends are declared in cpu.h along with update function, which autofills these values
-      // Normally equals to 80
       MUST_NOT_HAPPEN(APBFreq == 0);
 
       // PCNT filter value register is 10-bit wide, with max value of 1023: the number is the "number of cycles of APB bus".
@@ -465,21 +457,22 @@ bad_filter:
         
       } else
         goto bad_filter;
+
     } else
-    if (!q_strcmp(argv[i],"trigger"))
-      units[unit].trigger = 1;
-    else
-    if ((wait = q_atol(argv[i], DEF_BAD)) == DEF_BAD) {
-      HELP(q_print("% Keywords \"<i>trigger</>\", \"<i>filter</>\" or a <i>NUMBER</> (duration, msec) is expected\r\n"));
-      count_release_unit(unit);
-      return i;
+    if (!q_strcmp(argv[i],"trigger")) units[unit].trigger = 1; else
+    if (!q_strcmp(argv[i],"infinite")) wait = (uint64_t )(-1); else
+    if (isnum(argv[i])) wait = q_atol(argv[i], 1000);
+    else {
+        // unrecognized keyword argv[i]
+        count_release_unit(unit);
+        return i;
     }
   }
   // Done processing command arguments.
 
   // Store counter parameters
   units[unit].pin = pin;
-  units[unit].interval = wait; // store planned time, update it with real one later
+  units[unit].interval = (wait == (uint64_t)(-1) ? wait : wait * 1000ULL); // store planned time, update it with real one later
   
   q_printf("%% %s pulses on GPIO%d...", units[unit].trigger ? "Waiting for" : "Counting", pin);
   if (is_foreground_task())
@@ -511,19 +504,20 @@ bad_filter:
     // interrupted by the "kill" or a keypress while was in waiting state? 
     if (units[unit].been_triggered == 0) {
       q_print("% Interrupted\r\n");
+      wait = 0;
       goto release_hardware_and_exit;
     }
   }
 
+  // >>>> Actual measurement is made here <<<<
   // Record a timestamp and start counting pulses for /wait/ milliseconds.
   units[unit].tsta = q_micros();
   pcnt_counter_resume(unit);
-
-  
   delay_interruptible(wait);
   // stop counting as soon as possible to get more accurate results, especially at higher frequencies
   pcnt_counter_pause(unit);
   wait = q_micros() - units[unit].tsta; // actual measurement time
+  // >>>> Stop counting <<<<
   
  // Free up resources associated with the counter. Free up interrupt, stop and clear counter, calculate
  // frequency, pulses count (yes it is calculated). Store calculated values & a timestamp in /units[]/ for later reference
@@ -536,7 +530,7 @@ release_hardware_and_exit:
   units[unit].count = units[unit].overflow * PCNT_OVERFLOW + (unsigned int)count + units[unit].been_triggered;
 
   // real value. it will be different from planned value if command "count" was interrupted
-  units[unit].interval = wait;
+  units[unit].interval = wait; // wait is microseconds now.
 
   // mark this PCNT unit as unused
   count_release_unit(unit);
@@ -545,7 +539,7 @@ release_hardware_and_exit:
   //q_printf("%% %u pulses in %.3f seconds (%.1f Hz, %u interrupts)\r\n", units[unit].count, (float)wait / 1000000.0f, count_unit_frequency,units[unit].overflow);
   unsigned int freq;
   count_read_counter(unit,&freq,NULL);
-  q_printf("%% %u pulses in approx. %.3f seconds (%u Hz, %u interrupts)\r\n", units[unit].count, (float )units[unit].interval / 1000000.0f, freq, units[unit].overflow);
+  q_printf("%% %u pulses in approx. %llu ms (%u Hz, %u interrupts)\r\n", units[unit].count, units[unit].interval / 1000ULL, freq, units[unit].overflow);
 
   return 0;
 }
