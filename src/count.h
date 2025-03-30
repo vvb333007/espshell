@@ -7,18 +7,18 @@
  * Feel free to use this code as you wish: it is absolutely free for commercial and 
  * non-commercial, education purposes.  Credits, however, would be greatly appreciated.
  *
- * Author: Viacheslav Logunov <vvb333007@gmail.com>
+ * Author: Viachesav Loglunov <vvb333007@gmail.com>
  */
 
 
- // -- Pulse Counter (PCNT) --
+ // -- Pulse Counter / Frequency Meter (PCNT) --
  //
  // ESP32 has 8 pulse counter units (ESP32S3 has 4) each of which is equipped 
  // with 2 channels: channel#0 (is what espshell uses) and channel#1 (unused).
  //
  // ESPShell selects first available unit for its operations: it checks for units in range [pcnt_unit .. PCNT_UNITS_MAX]
  // By default /pcnt_unit/ is set to PCNT_UNIT_0 which allows ESPShell to use any of PCNT units. In case user sketch uses 
- // some units (say, sketch is using UNIT0), the /pcnt_unit/ value can be adjusted ("var pcnt_unit 1") to prevent ESPShell
+ // some PCNT units (say, sketch is using UNIT0), the /pcnt_unit/ value can be adjusted ("var pcnt_unit 1") to prevent ESPShell
  // from accessing PCNT UNIT0.
  //
  // There are different types of counting:
@@ -50,7 +50,7 @@ static MUTEX(pcnt_mux); // protects access to units[] array
 // Through the code every counter is referenced simply by its number. 
 //
 static volatile struct {
-  unsigned int overflow;    // incremented after every PCNT_OVERFLOW pulses in ISR 
+  unsigned int overflow;    // incremented in ISR (counter overflow event, fires every 20000 pulses)
   unsigned int count;       // Pulses counted                         (only valid for stopped counters) 
   uint64_t     interval;    // Measurement interval in microseconds   (precise value for stopped counters, approximate for running ones) 
 
@@ -151,7 +151,7 @@ static void count_claim_interrupt(pcnt_unit_t unit) {
   pcnt_event_enable(unit, PCNT_EVT_H_LIM);
   pcnt_event_disable(unit, PCNT_EVT_ZERO); // or you will get extra interrupts (x2)
 
-  // Install ISR service, and register an interrupt handler. Don't use global PCNT interrupt here - it is buggy
+  // Install ISR service, and register an interr2upt handler. Don't use global PCNT interrupt here - it is buggy
   if (pcnt_counters == 1)
     pcnt_isr_service_install(0);
 
@@ -323,39 +323,40 @@ static void IRAM_ATTR count_pin_anyedge_interrupt(void *arg) {
 //
 bool count_wait_for_the_first_pulse(unsigned int pin) {
 
-  struct trigger_arg t = {          // An argument for the ISR
+  struct trigger_arg t = {          // argument for the ISR
     taskid_self(),
     pin
   };
 
-  unsigned long  ret = false,           // Return code. >0 everything is ok, a pulse has been received. 0=stop measurement, discard the result
+  bool  ret = false,                // Return code. >0 everything is ok, a pulse has been received. 0=stop measurement, discard the result
         fg = is_foreground_task();  // Foreground task? if yes then we add possibility to interrupt it by a keypress
 
-  uint32_t value = SIGNAL_TERM;     // Notification, sent by an ISR (GPIO interrupt handler) or sent by the "kill" command
+  uint32_t value = SIGNAL_TERM;     // Notification, (sent by an ISR (GPIO interrupt handler) or sent by the "kill" command)
 
-  gpio_set_intr_type(pin, GPIO_INTR_ANYEDGE);
-
-  // It is ok to call it multiple times, however IDF issues a warning; 
+  // Always install the GPIO isr service. Even if it was installed before.
   // The reason for calling it each time is to be sure that code will work as intended even if user sketch has uninstalled GPIO ISR service
+  gpio_set_intr_type(pin, GPIO_INTR_ANYEDGE);
   gpio_install_isr_service((int)ARDUINO_ISR_FLAG);            
   gpio_isr_handler_add(pin, count_pin_anyedge_interrupt, &t);
 
-  static_assert(TRIGGER_POLL >= PULSE_WAIT,"Set trigger poll interval >= default measurement time");
+  // Keeping TRIGGER_POLL >= PULSE_WAIT helps minimize number of calls to anykey_pressed()
+#if TRIGGER_POLL < PULSE_WAIT
+#   warning "Trigger poll interval is less than default measurement time. This can decrease frequency meter accuracy"
+#endif
 
+  // Wait for a notification:
+  // SIGNAL_GPIO is sent by gpio ISR when pulse is received (and this is what we wait for actually)
+  // SIGNAL_TERM is sent by command "kill" or (foreground tasks only) by pressing a key
   if (!fg)
-    ret = task_wait_for_signal(&value, 0); // for a background tasks we dont have to poll. Delay of 0 means "wait forever"
+    ret = task_wait_for_signal(&value, 0);
   else
-    // Detect keypress only if we are running in foreground.
-    // We do poll here instead of interrupt/task notification scheme because of its simplicity.
-    // Default value of a TRIGGER_POLL must be equal or higher than default measurement time to exclude calls to anykey_pressed()
+    // foreground tasks can be interrupted by a keypress, so we poll console with TRIGGER_POLL interval.
     while( (ret = task_wait_for_signal(&value, TRIGGER_POLL)) == false)
       if (anykey_pressed()) 
         break;
 
-  // Either "kill" command (sends SIGNAL_TERM) or interrupted by a keypress (/value/ didn't change, so SIGNAL_TERM again)
-  // In both cases we don't want to continue execution of calling function (i.e. cmd_count()) so return /false/ here
   if (value == SIGNAL_TERM) 
-    ret = 0;
+    ret = false; // cancel further processing
     
   gpio_isr_handler_remove(pin);
 
@@ -498,7 +499,7 @@ bad_filter:
   // A "trigger" keyword. Wait until first pulse, then proceed normally
   if (units[unit].trigger == 1) {
     
-    units[unit].been_triggered = count_wait_for_the_first_pulse(pin) ? 1 : 0; //TODO: ref
+    units[unit].been_triggered = count_wait_for_the_first_pulse(pin) ? 1 : 0;
     units[unit].trigger = 0;
 
     // interrupted by the "kill" or a keypress while was in waiting state? 
@@ -509,18 +510,21 @@ bad_filter:
     }
   }
 
-  // >>>> Actual measurement is made here <<<<
-  // Record a timestamp and start counting pulses for /wait/ milliseconds.
+  // Actual measurement is made here:
+  // >>>> START <<<<
+  // record a timestamp
   units[unit].tsta = q_micros();
   pcnt_counter_resume(unit);
   delay_interruptible(wait);
   // stop counting as soon as possible to get more accurate results, especially at higher frequencies
   pcnt_counter_pause(unit);
-  wait = q_micros() - units[unit].tsta; // actual measurement time
-  // >>>> Stop counting <<<<
+  // actual measurement time in MICROSECONDS
+  wait = q_micros() - units[unit].tsta; 
+  // >>>> STOP <<<<
   
  // Free up resources associated with the counter. Free up interrupt, stop and clear counter, calculate
  // frequency, pulses count (yes it is calculated). Store calculated values & a timestamp in /units[]/ for later reference
+ // /wait/ is expected to hold measurement interval value in microseconds or 0 at this point.
 release_hardware_and_exit:
 
   // read 16-bit counter value, add Number_Of_Interrupts * Number_Of_Pulses_Per_Interrupt
@@ -529,14 +533,12 @@ release_hardware_and_exit:
   count_release_interrupt(unit);
   units[unit].count = units[unit].overflow * PCNT_OVERFLOW + (unsigned int)count + units[unit].been_triggered;
 
-  // real value. it will be different from planned value if command "count" was interrupted
-  units[unit].interval = wait; // wait is microseconds now.
+  units[unit].interval = wait; 
 
   // mark this PCNT unit as unused
   count_release_unit(unit);
 
-  // print measurement results
-  //q_printf("%% %u pulses in %.3f seconds (%.1f Hz, %u interrupts)\r\n", units[unit].count, (float)wait / 1000000.0f, count_unit_frequency,units[unit].overflow);
+  // print measurement results. TODO: make <1Hz display possible
   unsigned int freq;
   count_read_counter(unit,&freq,NULL);
   q_printf("%% %u pulses in approx. %llu ms (%u Hz, %u interrupts)\r\n", units[unit].count, units[unit].interval / 1000ULL, freq, units[unit].overflow);
