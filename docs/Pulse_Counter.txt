@@ -237,6 +237,7 @@ pin as a squarewave generator rewrites pin settings so previous settings can be
 lost. On "pin save" and "pin load" please refer to Pin_Commands.txt
 
 
+
 USE CASE: PWM GENERATOR + COUNTER
 ---------------------------------
 

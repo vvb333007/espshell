@@ -130,3 +130,32 @@ at example below to see how changing this variable affects channel selection beh
 
 Setting "pwm_ch_inc "to 0 will prevent channel number from changing (unless /channel/
 argument is used)
+
+
+DISPLAYING PWM INFORMATION
+--------------------------
+To display status & parameters of PWM signals there is a dedicated "show" command:
+
+  "show pwm" - Displays current state of all PWM sources:
+
+  Example output looks similar to the one below
+
+  esp32#>sh pwm
+  %      -- Currently active PWM generators --
+  %  GPIO | Frequency | DutyAbs | Duty (%) | HW channel
+  % ------+-----------+---------+----------+-------------
+  %    2  |  10000000 |       4 |       57 | LEDC0
+  %    4  |     50000 |     512 |       50 | LEDC2
+  %
+  % PWM clock source is "APB", (running at 80000000 Hz)
+  esp32#>
+
+  Table above says that pin#2 is active PWM source, 10MHz, 57% duty cycle; Although it
+  was set to 50% by command "pwm 2 10000000 0.5", limitations of the hardware only allow
+  3 bits as the duty value, so it can be set only approximately;
+  
+  DutyAbs is the absolute duty cycle value, which depends on duty % and duty resolution 
+  parameters; Other columns carry pin numbers, frequencies and a hardware channel number
+  used.
+
+ 

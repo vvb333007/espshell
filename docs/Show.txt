@@ -24,6 +24,8 @@ umbrella
 KEYWORDS
 --------
 
+
+
 "iomux" - This keyword is used to display an IO_MUX pin assignment: lists all possible
 IO_MUX functions for every pin, displays current pin function. More on IO_MUX and GPIO Matrix
 is on Espressif's ESP32 Technical Reference. Example output of the command:
@@ -222,26 +224,10 @@ To display 3 elements of the same array:
 
 --
 
-"counters" - displays frequency meters / pulse counters states & values. Counters are created
-and started by using "count" command. Details on the frequency meter / pulse counter use can
-be found in "docs/Pulse_Counter.txt"
 
-Typical output looks like that:
+"camera" TBD
 
-    esp32#>show count
-    %PCNT|GPIO#|  Status |   TaskID   | Pulse count | Time, msec | Frequency
-    %----+-----+---------+------------+-------------+------------+------------
-    %  0 |   5 | Running | 0x3fca389c |           0 |      16620 |        0 Hz
-    %  1 |   1 | Trigger | 0x3fca3b08 |           0 |          0 |        0 Hz
-    %  2 |   0 | Unused! | 0x00000000 |           0 |          0 |        0 Hz
-    %  3 |   0 | Unused! | 0x00000000 |           0 |          0 |        0 Hz
-    % 2 counters is currently in use
-    % Use command "kill TASK_ID" to stop a running counter
-    esp32#>
+"version" - Shows current ESPShell version.
 
---
-
-"version" - shows current ESPShell version. The same information could be obtained from
-"show cpuid" output
 
 
