@@ -84,7 +84,7 @@ static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][IOMUX_NFUNC] = {
   { "21", "VSPIHD", "21", 0, 0, "EMAC_TX_EN" },
   { "22", "VSPIWP", "22", "U0RTS", 0, "EMAC_TXD1" },
   { "23", "VSPID", "23", "HS1_STROBE", 0, 0 },
-  { "24", "24(1)", "24(2)", "24(3)", "24(4)", "24(5)" },
+  { 0, 0, 0, 0, 0, 0 },
   { "25", 0, "25", 0, 0, "EMAC_RXD0" },
   { "26", 0, "26", 0, 0, "EMAC_RXD1" },
   { "27", 0, "27", 0, 0, "EMAC_RX_DV" },
@@ -225,7 +225,7 @@ static const char *iomux_funame(unsigned char pin, unsigned char func) {
 // displayed after function name
 //
 
-static int pin_show_mux_functions() {
+static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
   unsigned char pin,i;
 
   bool pd, pu, ie, oe, od, slp_sel;
@@ -245,7 +245,7 @@ static int pin_show_mux_functions() {
   // run through all the pins
   for (pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++) {
     
-    if (io_mux_func_name[pin][0]) { // can't use pin_exist() here : it is not silent 
+    if (pin_exist_silent(pin)) {
       if (esp_gpio_is_pin_reserved(pin))
         q_printf( "%% !<w>%02u</> ",pin);
       else
@@ -255,7 +255,7 @@ static int pin_show_mux_functions() {
       gpio_ll_get_io_config(&GPIO, pin, &pu, &pd, &ie, &oe, &od, &drv, &fun_sel, &sig_out, &slp_sel);
 
       // For each pin, run through all its functions. 
-      // Highligh function that is currently assigned to the pin (via per/post tags)
+      // Highligh function that is currently assigned to the pin (via pre/post tags)
       for (int i = 0; i < IOMUX_NFUNC; i++) {
         const char *pre = (i == fun_sel) ? "<r>" : "";    // gcc must fold two comparisions into one
         const char *post = (i == fun_sel) ? "*</>" : " ";

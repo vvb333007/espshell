@@ -1461,6 +1461,14 @@ static int cmd_files_mount0(int argc, char **argv) {
 }
 #pragma GCC diagnostic warning "-Wformat"
 
+// "show mount"
+// "show mount PATH"
+//
+static int cmd_show_mount(int argc, char **argv) {
+    if ( argc < 3) // "show mount"
+      return cmd_files_mount0(1, argv);
+    return files_show_mountpoint(argv[2]) == 0 ? 0 : 2;
+}
 
 
 // "cd"

@@ -94,9 +94,10 @@ static int cmd_echo(int, char **);
 static int cmd_suspend(int, char **);
 static int cmd_resume(int, char **);
 static int cmd_kill(int, char **argv);
-static int cmd_cpu(int, char **);
+//static int cmd_cpu(int, char **);
 static int cmd_cpu_freq(int, char **);
 static int cmd_uptime(int, char **);
+static int cmd_show_cpuid(int, char **);
 
 static int NORETURN cmd_reload(int, char **);
 static int cmd_nap(int, char **);
@@ -124,8 +125,6 @@ static int cmd_var_show(int, char **);
 
 // "show" commands
 static int cmd_show(int, char **);
-static int cmd_show_address(int, char **);
-static int cmd_show_pwm(int, char **);
 
 // common entries
 static int cmd_exit(int, char **);
@@ -611,8 +610,8 @@ static const struct keywords_t keywords_main[] = {
   { "cpu", cmd_cpu_freq, 1,
     HELPK("% \"<b>cpu FREQ</>\"\r\n% Set CPU frequency to FREQ Mhz"), "Set/show CPU parameters" },
 
-  { "cpu", cmd_cpu, NO_ARGS,
-    HELPK("% \"<b>cpu</>\"\r\n% Show CPUID and CPU/XTAL/APB frequencies"), NULL },
+  //{ "cpu", cmd_cpu, NO_ARGS,
+//    HELPK("% \"<b>cpu</>\"\r\n% Show CPUID and CPU/XTAL/APB frequencies"), NULL },
 
   { "suspend", cmd_suspend, NO_ARGS,
     HELPK("% \"<b>suspend</>\"\r\n% Suspend sketch execution (Hotkey: Ctrl+C). Resume with \"resume\""), "Suspend sketch/task execution" },

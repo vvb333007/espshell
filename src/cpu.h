@@ -57,13 +57,13 @@ static void __attribute__((constructor)) cpu_read_frequencies() {
 #endif
 }
 
-//"cpu"
+//"show cpuid"
 //
 // Display CPU ID information, frequencies and
 // chip temperature
 //
 // TODO: keep in sync with latest ArduinoCore
-static int cmd_cpu(int argc, char **argv) {
+static int cmd_show_cpuid(int argc, char **argv) {
 
   esp_chip_info_t chip_info;
   const char *chipid = "ESP32-(Unknown)";
@@ -117,7 +117,7 @@ static int cmd_cpu(int argc, char **argv) {
   cpu_read_frequencies();
 
   q_print("% <u>Hardware:</>\r\n");
-  q_printf("%% CPU ID: %s,%u core%s, Rev.: %d.%d\r\n%% CPU frequency is %uMhz, Xtal %uMhz, APB bus %uMhz\r\n%% Chip temperature: %.1fC\r\n",
+  q_printf("%% CPU ID: %s, (%u core%s), Chip revision: %d.%d\r\n%% CPU frequency is %uMhz, Xtal %uMhz, APB bus %uMhz\r\n%% Chip temperature: %.1f deg. Celsius\r\n",
            chipid,
            PPA(chip_info.cores),
            (chip_info.revision >> 8) & 0xf,

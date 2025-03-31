@@ -23,18 +23,21 @@
  //
  // There are different types of counting:
  //
- // 1. Immediate counting: command "count PIN_NUMBER", a blocking call
- // 2. Background counting: command "count ... &", async call
+ // 1. Immediate counting: command "count PIN_NUMBER", a blocking call. User waits for the command to complete
+ // 2. Background counting: command "count ... &", user can issue new espshell commands immediately
  // 3. Triggered counting (either immediate or background: "count ... trigger" or  "count ... trigger &"
- 
+ //
+ // Terminology:
+ // "measurement time", "wait" or "delay" - is the time interval when counter is counting (not paused). Accuracy of this one defines overall measurement accuracy
+ // "trigger", "trigger state" - a counter, which is paused and gets resumed by the first incoming pulse; a counter waiting to be resumed
+ // "pcnt overflow interrupt" - an ISR which gets called each time counter reaches 20000 pulses
+ // "GPIO anyedge interrupt" - an ISR which gets called on incoming pulse
+ //
 #if COMPILING_ESPSHELL
 
 #define TRIGGER_POLL   1000  // A keypress check interval, msec (better keep it >= PULSE_WAIT)
 #define PULSE_WAIT     1000  // Default measurement time, msec
 #define PCNT_OVERFLOW 20000  // PCNT interrupt every 20000 pulses (range is [1..2^16-1])
-
-// UNUSED_PIN was moved to espshell.c
-//#define UNUSED_PIN       -1  
 
 static int               pcnt_unit = PCNT_UNIT_0;        // First PCNT unit which is allowed to use by ESPShell, convar (accessible thru "var" command)
 static int               pcnt_counters = 0;              // Number of currently running counters.
@@ -43,7 +46,7 @@ static MUTEX(pcnt_mux); // protects access to units[] array
 
 // Hardware counters are described by /units/ array, whose elements are per-counter data;
 // units[0] is used for PCNT#0, unit[5] -> PCNT#5 and so on.
-// Active (running) counters have their /.in_use/ set to 1, corresponding /units[]/ entry holds an approximate information
+// Active (running) counters have their /units[].in_use/ field set to 1 and information frequency informattion is approximate
 // When counter stops, its information is filled in its units[] entry: exact number of pulses received, pin number, measurement 
 // interval and so on.
 //
@@ -70,8 +73,18 @@ static volatile struct {
 } units[PCNT_UNIT_MAX] = { 0 };
 
 
-// PCNT interrupt handler. Fired when counting limit is reached (20000 pulses, PCNT_OVERFLOW)
+// Argument of count_pin_anyedge_interrupt(). When interrupt fires, the abovementioned function uses this argument
+// to send an event to a calling task.
+struct trigger_arg {
+  TaskHandle_t taskid;  // counter's task id
+  unsigned int pin;     // pin that has generated the interrupt
+};
+
+
+
+// PCNT overflow handler. Fired when counting limit is reached (20000 pulses, PCNT_OVERFLOW)
 // ISR accesses units[] array without using mutex because this increment won't disrupt any data nor generate illegal memoy access
+//
 static void IRAM_ATTR pcnt_unit_interrupt(void *arg) {
   const pcnt_unit_t unit = (const pcnt_unit_t )arg;
   units[unit].overflow++;
@@ -79,8 +92,29 @@ static void IRAM_ATTR pcnt_unit_interrupt(void *arg) {
  }
 
 
+// ESPShell uses GPIO interrupt to catch the first pulse when counter is in "trigger" mode
+// Once pulse is detected the interrupt is fired (count_pin_anyedge_interrupt(void *)) which disables further interrupts
+// and unblocks counter task so counter can start counting. All these transient processes **may** have impact on accuracy
+// at higher frequencies.
+//
+
+// "ISR Services" style interrupt handler.
+// Called by the IDF whenever a pulse (edge) is detected on a pin
+//
+static void IRAM_ATTR count_pin_anyedge_interrupt(void *arg) {
+
+  struct trigger_arg *t = (struct trigger_arg *)arg;
+  
+  // Send an event to PCNT task blocking on TaskNotifyWait so it can unblock and start counting.
+  task_signal_from_isr(t->taskid, SIGNAL_GPIO);
+  // Disable further interrupts immediately
+  gpio_set_intr_type(t->pin, GPIO_INTR_DISABLE);
+}
+
+
+
 // Find first unused entry in units[] array.
-// Entries are searched from beginning to the end (i.e. from PCNT0 to PCNT7), however entries which
+// Entries are searched from the beginning to the end (i.e. from PCNT0 to PCNT7), however entries which
 // number is equal or less than /pcnt_unit/ convar are ignored. This 'offset' is required for cases
 // when ESPShell interferes with sketch's PCNT code
 //
@@ -116,6 +150,7 @@ static int count_claim_unit() {
 }
 
 // Mark PCNT unit as "Stopped"
+//
 static void count_release_unit(int unit) {
   mutex_lock(pcnt_mux);
   if (unit < PCNT_UNIT_MAX && unit >= 0 && units[unit].in_use) {
@@ -123,6 +158,21 @@ static void count_release_unit(int unit) {
     units[unit].taskid = 0; // don't display irrelevant TaskID's: suspend/resume/kill on this ID will likely crash whole system
     --pcnt_counters;
   }
+  mutex_unlock(pcnt_mux);
+}
+
+// Configure & enable interrupts on the unit; installs ISR service and attaches "overflow interrupt" handler
+// 
+static void count_claim_interrupt(pcnt_unit_t unit) {
+  mutex_lock(pcnt_mux);
+  pcnt_event_enable(unit, PCNT_EVT_H_LIM);
+  pcnt_event_disable(unit, PCNT_EVT_ZERO); // or you will get extra interrupts (x2)
+
+  // Install ISR service, and register an interr2upt handler. Don't use global PCNT interrupt here - it is buggy
+  if (pcnt_counters == 1)
+    pcnt_isr_service_install(0);
+
+  pcnt_isr_handler_add(unit, pcnt_unit_interrupt, (void *)unit);
   mutex_unlock(pcnt_mux);
 }
 
@@ -144,27 +194,13 @@ static void count_release_interrupt(pcnt_unit_t unit) {
   mutex_unlock(pcnt_mux);
 }
 
-// Enable H_LIM event & enable interrupts on the unit. 
-// 
-static void count_claim_interrupt(pcnt_unit_t unit) {
-  mutex_lock(pcnt_mux);
-  pcnt_event_enable(unit, PCNT_EVT_H_LIM);
-  pcnt_event_disable(unit, PCNT_EVT_ZERO); // or you will get extra interrupts (x2)
-
-  // Install ISR service, and register an interr2upt handler. Don't use global PCNT interrupt here - it is buggy
-  if (pcnt_counters == 1)
-    pcnt_isr_service_install(0);
-
-  pcnt_isr_handler_add(unit, pcnt_unit_interrupt, (void *)unit);
-  mutex_unlock(pcnt_mux);
-}
 
 // Read pulses count, calculates frequency and returns time interval during which measurement were made. Can be called on stopped
 // or running counters. Stopped counters retain their values for futher reference via "show counters" shell command.
 //
-// /unit/     -  PCNT unit number
-// /freq/     - If not NULL: Pointer where calculated frequency will be stored
-// /interval/ - If not NULL: Exact measurement time
+// /unit/     - IN:  PCNT unit number
+// /freq/     - OUT: If not NULL: Pointer where calculated frequency will be stored
+// /interval/ - OUT: If not NULL: Exact measurement time in microseconds
 //
 // Returns number of pulses counted
 //
@@ -201,13 +237,15 @@ static unsigned int count_read_counter(int unit, unsigned int *freq, uint64_t *i
 }
 
 // Human-readable PCNT unit state 
-// /i/ is the PCNT unit index (array units[] index)
 //
-static const char *count_state_name(int i) {
-  return units[i].in_use  ? (units[i].trigger ? "<i>Trigger</>"
-                                              : "<g>Running</>")
-                          : (units[i].been_used ? "<o>Stopped</>"
-                                                : "Unused ");
+static const char *count_state_name(int unit) {
+
+  MUST_NOT_HAPPEN(unit < 0  || unit >= PCNT_UNIT_MAX);
+
+  return units[unit].in_use  ? (units[unit].trigger ? "<i>Trigger</>"
+                                                    : "<g>Running</>")
+                             : (units[unit].been_used ? "<o>Stopped</>"
+                                                      : "Unused ");
 }
 
 // Clear counter(s) which was/are associated with given /pin/
@@ -235,79 +273,11 @@ static int count_clear_counter(int pin) {
         units[unit].pin = units[unit].taskid = 0;
         units[unit].tsta = 0;
       }
-      q_printf("%% Counter #%u (while is in %s state) has been cleared\r\n", unit, count_state_name(unit));
+      q_printf("%% Counter #%u (%s state) has been cleared\r\n", unit, count_state_name(unit));
     }
   }
   mutex_unlock(pcnt_mux);
   return 0;
-}
-
-// Display counters (stopped or running. information is retained on stopped counters)
-// as a fancy table.
-//
-// This one is called from cmd_show(...)
-//
-static int count_show_counters() {
-
-  int i;
-  unsigned int cnt, freq;
-  uint64_t interval;
-
-  // Fancy header
-  q_print("<r>"
-          "%PCNT|Pin|  Status |   TaskID   | Pulse count | Time, msec |Frequency |Filter,ns</>\r\n"
-          "%----+---+---------+------------+-------------+------------+----------+---------\r\n");
-
-  mutex_lock(pcnt_mux);
-  for (i = 0; i < PCNT_UNIT_MAX; i++) {
-    cnt = count_read_counter(i,&freq,&interval);
-    
-// wish we can have #pragma in #define ..
-  #pragma GCC diagnostic ignored "-Wformat"
-    q_printf("%%  %d |% 3u| %s | 0x%08x | <g>% 11u</> | % 10u | % 8u | ", i, units[i].pin, count_state_name(i), units[i].taskid, cnt, (unsigned int )(interval / 1000ULL), freq); // TODO: bad typecast
-    if (units[i].filter_enabled)
-      q_printf(" <i>%u</>\r\n", units[i].filter_value);
-    else
-      q_print("-off-\r\n");
-  #pragma GCC diagnostic warning "-Wformat"
-  }
-
-  if (pcnt_counters) {
-    q_printf("%% %u counter%s %s currently in use\r\n",PPA(pcnt_counters), pcnt_counters == 1 ? "is" : "are");
-    HELP(q_print("% Use command \"<i>kill TASK_ID</>\" to stop a running counter\r\n"));
-  }
-  else
-    q_print("% All counters are stopped\r\n");
-  mutex_unlock(pcnt_mux);
-  return 0;
-}
-
-// Argument of count_pin_anyedge_interrupt(). When interrupt fires, the abovementioned function uses this argument
-// to send an event to a calling task.
-struct trigger_arg {
-  TaskHandle_t taskid;  // counter's task id
-  unsigned int pin;     // pin that has generated the interrupt
-};
-
-
-// PIN interrupt helpers. 
-// ESPShell uses GPIO interrupt to catch the first pulse when counter is in "trigger" mode
-// Once pulse is detected the interrupt is fired (count_pin_anyedge_interrupt(void *)) which disables further interrupts
-// and unblocks counter task so counter can start counting. All these transient processes **may** have impact on accuracy
-// at higher frequencies.
-//
-
-// "ISR Services" style interrupt handler.
-// Called by the IDF whenever a pulse (edge) is detected on a pin
-//
-static void IRAM_ATTR count_pin_anyedge_interrupt(void *arg) {
-
-  struct trigger_arg *t = (struct trigger_arg *)arg;
-  
-  // Send an event to PCNT task blocking on TaskNotifyWait so it can unblock and start counting.
-  task_signal_from_isr(t->taskid, SIGNAL_GPIO);
-  // Disable further interrupts immediately
-  gpio_set_intr_type(t->pin, GPIO_INTR_DISABLE);
 }
 
 
@@ -545,4 +515,45 @@ release_hardware_and_exit:
 
   return 0;
 }
+
+// Display counters (stopped or running. information is retained on stopped counters)
+// as a fancy table.
+//
+// This one is called from cmd_show(...)
+//
+static int cmd_show_counters(UNUSED int argc, UNUSED char **argv) {
+
+  int i;
+  unsigned int cnt, freq;
+  uint64_t interval;
+
+  // Fancy header
+  q_print("<r>"
+          "%PCNT|Pin|  Status |   TaskID   | Pulse count | Time, msec |Frequency |Filter,ns</>\r\n"
+          "%----+---+---------+------------+-------------+------------+----------+---------\r\n");
+
+  mutex_lock(pcnt_mux);
+  for (i = 0; i < PCNT_UNIT_MAX; i++) {
+    cnt = count_read_counter(i,&freq,&interval);
+    
+// wish we can have #pragma in #define ..
+  #pragma GCC diagnostic ignored "-Wformat"
+    q_printf("%%  %d |% 3u| %s | 0x%08x | <g>% 11u</> | % 10u | % 8u | ", i, units[i].pin, count_state_name(i), units[i].taskid, cnt, (unsigned int )(interval / 1000ULL), freq); // TODO: bad typecast
+    if (units[i].filter_enabled)
+      q_printf(" <i>%u</>\r\n", units[i].filter_value);
+    else
+      q_print("-off-\r\n");
+  #pragma GCC diagnostic warning "-Wformat"
+  }
+
+  if (pcnt_counters) {
+    q_printf("%% %u counter%s %s currently in use\r\n",PPA(pcnt_counters), pcnt_counters == 1 ? "is" : "are");
+    HELP(q_print("% Use command \"<i>kill TASK_ID</>\" to stop a running counter\r\n"));
+  }
+  else
+    q_print("% All counters are stopped\r\n");
+  mutex_unlock(pcnt_mux);
+  return 0;
+}
+
 #endif // #if COMPILING_ESPSHELL
