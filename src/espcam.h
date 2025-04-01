@@ -29,7 +29,7 @@
 //show camera models
 //show camera pinout [MODEL | custom]
 //show camera settings
-//
+//show camera sensor
 
 static camera_config_t config;      // camera config TODO: rename
 static camera_fb_t *cam_fb = NULL;  // last captured picture
@@ -69,6 +69,40 @@ static const struct campins {
 // command can be used
 //
 static struct campins Custom = {"custom", {0,0,      0,    0,0,    0,0,0,0,0,0,0,0,           0,0,0}};
+
+static const char *Camres[] = {
+  [FRAMESIZE_96X96] = "96x96",
+  [FRAMESIZE_QQVGA] = "160x120",
+  [FRAMESIZE_128X128] = "128x128",
+  [FRAMESIZE_QCIF] = "176x144",
+  [FRAMESIZE_HQVGA] = "240x176",
+  [FRAMESIZE_240X240] = "240x240",
+  [FRAMESIZE_QVGA] = "320x240",
+  [FRAMESIZE_320X320] = "320x320",
+  [FRAMESIZE_CIF] = "400x296",
+  [FRAMESIZE_HVGA] = "480x320",
+  [FRAMESIZE_VGA] = "640x480",
+  [FRAMESIZE_SVGA] = "800x600",
+  [FRAMESIZE_XGA] = "1024x768",
+  [FRAMESIZE_HD] = "1280x720",
+  [FRAMESIZE_SXGA] = "1280x1024",
+  [FRAMESIZE_UXGA] = "1600x1200",
+  [FRAMESIZE_FHD] = "1920x1080",
+  [FRAMESIZE_P_HD] = " 720x1280",
+  [FRAMESIZE_P_3MP] = " 864x1536",
+  [FRAMESIZE_QXGA] = "2048x1536",
+  [FRAMESIZE_QHD] = "2560x1440",
+  [FRAMESIZE_WQXGA] = "2560x1600",
+  [FRAMESIZE_P_FHD] = "1080x1920",
+  [FRAMESIZE_QSXGA] = "2560x1920",
+  [FRAMESIZE_5MP] = "2592x1944"
+};
+
+static inline const char *cam_resolution(int i) {
+  if ( i< 0 || i > FRAMESIZE_5MP)
+    return "unknown";
+  return Camres[i];
+}
 
 // Fill relevant portions of camera_config_t structure
 // according to the camera model
@@ -149,43 +183,124 @@ static void cam_show_pinout(const camera_config_t *cc) {
 //show camera settings
 static int cmd_show_camera(int argc, char **argv) {
 
+    sensor_t *cam;
+    camera_sensor_info_t *info;
+
   if (argc < 3)
     return CMD_MISSING_ARG;
 
+  // "show camera models"
   if (!q_strcmp(argv[2],"models")) {
-      q_print("% Known boards:\r\n");
-      for (int i = 0; Campins[i].model ;i++)
-        q_printf("%% %u. \"%s\"\r\n",i + 1,Campins[i].model);
-      q_printf("%% %u. \"custom\"\r\n",i + 1);
-      return 0;
-  } else if (!q_strcmp(argv[2],"pinout")) {
-      if (argc == 3) {
-        if (!cam_good) {
-          q_print("% <e>Camera model name is expected</>\r\n");
-          return CMD_MISSING_ARG;
-        }
-        // Print current pinout
-        cam_show_pinout(&config);
-      } else {
-        camera_config_t tmp = { 0 };
-        if (cam_config_fill_pins(&tmp,argv[3]))
-          cam_show_pinout(&tmp);
-        else
-          q_print("% Unknown camera model / keyword\r\n");
-      }
-  } else if (!q_strcmp(argv[2],"settings")) {
-    // TODO: implement
-  } else
-    return 2;
+    q_print("% Known boards:\r\n");
+    int i;
+    for (i = 0; Campins[i].model ;i++)
+      q_printf("%% %u. \"%s\"\r\n",i + 1,Campins[i].model);
+    q_printf("%% %u. \"custom\"\r\n",i + 1);
 
-  return 0;
+    HELP(q_print( "%\r\n"
+                  "% Use model names from the list above for \"camera up\" and \"show camera pinout\"\r\n"
+                  "% Configure custom pinout with \"camera pinout\", apply with \"camera up custom\"\r\n"));
+    return 0;
+  }
+
+  // "show camera pinout [MODEL | custom]"
+  // "show camera pinout"
+  if (!q_strcmp(argv[2],"pinout")) {
+    if (argc == 3) {
+      if (!cam_good) {
+        q_print("% <e>Camera model name is expected</>\r\n");
+        return CMD_MISSING_ARG;
+      }
+      // Print current pinout
+      cam_show_pinout(&config);
+    } else {
+      camera_config_t tmp = { 0 };
+      if (cam_config_fill_pins(&tmp,argv[3]))
+        cam_show_pinout(&tmp);
+      else {
+        q_print("% Unknown camera model / keyword\r\n");
+        return 3;
+      }
+    }
+    return 0;
+  }
+
+  // "show camera settings"
+  //
+  if (!q_strcmp(argv[2],"settings")) {
+    if (!cam_good)
+      goto initialize_camera_first;
+
+    if ((cam = esp_camera_sensor_get()) != NULL) 
+      q_printf(
+        "%% Current settings:\r\n"
+        "%% Frame size: %s, scaling: %s, binning: %s\r\n"
+        "%% Quality: %d, Beughtness: %d, Contrast: %d, Saturation: %d, Sharpness: %d\r\n"
+        "%% Denoise factor: %d, Special effects: %d\r\n"
+        "%% \r\n"
+        "%% WB mode: %d, AutoWB: %d, AWB Gain: %d\r\n"
+        "%% \r\n"
+        "%% AEC: %d, AEC2: %d, AE Level: %d, AEC Value: %d\r\n"
+        "%% \r\n"
+        "%% AGC: %d, AGC Gain: %d, Gain ceiling: %d\r\n"
+        "%% \r\n"
+        "%% BPC: %d, WPC: %d, LENC: %d, HMIRROR: %d, VFLIP: %d\r\n",
+        cam_resolution(cam->status.framesize),
+        cam->status.scale ? "Yes" : "No",
+        cam->status.binning ? "Yes" : "No",
+        cam->status.quality,cam->status.brightness,cam->status.contrast, cam->status.saturation, cam->status.sharpness,
+        cam->status.denoise, cam->status.special_effect,
+        cam->status.wb_mode, cam->status.awb, cam->status.awb_gain,
+        cam->status.aec, cam->status.aec2, cam->status.ae_level, cam->status.aec_value,
+        cam->status.agc, cam->status.agc_gain, cam->status.gainceiling,
+        cam->status.bpc,cam->status.wpc,cam->status.lenc, cam->status.hmirror, cam->status.vflip);
+      
+        /*
+    uint8_t raw_gma;
+    uint8_t dcw;
+    uint8_t colorbar;
+        */
+    return 0;
+  }
+
+  // "show camera sensor"
+  if (!q_strcmp(argv[2],"sensor")) {
+
+    if (!cam_good)
+      goto initialize_camera_first;
+
+    if ((cam = esp_camera_sensor_get()) != NULL) {
+      q_printf(" %% <r>Camera module information:           </>\r\n"
+                "%% Camera ID (MIDH=%x, MIDL=%x, PID=%x, VER=%x\r\n)"
+                "%% I2C slave address: %x; Main clock (XCLK) is %.1f MHz\r\n",
+                    cam->id.MIDH, cam->id.MIDL, cam->id.PID, cam->id.VER,
+                    cam->slv_addr, (float)cam->xclk_freq_hz / 1000000.0f);
+
+      if ((info = esp_camera_sensor_get_info(&cam->id)) != NULL) 
+        q_printf( "%% Sensor model is \"%s\"\r\n"
+                  "%% Max resolution: %d, JPEG support: %s\r\n",
+                  info->name,
+                  info->max_size,
+                  info->support_jpeg ? "Yes" : "No");
+      
+      return 0;
+    }
+    q_print("% <e>Can not access camera sensor information</>\r\n");
+    return CMD_FAILED;
+  }
+  return 2;
+
+initialize_camera_first:
+  q_print("%% Initialize camera first, using \"camera up\" command\r\n");
+  return CMD_FAILED;
 }
 
 //"camera pinout PWDN RESET XCLK SDA SCL D7 D6 D5 D4 D3 D2 D1 D0 VSYNC HREF PCLK"
 static int cmd_cam_pinout(int argc, char **argv) {
 
   if (argc < 18) {
-    q_printf("%% <b>camera pinout</> <i>PWDN RESET XCLK SDA SCL D7 D6 D5 D4 D3 D2 D1 D0 VSYNC HREF PCLK</>\r\n");
+    HELP(q_print( "% Syntax is:\r\n"
+                  "% <b>camera pinout</> <o>PWDN RESET</> <i>XCLK</> <o>SDA SCL</> <g>D7 D6 D5 D4 D3 D2 D1 D0</> <i>VSYNC HREF PCLK</>\r\n"));
     return CMD_MISSING_ARG;
   }
 
@@ -597,15 +712,10 @@ static int cmd_cam(int argc, char **argv) {
     return 0;
   }
 
-  // "camera settings"
   if (!q_strcmp(argv[1], "settings")) change_command_directory(0, keywords_espcam, PROMPT_ESPCAM, "camera"); else
-  // camera capture
-  if (!q_strcmp(argv[1], "capture")) err = cmd_camera_capture(argc, argv);
-  // camera filesize
-  if (!q_strcmp(argv[1], "filesize")) err = cmd_camera_filesize(argc, argv);
-  // camera transfer
-  if (!q_strcmp(argv[1], "transfer")) err = cmd_camera_transfer(argc, argv);
-  // camera down
+  if (!q_strcmp(argv[1], "capture")) err = cmd_camera_capture(argc, argv); else
+  if (!q_strcmp(argv[1], "filesize")) err = cmd_camera_filesize(argc, argv); else
+  if (!q_strcmp(argv[1], "transfer")) err = cmd_camera_transfer(argc, argv); else
   if (!q_strcmp(argv[1], "down")) err = cmd_camera_down(argc, argv);  else err = 1;  // unrecoginzed argument
 
   return err;

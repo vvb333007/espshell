@@ -246,10 +246,17 @@ static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
   for (pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++) {
     
     if (pin_exist_silent(pin)) {
-      if (esp_gpio_is_pin_reserved(pin))
-        q_printf( "%% !<w>%02u</> ",pin);
-      else
-        q_printf( "%%  %02u ",pin);
+      // add "!" before pin number for RESERVED pins. 
+      // Input-only pins are painted green
+      char color = 'n', mark = ' ';
+      if (pin_is_input_only_pin(pin))
+        color = 'g';
+      if (esp_gpio_is_pin_reserved(pin)) {
+        mark = '!';
+        if (color == 'n')
+          color = 'w';
+      }
+      q_printf( "%% %c<%c>%02u</> ",mark,color,pin);
 
       // get pin IO_MUX function currently selected
       gpio_ll_get_io_config(&GPIO, pin, &pu, &pd, &ie, &oe, &od, &drv, &fun_sel, &sig_out, &slp_sel);
@@ -267,10 +274,10 @@ static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
     }
   }
   HELP(q_print( "\r\n"
-                "% NOTE 1: To select GPIO matrix use function #" xstr(PIN_FUNC_GPIO) " or\r\n"
-                "%         use \"pin X matrix\" command where \"X\" is the pin number\r\n"
-                "% NOTE 2: Function, that is currently assigned to the pin is <r>marked with \"*\"</>\r\n"
-                "% NOTE 3: Pins that are RESERVED are marked with \"<r>!</>\", avoid them\r\n"));
+                "% Legend:\r\n"
+                "%   Function, that is currently assigned to the pin is <r>marked with \"*\"</>\r\n"
+                "%   Input-only pins are <g>green</>\r\n"
+                "%   Pins that are <w>RESERVED</> all marked with \"<b>!</>\", avoid them!\r\n"));
   return 0;
 }
 

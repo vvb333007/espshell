@@ -79,13 +79,13 @@ static int cmd_show_cpuid(int argc, char **argv) {
 
   switch (pkg_ver) {
     case EFUSE_RD_CHIP_VER_PKG_ESP32D0WDQ6: if (chip_info.revision / 100 == 3) 
-                                              chipid = "ESP32-D0WDQ6-V3"; else 
-                                              chipid = "ESP32-D0WDQ6"; break;
+                                              chipid = "ESP32-D0WD-Q6-V3"; else 
+                                              chipid = "ESP32-D0WD-Q6"; break;
     case EFUSE_RD_CHIP_VER_PKG_ESP32D0WDQ5: if (chip_info.revision / 100 == 3) 
-                                              chipid = "ESP32-D0WD-V3"; else 
-                                              chipid = "ESP32-D0WD"; break;
+                                              chipid = "ESP32-D0WD-Q5-V3"; else 
+                                              chipid = "ESP32-D0WD-Q5"; break;
     case EFUSE_RD_CHIP_VER_PKG_ESP32D2WDQ5:   chipid = "ESP32-D2WD-Q5"; break;
-    case EFUSE_RD_CHIP_VER_PKG_ESP32PICOD2:   chipid = "ESP32-PICO-D2"; break;
+    case EFUSE_RD_CHIP_VER_PKG_ESP32PICOD2:   chipid = "ESP32-PICO-D2 / ESP32-U4WDH"; break;
     case EFUSE_RD_CHIP_VER_PKG_ESP32PICOD4:   chipid = "ESP32-PICO-D4"; break;
     case EFUSE_RD_CHIP_VER_PKG_ESP32PICOV302: chipid = "ESP32-PICO-V3-02"; break;
     case EFUSE_RD_CHIP_VER_PKG_ESP32D0WDR2V3: chipid = "ESP32-D0WDR2-V3"; break;
@@ -162,7 +162,7 @@ static int cmd_show_cpuid(int argc, char **argv) {
 //
 // Set cpu frequency.
 //
-static int cmd_cpu_freq(int argc, char **argv) {
+static int cmd_cpu(int argc, char **argv) {
 
   if (argc < 2)
     return CMD_MISSING_ARG;  // not enough arguments

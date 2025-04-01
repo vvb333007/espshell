@@ -94,14 +94,10 @@ static int cmd_echo(int, char **);
 static int cmd_suspend(int, char **);
 static int cmd_resume(int, char **);
 static int cmd_kill(int, char **argv);
-//static int cmd_cpu(int, char **);
-static int cmd_cpu_freq(int, char **);
+static int cmd_cpu(int, char **);
 static int cmd_uptime(int, char **);
-static int cmd_show_cpuid(int, char **);
-
 static int NORETURN cmd_reload(int, char **);
 static int cmd_nap(int, char **);
-
 
 // pin-realated commands: pwm, pulse counter and pin
 static int cmd_pwm(int, char **);
@@ -607,7 +603,7 @@ static const struct keywords_t keywords_main[] = {
     HELPK("% \"<b>uptime</>\"\r\n% Shows time passed since last boot; shows restart cause"), "System uptime" },
 
   // System commands
-  { "cpu", cmd_cpu_freq, 1,
+  { "cpu", cmd_cpu, 1,
     HELPK("% \"<b>cpu FREQ</>\"\r\n% Set CPU frequency to FREQ Mhz"), "Set/show CPU parameters" },
 
   //{ "cpu", cmd_cpu, NO_ARGS,
@@ -814,7 +810,7 @@ static const struct keywords_t keywords_main[] = {
 
   // Pulse counting/frequency meter
   { "count", cmd_count, MANY_ARGS,
-    HELPK("% \"<b>count PIN</> [<o>NUMBER</>] [<o>trigger</> | <o>filter LENGTH</>]*\"\r\n%\r\n"
+    HELPK("% \"<b>count PIN</> [<o>NUMBER</> | <o>trigger</> | <o>filter LENGTH</>]*\"\r\n%\r\n"
           "% Count pulses on pin PIN for NUMBER milliseconds (default value is 1 second)\r\n"
           "% Optional \"trigger\" keyword suspends the counter until the first pulse\r\n"
           "% Optional \"filter LEN\" keyword ignores pulses <u>shorter than</> LEN nanoseconds\r\n"
