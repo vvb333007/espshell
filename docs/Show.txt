@@ -15,57 +15,14 @@ General syntax for the command is as follows:
 
 KEYWORD is one of keywords from the list below. Depending on a keyword used there may
 be 0, 1, 2 or more arguments. Some keywords are simply aliases to existing commands:
-for example "show pin 10" is an alias to "pin 10" and "show cpu" is an alias to "cpu"
-command. Eventually all information-displaying commands will be moved under "show"
-umbrella
+for example "show pin 10" is an alias to "pin 10" and "show cpuid" is an alias to "cpu"
+command.
 
 
-
-KEYWORDS
---------
+Below is the "show ..." commands whic do not fit existing documentation files.
 
 
-
-"iomux" - This keyword is used to display an IO_MUX pin assignment: lists all possible
-IO_MUX functions for every pin, displays current pin function. More on IO_MUX and GPIO Matrix
-is on Espressif's ESP32 Technical Reference. Example output of the command:
-
-    esp32#(/)>sh io
-    % IO MUX has 5 functions for every pin. The mapping is as follows:
-    % Pin | Function0 | Function1 | Function2 | Function3 | Function4
-    %-----+-----------+-----------+-----------+-----------+-----------
-    %  00 |     GPIO0*|     GPIO0 |  -undef-  |  -undef-  |  -undef-
-    %  01 |     GPIO1*|     GPIO1 |  -undef-  |  -undef-  |  -undef-
-    %  02 |     GPIO2*|     GPIO2 |  -undef-  |  -undef-  |  -undef-
-    %  03 |     GPIO3*|     GPIO3 |  -undef-  |  -undef-  |  -undef-
-    %  04 |     GPIO4*|     GPIO4 |  -undef-  |  -undef-  |  -undef-
-    %  05 |     GPIO5*|     GPIO5 |  -undef-  |  -undef-  |  -undef-
-    %  06 |     GPIO6*|     GPIO6 |  -undef-  |  -undef-  |  -undef-
-    %  07 |     GPIO7*|     GPIO7 |  -undef-  |  -undef-  |  -undef-
-    %  08 |     GPIO8*|     GPIO8 |  -undef-  | SUBSPICS1 |  -undef-
-    %  09 |     GPIO9*|     GPIO9 |  -undef-  |  SUBSPIHD |    FSPIHD
-    %  10 |    GPIO10*|    GPIO10 |   FSPIIO4 | SUBSPICS0 |   FSPICS0
-    %  11 |    GPIO11*|    GPIO11 |   FSPIIO5 |   SUBSPID |     FSPID
-    %  12 |    GPIO12*|    GPIO12 |   FSPIIO6 | SUBSPICLK |   FSPICLK
-    %  13 |    GPIO13*|    GPIO13 |   FSPIIO7 |   SUBSPIQ |     FSPIQ
-    %  14 |    GPIO14*|    GPIO14 |   FSPIDQS |  SUBSPIWP |    FSPIWP
-    .... More lines ....
-
-Note that all possible functions for the pin are displayed but only function currently
-assigned to the pin is marked with an "*". On color terminals there is color marking also  
-displayed (entries are displayed in reversed color).
-
-To change function number one can use "pin .. iomux" command: one simple trick is to use
-"pin A iomux B" command, to set pin A to function B. On every ESP32 model (except original ESP32)
-function 0 is used to set pin to simple GPIO function via IO_MUX. To set pin to simple GPIO mode but
-via GPIO Matrix one can use function #1. Original ESP32 has 6 functions available for every pin, with
-function 0 acting as "simple GPIO via IO_MUX" and function 2 as "simple GPIO via GPIO_Matrix"
-
-
---
-
-
-"cpuid" - this keyword is just an alias  to the "cpu" command (same text will be displayed on execution 
+"show cpuid" - this command is just an alias  to the "cpu" command (same text will be displayed on execution 
 of "cpu" command):
 
     esp32#(/)>show cpu
@@ -95,65 +52,7 @@ Third section contains output of "uptime" command: uptime and reason for last re
 
 --
 
-"sequence" - used to display information on configured sequences. Sequence is an instruction to ESP32 hardware to
-generate pulse train of given properties. For example one can use sequences to generate IR-remote signals, implement
-proprietary IR protocols (like NEC IR). 
-
-Keyword uses 1 mandatory argument - a sequence number. Sequences are numbered starting from 0, and total of 10 sequences
-can be created and used.
-
-
-    Example output:
-
-      esp32#>sh seq 0
-      %
-      % Sequence #0:
-      % Resolution : 1.0000uS  (Frequency: 1000000 Hz)
-      % Levels are
-      % 1/50, 0/20, 1/100, 0/20, 1/100, 0/20, 1/50, 0/20,
-      % 1/50, 0/20, 1/50, 0/20, 1/50, 0/20, 1/100, 0/20,
-      % 1/50, 0/20, 1/100, 0/20, 1/50, 0/20, 1/50, 0/20,
-      % 1/50, 0/20, 1/50, 0/20,
-      % Total: 28 levels, duration: 1180 ticks, (~1180 uS)
-      % Modulation  : yes, "LOW" are modulated at 100Hz, duty 30.00%
-      % Bit sequence is : (14 bits) "10011110101111"
-      % Zero is 1/100 0/20
-      % One is 1/50 0/20
-      % Hold LOW after transmission is done
-      esp32#>
-
---
-"mount" - Displays information about mounted filesystems: being used **without arguments** displays
-information on available partitions and lists mountpoints for partitions already mounted:
-
-    esp32#>sh mount
-    % Disk partition |M|File system| Size on |    Mounted on    |Capacity |  Free
-    %    label       |?|   type    |  flash  |                  |  total  |  space
-    % ---------------+-+-----------+---------+------------------+---------+---------
-    %             nvs| | NVStorage |     20K |                  |         |
-    %         otadata| |  OTA data |      8K |                  |         |
-    %         wwwroot|+| FAT/exFAT |    960K |         /wwwroot |    916K |    916K
-    %            pr0n|+|    SPIFFS |    480K |                  |         |
-    %            logs|+|  LittleFS |    480K |                  |         |
-    %        coredump| | Core dump |     64K |                  |         |
-    %
-    % 3 mountable partitions found. (+) - mountable partition
-    esp32#>
-This keyword is an alias to "mount" filesystem command (see docs/Filesystem_Commands.txt on how
-filesystems are used in ESPShell).
-
-
-Used with 1 argument (a directory path) displays information on a given mountpoint:
-
-    esp32#>sh mount /w
-    % Mount point "/wwwroot",  FAT/exFAT , (partition label is "wwwroot")
-    % Wear-levelling layer is active on this media
-    % Filesystem is located on internal SPI FLASH
-    esp32#>
-
---
-
-"memory" - A keyword without arguments, used to display brief information on memory available
+"show memory" - A command without arguments, used to display brief information on memory available
 for the sketch (heap):
 
     esp32#>sh mem
@@ -171,7 +70,7 @@ for the sketch (heap):
 
 --
 
-"memory  ADDRESS  [COUNT] [C-TYPE]"
+"show memory  ADDRESS  [COUNT] [C-TYPE]"
 Displays a memory content, starting from a memory address ADDRESS. Address is expected to be a hex number
 with or without leading "0x":
 
@@ -225,9 +124,7 @@ To display 3 elements of the same array:
 --
 
 
-"camera" TBD
-
-"version" - Shows current ESPShell version.
+"show version" - Shows current ESPShell version.
 
 
 

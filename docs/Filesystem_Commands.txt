@@ -1,4 +1,4 @@
-ESP32 Filesystems
+ESP32 FILESYSTEMS
 -----------------
 
 As of 2024 there are three filesystem which are commonly used on ESP32 in IDF 
@@ -26,8 +26,8 @@ however many devboards have only 1 data line connected (ESP32Cam is an example).
 SDMMC in 1-bit mode is still faster than SD card on SPI interface
 
 
-ESPShell File Manager purpose
------------------------------
+ESPSHELL'S FILE MANAGER PURPOSE
+-------------------------------
 
 Main purpose is to copy/move/rename/delete files/directories which may be used by 
 the sketch: examples are configuration files, images from camera, web server pages, 
@@ -42,18 +42,16 @@ Additionaly ESPShell allows for very basic binary/text file editing: user can
 create files, append strings/bytes to files, insert or remove lines in text 
 files
 
-Commands
---------
 
-NOTE ON PATHS & FILENAMES:
+FILE MANAGER COMMANDS
+---------------------
 
-If you want spaces (" ") in your path then use asterikas "*" instead of 
-spaces: ESPShell converts asteriks to spaces in paths and file names.
-
-ESPShell does not support: 
-
-  1. file name completion, 
-  2. path wildcards (? . * etc symbols)
+  +--/ NOTE ON PATHS & FILENAMES /---
+  | If you want spaces (" ") in your path then use asterikas "*" instead of 
+  | spaces: ESPShell converts asteriks to spaces in paths and file names.
+  | ESPShell does not support: 
+  | 1. file name completion, 
+  | 2. path wildcards (? . * etc symbols)
 
 
 To enter file manager mode one should type "files" and press <Enter>:
@@ -101,8 +99,8 @@ pressing Ctrl+Z or typing "exit" and pressing <Enter>):
   esp32#(/)>
 
 
-"mount" : Show partition table & mounted filesystems
------------------------------------------------------
+SHOW PARTITION TABLE & MOUNTED FILESYSTEMS: "mount"
+---------------------------------------------------
 
 Command without arguments displays partition table and some information about
 mounted filesystems (command "mount" was shortened to "m"):
@@ -126,8 +124,8 @@ size as it is on a flash chip. "Total" and "Free" columns show total and
 available size within filesystems.
 
 
-"mount LABEL [/PATH]" : Mount partition
----------------------------------------
+MOUNT PARTITION: "mount LABEL [/PATH]"
+-------------------------------------
 
 Same command but with 1 or 2 arguments: mount filesystems located on flash partition
 LABEL under path /PATH. If /PATH (a mountpoint) is not specified then it is 
@@ -155,8 +153,10 @@ Example: mount filesystem on partition "wwwroot" under mountpoint "/my/point"
   %  FAT/exFAT  on partition "wwwroot" is mounted under "/my/point"
   esp32#(/)>
 
-"mount spi1|spi2|spi3|hspi|fspi|vspi MOSI MISO CLK CS [FREQ_KHZ] [/PATH]" : Mount SD card
------------------------------------------------------------------------------------------
+
+MOUNTING AN SD CARD: "mount spi1|spi2|spi3|hspi|fspi|vspi MOSI MISO CLK CS [FREQ_KHZ] [/PATH]"
+----------------------------------------------------------------------------------------------
+
 SD card on a SPI bus can be mounted by using command above. First argument is the SPI 
 interface to use. The safest choice which will work an all ESP32 models is "hspi". Arduino
 SPI interface naming convention is supported along with ESP-IDF (spi1,spi2..) names
@@ -169,7 +169,7 @@ with breadboards, the frequencies as low as 400kHz should be used to avoid data 
 errors
 
 
-"unmount [PATH]" : Unmount partition previously mounted with "mount"
+UNMOUNT PARTITION PREVIOUSLY MOUNTED WITH "MOUNT" : "unmount [PATH]"
 --------------------------------------------------------------------
 
 Opposite of "mount" : unregister filesystems. Takes one optional argument: the mountpoint
@@ -183,7 +183,7 @@ path. If mountpoint is not specified then it is derived from the current working
 There is also command "umount" which is simply alias of "unmount"
 
 
-"format [LABEL]" : Format filesystem
+FORMAT FILESYSTEM : "format [LABEL]"
 ------------------------------------
 Format the partition LABEL. If LABEL is omitted then espshell derives partition
 label from current working directory:
@@ -199,8 +199,8 @@ tables are purged)
 
 
 
-"ls [PATH]" :  Directory listing
---------------------------------
+DIRECTORY LISTING : "ls [PATH]"
+-------------------------------
 
 Displays directory listing. If PATH is omitted then current working directory is used:
 
@@ -242,7 +242,7 @@ might take time and consume memory. If this is an issue, then "ls" behaviour cou
 in runtime: command "var ls_show_dir_size 0" will disable directory size reporting by "ls" command
 
 
-"cd [PATH|..]" : Change directory
+CHANGE DIRECTORY : "cd [PATH|..]"
 ----------------------------------
 
 There are 3 "cd" commands:
@@ -283,7 +283,7 @@ There are 3 "cd" commands:
        esp32#(/)>
       
 
-"rm PATH" : Delete files/directories
+DELETE FILES/DIRECTORIES : "rm PATH"
 ------------------------------------
 
 If PATH if file then the file is deleted. If PATH is a directory then the directory
@@ -309,7 +309,7 @@ and all its content is removed, with no confirmation:
   Entries in root directory ("/") can not be deleted with this command: use "unmount" 
   command instead
 
-"write PATH [TEXT]" : Write bytes
+WRITE BYTES : "write PATH [TEXT]"
 ---------------------------------
 Write arbitrary bytes/characters string to the file. If file does not exist it is 
 created. If writing is performed in existing file then all its content is lost with 
@@ -330,13 +330,13 @@ If TEXT is omitted, then single "\n" byte is written (newline symbol)
 If PATH had subdirs in it then "write" command creates all required directories to
 store the file
 
-"append PATH TEXT" : Append bytes
------------------------
+APPEND BYTES : "append PATH TEXT"
+---------------------------------
 This is a twin brother of "write" command which appends data to the file instead of 
 rewriting it
 
 
-"mkdir PATH1 PATH2 ... PATHn" : Create directory/ies
+CREATE DIRECTORY/IES : "mkdir PATH1 PATH2 ... PATHn"
 ----------------------------------------------------
 
 Creates a directory. Nested path creation is supported: "mkdir 1/2/3/4"
@@ -355,15 +355,17 @@ ESPShell converts asteriks to spaces in paths and file names. However, when mult
 are created withing single path argument then asteriks/spaces logic fails. it is a known issue.
 
 
-"touch PATH1 PATH2 ... PATHn" : Create new or update timestamps on existing file(s)
+CREATE NEW OR UPDATE TIMESTAMPS ON EXISTING FILE(S) : "touch PATH1 PATH2 ... PATHn"
 -----------------------------------------------------------------------------------
+
 As it Linux counterpart, this command creates new files or updates timestamps on existing files.
 For PATH containing subdirectories: all directories that are required to touch the file will
 be automatically created
 
 
-"insert PATH LINE_NUM [TEXT]" : Insert bytes into text file
----------------------------------------------------------
+INSERT BYTES INTO TEXT FILE : "insert PATH LINE_NUM [TEXT]"
+-----------------------------------------------------------
+
 Insert TEXT (possibly consisting of many lines separated by "\n") before line LINE_NUM in file
 PATH. Please note that final "\n" added to the TEXT automatically: you don't need to end every 
 string enetered with "\n". Use line separator only to separate one string from another for 
@@ -396,14 +398,16 @@ TEXT can contain special symbols (escape sequences, raw bytes) just as in
 a newline symbol (i.e. empty string)
 
 
-"delete PATH LINE_NUM [COUNT]" : Delete lines in text file
+DELETE LINES IN TEXT FILE : "delete PATH LINE_NUM [COUNT]"
 ----------------------------------------------------------
+
 Deletes COUNT lines starting from line LINE_NUM in file PATH.
 If COUNT is omitted, then value of 1 is used as COUNT
 
 
-"cat [-n|-b] PATH [LINE_NUM [COUNT]] [uart NUM]" : Display/transmit text/binary file
+DISPLAY/TRANSMIT TEXT/BINARY FILE : "cat [-n|-b] PATH [LINE_NUM [COUNT]] [uart NUM]"
 ------------------------------------------------------------------------------------
+
 Unlike its Linux counterpart the ESPSHell's "cat" command does not support processing of
 multiple files so it can not be used to join files.  
 
@@ -470,13 +474,44 @@ files to devices connected to uart: one of such example is a internal filesystem
 of SIM7600 LTE module, which has 64G internal disk which can be used to send large
 files over LTE without any CPU use: SIMCOM does it itself
 
-"mv" : Move/rename files or directories
+MOVE/RENAME FILES OR DIRECTORIES : "mv"
 ---------------------------------------
 TBD
 
 
-"cp" : Copy files or directories
+COPY FILES OR DIRECTORIES : "cp"
 --------------------------------
 TBD
 
 
+
+DISPLAYING INFORMATION
+----------------------
+
+"show mount [/PATH]" - Displays information about mounted filesystems: being used 
+**without arguments** displays information on available partitions and lists mountpoints 
+for partitions already mounted:
+
+    esp32#>sh mount
+    % Disk partition |M|File system| Size on |    Mounted on    |Capacity |  Free
+    %    label       |?|   type    |  flash  |                  |  total  |  space
+    % ---------------+-+-----------+---------+------------------+---------+---------
+    %             nvs| | NVStorage |     20K |                  |         |
+    %         otadata| |  OTA data |      8K |                  |         |
+    %         wwwroot|+| FAT/exFAT |    960K |         /wwwroot |    916K |    916K
+    %            pr0n|+|    SPIFFS |    480K |                  |         |
+    %            logs|+|  LittleFS |    480K |                  |         |
+    %        coredump| | Core dump |     64K |                  |         |
+    %
+    % 3 mountable partitions found. (+) - mountable partition
+    esp32#>
+
+This keyword is an alias to "mount" filesystem command.
+
+Used with 1 argument (a directory path) displays information on a given mountpoint:
+
+    esp32#>sh mount /w
+    % Mount point "/wwwroot",  FAT/exFAT , (partition label is "wwwroot")
+    % Wear-levelling layer is active on this media
+    % Filesystem is located on internal SPI FLASH
+    esp32#>

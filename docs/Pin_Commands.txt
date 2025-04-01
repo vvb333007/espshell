@@ -87,6 +87,49 @@ display information on non-existing pin (pin 999 as an example):
   esp32#>
 
 
+DISPLAYING IO_MUX CONFIGURATION
+-------------------------------
+
+"show iomux" - This command is used to display an IO_MUX pin assignment: lists all possible
+IO_MUX functions for every pin, displays current pin function. More on IO_MUX and GPIO Matrix
+is on Espressif's ESP32 Technical Reference. In short: there is a special hardware block, called IO_MUX,
+whose function is to map pins (GPIO) to one of 5 (or 6) possible functions.
+
+Example output of the command:
+
+    esp32#(/)>sh io
+    % IO MUX has 5 functions for every pin. The mapping is as follows:
+    % Pin | Function0 | Function1 | Function2 | Function3 | Function4
+    %-----+-----------+-----------+-----------+-----------+-----------
+    %  00 |     GPIO0*|     GPIO0 |  -undef-  |  -undef-  |  -undef-
+    %  01 |     GPIO1*|     GPIO1 |  -undef-  |  -undef-  |  -undef-
+    %  02 |     GPIO2*|     GPIO2 |  -undef-  |  -undef-  |  -undef-
+    %  03 |     GPIO3*|     GPIO3 |  -undef-  |  -undef-  |  -undef-
+    %  04 |     GPIO4*|     GPIO4 |  -undef-  |  -undef-  |  -undef-
+    %  05 |     GPIO5*|     GPIO5 |  -undef-  |  -undef-  |  -undef-
+    %  06 |     GPIO6*|     GPIO6 |  -undef-  |  -undef-  |  -undef-
+    %  07 |     GPIO7*|     GPIO7 |  -undef-  |  -undef-  |  -undef-
+    %  08 |     GPIO8*|     GPIO8 |  -undef-  | SUBSPICS1 |  -undef-
+    %  09 |     GPIO9*|     GPIO9 |  -undef-  |  SUBSPIHD |    FSPIHD
+    %  10 |    GPIO10*|    GPIO10 |   FSPIIO4 | SUBSPICS0 |   FSPICS0
+    %  11 |    GPIO11*|    GPIO11 |   FSPIIO5 |   SUBSPID |     FSPID
+    %  12 |    GPIO12*|    GPIO12 |   FSPIIO6 | SUBSPICLK |   FSPICLK
+    %  13 |    GPIO13*|    GPIO13 |   FSPIIO7 |   SUBSPIQ |     FSPIQ
+    %  14 |    GPIO14*|    GPIO14 |   FSPIDQS |  SUBSPIWP |    FSPIWP
+    .... More lines ....
+
+Note that all possible functions for the pin are displayed but only function currently
+assigned to the pin is marked with an "*". On color terminals there is color marking also  
+displayed (entries are displayed in reversed color).
+
+To change function number one can use "pin .. iomux" command: one simple trick is to use
+"pin A iomux B" command, to set pin A to function B. On every ESP32 model (except original ESP32)
+function 0 is used to set pin to simple GPIO function via IO_MUX. To set pin to simple GPIO mode but
+via GPIO Matrix one can use function #1. Original ESP32 has 6 functions available for every pin, with
+function 0 acting as "simple GPIO via IO_MUX" and function 2 as "simple GPIO via GPIO_Matrix"
+
+
+
 SETTING PIN MODE, READING/WRITING PIN VALUES
 --------------------------------------------
 
@@ -99,6 +142,12 @@ For example "pin 2 save out high load" is a valid command with 4
 arguments/keywords. The command above saves GPIO2 state in its internal register,
 then changes pin mode to OUTPUT, then sets pin to HIGH and immediately after that
 the pin state gets loaded (restored) from previously saved copy.
+
+Examples of valid "pin" commands:
+    pin 1
+    pin 1 high 2 low
+    pin 1 2 3 4
+    pin 2 pwm 1000 0.5 delay 250 pwm 1000 0.25 delay 250 loop infinite
 
 Here is the full list of allowed keywords:
 
@@ -133,7 +182,7 @@ NUMBER    A pin number to work with (see Example 7). The very first argument
 
 
 "seq X"   Send a sequence (a custom-made signal pattern) number X over the pin. 
-          See documentation file "docs/Pulse_Generator" on sequences and how to 
+          See documentation file "docs/Pulse_Generator.txt" on sequences and how to 
           use them
 
 
@@ -299,6 +348,9 @@ NUMBER    A pin number to work with (see Example 7). The very first argument
 
     esp32#>pin 2 delay 1000 loop inf &  <-- Background command, loops infinitely
     esp32#>pin 2 delay 1000 loop 10 &  <-- Background command, loops 10 times
+
+  Command having "loop" keyword can be interrupted either by a keypress or by issuing
+  "kill" command. 
 
 
 EXAMPLES:

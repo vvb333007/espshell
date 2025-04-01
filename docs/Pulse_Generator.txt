@@ -180,6 +180,31 @@ NOTE: by default, command which sends sequence ("pin X sequence Y") is blocking.
       Use "&" flag as the very last argument to the "pin" command to make it 
       non-blocking
 
+DISPLAYING INFORMATION:
+-----------------------
+Command "show sequence NUM" - used to display information on configured sequences. command has 1 mandatory
+argument - a sequence number. Sequences are numbered starting from 0, and total of 10 sequences
+can be created and used.
+
+
+    Example output:
+
+      esp32#>sh seq 0
+      %
+      % Sequence #0:
+      % Resolution : 1.0000uS  (Frequency: 1000000 Hz)
+      % Levels are
+      % 1/50, 0/20, 1/100, 0/20, 1/100, 0/20, 1/50, 0/20,
+      % 1/50, 0/20, 1/50, 0/20, 1/50, 0/20, 1/100, 0/20,
+      % 1/50, 0/20, 1/100, 0/20, 1/50, 0/20, 1/50, 0/20,
+      % 1/50, 0/20, 1/50, 0/20,
+      % Total: 28 levels, duration: 1180 ticks, (~1180 uS)
+      % Modulation  : yes, "LOW" are modulated at 100Hz, duty 30.00%
+      % Bit sequence is : (14 bits) "10011110101111"
+      % Zero is 1/100 0/20
+      % One is 1/50 0/20
+      % Hold LOW after transmission is done
+      esp32#>
 
 Summary:
 --------
