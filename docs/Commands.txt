@@ -184,30 +184,45 @@ HELP PAGE SYNTAX
 
 When typical help page is displayed, one may notice special symbols (along with
 colors) are used to describe command syntax. Command syntax is always at the
-beginning of any help page. Lets look at some random help page:
+beginning of any help page. To learn this simple syntax lets look at the begginning
+of "count" command help page: (type "? count" and press <Enter>)
 
-  1. count PIN [TIME] [trigger | filter LENGTH]*
+    esp32#>? count
+    % -- Pulse counter --
+    % "count PIN [NUMBER | trigger | filter LENGTH]*"
+    %
+    % Count pulses on pin PIN for NUMBER milliseconds (default value is 1 second)
+    % Optional "trigger" keyword suspends the counter until the first pulse
+    % Optional "filter LEN" keyword ignores pulses shorter than LEN nanoseconds
+    ...
+    ...
 
-  This is the very first line of a help page "? count". Here we can see a couple
+
+  This is the very first lines of a help page "? count". Here we can see a couple
   of special symbols: square brackets "[" and "]", a vertical bar "|", an 
   asterisk "*" and some words typed in UPPERCASE.
 
-  UPPERCASE - A number or some text string. Any user input. In example above we have
-              3 parameters, numbers: pin number, measurement time and length.  In 
-              majority of commands an UPPERCASE argument is a number
+  UPPERCASE - A number or some text string. Any user input. Example help page above
+              says that command "count" has 3 such parameters: pin number, measurement time and length.
+              In  majority of commands an UPPERCASE argument is a number, however some commands
+              also may expect text
 
-  lowercase - These are keywords: command name itself, "trigger" and "filter"
+  lowercase - These are keywords: command name itself, "trigger" and "filter"; keywords can not
+              be changed and must be typed as is
 
-  [   ]     - Square brackets are used to denote OPTIONAL parameters.
+  [   ]     - Square brackets are used to denote OPTIONAL parameters. On color terminals these are
+              displayed in dark yellow color
               Example above has only 1 mandatory parameter (pin number) while
               rest are optional and can be omitted
 
-    |       - This is simply "OR". In sence "this OR that"
+    |       - Verical bar: this is simply logic "OR" operation. In sence "this OR that". Example
+              above says that we can enter a NUMBER or the "trigger" keyword or the "filter" keyword
+              plus LENGTH parameter
+              
 
-    *       - Located next to closing bracket and says, that anything within
-              brackets can appear multiple times (including zero).
-              For example text "[hello|world|123]*" can be read as (but not 
-              limited to):
+    *       - Located next to closing bracket indicates, that anything within the brackets can appear
+              multiple times (including zero).  For example text "[hello|world|123]*" can be read as 
+              (but not limited to):
 
                   hello
                   hello hello
@@ -215,10 +230,10 @@ beginning of any help page. Lets look at some random help page:
                   ...
               and so on
 
-Other symbols used in ESPShell are:
+Other symbols used in ESPShell (bot not in example above) are:
 
-  [1..10]   - Optional argument: a number from a range (1 to 10)
-  (1..10)   - Same as above but mandatory
+  [ 1..10 ]   - Optional argument: a number in range from 1 to 10 inclusive
+  ( 1..10 )   - Mandatory argument: a number in range range from 1 to 10 inclusive
               
 
 
@@ -228,35 +243,29 @@ ESPSHELL BUILT-IN COMMANDS
  List of all commands available at the moment can be obtained by typing "?" and 
  pressing <Enter>. 
 
- Commands can be entered in shortened form: "seq" or even "se" instead of "sequence" 
- or "rel" instead of "reload". ESPShell's parser does partial match of the command 
- name to user input allowing for shortening command names
-
- Same applies to command arguments:
-
- For example, instead of entering "pin 2 out open high" one can type something
- like "pi 2 ou h" to get the same result. If there is ambiguity happens then
- parser just chooses first match. Keep it in mind when adding new commands to the 
- shell.
-
-
  Here is the list of currently (version 0.99.1) supported commands. Throughout the
- text it can be called either as "main command tree" or "main command directory".
+ text it is called either as "main command tree" or "main command directory".
  Main command directory is not the only directory in ESPShell. Others are: Sequence,
- UART, I2C and file manager. 
+ UART, I2C, Camera Settings and File Manager. 
 
  Executing command "uart 0" for example, switches current command directory to UART 
  command directory. Pressing then "Ctrl+Z" or executing "exit" commands changes command
- diewctory back to main.
+ directory back to Main.
 
- When inside a command directory, commands from main command directory are available
- and can be executed even if they don't show up on command list:
+ When inside a command directory, commands from outside are available and can be 
+ executed even if they don't show up on command list:
 
- 1->  esp32#>uart 0
+ 1->  Entering UART0 command directory:
+
+      esp32#>uart 0
       % You are about to configure the Serial espshell is running on. Be careful
       % Entering UART configuration mode. Ctrl+Z or "exit" to return
       % Hint: Main commands are still avaiable (but not visible in "?" command list)
- 2->  esp32-uart0>?
+
+
+ 2->  List all available commands:
+
+      esp32-uart0>?
       % Enter "? command" to get details about specific command.
       % Enter "? keys" to display the espshell keyboard help page
       %
@@ -268,134 +277,125 @@ ESPSHELL BUILT-IN COMMANDS
       % "tap"        : Talk to device connected
       % "write"      : Send bytes over this UART
       % "exit"       : Exit
- 3->  esp32-uart0>uptime
+
+ 3->  Execute command, which is not on the list but exists outside
+      of UART0 directory:
+
+      esp32-uart0>uptime
       % Last boot was 17 seconds ago
       % Restart reason was "Board power-on"
       esp32-uart0>
- 
 
-COMMANDS (MAIN COMMAND DIRECTORY)
----------------------------------
-
-  
-"exit"     - Executed in a command subdirectory exits from that subdirectory; 
-             executed in main command tree does nothing unless  it has 1 
-             parameter, an optional keyword "exit": if this the case then 
-             espshell exits and removes its task. Resources associated with 
-             espshell are not freed.
-
-           - Hint: Ctrl+Z is a key which enters command "exit" and presses <Enter>
-                   for you.
+To exit command directory command "exit" is used.
+Note: Ctrl+Z is a hotkey for command "exit"
 
 
-"uptime"   - Shows how much time has passed since last boot
 
-"pin"      - Various pin commands.Command takes multiple arguments of which
-             1st argument is always pin number. More information and examples
-             on this command can be found in documentation file
-             "docs/Pin_Commands.txt"
-
-"cpu"      - 1. Shows CPUID, CPU frequency, xtal frequency and bus frequency. 
-                Displays CPU core temperature, Arduino Core version along with
-                ESP-IDF version used as well as ARDUINO_BOARD and ARDUINO_VARIANT:
-
-                   esp32#>cpu
-
-                   % CPU ID: ESP32-D0WD-V3, Rev.: 1.45
-                   % CPU frequency is 240Mhz, Xtal 40Mhz, APB bus 80Mhz
-                   % Chip temperature: 37.8 C
-                   %
-                   % Sketch is running on ESP32_DEV/esp32,uses Arduino Core v3.0.5, based on
-                   % Espressif ESP-IDF version "v5.1.4-828-g33fbade6b8-dirty"
-                   % Last boot was 1 minutes 35 seconds ago
-                   % Restart reason was "reload command"
-                   esp32#>
+COMMAND INDEX & BRIEF
+---------------------
 
 
-           - 2. Set CPU frequency to X MHz. List of supported frequencies is 
-                displayed on attempt to set unsupported frequency:
-            
-                   esp32#>cpu 99
-                   % Supported frequencies are: 240, 160, 120, 80, 40, 20 and 10
+"pin"     : Various pin (GPIO) commands.
 
-               
+            Set or read pin values, perform analogRead(), set pin modes, save/restore pin
+            state, enable PWM and so on. It can be used for low frequency periodic signal
+            generation
 
-"reload"   - Reboots ESP32
-             Hint: command "cpu" and "uptime" shows the last reboot cause: was
-                   it caused by watchdog timer interrupt, or system crash etc
+            Command sequence of arguments (which can be as small as just 1 argument) of which
+            1st argument is always a pin number. Command allows to create tiny "programs" 
+            (sequence of actions and delays), which are executed on pins (GPIOs).
 
-"nap"      - Put CPU into light sleep. CPU wakes up by UART activity (press any
-             key to wake up). Wake up condition is 3 positive edges on UART0 
-             which is almost any key (spacebar requires 2 presses).
-                                  OR
-             Puts CPU into light sleep for X seconds, CPU wakes up by timer.
-             Type "? nap" do get more information on this command
+            More information and examples on this command can be found
+            in documentation file "docs/Pin_Commands.txt"  (related command: "show iomux")
 
-"iic"      - I2C bus/interface access. Configure and use (read/write/scan) a
-             specified I2C bus (there are number of them available).
-             Detailed descriptin of I2C commands is in "docs/I2C_Commands.txt"
+"pwm"    :  PWM generators.
 
-           - IMPORTANT: you don't need to "exit" from a command subdirectory
-             if you want to execute command from the main tree: just enter the
-             command while in a subdirectory. ESPShell will search main command
-             tree if subdirectory has no matching command
+            Enable/Disable PWM output on arbitrary pin. Frequency, duty cycle and hardware
+            channel are selectable. Full description can be found in "docs/PWM.txt" 
+            (related command: "show pwm")
 
-"uart"     - UART X interface access. Configure and use (read/write/bridge) UART
+
+"count"  : Pulse counter / frequency meter.
+
+            Allows for counting pulses / frequency measurement on an arbitrary pin. There 
+            are 8 hardware counters on ESP32 (ESP32-S3 has only 4) which can be run 
+            simultaneously. Supports delayed counting. 
+
+            For details refer to "docs/Pulse_Counter.txt" (related command: "show counters")
+
+"var"    : Sketch variables manipulation. See "docs/Sketch_Variables.txt" on how to use 
+           this feature in your code; Command is used to display/change sketch variables
+           in runtime. Simple types and arrays of simple types are supported;
+
+           Another use of this command is conerting numbers to/from binary/octal/dec/hex
+
+
+"iic"    : Enter I2C bus/interface mode. Configure and use (read/write/scan) specified 
+           I2C bus.
+           Detailed description of I2C commands is in "docs/I2C_Commands.txt"
+
+
+"uart"     : UART X interface access. Configure and use (read/write/bridge) UART
              interface. Read "docs/UART_Commands.txt" for details on how to
              setup and use UART interfaces
 
-           - IMPORTANT: you don't need to "exit" from a command subdirectory
-             if you want to execute command from the main tree: just enter the
-             command while in a subdirectory. ESPShell will search main command
-             tree if subdirectory has no matching command
 
-
-"sequence" - Signal generator commands. Allow for custom signal patterns with 
+"sequence" : Signal generator mode. Allow for custom signal patterns with 
              precise timings to be generated on any pin. See documentation file
              "docs/Pulse_Generator.txt" for more info. Simple patterns can also
              be generated by means of "pin" command (see "docs/Pin_Commands.txt")
+             (related command: "show sequence")
+              
 
-           - IMPORTANT: you don't need to "exit" from a command subdirectory
-             if you want to execute command from the main tree: just enter the
-             command while in a subdirectory. ESPShell will search main command
-             tree if subdirectory has no matching command
-
-
-"files"    - Enter file manager mode. This mode allows user to perform basic file 
+"files"   : Enter file manager mode. This mode allows user to perform basic file 
              system commands (list directory contens, file and directory creation,
              file editing and file transfer). Details are in "docs/Filesystem_Commands.txt"
 
-             shell on uarts other than default leaving UART0 purely for sketch.
 
-
-"echo off" - Disables ESPShell from printing out its prompt and disables user
-             input echo. This mode is used for automated processing when UART
-             output is going to be parsed by some software. Equivalent of common
-             "ATE0" command for modems. When echo is disabled. user still can
-             use line editing/history scrolling but it is just not displayed.
-
-"echo on"  - Default is to echo user input & display espshell prompt
-
-"echo silent" - Completely disable ALL espshell output to the terminal. No error
-                messages will be displayed. Commands being executed will not
-                display anything.
+"show"   : Display various information. Descriptions are fragmented along all the
+           documentation files
 
 
 "suspend"
 "resume"
-"kill"   - Process control command: kill, suspend or resume a task. These 3 
-           commands are described in "docs/Kill_Suspend_Resume.txt"
+"kill"   : Process control commands: kill, suspend or resume a task. These 3 
+           commands are described in "docs/Kill_Suspend_Resume.txt" and are used
+           according to their names: to suspend/resume or terminate a process 
+          (a FreeRTOS task or a background ESPShell command) 
 
-"show"   - Display various information. See "docs/Show.txt"
+"echo"
+"history"
+"colors"
+"tty"      : These 4 commands are used to control input and output of the shell;
+             Read "docs/IO.txt" for details on command syntax and detailed 
+             description.
 
-"pwm"    -  PWM generator. Enable/Disable PWM output on arbitrary pin. Frequency, 
-            duty cycle and a hardware channel are selectable. Full description
-            can be found in  "docs/PWM.txt"
 
-"count"  - Pulse counter / frequency meter. Allows for counting pulses / frequency
-           measurement on an arbitrary pin. There are 8 hardware counters on ESP32
-           (ESP32-S3 has only 4) which can be run simultaneously. Supports delayed
-           counting. For details refer to "docs/Pulse_Counter.txt"
 
-"var"    - Sketch variables manipulation. See "docs/Sketch_Variables.txt"
+-- A few simple commands which have no dedicated documentation file
+
+
+"uptime"   : Shows how much time has passed since last boot; shows the last 
+             reboot cause
+
+"cpu FREQ" : Set CPU frequency to FREQ MHz. List of supported frequencies is 
+             displayed on attempt to set unsupported frequency:
+         
+             Example:   
+                 esp32#>cpu 99
+                 % Supported frequencies are: 240, 160, 120, 80, 40, 20 and 10
+
+               
+"reload"   : Reboots ESP32. This is a software restart which does not reset hardware
+             (peripherial) registers;
+
+"nap [SEC]": Put CPU into **light sleep** mode.
+             Without arguments puts CPU into sleep until any UART activity:  
+             CPU wakes up by UART (press any key to wake up). Wake up condition is 3 
+             positive edges. It is recommended to use <Enter> as an abort key
+                                  
+
+             With aegument (sleep time in seconds, SEC)
+             Puts CPU into light sleep for SEC seconds, CPU wakes up by timer, there are
+             no other ways to cancel it
 
