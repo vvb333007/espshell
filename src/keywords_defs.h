@@ -39,11 +39,11 @@ struct keywords_t {
 #  define HELPK(...) __VA_ARGS__
 // Common commands inserted in every command tree at the beginning and HELP macro:
 #  define KEYWORDS_BEGIN { "?", cmd_question, MANY_ARGS, \
-                         "% \"? [<o>KEYWORD</>|<i>keys</>]\"\r\n" \
-                         "% Show list of available commands or display command help page:\r\n" \
+                         "% \"? [<o>KEYWORD</>|<o>keys</>]\"\r\n" \
+                         "% Show list of commands available or display help page for commands:\r\n" \
                          "% \"?\"         - Show list of available commands\r\n" \
-                         "% \"? KEYWORD\" - Get help on command KEYWORD\r\n" \
-                         "% \"? keys\"    - Get information on terminal keys used by ESPShell", \
+                         "% \"? <i>KEYWORD</>\" - Help page on command KEYWORD\r\n" \
+                         "% \"? <i>keys</>\"    - Information on terminal keys used by ESPShell", \
                          "Commands list & help" }, \
                          { "help", cmd_question, MANY_ARGS, HIDDEN_KEYWORD }, //an alias for the "?" command.
 #else
@@ -58,7 +58,7 @@ struct keywords_t {
     HELPK("% \"<b>exit</> [<o>exit</>]\"  (Hotkey: Ctrl+Z)\r\n" \
           "% Exit from uart, i2c, spi, files etc configuration modes.\r\n" \
           "% Has no effect when executed in main command mode unless typed twice\r\n" \
-          "% (i.e. \"exit exit\"): in this case ESPShell closes and stops its task\r\n"), \
+          "% (i.e. \"exit exit\"): in this case ESPShell closes and stops its task"), \
     HELPK("Exit") }, \
   { \
     NULL, NULL, 0, NULL, NULL \

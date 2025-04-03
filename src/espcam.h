@@ -349,6 +349,7 @@ static int cmd_camera_set_gain(int argc, char **argv) {
   return 0;
 }
 
+
 //"balance auto|sunny|cloudy|office|home|none"
 static int cmd_camera_set_balance(int argc, char **argv) {
 
@@ -406,7 +407,7 @@ static int cmd_camera_set_exposure(int argc, char **argv) {
       if (!isnum(argv[2]))
         return 2;
 
-      ae_shift = atoi(argv[2]);
+      ae_shift = q_atoi(argv[2],-3);
       if (ae_shift < -2 || ae_shift > 2)
         return 2;
     }
@@ -420,7 +421,7 @@ static int cmd_camera_set_exposure(int argc, char **argv) {
   // manual exposure
   if (!isnum(argv[1]))
     return 1;
-  exposure = atoi(argv[1]);
+  exposure = q_atoi(argv[1],-1);
   if (exposure < 0 || exposure > 1200)
     return 1;
 
@@ -449,15 +450,19 @@ static int cmd_camera_set_qbcss(int argc, char **argv) {
     return 1;
   }
 
-  val = atoi(argv[1]);
+  val = q_atoi(argv[1], -3);
 
-  if (!q_strcmp(argv[0], "quality")) {  // quality has range from 2 to 63. Values smaller than 2
-                                        // cause random lockups
-    if (val < 2 || val > 63)
+  // Check input arguments
+  if (!q_strcmp(argv[0], "compression")) {  // quality has range from 2 to 63. Values smaller than 2 cause random lockups
+    if (val < 2 || val > 63) {
+      HELP(q_print("% Compression value is in the range [2..63] (smaller number=better quality)\r\n"));
       return 1;
+    }
   } else {
-    if (val < -2 || val > 2)
+    if (val < -2 || val > 2) {
+      HELP(q_printf("%% %s value must be in the range [-2..2] (0 = no shift)\r\n",argv[0]));
       return 1;
+    }
   }
 
   if ((cam = esp_camera_sensor_get()) == NULL) {
@@ -495,9 +500,16 @@ static int cmd_camera_set_size(int argc, char **argv) {
   else if (!q_strcmp(argv[1], "hd")) size = FRAMESIZE_HD;
   else if (!q_strcmp(argv[1], "sxga")) size = FRAMESIZE_SXGA;
   else if (!q_strcmp(argv[1], "uxga")) size = FRAMESIZE_UXGA;
+  else if (!q_strcmp(argv[1], "fhd")) size = FRAMESIZE_FHD;
+  else if (!q_strcmp(argv[1], "qxga")) size = FRAMESIZE_QXGA;
+  else if (!q_strcmp(argv[1], "qhd")) size = FRAMESIZE_QHD;
+  else if (!q_strcmp(argv[1], "wqxga")) size = FRAMESIZE_WQXGA;
+  else if (!q_strcmp(argv[1], "qsxga")) size = FRAMESIZE_QSXGA;
+  else if (!q_strcmp(argv[1], "5mp")) size = FRAMESIZE_5MP;
   else return 1;
 
-  cam->set_framesize(cam, size);
+  int err = cam->set_framesize(cam, size);
+  VERBOSE(q_printf("Err code: %d\r\n",err));
 
   return 0;
 }
@@ -580,7 +592,7 @@ static int cmd_camera_down(int argc, char **argv) {
       q_printf("%% Camera power down (GPIO#%d is HIGH)\n\r", config.pin_pwdn);
 #endif
     }
-    // TODO: use POWER_DOWN or RESET pins if available
+    
   }
   return 0;
 }

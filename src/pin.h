@@ -331,7 +331,7 @@ void digitalForceWrite(int pin, unsigned char level) {
 #define OUTPUT_ONLY ((OUTPUT) & ~(INPUT))
 #endif
 
-// same as pinMode() but calls IDF directly bypassing
+// same as pinMode() but calls IDF directly, bypassing
 // PeriMan's pin deinit/init. As a result it allows flags manipulation on
 // reserved pins without crashing & rebooting
 //
@@ -360,33 +360,26 @@ void pinForceMode(unsigned int pin, unsigned int flags) {
 }
 
 
-// displays a message if pin is out of range
+// When user attempts to use non-existent pin (i.e. a pin number which is out of range or 
+// a pin number which does not exist by design) then this notice is displayed
+// TODO: should we precache these q_printf() output at startup?
 //
-static bool pin_exist_notice(unsigned char pin) {
+static bool pin_not_exist_notice(unsigned char pin) {
 #if WITH_HELP
-  uint64_t mask = ~SOC_GPIO_VALID_GPIO_MASK;
+  unsigned char pin0 = pin;
   
-
-  // pin number is incorrect, display help
   if (pin >= SOC_GPIO_PIN_COUNT)
-    q_printf("%% Valid pin numbers are from 0 to %u, there is no pin \"%u\"\r\n", SOC_GPIO_PIN_COUNT - 1, pin);
-  else {
-    q_printf("%% Pin number %u does not exists; These GPIOs do not exist as well: \r\n%% ", pin);
-    if (mask) {
-      for (pin = 63; ; pin--) {
-        if (mask & ((uint64_t)1 << pin)) {
-          mask &= ~((uint64_t)1 << pin);
-          if (pin < SOC_GPIO_PIN_COUNT)
-            q_printf("%s<e>%d</>,", mask ? "" : "and ", pin);
-        }
-        if (pin == 0)
-          break;
-      }
-    } else
-      q_print(" none");
+    q_printf("%% Valid pin numbers are from <i>0</> to <i>%u</> and \r\n%% ", SOC_GPIO_PIN_COUNT - 1);
+  else
+    q_print("% Unfortunately ");
+  q_printf("following pin(s) do not exist: <i>%u  ", pin);
+  
+  // TODO: workaround the case where all pins are valid in the mask
+  for (pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++)
+      if (pin != pin0 && (SOC_GPIO_VALID_GPIO_MASK & ((uint64_t)1 << pin)) == 0)
+        q_printf("%u  ", pin);
 
-    q_print(CRLF);
-  }
+  q_print("</>\r\n");
 #endif  // WITH_HELP
   return false;
 }
@@ -395,7 +388,7 @@ static bool pin_exist_notice(unsigned char pin) {
 //
 static inline bool pin_exist(unsigned char pin) {
   return ((pin < SOC_GPIO_PIN_COUNT) && (((uint64_t)1 << pin) & SOC_GPIO_VALID_GPIO_MASK))  ? true
-                                                                                            : pin_exist_notice(pin);
+                                                                                            : pin_not_exist_notice(pin);
 }
 
 // Same as above but does not print anything to terminal
@@ -508,7 +501,7 @@ static inline bool pin_is_strapping_pin(int pin) {
 // "pin X"
 // Display pin information: function, direction, mode, pullup/pulldown etc
 //
-static int cmd_pin_show(int argc, char **argv) {
+static int cmd_show_pin(int argc, char **argv) {
 
   unsigned int pin, informed = 0;
 

@@ -103,7 +103,6 @@ static int cmd_nap(int, char **);
 static int cmd_pwm(int, char **);
 static int cmd_count(int, char **);
 static int cmd_pin(int, char **);
-static int cmd_pin_show(int, char **);
 
 // RMT sequences
 static int cmd_seq_if(int, char **);
@@ -113,7 +112,7 @@ static int cmd_seq_zeroone(int argc, char **argv);
 static int cmd_seq_tick(int argc, char **argv);
 static int cmd_seq_bits(int argc, char **argv);
 static int cmd_seq_levels(int argc, char **argv);
-static int cmd_seq_show(int argc, char **argv);
+static int cmd_seq_show(int argc, char **argv); // TODO: rename to cmd_show_sequence
 
 // sketch variables
 static int cmd_var(int, char **);
@@ -121,6 +120,7 @@ static int cmd_var_show(int, char **);
 
 // "show" commands
 static int cmd_show(int, char **);
+static int cmd_show_pin(int, char **);
 
 // common entries
 static int cmd_exit(int, char **);
@@ -633,7 +633,7 @@ static const struct keywords_t keywords_main[] = {
   { "kill", cmd_kill, 1, HIDDEN_KEYWORD },
 
   { "reload", cmd_reload, NO_ARGS,
-    HELPK("% \"<b>reload</>\"\r\n% Restarts CPU"), "Reset CPU" },
+    HELPK("% \"<b>reload</>\"\r\n% Restarts CPU"), "Restarts CPU" },
 
   { "nap", cmd_nap, 1,
     HELPK("% \"<b>nap SEC</>\"\r\n%\r\n% Put the CPU into light sleep mode for SEC seconds."), "CPU sleep" },
@@ -736,8 +736,26 @@ static const struct keywords_t keywords_main[] = {
           "% \"<b>show <i>memory</>\"\r\n"
           "%\r\n"
           "% Display HEAP information / availability"),NULL},
+#if WITH_ESPCAM
+  { "show", HELP_ONLY,
+    HELPK("% \"<b>show camera</> <i>models | settings | sensor</>\"\r\n"
+          "%\r\n"
+          "% <i>models</>   : Displays list of 3rd-party boards supported by the shell\r\n"
+          "% <i>settings</> : Displays current camera settings\r\n"
+          "% <i>sensor</>   : Displays camera low-level information\r\n"
+          "% Example: \"show camera settings\"\r\n"
+          ),NULL},
 
-  // Shell input/output settings
+  { "show", HELP_ONLY,
+    HELPK("% \"<b>show camera</> <i>pinout</> [<o>MODEL</> | <o>custom</>]\"\r\n"
+          "%\r\n"
+          "% Displays camera pinout for camera model MODEL\r\n"
+          "% Model name can be omitted and then current camera pinout is displayed\r\n"
+          "% Model name can be \"custom\" to display your custom camera pinout\r\n"
+          ),NULL},
+#endif
+
+  // Switch espshell's input to another UART. 
   { "tty", cmd_tty, 1, HIDDEN_KEYWORD },
 
   { "echo", cmd_echo, 1,
@@ -749,7 +767,7 @@ static const struct keywords_t keywords_main[] = {
   { "echo", cmd_echo, NO_ARGS, HIDDEN_KEYWORD },  //hidden command, displays echo status
 
   // 1 arg "pin" command is declared first, because cmd_pin() has MANY_ARGS and will match any pin command otherwhise
-  { "pin", cmd_pin_show, 1,
+  { "pin", cmd_show_pin, 1,
     HELPK("% \"<b>pin X</>\"\r\n"
           "% Show pin X configuration and digital value\r\n"
           "% Ex.: \"pin 2\" - show GPIO2 information"), 
@@ -761,19 +779,22 @@ static const struct keywords_t keywords_main[] = {
           "% Accepts a list of keywords (or just 1 keyword): \r\n"
           "%\r\n"
           "% \"<i>high</>\" & \"<i>low</>\"  - Set pin to \"1\" or \"0\"\r\n"
-          "% \"<i>up</>\", \"<i>down</>\", \"<i>out</>\", \"<i>in</>\" and \"<i>open</>\" - enable PULL_UP, PULL_DOWN\r\n"
-          "%                     OUTPUT, INPUT or OPEN_DRAIN mode for the pin\r\n"
+          "% \"<i>up</>\", \"<i>down</>\" - enable PULL_UP, PULL_DOWN\r\n"
+          "% \"<i>out</>\", \"<i>in</>\" and \"<i>open</>\" - enable OUTPUT, INPUT \r\n"
+          "%                               or OPEN_DRAIN mode for the pin\r\n"
           "% \"<i>save</>\" & \"<i>load</>\" - Save / Restore pin configuration\r\n"
           "% \"<i>read</>\" & \"<i>aread</>\" - Perform digital or analog read\r\n"
           "% \"<i>pwm</>\"Enable PWM signal on the pin (generator)\r\n"
           "% \"<i>sequence</>\"  - Send an RMT (IR_Remote) sequence\r\n"
           "% \"<i>matrix</>\" & \"<i>iomux</>\" - GPIO_Matrix and IO_MUX functions\r\n"
           "% \"<i>hold</>\" & \"<i>release</>\" - freeze/unfreeze pin state and level.\r\n"          
-          "% \"<i>delay</>\"  - Next keyword will be delayed\r\n"
+          "%  \"<i>delay</>\"  - Next keyword will be delayed\r\n"
+          "%  \"<i>NUMBER</>\"  - Set pin. All subsequent keywords will apply to this new pin\r\n"
           "% \"<i>loop</>\"  - Execute whole \"pin\" command multiple times\r\n"
           "%\r\n"
-          "% Examples:\r\n%\r\n"
-          "% pin 1 read aread         -pin1: read digital and then analog values\r\n"
+          "% Some examples:\r\n%\r\n"
+          "% pin 1 read               -pin1: read digital value\r\n"
+          "% pin 1 read aread         -pin1: digital read followed by an analog read\r\n"
           "% pin 1 in out up          -pin1 is INPUT and OUTPUT with PULLUP\r\n"
           "% pin 1 save high load     -save pin state, set HIGH(1), restore pin state\r\n"
           "% pin 1 high               -pin1 set to logic \"1\"\r\n"
@@ -802,6 +823,7 @@ static const struct keywords_t keywords_main[] = {
           "% pwm <g>2 <i>1000</>      - enable PWM of 1kHz, 50% duty cycle on pin 2\r\n"
           "% pwm <g>2</> <i>100 0.15</> - enable PWM of 100 Hz, 15% duty cycle on pin 2\r\n"
           "% pwm <g>2</>                 - disable PWM on pin 2\r\n"
+          "% pwm <g>2</> <i>0</>               - same as above\r\n"
           "% pwm <g>2</> <i>off</>             - same as above"),  "PWM output" },
 
   { "pwm", cmd_pwm, 3, HIDDEN_KEYWORD }, // pwm PIN FREQ DUTY
@@ -810,8 +832,9 @@ static const struct keywords_t keywords_main[] = {
 
   // Pulse counting/frequency meter
   { "count", cmd_count, MANY_ARGS,
-    HELPK("% \"<b>count PIN</> [<o>NUMBER</> | <o>trigger</> | <o>filter LENGTH</>]*\"\r\n%\r\n"
-          "% Count pulses on pin PIN for NUMBER milliseconds (default value is 1 second)\r\n"
+    HELPK("% \"<b>count PIN</> [<o>NUMBER</>| <o>infinite</> | <o>trigger</> | <o>filter LENGTH</>]*\"\r\n%\r\n"
+          "% Count pulses on pin PIN for NUMBER milliseconds (default value is 1 second, use \r\n"
+          "% keyword <i>infinite</> if you want this time to be very large)\r\n" 
           "% Optional \"trigger\" keyword suspends the counter until the first pulse\r\n"
           "% Optional \"filter LEN\" keyword ignores pulses <u>shorter than</> LEN nanoseconds\r\n"
           "%\r\n"
@@ -819,10 +842,12 @@ static const struct keywords_t keywords_main[] = {
           "% \"<b>count 4</>\"             - Count pulses & measure frequency on GPIO4 for 1000ms\r\n"
           "% \"<b>count 4 2000</>\"        - Same as above but measurement time is 2 seconds\r\n"
           "% \"<b>count 4 filter 100</>\"  - Count pulses, discarding those <u>shorter than</> 100ns\r\n"
-          "% \"<b>count 4 999999 &</>\"    - Count pulses in <u>a background</> for ~1000 seconds\r\n"
+          "% \"<b>count 4 infinite &</>\"  - Count pulses in <u>a background</> all the time\r\n"
           "% \"<b>count 4 trigger</>\"     - Wait for the first pulse, then start to count\r\n"
-          "% \"<b>count 4 2000 trig &</>\" - Wait for the 1st pulse pulse, then start to count\r\n"
-          "%              pulses for 2 seconds in a background"), "Pulse counter" },
+          "% \"<b>count 4 2000 filter 300 trig &</>\"\r\n"
+          "%                       - Wait for the 1st pulse pulse, then start to count\r\n"
+          "%                         pulses for 2 seconds in a background, ignoring pulses\r\n"
+          "%                         shorter than 300ns"), "Pulse counter" },
 
   { "count", HELP_ONLY,
     HELPK("% \"<b>count PIN</> <i>clear</>\"\r\n"
@@ -977,15 +1002,21 @@ static struct keywords_t keywords_espcam[] = {
           "% compression 4 - Higher picture quality, larger file"), "compression" },
 
   { "size", cmd_camera_set_size, 1, 
-    HELPK("% \"size vga|svga|xga|hd|sxga|uxga\"\n\r"
+    HELPK("% \"size vga|svga|xga|hd|sxga|uxga...\"\n\r"
           "\n\r"
           "% Set picture size:\n\r"
-          "% vga  - 640x480\n\r"
-          "% svga - 800x600\n\r"
-          "% xga  - 1024x768\n\r"
-          "% hd   - 1280x720\n\r"
-          "% sxga - 1280x1024\n\r"
-          "% uxga - 1600x1200 (Default)"), "Resolution / Picture size" },
+          "% vga   - 640x480\n\r"
+          "% svga  - 800x600\n\r"
+          "% xga   - 1024x768\n\r"
+          "% hd    - 1280x720\n\r"
+          "% sxga  - 1280x1024\n\r"
+          "% uxga  - 1600x1200 (Default)\r\n"
+          "% fhd   - 1920x1080\r\n"
+          "% qxga  - 2048x1536\r\n"
+          "% qhd   - 2560x1440\r\n"
+          "% wqxga - 2560x1600\r\n"
+          "% qsxga - 2560x1920\r\n"
+          "% 5mp   - 2592x1944"), "Resolution / Picture size" },
 
   KEYWORDS_END
 };

@@ -114,9 +114,8 @@ static int help_keys(UNUSED int argc, UNUSED char **argv) {
 }
 
 
-// "? COMMAND_NAME"
-//
-// display a command usage details ("? some_command")
+// "? NAME"
+// display command NAME usage details (e.g. "? pin")
 //
 static int help_command(int argc, char **argv) {
 

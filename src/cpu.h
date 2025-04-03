@@ -117,7 +117,7 @@ static int cmd_show_cpuid(int argc, char **argv) {
   cpu_read_frequencies();
 
   q_print("% <u>Hardware:</>\r\n");
-  q_printf("%% CPU ID: %s, (%u core%s), Chip revision: %d.%d\r\n%% CPU frequency is %uMhz, Xtal %uMhz, APB bus %uMhz\r\n%% Chip temperature: %.1f deg. Celsius\r\n",
+  q_printf("%% CPU ID: %s, (%u core%s), Chip revision: %d.%d\r\n%% CPU frequency is %uMhz, Crystal: %uMhz, APB bus %uMhz\r\n%% Chip temperature: %.1f deg. Celsius\r\n",
            chipid,
            PPA(chip_info.cores),
            (chip_info.revision >> 8) & 0xf,
