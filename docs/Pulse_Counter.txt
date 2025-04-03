@@ -135,7 +135,7 @@ RUNNING COUNTERS IN PARALELL
 this one finishes. It is ok for most of use cases but sometimes we want to count 
 irregular pulses for a long period of time but still be able to use espshell 
 command line.  Use background execution flag ("&") to run multiple counters at
-the same time (see "docs/Commands.txt",  "BACKGROUND EXECUTION" chapter).
+the same time (see "docs/Main_Commands.txt",  "BACKGROUND EXECUTION" chapter).
 
 Typical scenario is to count pulses for indefinitely long time and being able to 
 read the counter at any time and execute other commands. I.e. running "count" 

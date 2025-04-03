@@ -33,74 +33,108 @@ WHAT IS THIS:
  and a pulse pattern generator are available on any GPIO.
  
  
-HOW TO USE IT IN ARDUINO PROJECT:
----------------------------------
- This tool DOES NOT REQUIRE user to do ANY changes to their existing sketch/project, except 
- one line of code: adding "#include "espshell.h" somewhere in the beginning of your sketch.
+HOW TO ADD IT TO YOUR ARDUINO PROJECT/SKETCH:
+---------------------------------------------
 
- Once this is done, ESPShell starts automatically when your sketch starts, by intercepting
- execution control and starting its own task. 
+ This library does not require to call any functions to start the shell except one line of 
+ code: adding "#include "espshell.h" somewhere in the beginning of your sketch.
 
- User can interact with ESPShell using either Arduino IDE's Serial Monitor but for better 
- experience a proper terminal software is recommended
-
+ Compile and upload your sketch as usual. ESPShell starts automatically when your sketch 
+ starts, by intercepting execution control and starting its own task. When ESPShell starts 
+ it displays a Welcome banner and is ready to accept commands:
 
 
-KEYBOARD: KEYS USED AND THEIR MEANING IN ESPSHELL (COMMAND LINE EDITING)
-------------------------------------------------------------------------
- Although works with any Serial Monitor, the ESPShell works best when dedicated terminal 
- software is used. Arduino Serial Monitor is not a terminal programand that fact prevents 
- some features of ESPShell to be used: syntax coloring, hotkeys, UART bridge and others.
+  %
+  % ESPShell 0.99.8
+  % Type "?" and press <Enter> for help
+  % Press <Ctrl+L> to clear the screen, enable colors and show "tip of the day"
+  esp32#>
+ 
 
- Arduino Serial Monitor is not able to send Ctrl+C and Ctrl+Z which are essential
- in GSM/LTE modems. TeraTerm and PuTTY are examples of proper terminal software.
- Linux users can simply use "cu" command.
+ User can interact with ESPShell using either Arduino IDE's Serial Monitor but, for a better 
+ experience, a proper terminal software (e.g. TeraTerm) is recommended.
 
- These keys are recognized by ESPShell:
+ Note: ESPShell waits for Serial to become initialized; if Serial is not initialized by user
+ sketch (i.e. Serial.begin() was never called) then ESPShell will be inactive, sleeping, 
+ waiting for the Serial to start.
 
-Key            | Meaning / Action performed
----------------+---------------------------------------------------------------
-<ENTER>        | Execute commands, interrupt running commands
-               |
-<- -> /\  \/   | Arrows: move cursor left or right. Up and down arrows scroll 
-               | through the command history.
-               |
-<DEL>          | As in Notepad
-               |
-<BACKSPACE>    | As in Notepad
-               |
-<HOME>, <END>  | These two do not work. Instead use Ctrl+A as <HOME> and Ctrl+E
-               | as <END>.
-               |
-<TAB>          | Quick jump from one word in the line to another. Fast switching
-               | between command arguments: continously press to cycle through
-               | all arguments/words in the command line
-               |
-Ctrl+R         | History search. Press Ctrl+R and start typing. Press <ENTER> 
-               | to search for command executed before
-               |
-Ctrl+K         | Clear the line from cursor to the end
-               |
-Ctrl+L         | Clear the screen, keep user input, enable colors and show a hint
-               |
-Ctrl+Z         | Same as entering "exit" and pressing <ENTER> : moves up one level
-               | in command hierarchy. There are main commands and commands that 
-               | are arranged as subdirectories. Command "exit" is used when in a
-               | command directory. See description of command "exit" below
-               |
-Ctrl+C         | Suspend sketch execution. Resume with "resume" command.
+
+HOW TO USE THE SHELL
+--------------------
+
+  Shell and  user interact through the Serial interface (usually UART0, sometimes USB-CDC):
+  shell displays its prompt (e.g. "esp32#>") and wait for user input.
+
+  User (you) can enter and execute various commands; type your command and its arguments,
+  edit the command line if necessary and press <ENTER> to execute your command.
+
+  ESPShell parses user input and performs requested actions, display errors if there 
+  were any, displays fresh prompt and the cycle repeats
+ 
+
+  
+  Keyboard use & key bindings
+  ---------------------------
+
+  Although works with any Serial Monitor, the ESPShell works best when dedicated terminal 
+  software is used. Arduino Serial Monitor is not a terminal programand that fact prevents 
+  some features of ESPShell to be used: syntax coloring, hotkeys, UART bridge and others.
+
+  Simple terminal programs like Arduino Serial Monitor can not send Ctrl+C and Ctrl+Z sequences
+  which are essential in GSM/LTE modems. 
+
+
+  These keys are recognized by ESPShell:
+
+
+  Key            | Meaning / Action performed
+  ---------------+---------------------------------------------------------------
+  <ENTER>        | Execute commands, interrupt running commands
+                 |
+  <ARROWS>       | Arrows: move cursor left or right. Up and down arrows scroll 
+                 | through the command history.
+                 |
+  <DEL>          | As in Notepad
+                 |
+  <BACKSPACE>    | As in Notepad
+                 |
+<HOME> and <END> | These two do not work. Instead use Ctrl+A as <HOME> and Ctrl+E
+                 | as <END>.
+                 |
+  <TAB>          | Quick jump from one word in the line to another. Fast switching
+                 | between command arguments: continously press to cycle through
+                 | all arguments/words in the command line
+                 |
+  Ctrl+R         | History search. Press Ctrl+R and start typing. Press <ENTER> 
+                 | to search for command executed before
+                 |
+  Ctrl+K         | Clear the line from cursor to the end
+                 |
+  Ctrl+L         | Clear the screen, keep user input, enable colors and show a hint
+                 |
+  Ctrl+Z         | Same as entering "exit" and pressing <ENTER> : moves up one level
+                 | in command hierarchy. There are main commands and commands that 
+                 | are arranged as subdirectories. 
+                 |
+  Ctrl+C         | Suspend sketch execution. Resume with "resume" command.
+                 |
+  <ESC>56<ESC>   | Entering an arbitrary ASCII character: Press <ESC>, then enter 1, 2 or 3 digit 
+                 | decimal ASCII code and pressing <ESC> again.
+                 | Example: Send a break (Ctrl+C, ascii code 3) : <ESC>3<ESC>
+                 |
+<ESC><BACKSPACE> | While <BACKSPACE> simply erases 1 character, pressing <ESC> and then <BACKSPACE>
+                 | will erase 1 word
+
 
 
  Please note that help page on key combinations can be obtained by executing 
  shell command "? keys".
 
- By entering "? keys" command one also can find the key combinations which
- can be used on "dumb" terminals: if for example arrow keys in your terminal
- are not working correctly you can use Ctrl+F or B as an alternative keys.
+ By entering "? keys" command one also can find key combinations which can be 
+ used on "dumb" terminals: if (for example) arrows keys in your terminal
+ are not working correctly then you can use Ctrl+F and Ctrl+B as an alternative:
+ Ctrl+F moves cursor [F]orward (-->), Ctrl+B moves it backwards (<--)
 
- Pressing <ESC>, then entering 1..3 digit decimal number and pressing <ESC> again
- is the way to enter arbitrary ascii symbol code: ESC, 3, ESC sends <Ctrl+C> for
- example
 
  Keys should be more or less intuitive for Linux shell users.
 
@@ -123,7 +157,7 @@ AUTOCOMPLETION vs SHORTENING
  can be written as "p 19 o h d 500 l d 500" and it is stll syntaxically correct
  ESPShell command with arguments
 
-And yes, filename / path autocompletion is missing as well
+ Filename / path autocompletion is not supported yet
 
 
 BACKGROUND EXECUTION
@@ -131,9 +165,10 @@ BACKGROUND EXECUTION
 
  By default all ESPShell commands are blocking (well, most of them, not all). That
  means that the shell will wait for command execution before starting to accept new 
- input: commands executed in sequence, one by one. Sometimes however we would like
- to run a number of commands in parallel: lets say we want to run multiple "count"
- commands to measure frequency on number of pins.
+ input: commands executed in sequence, one by one. 
+
+ Sometimes however we would like to run a number of commands in parallel: lets say 
+ we want to run multiple "count" commands to measure frequency on number of pins.
 
  Adding "&" as very last argument to ANY command instructs ESPShell to execute this 
  command in separate task context, in parallel to other processes. This behaviour
@@ -151,41 +186,44 @@ BACKGROUND EXECUTION
 BUILT-IN HELP SYSTEM
 --------------------
 
+
 ESPShell tries to be informative and has built-in help system which can do a few
 things - provide manual pages for commands and provide details & possible solutions 
 when errors and failures happen: attempt to use non existent pin will most likely
 result in a message about pin numbers available on given board.
 
-Normally one can read help pages for commands by entering a question mark "?" 
-followed by keyword: either shortened or full. So, to read manual page on command
-"sequence" one can enter "? seq" and press <Enter>
 
-If, however, you would like to see help page during command entering (e.g. you 
-forgot what next argument should be) then just press "?" and help page will be 
-displayed. You can try to type "cou" and press "?" to see "count" command help 
-page.
+  How to use the help system?
+  ---------------------------
 
-And yes, a question mark ("?") is a command on its own, and just as every other
-command it has its own manual page: type "? ?" and see what happens
+  Normally one can read help pages for commands by entering a question mark "?" 
+  followed by keyword: either shortened or full. So, to read manual page on command
+  "sequence" one can enter "? seq" and press <Enter>; other examples are "? pin",
+  "? count" and so on: a question mark and command name will display help pages
+  for commands
 
-The "?" is a hotkey and this behaviour might be annoying in cases when you need
-to enter actual symbol "?" and not invoke help system instead. For example, you
-are writing "Hello World?" string into some file: pressing "?" will invoke help
-page and this is not what we want. Well, one of the solutions is to use <ESC>
-to enter an arbitrary ascii code or, disable "?" hotkey processing by executing
-"var bypass_qm 1" command
+  If, however, you would like to see help page during command entering (e.g. you 
+  forgot what next argument should be) then just press "?" and help page will be 
+  displayed. You can try to type "cou" and press "?" to see "count" command help 
+  page.
 
-In order to decrease the library memory footprint one can edit "espshell.h" file
-and change line "#define WITH_HELP 1" to "#define WITH_HELP 0". This will completely
-disble help & hint system, leaving only error/warning messages.
+  And yes, a question mark ("?") is a command on its own, and just as every other
+  command it has its own manual page: type "? ?" and see what happens
 
-HELP PAGE SYNTAX
-----------------
+  The "?" is a hotkey and this behaviour might be annoying in cases when you need
+  to enter actual symbol "?" and not invoke help system instead. For example, you
+  are writing "Hello World?" string into some file: pressing "?" will invoke help
+  page and this is not what we want. Well, one of the solutions is to use <ESC>
+  to enter an arbitrary ascii code or, disable "?" hotkey processing by executing
+  "var bypass_qm 1" command
 
-When typical help page is displayed, one may notice special symbols (along with
-colors) are used to describe command syntax. Command syntax is always at the
-beginning of any help page. To learn this simple syntax lets look at the begginning
-of "count" command help page: (type "? count" and press <Enter>)
+  Help page syntax
+  ----------------
+
+  When typical help page is displayed, one may notice special symbols (along with
+  colors) are used to describe command syntax. Command syntax is always at the
+  beginning of any help page. To learn this simple syntax lets look at the begginning
+  of "count" command help page: (type "? count" and press <Enter>)
 
     esp32#>? count
     % -- Pulse counter --
@@ -240,13 +278,20 @@ Other symbols used in ESPShell (bot not in example above) are:
 ESPSHELL BUILT-IN COMMANDS
 --------------------------
 
- List of all commands available at the moment can be obtained by typing "?" and 
- pressing <Enter>. 
 
- Here is the list of currently (version 0.99.1) supported commands. Throughout the
- text it is called either as "main command tree" or "main command directory".
- Main command directory is not the only directory in ESPShell. Others are: Sequence,
- UART, I2C, Camera Settings and File Manager. 
+  Command directories; Main command directory, entering & exiting
+  ---------------------------------------------------------------
+
+  ESPShell groups its commands into "command directories": there are main commands 
+  and a few other **command groups**.
+
+  If one wants to execute UART-related commands he/she must **enter** the corresponding
+  command directory:
+
+    Example: entering UART configuration mode
+
+      esp32#>uart 0 
+      esp32-uart0>
 
  Executing command "uart 0" for example, switches current command directory to UART 
  command directory. Pressing then "Ctrl+Z" or executing "exit" commands changes command
@@ -255,7 +300,9 @@ ESPSHELL BUILT-IN COMMANDS
  When inside a command directory, commands from outside are available and can be 
  executed even if they don't show up on command list:
 
- 1->  Entering UART0 command directory:
+  Example: 
+
+      Entering UART0 command directory:
 
       esp32#>uart 0
       % You are about to configure the Serial espshell is running on. Be careful
@@ -263,7 +310,7 @@ ESPSHELL BUILT-IN COMMANDS
       % Hint: Main commands are still avaiable (but not visible in "?" command list)
 
 
- 2->  List all available commands:
+      List all available commands:
 
       esp32-uart0>?
       % Enter "? command" to get details about specific command.
@@ -278,7 +325,7 @@ ESPSHELL BUILT-IN COMMANDS
       % "write"      : Send bytes over this UART
       % "exit"       : Exit
 
- 3->  Execute command, which is not on the list but exists outside
+      Execute command, which is not on the list but exists outside
       of UART0 directory:
 
       esp32-uart0>uptime
@@ -291,11 +338,11 @@ Note: Ctrl+Z is a hotkey for command "exit"
 
 
 
-COMMAND INDEX & BRIEF
----------------------
+  Command Index (the main command tree)
+  -------------------------------------
 
 
-"pin"     : Various pin (GPIO) commands.
+  "pin"     : Various pin (GPIO) commands.
 
             Set or read pin values, perform analogRead(), set pin modes, save/restore pin
             state, enable PWM and so on. It can be used for low frequency periodic signal
@@ -308,14 +355,14 @@ COMMAND INDEX & BRIEF
             More information and examples on this command can be found
             in documentation file "docs/Pin_Commands.txt"  (related command: "show iomux")
 
-"pwm"    :  PWM generators.
+  "pwm"    :  PWM generators.
 
             Enable/Disable PWM output on arbitrary pin. Frequency, duty cycle and hardware
             channel are selectable. Full description can be found in "docs/PWM.txt" 
             (related command: "show pwm")
 
 
-"count"  : Pulse counter / frequency meter.
+  "count"  : Pulse counter / frequency meter.
 
             Allows for counting pulses / frequency measurement on an arbitrary pin. There 
             are 8 hardware counters on ESP32 (ESP32-S3 has only 4) which can be run 
@@ -323,21 +370,21 @@ COMMAND INDEX & BRIEF
 
             For details refer to "docs/Pulse_Counter.txt" (related command: "show counters")
 
-"var"    : Sketch variables manipulation. See "docs/Sketch_Variables.txt" on how to use 
+  "var"    : Sketch variables manipulation. See "docs/Sketch_Variables.txt" on how to use 
            this feature in your code; Command is used to display/change sketch variables
            in runtime. Simple types and arrays of simple types are supported;
 
            Another use of this command is conerting numbers to/from binary/octal/dec/hex
 
 
-"iic"    : Enter I2C bus/interface mode. Configure and use (read/write/scan) specified 
+  "iic"    : Enter I2C bus/interface mode. Configure and use (read/write/scan) specified 
            I2C bus.
            Detailed description of I2C commands is in "docs/I2C_Commands.txt"
 
 
-"uart"     : UART X interface access. Configure and use (read/write/bridge) UART
-             interface. Read "docs/UART_Commands.txt" for details on how to
-             setup and use UART interfaces
+  "uart" : UART X interface access. Configure and use (read/write/bridge) UART
+           interface. Read "docs/UART_Commands.txt" for details on how to
+           setup and use UART interfaces
 
 
 "sequence" : Signal generator mode. Allow for custom signal patterns with 
@@ -347,9 +394,9 @@ COMMAND INDEX & BRIEF
              (related command: "show sequence")
               
 
-"files"   : Enter file manager mode. This mode allows user to perform basic file 
-             system commands (list directory contens, file and directory creation,
-             file editing and file transfer). Details are in "docs/Filesystem_Commands.txt"
+"files"  : Enter file manager mode. This mode allows user to perform basic file 
+           system commands (list directory contens, file and directory creation,
+           file editing and file transfer). Details are in "docs/Filesystem_Commands.txt"
 
 
 "show"   : Display various information. Descriptions are fragmented along all the
@@ -367,12 +414,13 @@ COMMAND INDEX & BRIEF
 "history"
 "colors"
 "tty"      : These 4 commands are used to control input and output of the shell;
-             Read "docs/IO.txt" for details on command syntax and detailed 
+             Read "docs/Extra_Commands.txt" for details on command syntax and detailed 
              description.
 
 
 
--- A few simple commands which have no dedicated documentation file
+  A few simple commands which have no dedicated documentation file
+  ----------------------------------------------------------------
 
 
 "uptime"   : Shows how much time has passed since last boot; shows the last 

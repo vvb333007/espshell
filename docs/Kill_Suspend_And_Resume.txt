@@ -33,7 +33,7 @@ And two sister commands "resume":
 
 
 To stop an ESPShell task (yes, ESPShell uses tasks to run background commands, see details in
-"docs/Commands.txt" ,BACKGROUND EXECUTION chapter) or an arbitrary FreeRTOS task one can use 
+"docs/Main_Commands.txt" ,BACKGROUND EXECUTION chapter) or an arbitrary FreeRTOS task one can use 
 command "kill":
 
 
