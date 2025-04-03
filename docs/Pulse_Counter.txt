@@ -20,10 +20,14 @@ arguments:
 
 Command syntax is: 
 
-  "count PIN [ TIME_MS | trigger | filter NANOSECONDS ]*" 
+  "count PIN [ TIME_MS | infinite | trigger | filter NANOSECONDS ]*" 
 
 where PIN is a pin number and TIME_MS is the time during which measurements
-are made, in milliseconds (default is 1000 ms). 
+are made, in milliseconds (default is 1000 ms). A keyword may be used to specify
+very large time intervals: "infinite" (see examples below)
+
+Arguments order ia not important, so commands "count 4 trigger infinite" and 
+"count 4 infinite trigger" are equivalents
 
 Keyword "trigger" can be used to instruct counter to "wait until the first pulse
 and once captured, and then start counting/measuring". This keyword is used when
@@ -58,12 +62,13 @@ argument to the command:
   % 0 pulses in 10.000 seconds (0.0 Hz, 0 interrupts)
   esp32#>
 
-NOTE: Special word "infinite" can be used instead of a number when specifying
-measurement interval, i.e. "count 2 inf"
+Special word "infinite" can be used instead of a number when specifying
+measurement interval, i.e. "count 2 inf". Keyword "infinite" simply means
+2^64 microseconds and this is quite large number
 
 
-"TRIGGER" KEYWORD USE
----------------------
+"TRIGGER" KEYWORD: WAIT THEN COUNT
+----------------------------------
 
 Lets look at another scenario: user starts a counter to measure frequency on pin#4;
 Then user connects the actual pulse source (PWM) to pin#4. There is a delay between
@@ -76,6 +81,7 @@ wrong frequency values afterwards.
 Instead one can use "trigger" keyword: if espsheel sees this keyword then the counter
 gets suspended until the very first pulse. Once pulse is received, counter is resumed
 resulting in a more precise frequency values.
+
 
 "FILTER" KEYWORD: FILTERING OUT PULSES WHICH ARE TOO SHORT
 ----------------------------------------------------------
@@ -220,21 +226,17 @@ upon reception of a first pulse. Use "trigger" keyword in "count" command if you
 want Frequency column to be more precise. Don't use "trigger" keyword if you want
 only pulse count, not frequency value
 
+TBD: "Filter,ns" column
 "Filter,ns", the last column (not shown on a listing above) contains filter
 value as set by "count ... filter NANOSECONDS". If filtering is disabled then
 it will be text "-off-" instead of a filter value.
 
 
-CLEARING A COUNTER
-------------------
+CLEARING COUNTERS
+-----------------
 One can clear any counter (stopped or running) by issuing "count PIN clear"
 command. This command will clear all counters which were/is associated with pin
 PIN
-
-
-NOTE: Use "pin X save" and "pin X load" to save/restore pin state. Configuring
-pin as a squarewave generator rewrites pin settings so previous settings can be
-lost. On "pin save" and "pin load" please refer to Pin_Commands.txt
 
 
 
