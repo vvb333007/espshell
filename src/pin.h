@@ -49,17 +49,25 @@ static struct {
 //
 
 
+
 // Number of available function in IO_MUX for given pin
-#define IOMUX_NFUNC 5
-
-#ifdef CONFIG_IDF_TARGET_ESP32
-
 // Classic ESP32 has 6 functions per pin. Function 0 selects IO_MUX GPIO mode, function 2 selects GPIO_MATRIX GPIO mode
 // All other ESP32 variants have only 5 functions with function 1 being GPIO_MATRIX selector
 //
-# undef IOMUX_NFUNC
-# define IOMUX_NFUNC 6
+#ifdef CONFIG_IDF_TARGET_ESP32
+#  define IOMUX_NFUNC 6
+#else
+#  define IOMUX_NFUNC 5
+#endif
+
+// Each pin can be switched to one of 5 or 6 functions numbered from 0 to 4 (or 5)
+// Array entries consist of names of functions available.
+// Non-existent pins are those with all zeros {0,0,0,0,0}
+//
 static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][IOMUX_NFUNC] = {
+
+#ifdef CONFIG_IDF_TARGET_ESP32
+
   { "0", "CLK_OUT1", "0", 0, 0, "EMAC_TX_CLK" },
   { "U0TXD", "CLK_OUT3", "1", 0, 0, "EMAC_RXD2" },
   { "2", "HSPIWP", "2", "HS2_DATA0", "SD_DATA0", 0 },
@@ -100,8 +108,9 @@ static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][IOMUX_NFUNC] = {
   { "37", 0, "37", 0, 0, 0 },
   { "38", 0, "38", 0, 0, 0 },
   { "39", 0, "39", 0, 0, 0 },
+
 #elif defined(CONFIG_IDF_TARGET_ESP32S3)
-static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][IOMUX_NFUNC] = {
+
   // ESP32S3 MUX functions for pins. S3 has only 5 functions per pin 
   { "0", "0", 0, 0, 0 },
   { "1", "1", 0, 0, 0 },
@@ -152,8 +161,9 @@ static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][IOMUX_NFUNC] = {
   { "46", "46", 0, 0, 0 },
   { "SPIC_PDIF", "47", "SSPICPDIF", 0, 0 },
   { "SPIC_NDIF", "48", "SSPICNDIF", 0, 0 },
+
 #elif defined(CONFIG_IDF_TARGET_ESP32S2)
-static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][IOMUX_NFUNC] = {
+
   // ESP32S2 MUX functions for pins
   { "0", "0", 0, 0, 0 },
   { "1", "1", 0, 0, 0 },
@@ -204,13 +214,15 @@ static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][IOMUX_NFUNC] = {
   { "46", "46", 0, 0, 0 },
 #else
 #  warning "Unsupported target, using dummy IO_MUX function name table"
-static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][IOMUX_NFUNC] = { 0 
+  0 // all zeros
 #endif  // CONFIG_IDF_TARGET...
-};
+}; //iomux function table
 
 // WARNING! Not reentrat, use with caution
+// WARNING! Undefined behaviour IF io_mux_func_name[][] is a long number, as a text: "12345". These numbers
+//          are pin numbers and are not expected to go beyound 255
 static const char *iomux_funame(unsigned char pin, unsigned char func) {
-  static char gpio[8] = {'G','P','I','O',0};
+  static char gpio[8] = {'G','P','I','O',0}; 
   // lisp style on
   return  func < IOMUX_NFUNC && 
           pin < SOC_GPIO_PIN_COUNT && 
@@ -220,7 +232,7 @@ static const char *iomux_funame(unsigned char pin, unsigned char func) {
                                       : " -undef- ";
 }
 
-// Display full table: all pins and every function available for every pin.
+// Display iomux table: all pins and every function available for every pin.
 // Function which is currently selected for the pin is displayed in reverse colors plus "*" symbol is
 // displayed after function name
 //
@@ -276,7 +288,7 @@ static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
   HELP(q_print( "\r\n"
                 "% Legend:\r\n"
                 "%   Function, that is currently assigned to the pin is <r>marked with \"*\"</>\r\n"
-                "%   Input-only pins are <g>green</>\r\n"
+                "%   Input-only pins are green (ESP32 only)\r\n"
                 "%   Pins that are <w>RESERVED</> all marked with \"<b>!</>\", avoid them!\r\n"));
   return 0;
 }

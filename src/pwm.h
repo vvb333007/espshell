@@ -114,14 +114,14 @@ static uint32_t pwm_source_clock_frequency() {
 #     warning "No APB, XTAL, RC_FAST or even REF_TICK support in LEDC :-/"
       return 0;
 #endif      
-      return pwm_source_clock_frequency();
+      return pwm_source_clock_frequency(); //TODO: make this recursion safe: what if ledcSetClockSource() does not change clock source from AUTO to XTAL?
     default: //fallthrough
   };
 
   return 0;
 }
 
-// Enable or disable (freq==0) PWM generation on given pin. 
+// Enable (freq > 0) or disable (freq == 0) PWM generation on given pin. 
 // Frequency must be in range (0..10 000 000 Hz), duty is floating point number in range [0..1]. Depending on the frequency
 // different LEDC resolution may be choosen. 
 //
@@ -143,7 +143,7 @@ static int pwm_enable_channel(unsigned int pin, unsigned int freq, float duty, s
     return -1;
 
   if (freq) {
-    // Clamp arguments. (we don't do it in cmd_pwm() for a reason)
+    // Clamp arguments. (we don't do it in cmd_pwm() for a reason! ("pin pwm" needs this))
     if (freq > PWM_MAX_FREQUENCY)
       freq = PWM_MAX_FREQUENCY;
 
@@ -187,7 +187,7 @@ print_hint_and_exit:
 
   if (freq) {
     // duty is in the range of [0..1], so we scale it up to fit desired bit width
-    duty_abs = (unsigned int)(duty * (float )((1 << resolution) - 1) + 0.5f); //  roundup duty cycle value; TODO: check how it works on low resolution frequencies
+    duty_abs = (unsigned int)(duty * (float )((1 << resolution) - 1) + 0.5f); //  roundup duty cycle value;
         
     if (ledcAttachChannel(pin, freq, resolution, channel)) {
       if (ledcWrite(pin, duty_abs)) {
@@ -287,7 +287,7 @@ static int cmd_pwm(int argc, char **argv) {
   if (argc < 2) 
     return CMD_MISSING_ARG;
 
-  // first parameter is pin number
+  // first parameter is the pin number
   // we don't assert pin_exist() here since it is done in pwm_enable_channel()
   pin = q_atol(argv[1], BAD_PIN);  
 
@@ -295,9 +295,11 @@ static int cmd_pwm(int argc, char **argv) {
   if (argc > 2) {
     
     if ((freq = q_atol(argv[2], 0)) > PWM_MAX_FREQUENCY)
-      HELP(q_print("% Frequency will be adjusted to its maximum which is " xstr(PWM_MAX_FREQUENCY) "] Hz\r\n"));
+      HELP(q_print("% Frequency will be adjusted to its maximum which is " xstr(PWM_MAX_FREQUENCY) " Hz\r\n"));
+    // was it attempt to use floating point number? 
     if (q_findchar(argv[2],'.')) {
-      HELP(q_print("%% For freq < 1Hz please use \"pin X high delay Y low delay Y loop inf &\"\r\n"));
+      HELP(q_print( "% Must be integer number. For frequencies below 1Hz please use\r\n"
+                    "%\"pin X high delay Y low delay Y loop inf &\" command\r\n"));
       return 2;
     }
   }

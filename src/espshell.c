@@ -484,6 +484,10 @@ static  void espshell_initonce() {
     convar_add(tbl_min_len);       // buffers whose length is > printhex_tbl (def: 16) are printed as fancy tables
     convar_add(ledc_res);          // Override PWM duty cycle resolution bitwidth: Duty range is from 0 to (2**ledc_res-1)
     convar_add(pwm_ch_inc);        // 1 or 2: hop over odd or even channel numbers.
+#if WITH_ESPCAM
+    convar_add(cam_ledc_chan);  // Avoiding interference: LEDC channels used by ESPCAM for generating XCLK
+    convar_add(cam_ledc_timer);    // Avoiding interference: ESP32 TIMER used by ESPCAM
+#endif
 #if WITH_WRAP
     convar_addap(Tasks);
 #endif    

@@ -13,6 +13,8 @@
 #if COMPILING_ESPSHELL
 #  if WITH_ESPCAM
 
+#define ESPCAM_XCLK_MAX 27000000 // 27MHz maximum
+
 //camera pinout PWDN RESET XCLK SIOD SIOC D7 D6 D5 D4 D3 D2 D1 D0 VSYNC HREF PCLK
 //camera up [MODEL | custom] [clock FREQUENCY] [i2c NUM]
 //camera settings
@@ -35,11 +37,18 @@ static camera_config_t config;      // camera config TODO: rename
 static camera_fb_t *cam_fb = NULL;  // last captured picture
 static bool cam_good = false;       // initialized or not
 
+// These are convars to make it possible to resolve potential resource conflict with user sketch:
+// if user sketch uses LEDC_CHANNEL_0 or LEDC_TIMER_0 then espshell can be configured to use other channel & timer
+// Camera also may conflict with PWM module of the shell since PWM is built around LEDC.
+//
+static int8_t cam_ledc_chan = LEDC_CHANNEL_0;
+static int8_t cam_ledc_timer = LEDC_TIMER_0;
+
 // Known camera/board models: pins database
 // This one must be kept in sync with ESP-IDF camera driver
 //
 static const struct campins {
-  const char *model;     // e.g. "aithinker"
+  const char *model;     // e.g. "ai-thinker"
   signed char pins[16];  // PWDN,RESET,  XCLK,  SIOD,SIOC,  D7,D6,D5,D4,D3,D2,D1,D0,  VSYNC,HREF,PCLK
 } Campins[ ] = {
   {"wrover-kit",         {-1,-1,   21,   26,27,   35,34,39,36,19,18,5,4,    25,23,22}},
@@ -70,7 +79,7 @@ static const struct campins {
 //
 static struct campins Custom = {"custom", {0,0,      0,    0,0,    0,0,0,0,0,0,0,0,           0,0,0}};
 
-static const char *Camres[] = {
+static const char * const Camres[] = {
   [FRAMESIZE_96X96] = "96x96",
   [FRAMESIZE_QQVGA] = "160x120",
   [FRAMESIZE_128X128] = "128x128",
@@ -99,9 +108,7 @@ static const char *Camres[] = {
 };
 
 static inline const char *cam_resolution(int i) {
-  if ( i< 0 || i > FRAMESIZE_5MP)
-    return "unknown";
-  return Camres[i];
+  return ( i>= 0 && i < FRAMESIZE_INVALID) ? Camres[i] : "unknown";
 }
 
 // Fill relevant portions of camera_config_t structure
@@ -203,7 +210,7 @@ static int cmd_show_camera(int argc, char **argv) {
     return 0;
   }
 
-  // "show camera pinout [MODEL | custom]"
+  // "show camera pinout MODEL | custom"
   // "show camera pinout"
   if (!q_strcmp(argv[2],"pinout")) {
     if (argc == 3) {
@@ -226,6 +233,8 @@ static int cmd_show_camera(int argc, char **argv) {
   }
 
   // "show camera settings"
+  // TODO: Make output human-readable
+  // TODO: read OV docs
   //
   if (!q_strcmp(argv[2],"settings")) {
     if (!cam_good)
@@ -300,7 +309,9 @@ static int cmd_cam_pinout(int argc, char **argv) {
 
   if (argc < 18) {
     HELP(q_print( "% Syntax is:\r\n"
-                  "% <b>camera pinout</> <o>PWDN RESET</> <i>XCLK</> <o>SDA SCL</> <g>D7 D6 D5 D4 D3 D2 D1 D0</> <i>VSYNC HREF PCLK</>\r\n"));
+                  "% <b>camera pinout</> <o>PWDN RESET</> <i>XCLK</> <o>SDA SCL</> <g>D7 D6 D5 D4 D3 D2 D1 D0</> <i>VSYNC HREF PCLK</>\r\n"
+                  "% or, if you prefer Y-names:\r\n"
+                  "% <b>camera pinout</> <o>PWDN RESET</> <i>XCLK</> <o>SDA SCL</> <g>Y9 Y8 Y7 Y6 Y5 Y4 Y3 Y2</> <i>VSYNC HREF PCLK</>\r\n"));
     return CMD_MISSING_ARG;
   }
 
@@ -331,21 +342,17 @@ static int cmd_camera_set_gain(int argc, char **argv) {
 
   if (!q_strcmp(argv[1], "auto")) {
     cam->set_gain_ctrl(cam, 1);  // auto gain
-#if WITH_HELP
-    q_printf("%% Camera gain: auto\n\r");
-#endif
+    HELP(q_printf("%% Camera gain: auto\n\r"));
   } else if (isnum(argv[1])) {
     unsigned int val = atol(argv[1]);  // manual gain 0..30
     if (val > 30)
       return 1;
     cam->set_gain_ctrl(cam, 0);   // auto gain off
     cam->set_agc_gain(cam, val);  //
-#if WITH_HELP
-    q_printf("%% Camera gain: manual, %u\n\r", val);
-#endif
-
+    HELP(q_printf("%% Camera gain: manual, %u\n\r", val));
   } else
-    return 1;
+    return 1; // not numeric or "auto"
+
   return 0;
 }
 
@@ -580,17 +587,11 @@ static int cmd_camera_down(int argc, char **argv) {
       cam_fb = NULL;
     }
     esp_camera_deinit();
-#if WITH_HELP
-    q_print("% Camera deinitialized\n\r");
-#endif
+    HELP(q_print("% Camera deinitialized\n\r"));
     q_delay(100);
     if (config.pin_pwdn >= 0) {  // Enable POWER_DOWN
-
-      pinMode(config.pin_pwdn, OUTPUT);
-      digitalWrite(config.pin_pwdn, HIGH);
-#if WITH_HELP
-      q_printf("%% Camera power down (GPIO#%d is HIGH)\n\r", config.pin_pwdn);
-#endif
+      digitalForceWrite(config.pin_pwdn, HIGH);
+      HELP(q_printf("%% Camera power down (GPIO#%d is HIGH)\n\r", config.pin_pwdn));
     }
     
   }
@@ -598,7 +599,9 @@ static int cmd_camera_down(int argc, char **argv) {
 }
 
 //"camera up [MODEL|custom] [clock FREQ] [i2c NUM]"
-// powerup & initialize the camera
+// powerup & initialize the camera.
+// If no arguments were supplied, then ESPShells assumes that camera is initialized somewhere else
+// in user sketch, and tries to access camera using camera API. 
 //
 static int cmd_cam_up(int argc, char **argv) {
 
@@ -606,9 +609,25 @@ static int cmd_cam_up(int argc, char **argv) {
   const char *model = NULL;
   unsigned int xclk = 16000000,i = 2; //TODO: DEF_CAMERA_XCLOCK
   signed char i2c = -1;
+  bool has_psram = heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0;
 
   if (cam_good)  // already initialized
     return 0;
+
+  // No arguments to "camera up": special case
+  if (argc < 3) {
+    sensor_t *cam;
+    q_print("% Assuming that camera is initialized by sketch, verifying...");
+    if ((cam = esp_camera_sensor_get()) != NULL) {
+      q_print("Yes, it is\r\n");
+      cam_good = true;
+    } else
+      q_print("No, it isn't\r\n"
+              "% Use \"camera up MODEL\" with model name that matches your board:\r\n"
+              "% (list of supported boards: \"show camera models\"), or use custom pinout\r\n"
+              "% with commands \"camera pinout\" and \"camera up custom\"\r\n");
+    return CMD_FAILED;
+  }
 
   while(i < argc) {
     if (!q_strcmp(argv[i],"clock")) {
@@ -617,7 +636,15 @@ static int cmd_cam_up(int argc, char **argv) {
         return CMD_MISSING_ARG;
       }
       i++;
-      xclk = q_atol(argv[i],xclk); 
+
+      xclk = q_atol(argv[i],xclk);
+      // xclk given in MHz? undocumented
+      if (xclk <= 100)
+        xclk *= 1000000;
+      if (xclk > ESPCAM_XCLK_MAX) {
+        xclk = ESPCAM_XCLK_MAX;
+        q_print("%% XCLK is adjusted to its maxumum, " xstr(ESPCAM_XCLK_MAX) );
+      }
     } else if (!q_strcmp(argv[i],"i2c")) {
       if (i + 1 >= argc) {
         q_print("% <e>I2C bus number is expected</>\r\n");
@@ -630,7 +657,8 @@ static int cmd_cam_up(int argc, char **argv) {
     i++;
   }
 
-  if (model == NULL)
+  if (model == NULL) {
+    // wild guess
 #ifdef CONFIG_IDF_TARGET_ESP32S2
     model = "esp32s2-cam-board";
 #elif defined(CONFIG_IDF_TARGET_ESP32S3)
@@ -640,6 +668,9 @@ static int cmd_cam_up(int argc, char **argv) {
 #else
     return -1;
 #endif
+    HELP(q_printf("%% Auto-selected camera pinout: \"%s\"\n\r"
+                  "%% Wrong model? use \"camera up MODEL\"\r\n",model));
+  }
   
   if (!cam_config_fill_pins(&config, model)) {
     q_printf("%% Unknown/unsupported camera model \"%s\"\r\n",model);
@@ -654,50 +685,59 @@ static int cmd_cam_up(int argc, char **argv) {
     config.pin_sccb_sda = UNUSED_PIN;
     //config.pin_sccb_scl = UNUSED_PIN;
   } else
-    config.sccb_i2c_port = UNUSED_PIN;
-  config.ledc_channel = LEDC_CHANNEL_0; //TODO: add optional manual setting for the channel & timer; PWM module interferes with this code
-  config.ledc_timer = LEDC_TIMER_0;
+    config.sccb_i2c_port = -1; // -1 == ignored, 
+
+  config.ledc_channel = cam_ledc_chan;
+  config.ledc_timer = cam_ledc_timer;
 
   config.xclk_freq_hz = xclk;  //20MHz or 10MHz for OV2640 double FPS, 16MHz for S2/S3 EDMA experimental mode
 
-  // TODO: code below must be rewritten. 
-  config.pixel_format = PIXFORMAT_JPEG;
-  config.frame_size = FRAMESIZE_UXGA;
-  config.jpeg_quality = 4;
-  config.fb_count = 2;  // if more than one, i2s runs in continuous mode. Use only with JPEG
+  
+  if (has_psram) {
+    config.pixel_format = PIXFORMAT_JPEG; // TODO: support RGB modes also
+    config.frame_size = FRAMESIZE_UXGA; // fits both OV2 & OV5
+    config.jpeg_quality = 4;
+    config.fb_count = 2;  // if more than one, i2s runs in continuous mode. Use only with JPEG
+    config.fb_location = CAMERA_FB_IN_PSRAM;
+    config.grab_mode = CAMERA_GRAB_LATEST;
+  } else {
+    config.pixel_format = PIXFORMAT_JPEG; // TODO: support RGB modes also
+    config.frame_size = FRAMESIZE_VGA;
+    config.jpeg_quality = 12;
+    config.fb_count = 1;
+    config.fb_location = CAMERA_FB_IN_DRAM;
+    config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
+  }
 
-  config.fb_location = CAMERA_FB_IN_PSRAM;
-  config.grab_mode = CAMERA_GRAB_LATEST;
+  q_printf("%% Selected resolution:%s, JPEG comp:%u, (uses %u fbuffer%s in %s), grab: %s\r\n", 
+            cam_resolution(config.frame_size),
+            config.jpeg_quality,
+            PPA(config.fb_count),
+            config.fb_location == CAMERA_FB_IN_PSRAM ? "PSRAM" : "DRAM",
+            config.grab_mode == CAMERA_GRAB_LATEST ? "latest" : "when empty");
 
   if (config.pin_pwdn >= 0) {  // Disable POWER_DOWN
-    //gpio_hold_dis(config.pin_pwdn);
-    pinMode(config.pin_pwdn, OUTPUT);
-    digitalWrite(config.pin_pwdn, LOW);
-    //gpio_hold_en(config.pin_pwdn);
-#if WITH_HELP
-    q_printf("%% Camera power up (GPIO%d is LOW)\n\r", config.pin_pwdn);
-#endif
+    //pinForceMode(config.pin_pwdn, OUTPUT);
+    digitalForceWrite(config.pin_pwdn, LOW);
+    HELP(q_printf("%% Camera power up (GPIO%d is LOW)\n\r", config.pin_pwdn));
     q_delay(100);
   }
 
-
   sensor_t *s = NULL;
   if (ESP_OK == (err = esp_camera_init(&config))) {
-
-    s = esp_camera_sensor_get();
-    if (s != NULL) {
+    cam_good = true;
+    if ((s = esp_camera_sensor_get()) != NULL) {
       s->set_gain_ctrl(s, 1);      // auto gain on
       s->set_exposure_ctrl(s, 1);  // auto exposure on
       s->set_awb_gain(s, 1);       // Auto White Balance enable (0 or 1)
-      cam_good = true;
-#if WITH_HELP
-      q_printf("%% Camera is on\n\r");
-#endif
+      HELP(q_printf("%% Camera is on; Gain=auto, exposure=auto, white balance=auto\n\r"));
       return 0;
-    }
+    } else
+      HELP(q_printf("%% Camera is on\n\r"));
   }
-  q_print(Failed);
-  //q_printf("%% Camera init code=%d, sensor=%p\n\r",err,s);
+
+  q_printf( "%% Camera init failed (error code %x)\n\r"
+            "%% Check if selected camera model (\"%s\") matches your board\r\n ",err, model);
   return 0;
 }
 

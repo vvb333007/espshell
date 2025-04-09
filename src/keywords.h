@@ -851,23 +851,26 @@ static const struct keywords_t keywords_main[] = {
 
   { "count", HELP_ONLY,
     HELPK("% \"<b>count PIN</> <i>clear</>\"\r\n"
-          "% Clear counters associated with pin PIN. These may be stopped, running or in \r\n"
-          "% \"trigger\" state\r\n"
-          "% \"<b>count 4 clear</>\"       - Clear all counters associated with GPIO4\r\n"), NULL },
+          "% Clear counters associated with pin PIN. These may be stopped, \r\n"
+          "% running or in \"trigger\" state\r\n"
+          "% Example: \r\n"
+          "% \"<b>count 4 clear</>\" - Clear all counters associated with GPIO4\r\n"), NULL },
     
 #if WITH_ESPCAM
   { "camera", cmd_cam, MANY_ARGS, 
-    HELPK("% \"<b>camera</> <i>up</> [<o>MODEL | custom</>] [<o>clock FREQUENCY</>] [<o>i2c NUMBER</>]\r\n" \
+    HELPK("% \"<b>camera</> <i>up</> [<o>MODEL | custom | clock HZ | i2c NUMBER</>]*\r\n" \
           "% Detect & initialize the camera\n\r" \
           "%\n\r" \
           "% <i>MODEL</>    - The camera model; Supported models list is here: \"show camera models\"\n\r" \
           "%            Use word \"custom\" to specify custom camera model. (see \"camera pinout\")\r\n" \
-          "% clock <i>HZ</> - Set XCLK frequency, Hertz. Default value is 16000000 (16Mhz)\n\r" \
-          "% i2c <i>NUM</>  - Use existing i2c interface, ignore SDA & SCL pins\r\n%\r\n"
+          "% <i>clock HZ</> - Set XCLK frequency, Hertz. Default value is 16000000 (16Mhz)\n\r" \
+          "% <i>i2c NUM</>  - Use existing i2c interface, ignore SDA & SCL pins\r\n%\r\n"
           "%\r\n"
           "%Examples:\r\n"
           "% camera up <i>ai-thinker</>  - Initialize Ai-Thinker ESP32Cam\r\n"
-          "% camera up <i>custom</> clock <i>20000000</>  - Initialize custom pinout camera at 20Mhz"), HELPK("Camera commands")
+          "% camera up <i>custom</> clock <i>20000000</>  - Initialize custom pinout camera at 20Mhz\r\n"
+          "% camera up                - Camera assumed to be initialized by sketch, and used as is\r\n"
+          ), HELPK("Camera commands")
   },
 
   { "camera", HELP_ONLY,
@@ -876,24 +879,29 @@ static const struct keywords_t keywords_main[] = {
           "% <b>settings</> - Enter camera setting\n\r" \
           "% <b>capture</>  - Capture a single shot\n\r" \
           "% <b>filesize</> - Display last captured shot file size\n\r" \
-          "% <b>transfer</> - Transmit the last shot over uart\n\r" \
+          "% <b>transfer</> - Transmit last picture taken (over UART)\n\r" \
           "% <b>down</>     - Camera shutdown & power-off"), NULL },
 
 
   { "camera", HELP_ONLY,
-    HELPK("% \"<b>camera</> <i>pinout</> <g>PWDN RESET XCLK SDA SCL D7 D6 D5 D4 D3 D2 D1 D0 VSYNC HREF PCLK</>\r\n"
+    HELPK("% \"<b>camera pinout</> <o>PWDN RESET</> XCLK <o>SDA SCL</> <i>D7 D6 D5 D4 D3 D2 D1 D0 VSYNC HREF PCLK</>\r\n"
           "% Set custom pinout for the camera model \"<i>custom</>\"\r\n"
-          "% Later it can be initialized with \"cam up custom\"\n\r"
+          "% Later it can be used with \"camera up custom\"\n\r"
           "%\n\r"
           "% Command requires 16 arguments (pin numbers): i2c bus, data pins, etc\r\n"
-          "% If your board don't have / don't use certain pins then use \"-1\" as\r\n"
-          "% a pin number to disable it.\r\n"
+          "% If your board don't have / don't use certain pins then use \"-\" (minus sign)\r\n"
+          "% instead of pin number to disable it (or "-1" - it also works).\r\n"
           "% Example:\r\n"
-          "% camera <i>pinout</> <g>-1 -1 1 2 3 4 5 6 7 8 9 10 11 12 13 14</>\r\n"
-          "% In example above, pins PWDN & RESET are not used and thus set to -1\r\n"
+          "%   <b>camera pinout</> <i>- - 1 2 3 4 5 6 7 8 9 10 11 12 13 14</>\r\n"
+          "% In example above, pins PWDN & RESET are not used and thus set to \"-\"\r\n"
           "%\r\n"
           "% This custom pinout can be activated via <i>camera up custom</>\r\n"
-          "% Note that pin names D7..D0 are synonyms for Y9..Y2: D0=Y2, D1=Y3 ..."), NULL},
+          "% <i>PWDN</>  - Power down (set LOW to power up)\r\n"
+          "% <i>RESET</> - Camera reset\r\n"
+          "% <i>XCLK</>  - High frequency source from ESP32, camera clock\r\n"
+          "% <i>SDA, SCL</> - Pins, where camera's I2C interface is connected. Can be \"-\".\r\n"
+          "% <i>D7..D0</> (or <i>Y9..Y2</>) - Pins where camera data bus is connected\r\n"
+          "% <i>VSYNC HREF PCLK</> - Standart CMOS camera signals"), NULL},
 
 #endif //WITH_ESPCAM
   // TODO: split helplines between different entries

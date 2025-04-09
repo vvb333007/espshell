@@ -30,7 +30,7 @@
 #define WITH_HISTORY 1           // Enable command history (!! set to 0 when using MEMTEST !!)
 #define HIST_SIZE 20             // History buffer size (number of commands to remember)
 
-#define WITH_ESPCAM 1            // Include camera commands. WARNING: only supports PSRAM-enabled boards. Working on it.
+#define WITH_ESPCAM 1            // Include camera commands
 
 #define WITH_VAR 1               // enable support for sketch variables
 
