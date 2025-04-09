@@ -1,0 +1,13 @@
+1. "alias" command which allows for multiline scripts to be referenced by 1 command:
+  Like: "alias ph = pin $1 high" or alias pw pwm $1 $2 0.7
+  
+2. Make command processor be able to expand $ values: $1 is argv[1] and $A is a variable (single letter is enough)
+
+3. "watch" command which watches signal change on pin (neg,pos,rising,falling,any) and calls an alias
+
+    watch PIN neg|pos|rising|falling|anyedge [SHELL_COMMAND | ALIAS]
+    when no action is provided (a shell command or an alias) then even is displayed to user
+
+4.  script(s?) storage in NVS
+
+5. "exec" command which loads and executes a script either from NVRAM or filesystem
