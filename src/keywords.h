@@ -890,7 +890,7 @@ static const struct keywords_t keywords_main[] = {
           "%\n\r"
           "% Command requires 16 arguments (pin numbers): i2c bus, data pins, etc\r\n"
           "% If your board don't have / don't use certain pins then use \"-\" (minus sign)\r\n"
-          "% instead of pin number to disable it (or "-1" - it also works).\r\n"
+          "% instead of pin number to disable it (or \"-1\" - it also works).\r\n"
           "% Example:\r\n"
           "%   <b>camera pinout</> <i>- - 1 2 3 4 5 6 7 8 9 10 11 12 13 14</>\r\n"
           "% In example above, pins PWDN & RESET are not used and thus set to \"-\"\r\n"
