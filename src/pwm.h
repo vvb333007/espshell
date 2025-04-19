@@ -26,6 +26,8 @@
 // BUG BUG BUG: There is a bug when ESP32 can't start PWM if lower (100Hz) frequencies are requested
 //              workaround: start 10kHz PWM first, then start any lower frequency. Only happens 
 //              after flashing/rebooting sequence.  Never seen on ESP32-S3.
+//
+// TODO: investigate MCPWM module for PWM generation
 #if COMPILING_ESPSHELL
 
 

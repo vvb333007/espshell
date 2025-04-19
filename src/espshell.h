@@ -11,8 +11,8 @@
  // 1) Inclusion of this file will enable CLI automatically
  // 2) No functions needs to be called in order to use the shell
  // 3) There are Compile-time Settings below to tweak ESP32Shell behaviour
- // 4) Console on USB (Serial is of USBCDC class) is not supported yet
- // 5) Using Compile-time Settings section below disable code which is not needed to decrease the memory footprint
+ //    Using Compile-time Settings section below disable code which is not needed to 
+ //    decrease the memory footprint
 
 #ifndef espshell_h
 #define espshell_h
@@ -22,7 +22,6 @@
 
 // -- Compile-time ESPShell settings --
 //
-
 #define AUTOSTART 1              // Set to 0 for manual shell start via espshell_start().
 #define STACKSIZE (5 * 1024)     // Shell task stack size
 
@@ -49,31 +48,111 @@
 #define SEQUENCES_NUM 10         // Max number of sequences available for the command "sequence"
 
 #if ARDUINO_USB_CDC_ON_BOOT      // USB mode?
-#  define SERIAL_IS_USB 1        // don't change this
+#  define SERIAL_IS_USB 1        
 #  define STARTUP_PORT 99        // don't change this
 #else                             
 #  define SERIAL_IS_USB 0
-#  define STARTUP_PORT UART_NUM_0  // UART number, where shell will be deployed at startup. 
+#  define STARTUP_PORT UART_NUM_0  // UART number, where shell will be deployed at startup. can be changed.
 #endif                            
-
-
-// Developer options, better keep default
-//
-#define WITH_VERBOSE 1          // Enable VERBOSE() macro. Only for hunting bugs in espshell code.
-#define MEMTEST 0               // hunt for espshell's memory leaks
-#define CMD_STATS 0             // register NCmds, NHandlers and NTrees variables which hold espshell's keyword stats
-#define WITH_WRAP 0             // Wrap xTaskCreate...() functions to access all running tasks ("var Tasks"). Requires an update to ld_flags file
-
-/*
-#if WITH_ESPCAM
-# error "The ESPCAM code is broken and is under development now"
-#endif
-*/
-
 
 // -- ESPShell public API --
 
-// 1)
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// 1) Start ESPShell manually
+// By default espshell autostarts. If AUTOSTART is set to 0 in espshell.h then
+// user sketch must call espshell_start() to manually start the shell. 
+// A shell which was closed by "exit ex" command can be restarted by this function 
+//
+#if !AUTOSTART
+void espshell_start();
+#endif
+
+// 2) Execute an arbitrary shell command (\n are allowed for multiline, i.e. multiple commands at once).
+// This function injects its argument to espshell's input stream as if it was typed by user. 
+// It is an asyn call, returns immediately. Next call can be done only after espshell_exec_finished()
+//
+// @param p - A pointer to a valid asciiz string. String must remain a valid memory until espshell finishes its processing!
+//
+void espshell_exec(const char *p);
+
+
+// 3) Check if ESPShell has finished processing of last espshell_exec() call and is ready for new espshell_exec()
+// This function does NOT tell you that command execution is finished. It is about readiness of the shell to accept new
+// commands
+//
+bool espshell_exec_finished();
+
+
+// used internally by convar_add macro (see below [8] )
+void espshell_varadd(const char *name, void *ptr, int size, bool isf, bool isp, bool isu);
+void espshell_varaddp(const char *name, void *ptr, int size, bool isf, bool isp, bool isu);
+void espshell_varadda(const char *name, void *ptr, int size,int count, bool isf, bool isp, bool isu);
+
+// 4) By default ESPShell occupies UART0  (or USB). Default port could be changed
+// at compile time by setting #define STARTUP_PORT in "extra/espshell.h"
+// to required value OR at runtime by calling console_attach2port()
+// 
+// Special value 99 means USB console port for boards with USB-CDC
+// support
+//
+// /port/ - 0, 1 or 2 for UART interfaces or 99 for native USB console 
+//          interface. If /port/ is negative number then this function 
+//          returns port number which currently in use by ESPShell.
+// 
+// returns number of port which is now used
+//
+int console_attach2port(int port);
+
+
+// 5) classic digitalRead() undergoes PeriMan checks (see Arduino Core, esp32-periman.c) 
+// which do not allow to read data for pins which are NOT configured as GPIO:  
+// UART pins or I2C pins are examples of pins that can not be read by digitalRead().
+//
+// digitalForceRead() is able to read ANY pin no matter what. 
+// for OUTPUT pins it enables INPUT automatically.
+//
+// This function is much faster than digitalRead()
+//
+int digitalForceRead(int pin);
+
+// 6) Again, periferial manager bypassed: faster version
+// of digitalWrite():
+//
+// 1. pin not need to be set for OUTPUT
+// 2. it is faster
+//
+void digitalForceWrite(int pin, unsigned char level);
+
+// 7) Discussion: https://github.com/espressif/arduino-esp32/issues/10370
+// 
+// pinMode() is a heavy machinery: setting a pin INPUT or OUTPUT does not just
+// change pin modes: it also calls init/deinit functions of a driver associated 
+// with pins. As a result, pinMode(3, OUTPUT) (pin 3 is an UART0 TX pin on most ESP32's)
+// breaks UART0 completely.
+//
+// Another big drawback is that setting any pin to OUTPUT or INPUT automatically turns it into 
+// GPIO Matrix pin, even if it was at correct IO_MUX function. As a result we can not have
+// "working" pin which is managed by IO MUX.
+//
+// Function pinForceMode() bypasses periman, does not reconfigure pin and even can be applied
+// to a **reserved** ESP32 pins (SPI FLASH CLK) for example providing that new flags are compatible
+// with pin function.
+//
+// calling pinMode(6,...) will likely crash your ESP32, pinForceMode() - not
+//
+// /pin/    - pin (GPIO) number
+// /flags/  - flags as per pinMode(): INPUT, OUTPUT, OPEN_DRAIN,PULL_UP, PULL_DOWN and OUTPUT_ONLY
+//          - NOTE: On ESP32 OUTPUT is defined as INPUT and OUTPUT. You can use flag OUTPUT_ONLY if you don't want
+//            INPUT to be automatically set.
+//
+#define OUTPUT_ONLY ((OUTPUT) & ~(INPUT))
+
+void pinForceMode(unsigned int pin, unsigned int flags);
+
+// 8)
 // Access sketch variables from ESPShell while sketch is running: in order to do so variables 
 // must be **registered** (using one of convar_addX() macros). Once registered, variables are 
 // available for read/write access (via "var" command). 
@@ -147,102 +226,6 @@ extern float dummy_float;
 #  define convar_addpp( ... ) do {} while( 0 )
 #  define convar_addap( ... ) do {} while( 0 )
 #endif
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-// 2) Start ESPShell manually
-// By default espshell autostarts. If AUTOSTART is set to 0 in espshell.h then
-// user sketch must call espshell_start() to manually start the shell. 
-// A shell which was closed by "exit ex" command can be restarted by this function 
-//
-#if !AUTOSTART
-void espshell_start();
-#endif
-
-// 3) Execute an arbitrary shell command (\n are allowed for multiline, i.e. multiple commands at once).
-// This function injects its argument to espshell's input stream as if it was typed by user. 
-// It is an asyn call, returns immediately. Next call can be done only after espshell_exec_finished()
-//
-// @param p - A pointer to a valid asciiz string. String must remain a valid memory until espshell finishes its processing!
-//
-void espshell_exec(const char *p);
-
-
-// 4) Check if ESPShell has finished processing of last espshell_exec() call and is ready for new espshell_exec()
-// This function does NOT tell you that command execution is finished. It is about readiness of the shell to accept new
-// commands
-//
-bool espshell_exec_finished();
-
-
-// DONT USE THIS! use convar_add() instead
-void espshell_varadd(const char *name, void *ptr, int size, bool isf, bool isp, bool isu);
-void espshell_varaddp(const char *name, void *ptr, int size, bool isf, bool isp, bool isu);
-void espshell_varadda(const char *name, void *ptr, int size,int count, bool isf, bool isp, bool isu);
-
-// 5) By default ESPShell occupies UART0. Default port could be changed
-// at compile time by setting #define STARTUP_PORT in "extra/espshell.h"
-// to required value OR at runtime by calling console_attach2port()
-// 
-// Special value 99 means USB console port for boards with USB-OTG
-// support
-//
-// /port/ - 0, 1 or 2 for UART interfaces or 99 for native USB console 
-//          interface. If /port/ is negative number then this function 
-//          returns port number which currently in use by ESPShell.
-// 
-// returns number of port which is now used
-//
-int console_attach2port(int port);
-
-
-// 6) classic digitalRead() undergoes PeriMan checks (see Arduino Core, esp32-periman.c) 
-// which do not allow to read data for pins which are NOT configured as GPIO:  
-// UART pins or I2C pins are examples of pins that can not be read by digitalRead().
-//
-// digitalForceRead() is able to read ANY pin no matter what. 
-// for OUTPUT pins it enables INPUT automatically.
-//
-// This function is much faster than digitalRead()
-//
-int digitalForceRead(int pin);
-
-// 7) Again, periferial manager bypassed: faster version
-// of digitalWrite():
-//
-// 1. pin not need to be set for OUTPUT
-// 2. it is faster
-//
-void digitalForceWrite(int pin, unsigned char level);
-
-// 8) Discussion: https://github.com/espressif/arduino-esp32/issues/10370
-// 
-// pinMode() is a heavy machinery: setting a pin INPUT or OUTPUT does not just
-// change pin modes: it also calls init/deinit functions of a driver associated 
-// with pins. As a result, pinMode(3, OUTPUT) (pin 3 is an UART0 TX pin on most ESP32's)
-// breaks UART0 completely.
-//
-// Another big drawback is that setting any pin to OUTPUT or INPUT automatically turns it into 
-// GPIO Matrix pin, even if it was at correct IO_MUX function. As a result we can not have
-// "working" pin which is managed by IO MUX.
-//
-// Function pinForceMode() bypasses periman, does not reconfigure pin and even can be applied
-// to a **reserved** ESP32 pins (SPI FLASH CLK) for example providing that new flags are compatible
-// with pin function.
-//
-// calling pinMode(6,...) will likely crash your ESP32, pinForceMode() - not
-//
-// /pin/    - pin (GPIO) number
-// /flags/  - flags as per pinMode(): INPUT, OUTPUT, OPEN_DRAIN,PULL_UP, PULL_DOWN and OUTPUT_ONLY
-//          - NOTE: On ESP32 OUTPUT is defined as INPUT and OUTPUT. You can use flag OUTPUT_ONLY if you don't want
-//            INPUT to be automatically set.
-//
-#define OUTPUT_ONLY ((OUTPUT) & ~(INPUT))
-
-void pinForceMode(unsigned int pin, unsigned int flags);
-
 
 #ifdef __cplusplus
 };

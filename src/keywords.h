@@ -135,6 +135,10 @@ static int cmd_colors(int, char **);
 #endif
 static int cmd_tty(int, char **);
 
+#if WITH_ALIAS
+static int cmd_alias_if(int, char **);
+#endif
+
 // -- Shell Commands --
 //
 // ESPShell commands are entries to /keywords_.../ arrays. Each entry starts and ends with "{" and "}" brackets.
@@ -145,6 +149,37 @@ static int cmd_tty(int, char **);
 // There are number of keyword arrays: keywords_main is the main command array, keyword_uart and keyword_i2c are other
 // examples. Switching between arrays is possible via change_command_directory() function
 //
+
+#if WITH_ALIAS
+static const struct keywords_t keywords_alias[] = {
+ 
+  KEYWORDS_BEGIN
+
+  { "delete", NULL, 1,
+    HELPK("% \"<b>delete</> [all | LINE_NUMBER]\"\r\n" 
+          "%\r\n"
+          "% Delete lines from an alias: no arguments means \"last line\"\r\n"
+          "% LINE_NUMBER is a line number, which can be displayed by \"list\" command" ),
+    HELPK("Delete lines") },
+
+  { "delete", NULL,NO_ARGS, HIDDEN_KEYWORD },
+
+  { "list", NULL, NO_ARGS,
+    HELPK("% \"<b>list</>\"\r\n" 
+          "%\r\n"
+          "% Display current alias content"),
+    HELPK("Display content") },
+
+  // Special entry. Matches any command just as MANY_ARGS matches any number of arguments
+  { "*", NULL, MANY_ARGS,
+    HELPK("% \"<b>COMMAND ARG1 ARG2 ... ARGn</>\"\r\n" 
+          "%\r\n"
+          "% Any command with any number of arguments"),
+    HELPK("Enter commands one by one") },
+
+  KEYWORDS_END
+};
+#endif
 
 
 // UART commands.
@@ -598,6 +633,15 @@ static const struct keywords_t keywords_files[] = {
 static const struct keywords_t keywords_main[] = {
 
   KEYWORDS_BEGIN
+
+#if WITH_ALIAS
+  { "alias", cmd_alias_if, 1,
+    HELPK("% \"<b>alias NAME</>\"\r\n"
+          "%\r\n"
+          "% Create command alias NAME and enter alias configuration mode\r\n"
+          "% Ex.: \"alias set\" - create & start editing alias NAME"),
+    "Command aliases" },
+#endif
 
   { "uptime", cmd_uptime, NO_ARGS,
     HELPK("% \"<b>uptime</>\"\r\n% Shows time passed since last boot; shows restart cause"), "System uptime" },

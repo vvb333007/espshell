@@ -259,7 +259,8 @@ static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
     
     if (pin_exist_silent(pin)) {
       // add "!" before pin number for RESERVED pins. 
-      // Input-only pins are painted green
+      // Input-only pins are painted green. Didn't checked it touroughly but it looks like only original ESP32
+      // has input-only pins; other models (both xtensa and risc-v CPUs) have no such restriction
       char color = 'n', mark = ' ';
       if (pin_is_input_only_pin(pin))
         color = 'g';
@@ -301,12 +302,15 @@ static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
 // /pin/       - pin number
 // /function/  - IO_MUX function code (in range [0..IOMUX_NFUNC) ). Code 0 is usually "GPIO via IO_MUX"
 //               while function #1 is the "GPIO via GPIO_Matrix" (with one exception: original ESP32 uses function#2
-//               for that)
+//               for that); can be PIN_FUNC_PAD_SELECT_GPIO
+//               
 static bool pin_set_iomux_function(unsigned char pin, unsigned char function) {
 
-  // Special case for a non-existent function 0xff: execute IDF's gpio_pad_select_gpio and return
+  // Special case for a non-existent function 0xff: reset pin, execute IDF's gpio_pad_select_gpio and return
   if (function == PIN_FUNC_PAD_SELECT_GPIO) {
+    gpio_reset_pin(pin);
     gpio_pad_select_gpio(pin);
+    VERBOSE(q_print("GPIO pad reset, select_gpio\r\n"));
     return true;
   }
   
@@ -322,8 +326,8 @@ static bool pin_set_iomux_function(unsigned char pin, unsigned char function) {
 }
 
 
-// same as digitalRead() but reads all pins no matter what
-// exported (not static) to enable its use in user sketch
+// Same as digitalRead() but reads all pins no matter what.
+// Public API. It is much faster than digitalRead()
 //
 int digitalForceRead(int pin) {
   gpio_ll_input_enable(&GPIO, pin);
@@ -339,6 +343,7 @@ void digitalForceWrite(int pin, unsigned char level) {
 }
 
 // ESP32 Arduino Core as of version 3.0.5 (at the moment of writing) defines pin OUTPUT flag as both INPUT and OUTPUT
+// "_ONLY" here a bit misleading here: pin can be INPUT and OUTPUT_ONLY at the same time.
 #ifndef OUTPUT_ONLY
 #define OUTPUT_ONLY ((OUTPUT) & ~(INPUT))
 #endif
@@ -391,7 +396,22 @@ static bool pin_not_exist_notice(unsigned char pin) {
       if (pin != pin0 && (SOC_GPIO_VALID_GPIO_MASK & ((uint64_t)1 << pin)) == 0)
         q_printf("%u  ", pin);
 
+  // Dump RESERVED pins. ESP32's reserved pins are those used for SPIFLASH and SPIRAM.
+  // Defenitely must not be used; However on ESP32-S3 reserved pin is any pin which is used by any driver,
+  // for example GPIO 43 is an UART0 pin and it is reserved.
+  q_print("</>\r\n"
+          "% Reserved by SoC / drivers:<i> ");
+  int res = 0;
+  for (pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++) {
+      if (pin_exist_silent(pin) && esp_gpio_is_pin_reserved(pin)) {
+        q_printf("%u  ", pin);
+        res++;
+      }
+  }
+  if (!res)
+    q_print("none");
   q_print("</>\r\n");
+
 #endif  // WITH_HELP
   return false;
 }
@@ -422,7 +442,7 @@ static void pin_save(int pin) {
   gpio_ll_get_io_config(&GPIO, pin, &pu, &pd, &ie, &oe, &od, &drv, &fun_sel, &sig_out, &slp_sel);
 
   //Pin peri connections:
-  // fun_sel is either PIN_FUNC_GPIO and then sig_out is the signal ID
+  // If fun_sel == PIN_FUNC_GPIO then sig_out is the signal ID
   // to route to the pin via GPIO Matrix.
 
   Pins[pin].sig_out = sig_out;
@@ -439,7 +459,7 @@ static void pin_save(int pin) {
   if (ie) Pins[pin].flags |= INPUT;
   if (oe) Pins[pin].flags |= OUTPUT_ONLY;
   if (od) Pins[pin].flags |= OPEN_DRAIN;
-}
+}  
 
 // Load pin state from Pins[] array
 // Attempt is made to restore GPIO Matrix connections however it is not working as intended
@@ -466,7 +486,7 @@ static void pin_load(int pin) {
       // unfortunately this will not work with Arduino :(
       // Once lost, matrix connections can not be properly restored because of Periman's deinit, which uninstall drivers
 #if 0      
-      if (Pins[pin].flags & OUTPUT)
+      if (Pins[pin].flags & OUTPUT_ONLY)
         gpio_matrix_out(pin, Pins[pin].sig_out, false, false);
       if (Pins[pin].flags & INPUT)
         gpio_matrix_in(pin, Pins[pin].sig_out, false);
@@ -721,8 +741,8 @@ static int cmd_pin_matrix(int argc, char **argv,unsigned int pin, unsigned int *
   // Is there any signal IDs provided? 
   if (i + 2 < argc) {
 
-    // must be a number
-    if (!isnum(argv[i + 2]))
+    // must be a number or a keyword "gpio"
+    if (q_strcmp(argv[i + 2],"gpio") && !isnum(argv[i + 2]))
       return i + 2;
 
     // read the signal id. defaults to "simple GPIO" on fail
@@ -735,6 +755,10 @@ static int cmd_pin_matrix(int argc, char **argv,unsigned int pin, unsigned int *
 
     // advance to next keyword (skip [in|out] and SIGNAL_ID)
     *start += 2;
+  } else {
+    VERBOSE("% matrix keyword but no signals: defaulting to SIG_GPIO_OUT_IDX");
+    //gpio_matrix_in(pin, SIG_GPIO_OUT_IDX, false);
+    gpio_matrix_out(pin, SIG_GPIO_OUT_IDX, false, false);
   }
 
   return 0;
@@ -789,20 +813,21 @@ static int cmd_pin(int argc, char **argv) {
     return CMD_MISSING_ARG;  //missing argument
 
   //first argument must be a decimal number: a GPIO number
-  if (!pin_exist((pin = q_atol(argv[1], DEF_BAD))))
+  if (!pin_exist((pin = q_atol(argv[1], DEF_BAD)))) 
     return 1;
 
   do { // Do the same command /count/ times.
 
     // Run through "pin NUM arg1, arg2 ... argN" arguments, looking for keywords to execute.
     // Abort if there were errors during next keywords processing. 
-    //
+
     while (i < argc) {
 
       int ret;
 
       //2. "pwm FREQ DUTY" keyword. Shortened "p"
-      // unlike global "pwm" command the duty and frequency are not an optional parameter anymore.
+      // unlike global "pwm" command the duty and frequency are not an optional parameter anymore
+      // and PWM channel is autoselected
       if (!q_strcmp(argv[i], "pwm")) {
         if ((ret = cmd_pin_pwm(argc,argv,pin,&i)) != 0)
           return ret;
@@ -897,7 +922,7 @@ static int cmd_pin(int argc, char **argv) {
       //A keyword which is a decimal number. When we see a number we use it as a pin number
       //for subsequent keywords. Must be a valid GPIO number.
       if (isnum2(argv[i])) {
-        if (!pin_exist((pin = /*q_atol(argv[i], DEF_BAD)*/atoi2(argv[i]))))
+        if (!pin_exist_silent((pin = /*q_atol(argv[i], DEF_BAD)*/atoi2(argv[i]))))
           return i;
       } else
       // argument i was not recognized
@@ -915,8 +940,93 @@ static int cmd_pin(int argc, char **argv) {
         HELP(q_print("% Key pressed, aborting..\r\n"));
         break;
       }
-  } while (--count > 0);  // repeat if "loop X" command was found
+  } while (--count > 0);  // repeat if "loop X"
   return 0;
 }
 #endif // #if COMPILING_ESPSHELL
+
+#if 0
+// TODO: refactor that monster /if else/ statement in cmd_pin()
+//       Template for cmd_pin() refactoring: too many q_strcmps
+  switch (argv[i][0]) {
+    case 'p' : // pwm FREQ DUTY
+              if ((ret = cmd_pin_pwm(argc,argv,pin,&i)) != 0)
+                return ret;
+              break;
+    case 'u' : // up
+              pinForceMode(pin, (flags |= PULLUP));
+              break;
+    case 'a' : // aread
+              break;
+    case 'm' : // matrix in|out NUMBER
+              break;
+
+    case 'd' : // down 
+              if (argv[i][1] == 'o') {
+                pinForceMode(pin, (flags |= PULLDOWN));
+              } else {
+              // delay TIME_MS
+
+              }
+              break;
+    case 's' : // seq NUMBER
+              if (argv[i][1] == 'e') {
+
+              } else
+              // save
+                pin_save(pin);
+
+              
+              break;
+    case 'i' :// in 
+              if (likely(argv[i][1] != 'o')) {
+                pinForceMode(pin, (flags |= INPUT));
+              } else {
+              // iomux [FUNCTION | gpio]
+              }
+              break;
+    case 'o' : // out
+              if (likely(argv[i][1] != 'p'))
+                pinForceMode(pin, (flags |= OUTPUT));
+              else
+              // open
+                pinForceMode(pin, (flags |= OPEN_DRAIN));
+              
+              
+              break;
+    case 'l' : // loop
+              if (argv[i][1] && argv[i][2] == 'o') {
+
+              } else if (argv[i][1] && argv[i][2] == 'a') {
+              // load
+                pin_load(pin);
+              } else {
+                // low
+              
+              }
+              break;
+    case 'h' : // hold
+              if (unlikely(argv[i][1] == 'o')) {
+
+              } else {
+              // high
+                if (pin_is_input_only_pin(pin)) {
+                  q_printf("%% <e>Pin %u is **INPUT-ONLY**, can not be set \"%s</>\"\r\n", pin, argv[i]);
+                  return i;
+                }
+                // use pinForceMode/digitalForceWrite to not let the pin to be reconfigured (bypass PeriMan)
+                // pinForceMode is not needed because ForceWrite does it
+                flags |= OUTPUT_ONLY;
+                digitalForceWrite(pin, HIGH);
+              }
+              break;
+    case 'r' : // release
+              if (unlikely(argv[i][1] && argv[i][2] == 'l')) {
+
+              } else {
+                // read
+              }
+              break;
+  };
+#endif    
 

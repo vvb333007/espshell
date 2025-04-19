@@ -16,7 +16,7 @@
 // Shell command entry. There are arrays of these entries defined. Each array represents
 // a command **subtree** (or subdirectory). Root (main) command tree is called keywords_main[]
 struct keywords_t {
-  const char *cmd;                   // Command keyword ex.: "pin"
+  const char *cmd;                   // Command keyword or "*"
 
 #define HELP_ONLY NULL,0             // Used for entries whose sole purpose is to carry help lines: so-called /full/  and /brief/
   int (*cb)(int argc, char **argv);  // Callback to call (one of cmd_xxx functions)

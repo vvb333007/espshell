@@ -30,6 +30,7 @@
 #define PROMPT_FILES "esp32#(%s%s%s)>"  // File manager prompt (format string is /color tag/, /current working directory/, /color tag/)
 #define PROMPT_SEARCH "Search: "        // History search prompt
 #define PROMPT_ESPCAM "esp32-cam>"      // ESPCam settings directory
+#define PROMPT_ALIAS "esp32-alias>"     // Alias editing directory.
 
 // Includes. Lots of them.
 // classic C
@@ -242,6 +243,9 @@ static const char *VarOops = "<e>% Oops :-(\r\n"
 #include "spi.h"                // spi generic interface
 #include "uart.h"               // uart generic interface
 #include "misc.h"               // misc command handlers
+#if WITH_ALIAS
+#include "alias.h"
+#endif
 
 #include "filesystem.h"         // file manager
 #include "memory.h"             // memory component
@@ -495,6 +499,45 @@ static  void espshell_initonce() {
     seq_init();
   }
 }
+
+// ESPShell main task. Reads and processes user input by calling espshell_command(), the command processor
+// Only one shell task can be started at the time!
+//
+static void espshell_task(const void *arg) {
+
+  // arg is not NULL - first time call: start the task and return immediately
+  if (arg) {
+    MUST_NOT_HAPPEN (shell_task != NULL);
+
+    // on multicore processors use another core: if Arduino uses Core1 then
+    // espshell will be on core 0 and vice versa. 
+    shell_core = xPortGetCoreID();
+    if (portNUM_PROCESSORS > 1)
+      shell_core = shell_core ? 0 : 1;
+    if (pdPASS != xTaskCreatePinnedToCore((TaskFunction_t)espshell_task, NULL, STACKSIZE, NULL, tskIDLE_PRIORITY, &shell_task, shell_core))
+      q_print("% ESPShell failed to start its task\r\n");
+  } else {
+
+    // wait until user code calls Serial.begin()
+    while (!console_isup())
+      q_delay(CONSOLE_UP_POLL_DELAY);
+
+    HELP(q_print(WelcomeBanner));
+
+    // read & execute commands until "exit ex" is entered
+    while (!Exit) {
+      espshell_command(readline(prompt));
+      task_yield();
+    }
+    HELP(q_print(Bye));
+
+    // Make espshell restart possible
+    Exit = false;
+    vTaskDelete((shell_task = NULL));
+  }
+}
+
+
 
 // Start ESPShell
 // Normally (AUTOSTART==1) starts automatically. With autostart disabled EPShell can
