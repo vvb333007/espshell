@@ -1,0 +1,29 @@
+body {
+  font-family:  tahoma, verdana;
+  margin-left: 10%;
+  margin-right: 10%;
+}
+
+td {
+  vertical-align: top;
+  background-color: #fcffd4;
+  padding: 4px;
+}
+
+
+pre { 
+  border: 1px solid black; 
+  background-color: #acffd4;
+  padding-top: 1pc;
+  padding-bottom: 1pc;
+  padding-left: 1pc;
+  width: 70%;
+}
+
+a {
+  color: #475de2;
+}
+
+.func {
+  font-style: italic;
+}

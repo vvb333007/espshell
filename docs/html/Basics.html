@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>ESPShell : Introduction to ESPShell : basic concepts and command index</title>
+  <link rel="stylesheet" href="espshell.css">
+</head>
+<body>
+<p align=center><img src="espshell.jpg" alt="ESPShell main screen" width="70%" height="70%"></p>
+<p>
+  <ul>
+    <li><a href="#wit">What is this</a></li>
+    <li><a href="#add">How to add it to your arduino project/sketch</a></li>
+    <li><a href="#ui">User interface</a></li>
+    <li>&nbsp;&nbsp;<a href="#keyboard">Keyboard & key bindings</a></li>
+    <li>&nbsp;&nbsp;<a href="#short">Autocompletion vs Incompletion</a></li>
+    <li><a href="#help">Built-in help system</a></li>
+    <li>&nbsp;&nbsp;<a href="#huse">A question mark</a></li>
+    <li>&nbsp;&nbsp;<a href="#hsyntax">Help page syntax</li></a>
+    <li><a href="#background">Background execution</a></li>
+    <li><a href="#cmds">Built-in commands</li></a>
+    <li>&nbsp;&nbsp;<a href="#dirs">Command directories; main command directory, entering & exiting</li></a>
+    <li>&nbsp;&nbsp;<a href="#index">Command index / brief with links to documentation pages</li></a>
+  </ul>
+</p>
+
+<p><h2 id=wit>WHAT IS THIS:</h2></p>
+
+<p>
+ This is a debugging/development tool (<b>a library for Arduino framework</b>) for use 
+ with Arduino projects on ESP32 hardware. 
+</p>
+<p>
+ Provides a command line interface (CLI) on serial port running in parallel to your 
+ Arduino sketch. It is not standalone program - this tool attaches to the user sketch 
+ (at compile time) and enchances any sketch (even an empty one) with a shell.
+</p><p>
+ User can enter and execute commands (there are many built-in commands) in a way 
+ similar to Linux shell while their sketch is running. There are commands to control
+ sketch execution (to some extent) : commands to suspend or resume sketch execution.
+ One can simply press Ctrl+C to suspend sketch while shell will continue to work. 
+</p><p>
+ User interacts with ESPShell either through Arduino IDE Serial Monitor or any other communication 
+ software like PuTTY, TeraTerm, Linux "cu" utility and many others. Developer of this 
+ library uses TeraTerm on Windows 10. Default settings for both Arduino IDE Serial 
+ Monitor and TeraTerm are shown on screenshots: <a href="TeraTerm_Default_Settings.jpg">for TeraTerm</a>
+ and for <a href="Arduino_IDE_Serial_Monitor_Default_Settings.jpg">Arduino IDE Serial Monitor</a>. ESPShell
+ echoes user input so "local echo" must be disabled (see screenshots above)
+</p>
+<p>
+ This library can be useful for developers who are interfacing new I2C or UART devices
+ as espshell has commands to create/delete hardware interfaces, send/receive
+ data. Interfacing GPS (uart-based) chips or GSM modems, making libraries for
+ I2C devices. 
+</p>
+ <p>
+ Developers, who do home automation: shell has commands to do whatever one wants with 
+ GPIO (check out <a href="GPIO.html">GPIO commands</a>), so interfacing relays now don't even require 
+ you to write any code. There are PWM generator and a frequency meter, a pulse counter 
+ and a pulse pattern generator are available on any GPIO.
+</p>
+<p>
+<h2>WHAT IS THE POINT?</h2>
+</p>
+<p>
+The main idea behind this library is to be able to make changes without recompiling/reuploading your sketch every time
+ when all you want is to make small changes or perform an experiment. That means much less "change / recompile / upload / run / see the result" cycles.
+</p>
+<p>
+Another point is to have execution control over the sketch and be able to examine sketch variables; 
+</p>
+<p>
+Sketch uses wrong pin number to access external device? That can be changed from ESPShell.<br> 
+Do we need to change UART/I2C/etc interface speed? Can be done by shell commands.<br>
+</p>
+<p>
+I2C bus scan, pause sketch execution, talk directly to GPS or GSM modem connected to uart interface, talk directly to I2C devices, like RTC or EEPROM, change / display sketch variables and many more
+can be done by entering shell commands.
+</p>
+
+<p> 
+<h2 id=add>HOW TO ADD IT TO YOUR ARDUINO PROJECT/SKETCH:</h2>
+</p><p>
+ This library does not require you to call any functions to start the shell, except one line of 
+ code: add <br>
+<pre>
+#include "espshell.h"
+</pre>
+somewhere at the beginning of your sketch and thats it.
+</p><p>
+ Compile and upload your sketch as usual. ESPShell starts automatically when your sketch 
+ starts, by intercepting execution control and starting its own task. Shell intercepts control at the very beginning, before
+  Arduino's <b>setup()</b> and <b>loop()</b>, before ESP-IDF's <b>app_main()</b>
+</p><p>
+When ESPShell starts it displays a welcome banner and is ready to accept commands:
+</p>
+<p align=center>
+<img src=welcome_banner.jpg alt="ESPShell Welcome Banner" width="70%" height="70%" />
+<br>
+<i>Fig. 1: Welcome Banner</i>
+</p>
+<p>
+ <b>Note:</b> ESPShell waits for Serial to become initialized; if Serial is not initialized by user
+ sketch (i.e. Serial.begin() was never called) then ESPShell will be inactive, sleeping, 
+ waiting for the Serial to start (i.e. waits for sketch to call Serial.begin() ).
+</p><p>
+<h2 id=ui>User Interface</h2>
+</p>
+
+<p>
+ESPShell works fine in Arduino IDE's Serial Monitor, however connecting to the shell through
+ terminal software is preferred. Author uses TeraTerm on Windows but any other software will 
+ do the job as well. Arduino Serial Monitor is not a terminal program and that fact prevents 
+  some features of ESPShell to be used: syntax coloring, hotkeys, UART bridge and others.
+</p>
+
+<p>
+ESPShell provides a command line interface, with command line editing capabilities, commands history and syntax coloring;
+</p><p>
+User interacts with the shell through the Serial interface (UART0 or USB-CDC) by entering commands and/or pressing hotkeys; ESPShell displays its prompt (e.g. "esp32#>"),
+ reads and executes commands entered by user - in a way similar to Linux shell: parses user input, performs requested actions, display errors if there 
+  were any, displays fresh prompt and the cycle repeats
+</p>
+
+<p align=center>
+<img src=espshell1.jpg width="70%" height="70%" alt="Typical view" /><br>
+<i>Fig. 2: Typical espshell session: user executes &quot;<b>show cpuid</b>&quot; command</i>
+</p>
+
+<p><h3 id=keyboard>Keyboard use & key bindings</h3></p>
+
+<p>
+  <i>NOTE: Simple terminal programs like Arduino Serial Monitor can not send Ctrl+C and Ctrl+Z sequences
+  which are essential in GSM/LTE modems.</i>
+</p>
+
+<p>
+  These keys are recognized by ESPShell:
+</p>
+<p>
+<pre>
+  Key             | Meaning / Action performed
+  ----------------+---------------------------------------------------------------
+  [ENTER]         | Execute commands, interrupt running commands
+                  |
+  [ARROWS]        | Arrows: move cursor left or right. Up and down arrows scroll 
+                  | through the command history.
+                  |
+  [DEL]           | As in Notepad
+                  |
+  [BACKSPACE]     | As in Notepad
+                  |
+ [HOME] and [END] | These two do not work. Instead use Ctrl+A as &lt;HOME&gt; and Ctrl+E
+                  | as &lt;END&gt;.
+                  |
+   [TAB]          | Quick jump from one word in the line to another. Fast switching
+                  | between command arguments: continously press to cycle through
+                  | all arguments/words in the command line
+                  |
+  Ctrl+R          | History search. Press Ctrl+R and start typing. Press &lt;ENTER&gt; 
+                  | to search for command executed before
+                  |
+  Ctrl+K          | Clear the line from cursor to the end
+                  |
+  Ctrl+L          | Clear the screen, keep user input, enable colors and show a hint
+                  |
+  Ctrl+Z          | Same as entering "exit" and pressing &lt;ENTER&gt; : moves up one level
+                  | in command hierarchy: there are main commands and commands that 
+                  | are arranged as subdirectories. Ctrl+Z is used to exit such subdirectories.
+                  |
+  Ctrl+C          | Suspend sketch execution. Resume with "resume" command.
+                  |
+  [ESC] 56 [ESC]  | Entering an arbitrary ASCII character: Press &lt;ESC&gt;, then enter 1, 2 or 3 digit 
+                  | decimal ASCII code and pressing &lt;ESC&gt; again.
+                  | Example: Send a break (Ctrl+C, ascii code 3) : &lt;ESC&gt;3&lt;ESC&gt;
+                  |
+[ESC] [BACKSPACE] | While &lt;BACKSPACE&gt; simply erases 1 character, pressing &lt;ESC&gt; and then &lt;BACKSPACE&gt;
+                  | will erase 1 word
+
+</pre>
+</p><p>
+ Please note that help page on key combinations can be obtained by executing 
+ shell command "? keys":
+</p>
+<p align=center>
+<img src="keys.jpg" width="70%" height="70%" /><br>
+<i>Fig. 3: Built-in help page <b>? keys</b></i>
+</p>
+<p>
+ By entering "? keys" command one can find key combinations which can be 
+ used on "dumb" terminals: if (for example) arrows keys in your terminal
+ are not working correctly then you can use Ctrl+F and Ctrl+B as an alternative:
+ Ctrl+F moves cursor [F]orward (&rarr;), Ctrl+B moves it backwards (&larr;)
+</p><p>
+ Keys should be more or less intuitive for Linux shell users.
+</p><p>
+<h2 id=short>Autocompletion vs Incompletion</h2>
+</p><p>
+ ESPShell won't autocomplete commands for you on pressing [TAB]: instead ESPShell
+ simply accepts non-completed input, i.e. commands and command arguments can be 
+ <i>shortened</i>. Lets look at the difference:
+</p><p>
+ In Linux shell (say, <i>bash</i>) one types "<b>upt</b>" and presses &lt;TAB&gt; to let the shell autocomplete
+ the command to "<b>uptime</b>". 
+</p><p>
+ In contrast in ESPShell one can simply type "<b>upt</b>" (or even "<b>up</b>") and press 
+ &lt;Enter&gt;. ESPShell does not require anyone to type command "sequence": "seq" 
+ is more than enough.
+</p><p>
+ Commands such as (for example) &quot;<b><a href="GPIO.html">pin 19 out high delay 500 low delay 100</a></b>&quot;
+ can be written as &quot;<b>p 19 o h d 500 l d 500</b>&quot; and it will be understood by the shell.
+</p>
+<p>
+ESPShell does its best to distinguish between shortened commands to avoid unintended command execution: commands "<b>uptime</b>" and "<b>uart 1</b>"
+ can be both shortened to "<b>u</b>". Simply because "<b>uptime</b>" command has no arguments while "<b>uart</b>" always have an argument the shell is able to understand that 
+"<b>u 1</b>" is "<b>uart 1</b>", not "<b>uptime</b>".
+ However it is not always the case so do not overshorten: "sh c" can be either "show counters" or "show cpuid" and in this case ESPShell picks up first command in the list, in this case it will be "show counters". ( Command list can be obtained by entering command "?" or "help" )
+</p>
+<p>
+<h2 id=help>Built-in help system</h2>
+</p>
+
+<p>
+ESPShell tries to be informative and has built-in help system which can do a few
+things - provide manual pages for commands and provide details & possible solutions 
+when errors and failures occurs: e.g. an attempt to use non-existent pin will most likely
+result in a message about pin numbers available on given board.
+</p>
+
+<p>
+<h3 id=huse>A question mark</h3></p><p>
+Help system is available via "<b>?</b>" command/hotkey: as a command it displays manual pages for commands,
+displays the list of available commands. As a hotkey it displays help for the command user currently entering.
+<p>
+Listing of all available commands is done by typing "?" and pressing &lt;Enter&gt;:
+</p>
+
+<p align=center>
+<img src="qm_list.jpg" width="70%" height="70%" alt="Example command list page"/><br>
+<i>Fig. 4: Available commands</i>
+</p>
+<p>
+  Please note that <b>iic, uart, sequence, files, camera</b> are <a href="#dirs"><i>command directories</i></a> each with its own set of commands.<br>
+  User can read help pages for commands by entering a question mark "?" followed by keywords: either <a href="#short">shortened</a> or full.
+
+E.g. to read manual page on command "<b>sequence</b>" one can enter "<b>? seq</b>" and press &lt;ENTER&gt;; other examples are "? pin",
+  "? count" and so on: a question mark and command name will display help pages
+  for commands</p><p>
+Below is the example of "<b>? count</b>" execution:
+</p>
+
+<p align=center>
+<img src="qm_count.jpg" width="70%" height="70%" alt="Example help page"/><br>
+<i>Fig. 5: Built-in help page for command <b>count</b></i>
+</p>
+
+<p>
+  If, however, you would like to read help pages <b>during command entering</b> (e.g. you 
+  don't remember what next argument should be) then just press "?" and help page will appear above your input 
+  You can try to type "cou" and press "?" to see "count" command help page.
+</p>
+
+<p>
+  The "?" is a hotkey and this behaviour might be annoying in cases when you need
+  to enter actual symbol "?" and not invoke help system instead. For example, you
+  are writing "Hello World?" string into some file: pressing "?" will invoke help
+  page and this is not what we want. Well, one of the solutions is to use &lt;ESC&gt;63&lt;ESC&gt;
+  to enter an ascii code (63 is "?") or, disable "?" hotkey processing by executing
+<pre>
+  esp32#>var bypass_qm 1
+</pre>
+command. (<i>Command <b>var</b> here sets internal shell variable "bypass_qm" to 1</i>)
+</p>
+
+<p>
+<h3 id=hsyntax>  Help page syntax</h3>
+</p><p>
+  When typical help page is displayed, one may notice that special symbols (along with
+  colors) are used to describe <i>command syntax</i>. Command syntax can be found at the very
+  beginning of any help page. Lets look at help page for command "count": (type "? count" and press &lt;ENTER&gt;)
+</p><p>
+    <pre>
+    esp32#>? count
+    % -- Pulse counter --
+    % "count PIN [NUMBER | trigger | filter LENGTH]*"
+    %
+    % Count pulses on pin PIN for NUMBER milliseconds (default value is 1 second)
+    % Optional "trigger" keyword suspends the counter until the first pulse
+    % Optional "filter LEN" keyword ignores pulses shorter than LEN nanoseconds
+    ...
+    ...
+</pre>
+</p><p>
+  This is the very first lines of a help page "? count". Here we can see those <i>special symbols</i>: square brackets "[" and "]", a vertical bar "|", an 
+  asterisk "*" and some words typed in UPPERCASE.
+</p><p>
+<pre>
+  UPPERCASE - A number or some text string. Any user input. Example help page above
+              says that command "count" has 3 such parameters: pin number, measurement time and length.
+              In  majority of commands an UPPERCASE argument is a number, however some commands
+              also may expect text
+
+  lowercase - These are keywords: command name itself, words "trigger" and "filter";
+
+  [   ]     - Square brackets are used to denote OPTIONAL parameters. On color terminals these are
+              displayed in dark yellow color
+              Example above has only 1 mandatory parameter (pin number) while
+              rest are optional and can be omitted
+
+    |       - Verical bar: this is simply logic "OR" operation. In sence "this OR that". Example
+              above says that we can enter a NUMBER or the "trigger" keyword or the "filter" keyword
+              plus LENGTH parameter
+              
+
+    *       - Located next to closing bracket indicates, that anything within the brackets can appear
+              multiple times (including zero).  For example text "[hello|world|123]*" can be read as 
+              (but not limited to):
+
+                  hello
+                  hello hello
+                  world hello 123 world
+                  ...
+              and so on
+
+Other symbols that are also used in help pages (but not in example above) are range symbol (double dot ):
+
+  [ 1..10 ]   - Optional argument: a number in range from 1 to 10 inclusive
+  ( 1..10 )   - Mandatory argument: a number in range range from 1 to 10 inclusive
+              
+</pre>
+</p>
+
+<p>
+<h2 id=background>BACKGROUND EXECUTION</h2>
+</p><p>
+ By default all ESPShell commands are blocking (well, most of them, not all). That
+ means that the <b>shell will wait for command to finish</b> before starting to accept new 
+ input: commands executed in sequence, one by one. 
+</p><p>
+This behaviour could be changed by using an &amp; symbol:
+</p><p>
+ Adding &quot;&amp;&quot; as <b>very last argument</b> to any command instructs ESPShell to execute this particular 
+ command as separate task, in parallel to other processes. This behaviour
+ is well known to Linux users, where <b>&amp;</b> is used to run commands in background.
+</p><p>
+ This option (background execution) is especially useful with commands "pin" and 
+ "count" which may take long time to finish. Every running background command 
+ allocates around 5000 bytes of stack memory which is freed after execution
+</p><p>
+ Any background command can be stopped by using command "kill" (see command list 
+ below)
+</p>
+
+<p>
+<h2 id=cmds>ESPSHELL BUILT-IN COMMANDS</h2>
+</p><p>
+
+  <h3 id=dirs>Command directories; main command directory, entering & exiting</h3>
+</p><p>
+  ESPShell commands are grouped into <i>command directories</i>: commands related to UART are in "uart" directory, commands dealing with files are in "files" directory and so on.
+  Main command directory is what you see when espshell starts. Main command directory contains commands AND other command directories.
+</p><p>
+  If one wants to execute UART-related commands he/she must <b>enter</b> the corresponding
+  command directory:
+</p><p>
+<pre>
+    Example: entering UART configuration mode
+
+      esp32#>uart 0 
+      esp32-uart0>
+</pre>
+</p><p>
+ Executing command "<b>uart 0</b>" switches current command directory to UART 
+ command directory. Pressing then "<b>Ctrl+Z</b>" or executing "<b>exit</b>" commands changes command
+ directory back to Main.
+</p><p>
+ When inside a command directory, commands from the outside are available and can be 
+ executed even if they don't show up on command list:
+</p><p><pre>
+  Example: 
+
+      Entering UART0 command directory:
+
+      esp32#>uart 0
+      % You are about to configure the Serial espshell is running on. Be careful
+      % Entering UART configuration mode. Ctrl+Z or "exit" to return
+      % Hint: Main commands are still avaiable (but not visible in "?" command list)
+
+
+      List all available commands:
+
+      esp32-uart0>?
+      % Enter "? command" to get details about specific command.
+      % Enter "? keys" to display the espshell keyboard help page
+      %
+      % "?"          : Commands list & help
+      % "up"         : Initialize uart (pins/speed)
+      % "baud"       : Set baudrate
+      % "down"       : Shutdown
+      % "read"       : Read data from UART
+      % "tap"        : Talk to device connected
+      % "write"      : Send bytes over this UART
+      % "exit"       : Exit
+
+      Execute command, which is not on the list but exists outside
+      of UART0 directory:
+
+      esp32-uart0>uptime
+      % Last boot was 17 seconds ago
+      % Restart reason was "Board power-on"
+      esp32-uart0>
+</pre>
+In example above, although there is no command "uptime" in uart0 directory, it still can be executed
+</p><p>
+To exit command directory command "exit" is used.
+Note: Ctrl+Z is a hotkey for command "exit"
+</p><p>
+Other command directories ESPShell has are: <a href="UART.html">uart</a>, <a href="I2C.html">i2c</a>, <a href="Filesystems.html">files</a>, <a href="Pulse_Generator.html">sequence</a> and <a href="Camera.html">camera settings</a>
+</p><p>
+
+<h3 id=index>Command Index / Brief with links to documentation pages</h3>
+</p><p>
+<table>
+<tr><td><a href="GPIO.html">pin</a></td><td><p>Various pin (GPIO) commands.<br>
+
+            Set or read pin values, perform analogRead(), set pin modes, save/restore pin
+            state, enable PWM and so on. It can be used for low frequency periodic signal
+            generation
+</p><p>
+            Command sequence of arguments (which can be as small as just 1 argument) of which
+            1st argument is always a pin number. Command allows to create tiny "programs" 
+            (sequence of actions and delays), which are executed on pins (GPIOs).
+</p><p>
+            More information and examples on this command can be found
+            in <a href="GPIO.html">documentation file</a>  (related command: "show iomux")
+</p></td></tr>
+
+<tr><td><a href="PWM.html">pwm</a></td><td> <p>PWM generators.<br>
+            Enable/Disable PWM output on arbitrary pin. Frequency, duty cycle and hardware
+            channel are selectable. Full description can be found in <a href="PWM.html"> PWM documentation</a>
+            (related command: "show pwm")
+
+</p></td></tr>
+
+<tr><td><a href="Pulse_Counter.html">count</a></td><td> <p>Pulse counter / frequency meter.<br>
+            Allows for counting pulses / frequency measurement on an arbitrary pin. There 
+            are 8 hardware counters on ESP32 (ESP32-S3 has only 4) which can be run 
+            simultaneously. Supports delayed counting. 
+</p><p>
+            For details refer to <a href="Pulse_Counter.html">Pulse Counter / Frequency meter</a> (related command: "show counters")
+</p></td></tr>
+
+<tr><td><a href="Sketch_Variables.html">var</a></td><td> <p>Sketch variables manipulation. See <a href="Sketch_Variables.html">this page</a> on how to use 
+           this feature in your code; Command is used to display/change sketch variables
+           in runtime. Simple types and arrays of simple types are supported;
+</p><p>
+           Another use of this command is conerting numbers to/from binary/octal/dec/hex
+</p></td></tr>
+
+
+<tr><td><a href="I2C.html">iic</a></td><td> <p>Enter I2C bus/interface mode.<br> Configure and use (read/write/scan) specified 
+           I2C bus.
+           Detailed description of I2C commands <a href="I2C.html">can be found here</a>
+
+</p><p>
+<tr><td><a href="UART.html">uart</a></td><td> <p>UART X interface access.<br> Configure and use (read/write/bridge) UART
+           interface. Read <a href="UART.html">this document</a> for details on how to
+           setup and use UART interfaces
+
+</p></td></tr>
+
+
+
+<tr><td><a href="Pulse_Generator.html">sequence</a></td><td> <p>Signal generator mode.<br> Allow for custom signal patterns with 
+             precise timings to be generated on any pin. See documentation file
+             <a href="Pulse_Generator.html">Pulse generator</a> for more info. Simple patterns can also
+             be generated by means of "pin" command (see <a href="GPIO.html">GPIO manipulation</a>)
+             (related command: "show sequence")
+              
+</p></td></tr>
+
+<tr><td><a href="Filesystems.html">files</a></td><td> <p>Enter file manager mode.<br> This mode allows user to perform basic file 
+           system commands (list directory contens, file and directory creation,
+           file editing and file transfer). Details are in <a href="Filesystems.html">this file</a>
+</p></td></tr>
+
+<tr><td>show</td><td> <p>Display various information. Descriptions are fragmented along all the
+           documentation files: for example "show counters" is described in <a href="Pulse_Counter.html">count</a>
+</p></td></tr>
+
+
+
+
+<tr><td><a href="Kill_Suspend_Resume.html">suspend</a><br>
+<a href="Kill_Suspend_Resume.html">resume</a><br>
+<a href="Kill_Suspend_Resume.html">kill</a></td><td> <p>Process control commands: kill, suspend or resume a task.<br> These 3 
+           commands are described in details <a href="Kill_Suspend_Resume.html">here</a> and are used
+           according to their names: to suspend/resume or terminate a process 
+          (a FreeRTOS task or a background ESPShell command) 
+</p></td></tr>
+
+
+<tr><td><a href="Automation.html">echo</a><br>
+<a href="Automation.html">history</a><br>
+<a href="Automation.html">colors</a><br>
+<a href="Automation.html">tty</a></td><td> <p>These 4 commands are used to control input and output of the shell;
+             Read <a href="Automation.html">this page</a> for details on command syntax and detailed 
+             description.
+</p></td></tr>
+
+
+<tr><td>uptime</td><td> <p>Shows how much time has passed since last boot; shows the last 
+             reboot cause. There are no dedicated documentation file for this command: it is simple, no-args command
+</p></td></tr>
+
+
+<tr><td><a href="CPU.html">cpu</a></td><td> <p>Set CPU frequency to FREQ MHz. List of supported frequencies is 
+             displayed on attempt to set unsupported frequency:
+</p><p><pre>         
+             Example:   
+                 esp32#>cpu 99
+                 % Supported frequencies are: 240, 160, 120, 80, 40, 20 and 10
+</pre>
+</p></td></tr>
+
+
+<tr><td>reload</td><td> <p>Reboots ESP32. This is a software restart which does not reset hardware
+             (peripherial) registers
+</p></td></tr>
+
+
+<tr><td>nap</td><td> <p>Put CPU into <b>light sleep</b> mode.<br>
+             <b>Without arguments</b> puts CPU into sleep until any UART activity:  
+             CPU wakes up by UART (press any key to wake up). Wake up condition is 3 
+             positive edges. It is recommended to use &lt;Enter&gt; as an abort key
+<pre>         
+             Example:   
+                 esp32#>nap
+                 % Entering light sleep
+</pre>
+</p><p>                                  
+
+             With argument (sleep time in seconds, SEC) puts CPU into light sleep for SEC seconds, CPU wakes up by timer, there are
+             no other way to cancel the sleep
+</p></td></tr>
+</table>
+<p><h2>COPYRIGHTS</h2></p>
+<p>
+ESPShell contains code from Editline library (ancient version, found somewhere in mozilla project):
+</p>
+<p>
+<pre>
+Copyright 1992,1993 Simmule Turner and Rich Salz, All rights reserved
+
+This software is not subject to any license of the American Telephone and 
+Telegraph Company or of the Regents of the University of California.
+
+Permission is granted to anyone to use this software for any purpose on any 
+computer system, and to alter it and redistribute it freely, subject to the
+following restrictions:
+
+1. The authors are not responsible for the consequences of use of this software,
+   no matter how awful, even if they arise from flaws in it.
+
+2. The origin of this software must not be misrepresented, either by explicit 
+   claim or by omission. Since few users ever read sources, credits must appear
+   in the documentation.
+3. Altered versions must be plainly marked as such, and must not be 
+   misrepresented as being the original software. Since few users ever read 
+   sources, credits must appear in the documentation. 
+
+4. This notice may not be removed or altered.
+</pre>
+</p>
+
+<p>
+ESPShell contains code from Arduino Core 3.0.5
+</p>
+<p>
+<pre>
+Copyright 2015-2016 Espressif Systems (Shanghai) PTE LTD
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+</pre>
+</p>
+
+</body>
+</html>

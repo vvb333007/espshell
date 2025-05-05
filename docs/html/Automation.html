@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>ESPShell : IO control / Automation</title>
+  <link rel="stylesheet" href="espshell.css">
+</head>
+<body>
+
+
+<p>
+<h2>
+COMMANDS AFFECTING ESPSHELL INTERFACE
+</h2>
+</p>
+<p>
+Note: commands below do not show up on command lists (lists displayed by "?" 
+or "help") commands: these are rarely used but their misuse may require you
+to reboot
+</p>
+<p>
+<table>
+<tr>
+<td>
+<b>history</b>&nbsp;[on|off]
+</td><td>
+<p>
+  Enable / Disable command history. By default it is enabled and available on
+  pressing <UP> and <DOWN> arrows (does not work in Arduino Serial Monitor).
+  Command without arguments displays current state: "history on" or "history off"
+  <br><br>
+  Default value is "history on"
+</p>
+</td></tr>
+<tr><td>
+<b>colors</b>&nbsp;[on|off|auto]</td><td>
+<p>
+  Enable or disable ANSI terminal colors. If you are using a terminal software 
+  like PuTTY or TeraTerm then this option is better to be "on". For simple 
+  terminals like Arduino Serial Monitor it must be "off" or your screen will be 
+  flooded with strange messages like this:   1;36]m ]]J 7]m  and so on
+</p><p>
+  Default value is "colors auto". In this mode ESPShell tries to guess user 
+  terminal type and switch colors on or off depending on that. Guessing works
+  by looking into what comes from the user: any keystrokes with lower keycodes
+  (never sent by Arduino Serial Monitor) trigger color mode ON.
+</p><p>
+  Disable colors with "colors off" if your terminal does not support colors, but 
+  ESPShell thinks it does.
+</p><p>
+  Executing this command without any arguments displays current state of colorer
+</p><p>
+<pre>
+    esp32#>colors
+    % Color is "auto"
+    esp32#>
+</pre>
+</p></td></tr>
+<tr><td>
+<b>echo</b>&nbsp;[off|on|silent]</td><td>
+<p>
+  Some applications of espshell may require processing of shell output and issuing
+  shell commands in automated mode; one of such examples is one esp32 controlling
+  another esp32-cam via UART link by executing shell commands on the espcam.
+</p><p>
+  By default everything that user types is echoed back by ESPShell and this 
+  behavior can be controlled with the "echo" command;
+</p><p>
+<pre>  
+           "off" : Disables ESPShell from printing out its prompt and disables user
+           input echo. Input is processed but just not displayed; 
+
+           Equivalent of common "ATE0" command for modems. When echo is disabled user
+           still can use line editing/history scrolling but it is just not displayed.
+
+
+           This mode is useful for automated processing when ESPShell output is 
+           going to be processed by software: we don't want to see and process our
+           own input
+
+
+            "on"  : Default is to echo user input & display espshell prompt.
+            Equivalent of "ATE1" modem command
+
+
+            "silent" : Completely disable ALL espshell output to the terminal.
+ 
+                * No error messages will be displayed.
+                * User input is not echoed back
+                * Input is processed, commands are executed and the only difference
+                  is that commands do not print anything.
+
+            This mode is used when we don't want espshell to interfere with sketch's
+            output. Sketch has full access to the Serial, while ESPShell doesn't print
+            anything to it;
+</pre>
+</td></tr>
+<tr><td>
+<b>tty</b>&nbsp;NUMBER</td>
+<td><p>
+  Change ESPShell's input stream to uart UART.
+</p><p>
+  Default input source is UART0 (or USB-CDC) but it can be changed with "tty" command:
+  this is used in some automation scenarios when one needs to give control over the shell
+  to another user (connected to uart1 may be). With this command you can "give" but you
+  can't "take" : to get control back one must execute "tty 0" on uart1
+</p><p>
+  The UART user switches to must be initialized otherwhise this command fails.
+</p>
+<p>UART - is the new UART number (0..3) or number 99 to switch to USB-CDC interface</p>
+
+</td></tr></table>
+</body>
+</html>
+

@@ -1,0 +1,166 @@
+ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
+
+UART commands
+-------------
+
+ESP32 has a number hardware uarts, depending on a ESP32 model (basic ESP32
+has 3 UARTS, ESP32S2 has two). UART0 is used as a primary input/output port
+both for chip programming and sketch I/O. In Arduino Framework it is referenced
+as Serial0 and Serial. The latter may be not true for USB-OTG enabled boards.
+
+
+When ESPShell starts it waits until the sketch sets the Serial up. It is usually
+done in setup(), something like 
+
+void setup() {
+....
+Serial.begin(115200);
+....
+}
+
+Once espshell detects that Serial is up and running it start to read and execute
+user commands.
+
+PURPOSE
+-------
+
+The main idea is to simplify debugging uart to uart communication between ESP32
+and some other device, e.g. GSM modem or GPS chip. UART commands allow you to
+initialize uart interface on arbitrary pins and to communicate with device 
+connected to these pins.
+
+In conjuncion with "suspend" command also can be used to reconfigure uarts used
+by sketch.
+
+
+COMMANDS
+--------
+
+UARTs are accessible by entering "uart N" where N is the UART number. After this
+command is executed the espshell prompt changes from "esp32#>" to "esp32-uart#>"
+indicating that you are in UART configuration mode. Entering "?" and pressing 
+<Enter> will bring you full list of commands available:
+
+
+ esp32#>ua 1
+ esp32-uart#>?
+ % Enter "? command" to get details about the command.
+ % List of available commands:
+ %
+ % "?"        : Show the list of available commands
+ % "up"       : Initialize uart (pins/speed)
+ % "baud"     : Set baudrate
+ % "down"     : Shutdown
+ % "read"     : Read data from UART
+ % "tap"      : Talk to UARTs device
+ % "write"    : Send bytes over this UART
+ % "exit"     : Exit
+ esp32-uart#>
+
+
+The shell output above shows that there are 6 commands specific to this uart
+available along with 2 common commands ("?" and "exit"): question mark will
+print the above list, and "exit" (or Ctrl+Z) is used to exit the UART 
+configuration mode.
+
+NOTE: You can also use all commands from the main tree, for example "pin"
+command can be used from within "esp32-uart#>" command tree)
+
+
+
+"up" - initializes UART. If UART is already UP then this command does nothing.
+The command has 3 parameters: RX pin number, TX pin number and baudrate. Other
+UART parameters like bit parity, number of stop bith, byte length can be also
+set; Baudrate can be changed anytime later with "baud" command
+
+All other commands are not available until this command is successfully executed
+
+Full syntax is:
+  "up RX TX BAUD [BITS [no|even|odd [1|1.5|2]]]"
+
+   Arguments BITS, parity and stopbits are all optional. Their default value
+   (when omitted) is 8, none, 1 respectively. BITS is expected to be 5,6,7 or 8.
+
+
+"down" - shutdowns previously initialized UART. If UART is not UP then this
+command has no effect.
+Please note that running sketch may be reading and/or writing at the same time
+you enter "down" command. To prevent undefined behaviour of user sketch it is
+a good idea to suspend sketch execution by using global "suspend" command
+
+"baud SPEED" - changes speed of the UART. Executed on UART 0 will most likely 
+result in lost connection between your serial monitor and your device and will 
+require you to adjust your serial monitor baudrate. Speed measured in bauds;
+
+"read" - read all bytes that were available at the moment of command execution.
+Bytes are printed as is if they are printable characters (including \t \n \r). 
+Non-printable characters are replaced with "\0xAB" sequences with AB being a 
+hexadecimal number.
+
+
+"write" - sends byte strings to the uart. Byte strings can be a printable 
+characters or special escape sequences: \n  \r \t \\ to send <LF>, <CR> and
+<TAB>. An arbitrary byte can be sent using \AB notation where AB is hexadecimal
+number. Multiple spaces are compressed to one single space: 
+commands "write A      B" and "write A B" are equivalent. To send multiple
+spaces one can use \20 to encode a space (ascii code 32): "write A\20\20\20B"
+Using this comman on UART0 results in sending these strings straight to your
+serial monitor
+
+Full syntax is:
+  "write ARG1 ARG2 ... ARGn"
+
+ 
+  Example: Communicate with a device over uart2, send and receive text
+           Device connected to  pins 21 and 22 is SIMCOM LTE modem SIM7600E:
+  
+  esp32#>uart 2
+  esp32-uart#>up 21 22 115200
+  esp32-uart#>write \ff\ff\CC\r\n    // send junk bytes: 0xff 0xff 0xcc 0x0d 0x0a. ignored by SIMCOM
+  5 bytes sent 
+  esp32-uart#>write ATI\r\n          // send ATI<CR><LF>
+  5 bytes sent
+  esp32-uart#>read                   // read reply
+  ATI
+  Manufacturer: SIMCOM INCORPORATED
+  Model: SIMCOM_SIM7600E
+  Revision: SIM7600M21-A_V1.1
+  IMEI: 861005075537800
+  +GCAP: +CGSM
+ 
+  OK
+  
+  137 bytes read
+  esp32#>
+
+
+"tap" - makes a bridge between user and a device connected to the uart.
+All the uart output is bridget to the user, all user input is bridget to
+the uart. This command is useful in debugging GSM modems: "tap" sends you
+directly to the modem's AT command line interface so you can enter AT
+commands and receive modem replies. Note that sketch is better to be suspended
+("suspend" global command) while doing this. 
+
+NOTE!: Arduino Serial Monitor is not the best choice for this as it is 
+impossible to "Press CTRL+C" to exit "tap" mode.
+
+  Example: Communicate with SIM7600E GSM modem connected to pins 18 (RX) 
+  and 19 (TX). Issue ATI commands, read the output and exit
+ 
+ 
+  esp32#>uart 1
+  esp32-uart#>up 18 19 115200       // setup UART1 on pins 18/19 baudrate is 115200
+  esp32-uart#>tap                   // talk to device (connected to UART1) directly
+  Tapping to UART1, CTRL+C to exit
+  ATI                               // user input sent to modem
+  Manufacturer: SIMCOM INCORPORATED // modem reply
+  Model: SIMCOM_SIM7600E
+  Revision: SIM7600M21-A_V1.1
+  IMEI: 861005075537800
+  +GCAP: +CGSM
+ 
+  OK
+  
+  Exit                              // CTRL+C pressed
+  esp32#>
+ 
