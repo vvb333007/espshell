@@ -39,7 +39,7 @@
  sketch execution (to some extent) : commands to suspend or resume sketch execution.
  One can simply press Ctrl+C to suspend sketch while shell will continue to work. 
 </p><p>
- User interacts with ESPShell either through Arduino IDE Serial Monitor or any other communication 
+ User interacts with ESPShell either through Arduino IDE Serial Monitor or through any other communication 
  software like PuTTY, TeraTerm, Linux "cu" utility and many others. Developer of this 
  library uses TeraTerm on Windows 10. Default settings for both Arduino IDE Serial 
  Monitor and TeraTerm are shown on screenshots: <a href="TeraTerm_Default_Settings.jpg">for TeraTerm</a>
@@ -90,7 +90,7 @@ somewhere at the beginning of your sketch and thats it.
 </p><p>
  Compile and upload your sketch as usual. ESPShell starts automatically when your sketch 
  starts, by intercepting execution control and starting its own task. Shell intercepts control at the very beginning, before
-  Arduino's <b>setup()</b> and <b>loop()</b>, before ESP-IDF's <b>app_main()</b>
+  Arduino's <span class=func>setup()</span> and <span class=func>loop()</span>, before ESP-IDF's <span class=func>app_main()</span>
 </p><p>
 When ESPShell starts it displays a welcome banner and is ready to accept commands:
 </p>
@@ -101,8 +101,9 @@ When ESPShell starts it displays a welcome banner and is ready to accept command
 </p>
 <p>
  <b>Note:</b> ESPShell waits for Serial to become initialized; if Serial is not initialized by user
- sketch (i.e. Serial.begin() was never called) then ESPShell will be inactive, sleeping, 
- waiting for the Serial to start (i.e. waits for sketch to call Serial.begin() ).
+ sketch (i.e. <span class=func>Serial.begin( ... )</span> was never called) then ESPShell will be inactive, sleeping, 
+ waiting for the Serial to start (i.e. waits for sketch to call <span class=func>Serial.begin( ... )</span> ). If ESPShell was <a href="Customizing.html">set up to use some other UART</a> (e.g. UART1) then 
+  ESPShell will wait for <span class=func>Serial1.begin( ... )</span>.
 </p><p>
 <h2 id=ui><a href="#top">&#8686;</a>User Interface</h2>
 </p>
@@ -110,16 +111,16 @@ When ESPShell starts it displays a welcome banner and is ready to accept command
 <p>
 ESPShell works fine in Arduino IDE's Serial Monitor, however connecting to the shell through
  terminal software is preferred. Author uses TeraTerm on Windows but any other software will 
- do the job as well. Arduino Serial Monitor is not a terminal program and that fact prevents 
+ do the job. Arduino Serial Monitor is not a terminal program and that fact prevents 
   some features of ESPShell to be used: syntax coloring, hotkeys, UART bridge and others.
 </p>
 
 <p>
-ESPShell provides a command line interface, with command line editing capabilities, commands history and syntax coloring;
+ESPShell provides a command line interface (CLI), with command line editing capabilities, commands history and syntax coloring;
 </p><p>
-User interacts with the shell through the Serial interface (UART0 or USB-CDC) by entering commands and/or pressing hotkeys; ESPShell displays its prompt (e.g. "esp32#>"),
- reads and executes commands entered by user - in a way similar to Linux shell: parses user input, performs requested actions, display errors if there 
-  were any, displays fresh prompt and the cycle repeats
+User interacts with the shell through the Serial interface (UART or USB-CDC) by entering commands and/or pressing hotkeys; ESPShell displays its prompt (e.g. "<b>esp32#&gt;</b>"),
+ reads and executes commands entered by user - in a way similar to Linux shell: parses user input, performs requested actions, displays errors if there 
+  were any and the cycle repeats.
 </p>
 
 <p align=center>
@@ -128,11 +129,6 @@ User interacts with the shell through the Serial interface (UART0 or USB-CDC) by
 </p>
 
 <p><h3 id=keyboard><a href="#top">&#8686;</a>Keyboard use & key bindings</h3></p>
-
-<p>
-  <i>NOTE: Simple terminal programs like Arduino Serial Monitor can not send Ctrl+C and Ctrl+Z sequences
-  which are essential in GSM/LTE modems.</i>
-</p>
 
 <p>
   These keys are recognized by ESPShell:
@@ -193,7 +189,13 @@ User interacts with the shell through the Serial interface (UART0 or USB-CDC) by
  Ctrl+F moves cursor [F]orward (&rarr;), Ctrl+B moves it backwards (&larr;)
 </p><p>
  Keys should be more or less intuitive for Linux shell users.
-</p><p>
+</p>
+<p>
+  <i>NOTE: Simple terminal programs like Arduino Serial Monitor can not send Ctrl+C and Ctrl+Z keycodes
+  which are essential in GSM/LTE modems.</i>
+</p>
+
+<p>
 <h2 id=short><a href="#top">&#8686;</a>Autocompletion vs Incompletion</h2>
 </p><p>
  ESPShell won't autocomplete commands for you on pressing [TAB]: instead ESPShell
@@ -276,9 +278,10 @@ command. (<i>Command <b>var</b> here sets internal shell variable "bypass_qm" to
 <h3 id=hsyntax><a href="#top">&#8686;</a>Help page syntax</h3>
 </p><p>
   When typical help page is displayed, one may notice that special symbols (along with
-  colors) are used to describe <i>command syntax</i>. Command syntax can be found at the very
-  beginning of any help page. Lets look at help page for command "count": (type "? count" and press &lt;ENTER&gt;)
-</p><p>
+  colors, on color terminals) are used to describe <i>command syntax</i>. Command syntax can be found at the very
+  beginning of any help page. Lets look at help page for command "count": (see <a href="qm_count.jpg"><i>Fig. 5</i></a>, or type "? count" and press &lt;ENTER&gt;)
+</p>
+<p>
     <pre>
     esp32#>? count
     % -- Pulse counter --
@@ -290,44 +293,41 @@ command. (<i>Command <b>var</b> here sets internal shell variable "bypass_qm" to
     ...
     ...
 </pre>
-</p><p>
+</p>
+<p>
   This is the very first lines of a help page "? count". Here we can see those <i>special symbols</i>: square brackets "[" and "]", a vertical bar "|", an 
   asterisk "*" and some words typed in UPPERCASE.
 </p><p>
-<pre>
-  UPPERCASE - A number or some text string. Any user input. Example help page above
-              says that command "count" has 3 such parameters: pin number, measurement time and length.
-              In  majority of commands an UPPERCASE argument is a number, however some commands
-              also may expect text
+<table>
+<tr><td><p><b>Symbol</b></p></td><td><p><b>Meaning</b></p></td></tr>
+<tr><td><p align=center>UPPERCASE</p></td><td><p>A number or some text string. Any user input. Example help page above
+says that command "count" has 3 such parameters: pin number, measurement time and length.
+In  majority of commands an UPPERCASE argument is a number, however some commands
+also may expect text
+</p></td></tr>
+<tr><td><p align=center>lowercase</p></td><td><p>These are keywords: command name itself, words "trigger" and "filter"; On help pages these are usually yellow (command name is white)</p></td></tr>
+<tr><td><p align=center>[&nbsp;&nbsp;&nbsp;]</p></td><td><p>Square brackets are used to denote OPTIONAL parameters. On color terminals these are
+displayed in dark yellow color. 
+Example above has only 1 mandatory parameter (pin number) while
+rest are optional and can be omitted
+</p></td></tr>
+<tr><td><p align=center>|</p></td><td><p>Verical bar: this is simply logic "OR" operation. In sence "this OR that". Example
+above says that we can enter a NUMBER <b>or</b> the "trigger" keyword <b>or</b> the "filter" keyword
+plus LENGTH parameter
+</p></td></tr>
+<tr><td><p align=center>*</p></td><td><p>Located next to closing bracket (i.e. "<b>)*</b>" or "<b>]*</b>") indicates, that anything within the brackets can appear
+              multiple times.</p></td></tr>              
 
-  lowercase - These are keywords: command name itself, words "trigger" and "filter";
-
-  [   ]     - Square brackets are used to denote OPTIONAL parameters. On color terminals these are
-              displayed in dark yellow color
-              Example above has only 1 mandatory parameter (pin number) while
-              rest are optional and can be omitted
-
-    |       - Verical bar: this is simply logic "OR" operation. In sence "this OR that". Example
-              above says that we can enter a NUMBER or the "trigger" keyword or the "filter" keyword
-              plus LENGTH parameter
-              
-
-    *       - Located next to closing bracket indicates, that anything within the brackets can appear
-              multiple times (including zero).  For example text "[hello|world|123]*" can be read as 
-              (but not limited to):
-
-                  hello
-                  hello hello
-                  world hello 123 world
-                  ...
-              and so on
-
-Other symbols that are also used in help pages (but not in example above) are range symbol (double dot ):
-
-  [ 1..10 ]   - Optional argument: a number in range from 1 to 10 inclusive
-  ( 1..10 )   - Mandatory argument: a number in range range from 1 to 10 inclusive
-              
-</pre>
+</table>
+<p>
+Other symbols that are also used in help pages (but not in example above) are <i>range symbol</i> (double dot, "<b>..</b>" ) and <i>mandatory symbol</i> ( rounded brackets, "<b>()</b>"):
+</p>
+<p>
+<table>
+  <tr><td>1<b>..</b>10</td><td>A number in range from 1 to 10 inclusive</td></tr>
+  <tr><td><b>(</b>arg1|arg2|...|argN<b>)*</b></td><td>Mandatory argument: any combination of arg1 and arg2 but not empty one (at least one argument must be specified)</td></tr>
+  <tr><td><b>[</b>arg1|arg2|...|argN<b>]*</b></td><td>Optional argument: any combinations of arg1 and arg2 including empty argument</td></tr>
+</table>
 </p>
 
 <p>
@@ -369,8 +369,8 @@ This behaviour could be changed by using an &amp; symbol:
 </pre>
 </p><p>
  Executing command "<b>uart 0</b>" switches current command directory to UART0 
- command directory;  pressing then "<b>Ctrl+Z</b>" or executing "<b>exit</b>" commands changes command
- directory back to Main.
+ command directory;  pressing then "<b>Ctrl+Z</b>" or executing "<b>exit</b>" command changes command
+ directory back to the Main.
 </p><p>
  When inside of any command directory, commands from the outside are available and can be 
  executed even if they don't show up on command list:
@@ -407,9 +407,9 @@ This behaviour could be changed by using an &amp; symbol:
       % Restart reason was "Board power-on"
       esp32-uart0>
 </pre>
-In example above, although there is no command "uptime" in uart0 directory, it still can be executed
+In example above shell searches Main command directory after it realizes that there is no command "uptime" in uart0 directory, 
 </p><p>
-To exit command directory command "exit" is used.
+To exit command directory command "<b>exit</b>" is used.
 Note: Ctrl+Z is a hotkey for command "exit"
 </p><p>
 Other command directories ESPShell has are: <a href="UART.html">uart</a>, <a href="I2C.html">i2c</a>, <a href="Filesystems.html">files</a>, <a href="Pulse_Generator.html">sequence</a> and <a href="Camera.html">camera settings</a>
@@ -418,7 +418,7 @@ Other command directories ESPShell has are: <a href="UART.html">uart</a>, <a hre
 <h3 id=index><a href="#top">&#8686;</a>Command Index / Brief with links to documentation pages</h3>
 </p><p>
 <table><tr><td><b>Command</b></td><td><b>Description</b></td></tr>
-<tr><td><a href="GPIO.html">pin</a></td><td><p>Various pin (GPIO) commands.<br>
+<tr><td><p><a href="GPIO.html">pin</a></p></td><td><p><b>pin</b> <i>PIN</i> [<i>ARG1</i> | <i>ARG2</i> | ... | <i>ARGn</i> ]*</p><p>Various pin (GPIO) commands.<br>
 
             Set or read pin values, perform analogRead(), set pin modes, save/restore pin
             state, enable PWM and so on. It can be used for low frequency periodic signal
@@ -432,14 +432,16 @@ Other command directories ESPShell has are: <a href="UART.html">uart</a>, <a hre
             in <a href="GPIO.html">documentation file</a>  (related command: "show iomux")
 </p></td></tr>
 
-<tr><td><a href="PWM.html">pwm</a></td><td> <p>PWM generators.<br>
+<tr><td><p><a href="PWM.html">pwm</a></p></td><td><p><b>pwm</b> <i>PIN</i> <i>FREQ</i> [<i>DUTY</i> [<i>CHANNEL</i>]]<br><b>pwm</b> <i>PIN</i> off</p> <p>PWM generators.<br>
             Enable/Disable PWM output on arbitrary pin. Frequency, duty cycle and hardware
             channel are selectable. Full description can be found in <a href="PWM.html"> PWM documentation</a>
             (related command: "show pwm")
 
 </p></td></tr>
 
-<tr><td><a href="Pulse_Counter.html">count</a></td><td> <p>Pulse counter / frequency meter.<br>
+
+
+<tr><td><p><a href="Pulse_Counter.html">count</a></p></td><td><p><b>count</b> <i>PIN</i> [<i>NUMBER</i> | infinite | trigger | filter <i>LENGTH</i>]*</p> <p>Pulse counter / frequency meter.<br>
             Allows for counting pulses / frequency measurement on an arbitrary pin. There 
             are 8 hardware counters on ESP32 (ESP32-S3 has only 4) which can be run 
             simultaneously. Supports delayed counting. 
@@ -447,7 +449,7 @@ Other command directories ESPShell has are: <a href="UART.html">uart</a>, <a hre
             For details refer to <a href="Pulse_Counter.html">Pulse Counter / Frequency meter</a> (related command: "show counters")
 </p></td></tr>
 
-<tr><td><a href="Sketch_Variables.html">var</a></td><td> <p>Sketch variables manipulation. See <a href="Sketch_Variables.html">this page</a> on how to use 
+<tr><td><p><a href="Sketch_Variables.html">var</a></p></td><td><p><b>var</b> [<i>NUMBER</i> | <i>NAME</i> | <i>NAME VALUE</i> ]</p><p>Sketch variables manipulation. See <a href="Sketch_Variables.html">this page</a> on how to use 
            this feature in your code; Command is used to display/change sketch variables
            in runtime. Simple types and arrays of simple types are supported;
 </p><p>
@@ -455,12 +457,12 @@ Other command directories ESPShell has are: <a href="UART.html">uart</a>, <a hre
 </p></td></tr>
 
 
-<tr><td><a href="I2C.html">iic</a></td><td> <p>Enter I2C bus/interface mode.<br> Configure and use (read/write/scan) specified 
+<tr><td><p><a href="I2C.html">iic</a></p></td><td><p><b>iic</b> <i>NUM</i></p><p>Enter I2C bus/interface mode.<br> Configure and use (read/write/scan) specified 
            I2C bus.
            Detailed description of I2C commands <a href="I2C.html">can be found here</a>
 
 </p><p>
-<tr><td><a href="UART.html">uart</a></td><td> <p>UART X interface access.<br> Configure and use (read/write/bridge) UART
+<tr><td><p><a href="UART.html">uart</a></p></td><td><p><b>uart</b> <i>NUM</i></p> <p>UART X interface access.<br> Configure and use (read/write/bridge) UART
            interface. Read <a href="UART.html">this document</a> for details on how to
            setup and use UART interfaces
 
@@ -468,7 +470,7 @@ Other command directories ESPShell has are: <a href="UART.html">uart</a>, <a hre
 
 
 
-<tr><td><a href="Pulse_Generator.html">sequence</a></td><td> <p>Signal generator mode.<br> Allow for custom signal patterns with 
+<tr><td><p><a href="Pulse_Generator.html">sequence</a></p></td><td><p><b>sequence</b> <i>NUM</i></p> <p>Signal generator mode.<br> Allow for custom signal patterns with 
              precise timings to be generated on any pin. See documentation file
              <a href="Pulse_Generator.html">Pulse generator</a> for more info. Simple patterns can also
              be generated by means of "pin" command (see <a href="GPIO.html">GPIO manipulation</a>)
@@ -476,43 +478,60 @@ Other command directories ESPShell has are: <a href="UART.html">uart</a>, <a hre
               
 </p></td></tr>
 
-<tr><td><a href="Filesystems.html">files</a></td><td> <p>Enter file manager mode.<br> This mode allows user to perform basic file 
+<tr><td><p><a href="Filesystems.html">files</a></p></td><td><p><b>files</b></p> <p>Enter file manager mode.<br> This mode allows user to perform basic file 
            system commands (list directory contens, file and directory creation,
            file editing and file transfer). Details are in <a href="Filesystems.html">this file</a>
 </p></td></tr>
 
-<tr><td>show</td><td> <p>Display various information. Descriptions are fragmented along all the
-           documentation files: for example "show counters" is described in <a href="Pulse_Counter.html">count</a>
-</p></td></tr>
+<tr><td>show</td><td><p><b>show</b> KEYWORD [<i>ARG1</i> | <i>ARG2</i> | ... | <i>ARGn</i>]*</p><p>
+In ESPShell user can display various information (about the sketch, cpu, memory, etc)
+by using dedicated "show" command.</p>
+<p>
+Depending on a keyword used there may be 0, 1, 2 or more arguments:
+</p>
+<p>
+<ul>
+<li><b><a href="GPIO.html#iomux">show iomux</a></b></li>
+<li><b><a href="GPIO.html#displaying">show pin</a></b></li>
+<li><b><a href="CPU.html#cpuid">show cpuid</a></b></li>
+<li><b><a href="PWM.html#show">show pwm</a></b></li>
+<li><b><a href="Pulse_Counter.html#show">show counters</a></b></li>
+<li><b><a href="Pulse_Generator.html#show">show sequence</a></b></li>
+<li><b><a href="Filesystems.html#show">show mount</a></b></li>
+<li><b><a href="Memory.html#show">show memory</a></b></li>
+<li><b><a href="Camera.html#show">show camera</a></b></li>
+</ul>
+</p>
+</td></tr>
 
 
 
 
-<tr><td><a href="Kill_Suspend_Resume.html">suspend</a><br>
+<tr><td><p><a href="Kill_Suspend_Resume.html">suspend</a><br>
 <a href="Kill_Suspend_Resume.html">resume</a><br>
-<a href="Kill_Suspend_Resume.html">kill</a></td><td> <p>Process control commands: kill, suspend or resume a task.<br> These 3 
+<a href="Kill_Suspend_Resume.html">kill</a></p></td><td><p><b>kill</b> [-9 | -15] <i>TASK_ID</i><br><b>suspend</b> [<i>TASK_ID</i>]<br><b>resume</b> [<i>TASK_ID</i>]</p> <p>Process control commands: kill, suspend or resume a task.<br> These 3 
            commands are described in details <a href="Kill_Suspend_Resume.html">here</a> and are used
            according to their names: to suspend/resume or terminate a process 
           (a FreeRTOS task or a background ESPShell command) 
 </p></td></tr>
 
 
-<tr><td><a href="Automation.html">echo</a><br>
+<tr><td><p><a href="Automation.html">echo</a><br>
 <a href="Automation.html">history</a><br>
 <a href="Automation.html">colors</a><br>
-<a href="Automation.html">tty</a></td><td> <p>These 4 commands are used to control input and output of the shell;
+<a href="Automation.html">tty</a></p></td><td><p><b>echo</b> [on | off | silent ]</p><p><b>colors</b> [on | off | auto ]</p><p><b>history</b> [on | off ]</p><p><b>tty</b> <i>NUM</i></p>  <p>These 4 commands are used to control input and output of the shell;
              Read <a href="Automation.html">this page</a> for details on command syntax and detailed 
              description.
 </p></td></tr>
 
 
-<tr><td>uptime</td><td> <p>Shows how much time has passed since last boot; shows the last 
+<tr><td><p>uptime</p></td><td><p><b>uptime</b></p> <p>Shows how much time has passed since last boot; shows the last 
              reboot cause. There are no dedicated documentation file for this command: it is simple, no-args command
 </p></td></tr>
 
 
-<tr><td><a href="CPU.html">cpu</a></td><td> <p>Set CPU frequency to FREQ MHz. List of supported frequencies is 
-             displayed on attempt to set unsupported frequency:
+<tr><td><p><a href="CPU.html">cpu</a></p></td><td><p><b>cpu</b> <i>FREQ</i></p> <p>Set CPU frequency to FREQ MHz. List of supported frequencies is 
+             displayed on attempt to set unsupported frequency (e.g. 99Mhz):
 </p><p><pre>         
              Example:   
                  esp32#>cpu 99
@@ -521,13 +540,13 @@ Other command directories ESPShell has are: <a href="UART.html">uart</a>, <a hre
 </p></td></tr>
 
 
-<tr><td>reload</td><td> <p>Reboots ESP32. This is a software restart which does not reset hardware
+<tr><td><p>reload</p></td><td><p><b>reload</b></p> <p>Reboots ESP32. This is a software restart which does not reset hardware
              (peripherial) registers
 </p></td></tr>
 
 
-<tr><td>nap</td><td> <p>Put CPU into <b>light sleep</b> mode.<br>
-             <b>Without arguments</b> puts CPU into sleep until any UART activity:  
+<tr><td><p>nap</p></td><td><p><b>nap</b> [<i>NUM</i>]</p> <p>Put CPU into <b>light sleep</b> mode.<br>
+             Without arguments: puts CPU into sleep until any UART activity:  
              CPU wakes up by UART (press any key to wake up). Wake up condition is 3 
              positive edges. It is recommended to use &lt;Enter&gt; as an abort key
 <pre>         
@@ -537,13 +556,13 @@ Other command directories ESPShell has are: <a href="UART.html">uart</a>, <a hre
 </pre>
 </p><p>                                  
 
-             With argument (sleep time in seconds, SEC) puts CPU into light sleep for SEC seconds, CPU wakes up by timer, there are
-             no other way to cancel the sleep
+             With argument: puts CPU into light sleep for <i>NUM</i> seconds, CPU wakes up by timer only, there are
+             no other ways to cancel the sleep
 </p></td></tr>
 </table>
 <p><h2><a href="#top">&#8686;</a>COPYRIGHTS</h2></p>
 <p>
-ESPShell contains code from Editline library (ancient version, found somewhere in mozilla project):
+ESPShell contains code from Editline library (ancient version, <a href="https://searchfox.org/mozilla-central/source/js/src/editline/editline.c">from here</a>):
 </p>
 <p>
 <pre>

@@ -9,6 +9,8 @@ td {
   vertical-align: top;
   background-color: #fcffd4;
   padding: 4px;
+  padding-left: 1pc;
+  padding-right: 1pc;
 }
 
 h2 a {
@@ -37,4 +39,5 @@ a {
 
 .func {
   font-style: italic;
+  font-weight: bold;
 }

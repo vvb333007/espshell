@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>ESPShell : Introduction to ESPShell : basic concepts and command index</title>
+  <link rel="stylesheet" href="espshell.css">
+</head>
+<body>
+<p align=center><a href="index.html"><img src="espshell_logo.jpg" alt="ESPShell for Arduino :: Index" width="70%" height="70%" /></a></p>
+<p>
+  <ul>
+    <li><a href="#set">Setting CPU frequency</a></li>
+    <li><a href="#cpuid">Displaying CPU information</a></li>
+  </ul>
+</p>
+
+<p><h2 id=set><a href="#top">&#8686;</a>SETTING UP CPU FREQUENCY</h2></p>
+<p>ESP32 CPU supports frequency change (on classic ESP32 main CPU frequency may affect APB bus frequency also) in runtime:
+</p>
+<p><b>cpu</b> <i>FREQ</i></p>
+<p><i>FREQ</i> is the new CPU frequency in MHz (e.g. 240)</p>
+<p>ESP32 supports 240, 160, 80 MHz frequencies and also, depending on Xtal frequency, Xtal / 4 and/or Xtal / 2 frequencies can be available. List of available (supported) frequencies is displayed on attempt to set unsupported frequency:
+</p>
+<p><pre>
+  esp32#>cpu 1
+  % 1 MHz is unsupported frequency
+  % Supported frequencies are: 240, 160, 120, 80, 40, 20 and 10 MHz
+  % Invalid 1st argument "1" ("? cpu" for help)
+  </pre></p>
+
+
+<p><h2 id=cpuid><a href="#top">&#8686;</a>DISPLAYING CPU INFORMATION</h2></p>
+
+<p><b>show cpuid</b></p>
+<p>Displays hardware & software information:</p>
+<p align=center>
+<img src=show_cpuid.jpg width="70%" height="70%" alt="show cpuid" /><br>
+<i>Fig. 1: Output of &quot;<b>show cpuid</b>&quot; command</i>
+</p>
+<p>
+Output is split into 3 sections: Hardware, Firmware and Last boot. First section contains CPUID, CPU frequency, 
+xtal frequency, APB bus frequency and CPU core temperature. 
+</p><p>
+Second section provides version information on various components used to build the firmware/sketch: ArdunoCore version
+(mismatched versions are common source of a headache), the ESP-IDF version and ESP32Shell own version number
+</p>
+<p>
+Third section contains output of "<b>uptime</b>" command: uptime and reason for last reboot.
+</p>
+</body>
+</html>
