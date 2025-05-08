@@ -5,7 +5,7 @@
   <link rel="stylesheet" href="espshell.css">
 </head>
 <body>
-<p align=center><img src="espshell.jpg" alt="ESPShell main screen" width="70%" height="70%"></p>
+<p align=center><a href="index.html"><img src="espshell_logo.jpg" alt="ESPShell for Arduino :: Index" width="70%" height="70%" /></a></p>
 <p>
   <ul>
     <li><a href="#wit">What is this</a></li>
@@ -16,7 +16,7 @@
     <li><a href="#help">Built-in help system</a></li>
     <li>&nbsp;&nbsp;<a href="#huse">A question mark</a></li>
     <li>&nbsp;&nbsp;<a href="#hsyntax">Help page syntax</li></a>
-    <li><a href="#background">Background execution</a></li>
+    <li><a href="#background">Background & foreground execution</a></li>
     <li><a href="#cmds">Built-in commands</li></a>
     <li>&nbsp;&nbsp;<a href="#dirs">Command directories; main command directory, entering & exiting</li></a>
     <li>&nbsp;&nbsp;<a href="#index">Command index / brief with links to documentation pages</li></a>
@@ -58,6 +58,7 @@
  you to write any code. There are PWM generator and a frequency meter, a pulse counter 
  and a pulse pattern generator are available on any GPIO.
 </p>
+<p align=center><img src="espshell.jpg" alt="ESPShell main screen" width="70%" height="70%"><br><i>Fig. 1: ESPShell, how does it looks like</i></p>
 <p>
 <h2>WHAT IS THE POINT?</h2>
 </p>
@@ -330,7 +331,7 @@ Other symbols that are also used in help pages (but not in example above) are ra
 </p>
 
 <p>
-<h2 id=background>BACKGROUND EXECUTION</h2>
+<h2 id=background>BACKGROUND VS FOREGROUND EXECUTION</h2>
 </p><p>
  By default all ESPShell commands are blocking (well, most of them, not all). That
  means that the <b>shell will wait for command to finish</b> before starting to accept new 
@@ -346,18 +347,16 @@ This behaviour could be changed by using an &amp; symbol:
  "count" which may take long time to finish. Every running background command 
  allocates around 5000 bytes of stack memory which is freed after execution
 </p><p>
- Any background command can be stopped by using command "kill" (see command list 
- below)
-</p>
+ Any background command can be stopped by using command <a href="Kill_Suspend_And_Resume.html">kill</a></p>
 
 <p>
 <h2 id=cmds>ESPSHELL BUILT-IN COMMANDS</h2>
 </p><p>
 
-  <h3 id=dirs>Command directories; main command directory, entering & exiting</h3>
+  <h3 id=dirs>Command directories</h3>
 </p><p>
   ESPShell commands are grouped into <i>command directories</i>: commands related to UART are in "uart" directory, commands dealing with files are in "files" directory and so on.
-  Main command directory is what you see when espshell starts. Main command directory contains commands AND other command directories.
+  Main command directory is what you see when espshell starts. Main command directory contains commands AND other command directories; you can think of command directories as of real filesystem directories filled with executable files
 </p><p>
   If one wants to execute UART-related commands he/she must <b>enter</b> the corresponding
   command directory:
@@ -369,11 +368,11 @@ This behaviour could be changed by using an &amp; symbol:
       esp32-uart0>
 </pre>
 </p><p>
- Executing command "<b>uart 0</b>" switches current command directory to UART 
- command directory. Pressing then "<b>Ctrl+Z</b>" or executing "<b>exit</b>" commands changes command
+ Executing command "<b>uart 0</b>" switches current command directory to UART0 
+ command directory;  pressing then "<b>Ctrl+Z</b>" or executing "<b>exit</b>" commands changes command
  directory back to Main.
 </p><p>
- When inside a command directory, commands from the outside are available and can be 
+ When inside of any command directory, commands from the outside are available and can be 
  executed even if they don't show up on command list:
 </p><p><pre>
   Example: 
@@ -401,8 +400,7 @@ This behaviour could be changed by using an &amp; symbol:
       % "write"      : Send bytes over this UART
       % "exit"       : Exit
 
-      Execute command, which is not on the list but exists outside
-      of UART0 directory:
+      Execute command, which is not on the list but exists in main commands list:
 
       esp32-uart0>uptime
       % Last boot was 17 seconds ago
@@ -419,7 +417,7 @@ Other command directories ESPShell has are: <a href="UART.html">uart</a>, <a hre
 
 <h3 id=index>Command Index / Brief with links to documentation pages</h3>
 </p><p>
-<table>
+<table><tr><td><b>Command</b></td><td><b>Description</b></td></tr>
 <tr><td><a href="GPIO.html">pin</a></td><td><p>Various pin (GPIO) commands.<br>
 
             Set or read pin values, perform analogRead(), set pin modes, save/restore pin

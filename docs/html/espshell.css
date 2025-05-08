@@ -1,4 +1,5 @@
 body {
+  background-color: #ffffff;
   font-family:  tahoma, verdana;
   margin-left: 10%;
   margin-right: 10%;
@@ -13,7 +14,7 @@ td {
 
 pre { 
   border: 1px solid black; 
-  background-color: #acffd4;
+  background-color: #bcffd4;
   padding-top: 1pc;
   padding-bottom: 1pc;
   padding-left: 1pc;
