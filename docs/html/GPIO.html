@@ -5,7 +5,7 @@
   <title>ESPShell : Everything about pins : GPIO manipulation</title>
 </head>
 <body>
-<p align=center><a href="index.html"><img src="espshell_logo.jpg" alt="ESPShell for Arduino :: Index" width="70%" height="70%" /></a></p>
+<p align=center><a href="index.html"><img src="espshell_logo.jpg" alt="ESPShell for Arduino :: Index"  width="70%" height="70%" /></a></p>
 <p>
   <ul>
     <li><a href="#pins">ESP32 pins (gpios)</a></li>
@@ -21,7 +21,7 @@
   </ul>
 </p>
 
-<p id="pins"><h2>ESP32 PINS (GPIOs)</h2></p>
+<p id="pins"><h2><a href="#top">&#8686;</a>ESP32 PINS (GPIOs)</h2></p>
 
 <p>
 ESP32 has many pins (or GPIOs, both names are used interchangeable throughout
@@ -41,7 +41,7 @@ only if your program is cached by the CPU so no icache-miss happens
 Some pins are configured to be INPUT only and this can not be changed
 </p>
 
-<p id="pin"><h2>"PIN" : VERSATILE GPIO MANIPULATION TOOL</h2></p><p>
+<p id="pin"><h2><a href="#top">&#8686;</a>"PIN" : VERSATILE GPIO MANIPULATION TOOL</h2></p><p>
 
 In ESPShell one can play with GPIOs using "<b>pin</b>" command which is used both for 
 displaying information on particular pin and for configuring. Turning pin HIGH or 
@@ -84,7 +84,7 @@ Numbers 2,4,18 and 19 are pin numbers, while "low" and "high" are <i>keywords</i
 as shown in <a href="GPIO.html#examples">Examples section</a> below
 </p>
 
-<p id="displaying"><H2>DISPLAYING PIN INFORMATION</h2></p>
+<p id="displaying"><H2><a href="#top">&#8686;</a>DISPLAYING PIN INFORMATION</h2></p>
 
 <p>
 To display informaton on an arbitrary pin: type "<b>pin</b>" followed by pin number and press &lt;Enter&gt;
@@ -151,7 +151,7 @@ How many pins is available on your particular ESP32 board? To obtain information
 <i>Fig. 1: "pin 99" output (on ESP32-S3 DevKit)</i>
 </p>
 
-<p id="settings"><h2>SETTING PIN MODE</h2>
+<p id="settings"><h2><a href="#top">&#8686;</a>SETTING PIN MODE</h2>
 </p>
 <p>Command <b>pin</b> is used to set pin <i>mode</i> (e.g. PULL_UP/PULL_DOWN, INPUT/OUTPUT, OPEN_DRAIN) and <i>value</i>; equivalent of <i>pinMode()</i> and/or <i>digitalRead()/digitalWrite()/analogRead()</i></p>
 <p>
@@ -180,7 +180,7 @@ Note that pin mode is not <i>added</i> to existing pin configuration. Instead it
 add an INPUT flag by using "<b>pin 2 in</b>" and we end up with pin 2 only having INPUT flag. Correct way is to do "<b>pin 2 in out up</b>". If "pin" command has one of abovementioned <i>mode keywords</i> then
 pin mode is reset to zero and then new mode is applied
 </p>
-<p id="reading"><h2>READING/WRITING PIN VALUES</h2></p>
+<p id="reading"><h2><a href="#top">&#8686;</a>READING/WRITING PIN VALUES</h2></p>
 <table><tr><td><b>Keyword</b></td><td><b>Description and examples</b></td></tr>
 <tr><td>read</td><td><p>Digital read.</p><p>Command "pin 2 read" performs digitalRead() on pin 2 and displays the result (HIGH or LOW)</p>
 <p>
@@ -224,7 +224,7 @@ pin mode is reset to zero and then new mode is applied
 
 
 
-<p id="pulse"><h2>PULSE SEQUENCES, PWM AND TIMINGS</h2>
+<p id="pulse"><h2><a href="#top">&#8686;</a>PULSE SEQUENCES, PWM AND TIMINGS</h2>
 </p><p>
 Command "<b>pin</b>" can be used to generate PWM waveforms, arbitrary high precision pulse sequences (with or without modulation, suitable for IR receivers), or it can be used to generate ultra-low frequency signals or patterns</p>
 
@@ -274,7 +274,7 @@ Example above turns pin2 HIGH for 1 sec, then LOW for 1 second and the cycle rep
 </table>
 
 
-<p id="saving"><h2>SAVING / RESTORING PIN STATE, STATE RETENTION</h2>
+<p id="saving"><h2><a href="#top">&#8686;</a>SAVING / RESTORING PIN STATE, STATE RETENTION</h2>
 </p>
 <p>
 It is possible to temporarily save pin state (i.e. pin mode, pin value, iomux function) and restore it. Internal stack, which is used for saving pin information is 1 entry deep. That means
@@ -324,7 +324,7 @@ pin value will be ignored. However, after unfreezing, all the changes (if there 
 </table>
           
 
-<p id="iomux"><h2>IO_MUX & GPIO MATRIX</h2>
+<p id="iomux"><h2><a href="#top">&#8686;</a>IO_MUX & GPIO MATRIX</h2>
 </p>
 <p>
 IO_MUX and GPIO_Matrix (with or without "_") are pieces of hardware within ESP32 chip. Both of them are used to connect pin to peripherial hardware (i.e. to a hardware blocks within ESP32). 
@@ -470,7 +470,8 @@ NOTE: to connect more than 1 signal to the input one can use multiple "matrix in
 
 </td></tr></table>
 
-<h2>COMMAND LOOPING</h2>
+<p><h2><a href="#top">&#8686;</a>COMMAND LOOPING</h2></p>
+
 <p>
 Command "pin" can be looped so it repeats again and again until <i>loop count</i> decreases to zero. Keyword <b>loop</b> is used for that;
 This keywords must be the last keyword in the statement. Looped commands can be interrupted either by a keypress (commands running in foreground) or by issuing "<b>kill</b>" command to stop any background looped commands
@@ -488,7 +489,7 @@ This keywords must be the last keyword in the statement. Looped commands can be 
 </pre></p></td></tr></table>
 
 
-<p id="examples"><h2 id="speed">NOTES ON EXECUTION SPEED</h2></p>
+<p  id="speed"><h2><a href="#top">&#8686;</a>NOTES ON EXECUTION SPEED</h2></p>
 <p>
 Command "<b>pin</b>" is an <i>interpreter</i>, it does not <i>compile</i> its keywords for faster execution; instead keywords are <i>interpreted</i> each time, even for looped commands. How fast is it?
 One can make an experiment: connect pins 2 and 4 with a jumper wire and run shell commands "<b>pin 2 low high loop infinite &</b>" and "<b>count 4</b>". First command simply toggles pin 2 high and low, looping in a background,
@@ -506,7 +507,7 @@ has no <b>delays</b> in it, and delays are only points where command "<b>kill</b
 to kill the task.
 </p>
 
-<p id="examples"><h2>EXAMPLES</h2></p>
+<p id="examples"><h2><a href="#top">&#8686;</a>EXAMPLES</h2></p>
 
 
 <p>

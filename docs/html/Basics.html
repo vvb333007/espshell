@@ -23,7 +23,7 @@
   </ul>
 </p>
 
-<p><h2 id=wit>WHAT IS THIS:</h2></p>
+<p><h2 id=wit><a href="#top">&#8686;</a>WHAT IS THIS:</h2></p>
 
 <p>
  This is a debugging/development tool (<b>a library for Arduino framework</b>) for use 
@@ -60,7 +60,7 @@
 </p>
 <p align=center><img src="espshell.jpg" alt="ESPShell main screen" width="70%" height="70%"><br><i>Fig. 1: ESPShell, how does it looks like</i></p>
 <p>
-<h2>WHAT IS THE POINT?</h2>
+<h2><a href="#top">&#8686;</a>WHAT IS THE POINT?</h2>
 </p>
 <p>
 The main idea behind this library is to be able to make changes without recompiling/reuploading your sketch every time
@@ -79,7 +79,7 @@ can be done by entering shell commands.
 </p>
 
 <p> 
-<h2 id=add>HOW TO ADD IT TO YOUR ARDUINO PROJECT/SKETCH:</h2>
+<h2 id=add><a href="#top">&#8686;</a>HOW TO ADD IT TO YOUR ARDUINO PROJECT/SKETCH:</h2>
 </p><p>
  This library does not require you to call any functions to start the shell, except one line of 
  code: add <br>
@@ -104,7 +104,7 @@ When ESPShell starts it displays a welcome banner and is ready to accept command
  sketch (i.e. Serial.begin() was never called) then ESPShell will be inactive, sleeping, 
  waiting for the Serial to start (i.e. waits for sketch to call Serial.begin() ).
 </p><p>
-<h2 id=ui>User Interface</h2>
+<h2 id=ui><a href="#top">&#8686;</a>User Interface</h2>
 </p>
 
 <p>
@@ -127,7 +127,7 @@ User interacts with the shell through the Serial interface (UART0 or USB-CDC) by
 <i>Fig. 2: Typical espshell session: user executes &quot;<b>show cpuid</b>&quot; command</i>
 </p>
 
-<p><h3 id=keyboard>Keyboard use & key bindings</h3></p>
+<p><h3 id=keyboard><a href="#top">&#8686;</a>Keyboard use & key bindings</h3></p>
 
 <p>
   <i>NOTE: Simple terminal programs like Arduino Serial Monitor can not send Ctrl+C and Ctrl+Z sequences
@@ -194,7 +194,7 @@ User interacts with the shell through the Serial interface (UART0 or USB-CDC) by
 </p><p>
  Keys should be more or less intuitive for Linux shell users.
 </p><p>
-<h2 id=short>Autocompletion vs Incompletion</h2>
+<h2 id=short><a href="#top">&#8686;</a>Autocompletion vs Incompletion</h2>
 </p><p>
  ESPShell won't autocomplete commands for you on pressing [TAB]: instead ESPShell
  simply accepts non-completed input, i.e. commands and command arguments can be 
@@ -217,7 +217,7 @@ ESPShell does its best to distinguish between shortened commands to avoid uninte
  However it is not always the case so do not overshorten: "sh c" can be either "show counters" or "show cpuid" and in this case ESPShell picks up first command in the list, in this case it will be "show counters". ( Command list can be obtained by entering command "?" or "help" )
 </p>
 <p>
-<h2 id=help>Built-in help system</h2>
+<h2 id=help><a href="#top">&#8686;</a>Built-in help system</h2>
 </p>
 
 <p>
@@ -228,7 +228,7 @@ result in a message about pin numbers available on given board.
 </p>
 
 <p>
-<h3 id=huse>A question mark</h3></p><p>
+<h3 id=huse><a href="#top">&#8686;</a>A question mark</h3></p><p>
 Help system is available via "<b>?</b>" command/hotkey: as a command it displays manual pages for commands,
 displays the list of available commands. As a hotkey it displays help for the command user currently entering.
 <p>
@@ -273,7 +273,7 @@ command. (<i>Command <b>var</b> here sets internal shell variable "bypass_qm" to
 </p>
 
 <p>
-<h3 id=hsyntax>  Help page syntax</h3>
+<h3 id=hsyntax><a href="#top">&#8686;</a>Help page syntax</h3>
 </p><p>
   When typical help page is displayed, one may notice that special symbols (along with
   colors) are used to describe <i>command syntax</i>. Command syntax can be found at the very
@@ -331,7 +331,7 @@ Other symbols that are also used in help pages (but not in example above) are ra
 </p>
 
 <p>
-<h2 id=background>BACKGROUND VS FOREGROUND EXECUTION</h2>
+<h2 id=background><a href="#top">&#8686;</a>BACKGROUND VS FOREGROUND EXECUTION</h2>
 </p><p>
  By default all ESPShell commands are blocking (well, most of them, not all). That
  means that the <b>shell will wait for command to finish</b> before starting to accept new 
@@ -350,10 +350,10 @@ This behaviour could be changed by using an &amp; symbol:
  Any background command can be stopped by using command <a href="Kill_Suspend_And_Resume.html">kill</a></p>
 
 <p>
-<h2 id=cmds>ESPSHELL BUILT-IN COMMANDS</h2>
+<h2 id=cmds><a href="#top">&#8686;</a>ESPSHELL BUILT-IN COMMANDS</h2>
 </p><p>
 
-  <h3 id=dirs>Command directories</h3>
+  <h3 id=dirs><a href="#top">&#8686;</a>Command directories</h3>
 </p><p>
   ESPShell commands are grouped into <i>command directories</i>: commands related to UART are in "uart" directory, commands dealing with files are in "files" directory and so on.
   Main command directory is what you see when espshell starts. Main command directory contains commands AND other command directories; you can think of command directories as of real filesystem directories filled with executable files
@@ -415,7 +415,7 @@ Note: Ctrl+Z is a hotkey for command "exit"
 Other command directories ESPShell has are: <a href="UART.html">uart</a>, <a href="I2C.html">i2c</a>, <a href="Filesystems.html">files</a>, <a href="Pulse_Generator.html">sequence</a> and <a href="Camera.html">camera settings</a>
 </p><p>
 
-<h3 id=index>Command Index / Brief with links to documentation pages</h3>
+<h3 id=index><a href="#top">&#8686;</a>Command Index / Brief with links to documentation pages</h3>
 </p><p>
 <table><tr><td><b>Command</b></td><td><b>Description</b></td></tr>
 <tr><td><a href="GPIO.html">pin</a></td><td><p>Various pin (GPIO) commands.<br>
@@ -541,7 +541,7 @@ Other command directories ESPShell has are: <a href="UART.html">uart</a>, <a hre
              no other way to cancel the sleep
 </p></td></tr>
 </table>
-<p><h2>COPYRIGHTS</h2></p>
+<p><h2><a href="#top">&#8686;</a>COPYRIGHTS</h2></p>
 <p>
 ESPShell contains code from Editline library (ancient version, found somewhere in mozilla project):
 </p>

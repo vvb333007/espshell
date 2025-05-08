@@ -11,6 +11,16 @@ td {
   padding: 4px;
 }
 
+h2 a {
+  padding-right: 1pc;
+  text-decoration: none;
+}
+
+h3 a {
+  padding-right: 1pc;
+  text-decoration: none;
+}
+
 
 pre { 
   border: 1px solid black; 
