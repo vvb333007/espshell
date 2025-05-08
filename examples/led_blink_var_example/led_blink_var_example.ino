@@ -37,7 +37,7 @@ void setup() {
   // prepare our blinking led
   pinMode(LED,OUTPUT);
 
-  //Make 4 variables accessible from the shell
+  //Make these 6 variables be accessible from the shell
   convar_add(Blink);
   convar_add(Char);
   convar_add(Short);
