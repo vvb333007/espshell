@@ -96,7 +96,7 @@ static int cmd_tty(int argc, char **argv) {
 // all shell output (except for command handlers output)
 //
 // Setting "echo silent" has effect of "echo off" + all command output
-// is supressed as well. commands are executed do not output anything
+// is supressed as well. commands are executed but do not output anything
 //
 static int cmd_echo(int argc, char **argv) {
 

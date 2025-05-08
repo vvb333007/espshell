@@ -1,9 +1,13 @@
 /* 
- * This file is a part of ESP32Shell for the Arduino Framework by vvb333007
- * Author: Viacheslav Logunov <vvb333007@gmail.com>, 
+ * This file is a part of the ESPShell Arduino library (Espressif's ESP32-family CPUs)
  *
- * Latest source code is at: https://github.com/vvb333007/espshell/
- * Feel free to use it as your wish, however credits would be greatly appreciated.
+ * Latest source code can be found at Github: https://github.com/vvb333007/espshell/
+ * Stable releases: https://github.com/vvb333007/espshell/tags
+ *
+ * Feel free to use this code as you wish: it is absolutely free for commercial and 
+ * non-commercial, education purposes.  Credits, however, would be greatly appreciated.
+ *
+ * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
 #define COMPILING_ESPSHELL 1  // dont touch this!
@@ -109,7 +113,9 @@
 #  define STARTUP_HOOK
 #endif
 
-#if WITH_VERBOSE
+// Enable VERBOSE(...) macro only when "Tools->Core Debug Level" is set to "Verbose"
+#if ARDUHAL_LOG_LEVEL == ARDUHAL_LOG_LEVEL_VERBOSE
+#   warning "VERBOSE macro is enabled"
 #  define VERBOSE( ... ) __VA_ARGS__
 #else
 #  define VERBOSE( ... ) { /* Nothing here */ }

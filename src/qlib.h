@@ -1054,12 +1054,15 @@ static int text2buf(int argc, char **argv, int i /* START */, char **out) {
 // keypress)or by a "kill" command. If called from a different context (i.e. from a "background" command or
 // any task which is not an espshell_task) then it can not be interrupted by a keypress.
 //
-// `duration` - delay time in milliseconds
+// `duration` - delay time in milliseconds, or 0 for infinite delay
 //  returns duration if everything was ok, 
 // returns !=duration if was interrupted (returns real time spent in delay_interruptible())
 //
-#define TOO_LONG 2999
-#define DELAY_POLL 250
+// TODO: investigate why zero delays do not work as kill-points for "kill -15".
+//       the only difference is that xTaskNotifyWait() is called with zero timeout
+#define TOO_LONG       2999
+#define DELAY_POLL     250
+#define DELAY_INFINITE 0xffffffffUL
 
 static unsigned int delay_interruptible(unsigned int duration) {
   
@@ -1085,7 +1088,7 @@ static unsigned int delay_interruptible(unsigned int duration) {
         return q_millis() - now;  // interrupted by a keypress
     }
   }
-  delay(duration);
+  q_delay(duration);
 
   // Success! Return exactly requested time, not the real one. Don't change this behaviour or if you do examine all calls to delay_interruptible()
   return duration0;

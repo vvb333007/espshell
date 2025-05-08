@@ -4,7 +4,10 @@
  * Latest source code can be found at Github: https://github.com/vvb333007/espshell/
  * Stable releases: https://github.com/vvb333007/espshell/tags
  *
- * This file is a copyrighted source code. Please refer to docs/COPYRIGHTS for details
+ * Feel free to use this code as you wish: it is absolutely free for commercial and 
+ * non-commercial, education purposes.  Credits, however, would be greatly appreciated.
+ *
+ * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
 #if COMPILING_ESPSHELL
@@ -178,13 +181,12 @@ TTYqueue(const char *input) {
 //
 static void
 TTYflush() {
-  if (ScreenCount && (Echo > 0)) {
+  if (ScreenCount && (Echo > 0))
     console_write_bytes(Screen, ScreenCount);
-    ScreenCount = 0;
-  }
+  ScreenCount = 0;
 }
 
-// queue===============================================================================================================to be printed
+// queue next char to be printed
 static void
 TTYput(unsigned char c) {
 
@@ -1011,4 +1013,3 @@ argify(unsigned char *line, unsigned char ***avp) {
   return ac;
 }
 #endif // #ifdef COMPILING_ESPSHELL
-

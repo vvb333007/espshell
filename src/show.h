@@ -30,6 +30,7 @@ static const struct {
   { "counters", cmd_show_counters },
   { "memory", cmd_show_memory },
   { "iomux", cmd_show_iomux },
+  { "pin", cmd_show_pin },
 #if WITH_FS  
   { "mount", cmd_show_mount },
 #endif    

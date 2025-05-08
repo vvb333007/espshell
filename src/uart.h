@@ -175,7 +175,7 @@ static int cmd_uart_up(int argc, char **argv) {
       sbits = 3;
   }
   
-  //VERBOSE(q_printf("%% uart%u up: Config word is %08x\r\n",u,make_config(bits, parity, sbits)));
+//  VERBOSE(q_printf("%% uart%u up: Config word is %08x, bits=%u, parity=%u, sbits=%u\r\n",u,make_config(bits, parity, sbits), bits, parity, sbits));
 
   if (NULL != uartBegin(u, speed, make_config(bits, parity, sbits), rx, tx, 256, 0, false, 112))
     HELP(q_printf("%% UART%u is initialized (RX=pin%u, TX=pin%u, speed=%u)\r\n", u, rx, tx, speed));

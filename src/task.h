@@ -124,7 +124,7 @@ static int          shell_core = 0;  // CPU core number ESPShell is running on. 
 #define task_yield() q_delay(1)
 
 
-// Block until any signal is received but not longer than /timeout/ milliseconds. Value of 0 means "infinite timeout":
+// Block until any signal is received but not longer than /timeout/ milliseconds. Value of 0xffffffff (DELAY_INFINITE) means "infinite timeout":
 // function will block until it receives ANY signal; the signal value is returned in /*sig/, pointer can be NULL;
 // 
 // Returns /true/ if signal was received
@@ -133,7 +133,8 @@ static int          shell_core = 0;  // CPU core number ESPShell is running on. 
 static bool task_wait_for_signal(uint32_t *sig, uint32_t timeout_ms) {
 
   uint32_t sig0;
-  timeout_ms = timeout_ms ? pdMS_TO_TICKS(timeout_ms) : portMAX_DELAY; 
+//  timeout_ms = timeout_ms ? pdMS_TO_TICKS(timeout_ms) : portMAX_DELAY; 
+  timeout_ms = (timeout_ms == DELAY_INFINITE) ? portMAX_DELAY : pdMS_TO_TICKS(timeout_ms); 
  
   if (NULL == sig)
     sig = &sig0;

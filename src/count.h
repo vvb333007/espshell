@@ -35,9 +35,10 @@
  //
 #if COMPILING_ESPSHELL
 
-#define TRIGGER_POLL   1000  // A keypress check interval, msec (better keep it >= PULSE_WAIT)
-#define PULSE_WAIT     1000  // Default measurement time, msec
-#define PCNT_OVERFLOW 20000  // PCNT interrupt every 20000 pulses (range is [1..2^16-1])
+#define TRIGGER_POLL    1000           // A keypress check interval, msec (better keep it >= PULSE_WAIT)
+#define PULSE_WAIT      1000           // Default measurement time, msec
+#define PCNT_OVERFLOW   20000          // PCNT interrupt every 20000 pulses (range is [1..2^16-1])
+#define COUNT_INFINITE  (uint64_t)(-1)  
 
 static int               pcnt_unit = PCNT_UNIT_0;        // First PCNT unit which is allowed to use by ESPShell, convar (accessible thru "var" command)
 static int               pcnt_counters = 0;              // Number of currently running counters.
@@ -318,7 +319,7 @@ bool count_wait_for_the_first_pulse(unsigned int pin) {
   // SIGNAL_GPIO is sent by gpio ISR when pulse is received (and this is what we wait for actually)
   // SIGNAL_TERM is sent by command "kill" or (foreground tasks only) by pressing a key
   if (!fg)
-    ret = task_wait_for_signal(&value, 0);
+    ret = task_wait_for_signal(&value, DELAY_INFINITE);
   else
     // foreground tasks can be interrupted by a keypress, so we poll console with TRIGGER_POLL interval.
     while( (ret = task_wait_for_signal(&value, TRIGGER_POLL)) == false)
@@ -431,7 +432,7 @@ bad_filter:
 
     } else
     if (!q_strcmp(argv[i],"trigger")) units[unit].trigger = 1; else
-    if (!q_strcmp(argv[i],"infinite")) wait = (uint64_t )(-1); else
+    if (!q_strcmp(argv[i],"infinite")) wait = COUNT_INFINITE; else
     if (isnum(argv[i])) wait = q_atol(argv[i], 1000);
     else {
         // unrecognized keyword argv[i]
@@ -443,7 +444,7 @@ bad_filter:
 
   // Store counter parameters
   units[unit].pin = pin;
-  units[unit].interval = (wait == (uint64_t)(-1) ? wait : wait * 1000ULL); // store planned time, update it with real one later
+  units[unit].interval = (wait == COUNT_INFINITE ? wait : wait * 1000ULL); // store planned time, update it with real one later
   
   q_printf("%% %s pulses on GPIO%d...", units[unit].trigger ? "Waiting for" : "Counting", pin);
   if (is_foreground_task())
@@ -480,17 +481,17 @@ bad_filter:
     }
   }
 
+
+   MUST_NOT_HAPPEN(wait == 0);
+
   // Actual measurement is made here:
-  // >>>> START <<<<
-  // record a timestamp
-  units[unit].tsta = q_micros();
-  pcnt_counter_resume(unit);
-  delay_interruptible(wait);
-  // stop counting as soon as possible to get more accurate results, especially at higher frequencies
-  pcnt_counter_pause(unit);
-  // actual measurement time in MICROSECONDS
-  wait = q_micros() - units[unit].tsta; 
-  // >>>> STOP <<<<
+  // START
+  units[unit].tsta = q_micros();            // record a timestamp in micro seconds
+  pcnt_counter_resume(unit);                // enable counter
+  delay_interruptible(wait);                // delay 
+  pcnt_counter_pause(unit);                 // stop counting as soon as possible to get more accurate results, especially at higher frequencies
+  wait = q_micros() - units[unit].tsta;     // actual measurement time in MICROSECONDS
+  // STOP
   
  // Free up resources associated with the counter. Free up interrupt, stop and clear counter, calculate
  // frequency, pulses count (yes it is calculated). Store calculated values & a timestamp in /units[]/ for later reference
@@ -537,13 +538,13 @@ static int cmd_show_counters(UNUSED int argc, UNUSED char **argv) {
     cnt = count_read_counter(i,&freq,&interval);
     
 // wish we can have #pragma in #define ..
-  #pragma GCC diagnostic ignored "-Wformat"
+#pragma GCC diagnostic ignored "-Wformat"
     q_printf("%%  %d |% 3u| %s | 0x%08x | <g>% 11u</> | % 10u | % 8u | ", i, units[i].pin, count_state_name(i), units[i].taskid, cnt, (unsigned int )(interval / 1000ULL), freq); // TODO: bad typecast
     if (units[i].filter_enabled)
       q_printf(" <i>%u</>\r\n", units[i].filter_value);
     else
       q_print("-off-\r\n");
-  #pragma GCC diagnostic warning "-Wformat"
+#pragma GCC diagnostic warning "-Wformat"
   }
 
   if (pcnt_counters) {
