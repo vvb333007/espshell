@@ -9,9 +9,10 @@
 <p>
   <ul>
     <li><a href="#pg">Pulse pattern generation</a></li>
-    <li><a href="#basic">Basic concept: "tick" and "level"</a></li>
+    <li><a href="#basic">Basic concept: "tick", "level" and "pulse"</a></li>
     <li><a href="#send">Sending a pulse sequences</a></li>
-    <li><a href="#bits">Bit strings vs Levels</a></li>
+    <li><a href="#bits">Bit strings</a></li>
+    <li><a href="#mod">Modulation & End-Of-Transmission</a></li>
     <li><a href="#show">Displaying information</a></li>
     <li><a href="#examples">Examples</a></li>
 
@@ -31,7 +32,7 @@ It can be used as a general-purpose signal generator or an IR remote signal gene
 </p>
 
 
-<p><h2 id=basic><a href="#top">&#8686;</a>BASIC CONCEPT: "TICK" AND "LEVEL"</h2></p>
+<p><h2 id=basic><a href="#top">&#8686;</a>BASIC CONCEPT: "TICK", "LEVEL" AND "PULSE"</h2></p>
 
 <p>
 Pulse pattern generation is available via "<b>sequence</b> <i>SEQ_ID</i>" and "<b>pin</b> <i>PIN</i> <b>seq</b> <i>SEQ_ID</i>"
@@ -41,8 +42,23 @@ while second actually sends it. The sequence number (<i>SEQ_ID</i>) must be in r
 </p>
 
 <p>
-Lets solve a simple task: we want to generate number of pulses on pin2
-as follows:
+Before we proceed with examples and commands description lets look at terminology used through the document:
+</p>
+
+<p>
+<ul>
+  <li>A <b>level</b> is either logic "0" or logic "1": it is simply a <i>voltage level</i> hence the name. Sequence can be made of <i>levels</i> or <i>pulses</i>.</li>
+  <li>A <b>pulse</b> is two consecutive <i>levels</i>: "logic 1 for X nanoseconds, then logic 0 for Y nanoseconds". Pulses are used in IR remote control protocol; Manchester encoding can be viewed as <i>pulse</i> sequence also.
+Unlike <i>levels</i>, pulses can be <i>modulated</i> (modulation can be applied to logic 1 or logic 0) to create pulse sequences suitable for IR Remote (NEC protocol).</li>
+  <li>A <b>tick</b> is a time interval. All time intervals in a sequence are measured in "ticks". Tick can be set to anything from 0.0125us up to 3.2us: it is user-defined value. When new sequence is created, its "tick" value is set to 1uS (default value).</li>
+</ul>
+</p>
+
+
+
+
+<p>
+Lets solve a simple task: suppose we want to generate number of pulses on pin2 as follows:
 </p>
 
 <p>
@@ -71,16 +87,7 @@ First we need to set a <i>resolution</i> for the sequence, a so-called "tick len
 </p>
 
 <p>
-What "tick" is?
-</p>
-
-<p>
-In a sequence all the timings and length (e.g. positive edge length) are expressed in <i>ticks</i>. Tick 
-length can be anything from 0.0125 to 3.2 microseconds.
-</p>
-
-<p>
-Lets choose tick to be 1 microsecond long:
+Lets choose "<b>tick</b>" to be 1 microsecond long:
 </p>
 <p><pre>
   esp32#>sequence 0
@@ -94,7 +101,7 @@ command "tick 1" can be omitted in example above
 </p>
 
 <p>
-Now input our sequence:
+Now input our sequence <i>as a sequence of <b>levels</b></i>:
 </p>
 
 <p><pre>
@@ -105,15 +112,14 @@ Now input our sequence:
 </p>
 
 <p>
-Command "levels" takes arguments in form LEVEL/LENGTH_IN_TICKS where LEVEL
-is either "1" or "0" and LENGTH_IN_TICKS tells how long this level must be
+Command "levels" takes arguments in form "A/B" where "A" is either "1" or "0" and "B" tells how long this level must be
 held (1..32767 ticks). Using command "show" one can check the sequence total
 length in ticks and microseconds. Hint: use "/" as an alias to 32767: "1//"
 is the same as "1/32767"
 </p>
 
 <p>
-Command levels above says: set output to logic 1 for 10 ticks, then set it to 0 for 20 ticks, etc. Since we chose out tick to be 1 microsecond then 
+Command "<b>levels</b>" above says: "Set output to logic 1 for 10 ticks, then set it to 0 for 20 ticks..." etc. Since we chose out tick to be 1 microsecond then 
 these length are simply lengths in microseconds
 </p>
 
@@ -151,7 +157,7 @@ NOTE: Another way to send 4 sequences as shown above is to use "pin 2 seq 0 loop
 </p>
 
 
-<p><h2 id=bits><a href="#top">&#8686;</a>BITS TO PULSES</h2></p>
+<p><h2 id=bits><a href="#top">&#8686;</a>BITS TO LEVELS, BITS TO PULSES</h2></p>
 <p>
 Although you can set all the levels manually just as in examples above but for longer sequences it may be impractical.
 Alternative way to define a sequence is to use  "<b>bits</b>", "<b>one</b>" and "<b>zero</b>" 
@@ -213,41 +219,14 @@ is a pulse as well (HIGH 50uS then LOW for 150uS):
   % 1/150, 0/50, 1/50, 0/150, 1/50, 0/150, 1/150, 0/50,
   % 1/150, 0/50, 1/150, 0/50,
   % Total: 12 levels, duration: 1200 ticks, (~1200 uS)  < -- total sequence time
-</pre></p><p>
-Finaly lets create pattern which blink LED connected to GPIO2. We want that LED
-to blink around 1Hz.
-</p><p>
-Given the frequency of 1Hz the tick must be as long as possible and duration of
-each 1 or 0 should be maximal. The maximum tick allowed is 3.2uS so we just 
-choose 3.2 and define "one" and "zero" to maximum length:
-</p><p><pre>
-  esp32-seq0>tick 3.2
-  esp32-seq0>one 1/32767
-  esp32-seq0>zero 0/32767
-  esp32-seq0>bits 11111111000000001111111100000000
-</pre>
-</p><p>
-Exit sequence configuration mode using "exit" command or by pressing Ctrl+Z. Note 
-that commands can be entered in their short form (say "seq" instead of "sequence" 
-or "ex" instead of "exit")
-</p><p>
-Assign sequence to the pin (start the sequence). If you have LED connected to 
-pin 2 you'll see it blinking
-</p><p><pre>
-  esp32-seq0>ex
-  esp32#>pin 2 seq 0
-  % Sending sequence 0 over GPIO 2
-  esp32#>
-</pre></p><p>
-There are some extra commands in "sequence" category which were not covered
-in this text. Explore them by typing "?" before command name and pressing
-&lt;Enter&gt;
-</p><p>
-NOTE: by default, command which sends sequence ("<b>pin X sequence Y</b>") is blocking.
-      Use "&" flag as the very last argument to the "pin" command to make it non-blocking (<a href="Basics.html#background">run in a background</a>)
-</p><p>
+</pre></p>
 
-<p><h2 id=pg><a href="#top">&#8686;</a>DISPLAYING INFORMATION</h2></p>
+<p><h2 id=mod><a href="#top">&#8686;</a>MODULATION AND END-OF-TRANSMISSION</h2></p>
+<p>
+TBD:
+</p>
+
+<p><h2 id=show><a href="#top">&#8686;</a>DISPLAYING INFORMATION</h2></p>
 
 <p>
 Command "<b>show sequence</b> <i>NUM</i>" - used to display information on configured sequences. command has 1 mandatory
@@ -278,6 +257,39 @@ can be created and used.
 
 <p><h2 id=examples><a href="#top">&#8686;</a>EXAMPLES</h2></p>
 <p>
+Example: Create pattern which blink LED connected to GPIO2. We want that LED
+to blink around 1Hz.
+</p><p>
+Given the frequency of 1Hz the tick must be as long as possible and duration of
+each 1 or 0 should be maximal. The maximum tick allowed is 3.2uS so we just 
+choose 3.2 and define "one" and "zero" to maximum length:
+</p><p><pre>
+  esp32-seq0>tick 3.2
+  esp32-seq0>one 1//
+  esp32-seq0>zero 0//
+  esp32-seq0>bits 111111111000000000111111111000000000
+</pre>
+
+Note "/" symbol use instead of "32767"
+</p><p>
+Exit sequence configuration mode using "exit" command or by pressing Ctrl+Z. Note 
+that commands can be entered in their short form (say "seq" instead of "sequence" 
+or "ex" instead of "exit")
+</p><p>
+Assign sequence to the pin (start the sequence). If you have LED connected to 
+pin 2 you'll see it blinking
+</p><p><pre>
+  esp32-seq0>ex
+  esp32#>pin 2 seq 0
+  % Sending sequence 0 over GPIO 2
+  esp32#>
+</pre></p><p>
+There are some extra commands in "sequence" category which were not covered
+in this text. Explore them by typing "?" before command name and pressing
+&lt;Enter&gt;
+</p><p>
+NOTE: by default, command which sends sequence ("<b>pin X sequence Y</b>") is blocking.
+      Use "&" flag as the very last argument to the "pin" command to make it non-blocking (<a href="Basics.html#background">run in a background</a>)
 </p>
 
 </body>
