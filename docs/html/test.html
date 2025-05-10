@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>ESPShell : PWM</title>
+  <link rel="stylesheet" href="espshell.css">
+</head>
+<body>
+
+<p align="center"><a href="index.html"><img src="espshell_logo.jpg" alt="ESPShell for Arduino :: Index" width="70%" height="70%" /></a></p>
+
+<ul>
+  <li><a href="#pwm">Pulse Width Modulation (PWM)</a></li>
+  <li><a href="#duty">Duty Cycle and Resolution</a></li>
+  <li><a href="#channels">PWM Channels</a></li>
+  <li><a href="#show">Displaying PWM Information</a></li>
+</ul>
+
+<h2 id="pwm"><a href="#top">&#8686;</a> PULSE WIDTH MODULATION</h2>
+<p>
+ESPShell supports generating square wave signals on any pin, with user-configurable frequency and duty cycle. The frequency can range from 1 Hz up to 10 MHz, and the duty cycle can be set from 0 (0%) to 1 (100%). The default duty cycle is 0.5 (50%). The square wave generator is based on the LEDC driver.
+</p>
+<p>
+The minimum and maximum PWM frequencies achievable on the ESP32 depend on several factors and cannot be precisely defined here. The ESP32 can go down to 1 Hz, while the ESP32S3 has a higher minimum limit.
+</p>
+<p>
+Although the ESP32S3 has 8 PWM channels, it only has 4 timers, meaning only 4 different frequencies can be generated simultaneously across 4 different pins. The regular ESP32 is slightly more capable, with 16 channels allowing for up to 8 unique frequencies.
+</p>
+<p>
+There are 4 commands used for controlling PWM generation, adjusting settings, and displaying information:
+</p>
+<ul>
+  <li><b>pwm</b> <i>PIN FREQ</i> [ <i>DUTY</i> [ <i>CHANNEL</i> ] ]</li>
+  <li><b>show pwm</b></li>
+  <li><b>var ledc_res</b> [<i>NUMBER</i>]</li>
+  <li><b>var pwm_ch_inc</b> [<i>NUMBER</i>]</li>
+</ul>
+
+<p>
+The <code>pwm</code> command starts square wave output on the specified pin:
+</p>
+<pre>
+  esp32#>pwm 2 1000
+</pre>
+<p>
+The example above starts a 1 kHz square wave on pin 2 with a 50% duty cycle. This is a non-blocking command, so it's not necessary to append "<b>&</b>" to run it in the background (see <a href="Basics.html#background">background execution</a>); it runs in the background by default.
+</p>
+<p>
+The duty cycle can be set as the third argument to the <code>pwm</code> command. For example, to set pin 2 to 5 kHz with a ~30% duty cycle:
+</p>
+<pre>
+  esp32#>pwm 2 5000 0.3
+</pre>
+
+<p>
+To stop PWM output on a given pin, use the <code>pwm</code> command with just the pin number. For example:
+</p>
+<pre>
+  esp32#>pwm 2
+</pre>
+
+<p>
+Setting the frequency to 0 Hz or using the keyword <code>off</code> also stops PWM output. These three commands are equivalent:
+</p>
+<pre>
+  esp32#>pwm 2
+  esp32#>pwm 2 0
+  esp32#>pwm 2 off
+</pre>
+
+<h2 id="duty"><a href="#top">&#8686;</a> PWM DUTY CYCLE AND RESOLUTION</h2>
+
+<p>
+An important aspect of PWM is its <i>duty cycle resolution</i>. Although ESPShell accepts floating-point values for the duty cycle (e.g., 0.721), the hardware has limitations: the higher the frequency, the lower the precision available. For example, at 1 kHz, the duty cycle can be set with 14-bit resolution (values from 0 to 2^14 - 1). At 10 MHz, only 3 bits are available—so a duty cycle of 0.721 might be rounded to something like 0.66.
+</p>
+
+<p>
+By default, ESPShell chooses the best available resolution based on the given frequency. This behavior can be overridden using the <code>var ledc_res</code> command. When set to a positive number, it forces the use of the specified resolution.
+</p>
+
+<p>Example:</p>
+<pre>
+  esp32#>var ledc_res 8
+</pre>
+<p>
+This sets the PWM duty resolution to 8 bits. Attempting to start a 10 MHz PWM with this resolution will fail.
+</p>
+
+<h2 id="channels"><a href="#top">&#8686;</a> PWM CHANNELS</h2>
+
+<p>
+The ESP32 has 16, and the ESP32S3 has 8, LEDC (PWM) channels. Adjacent channels (e.g., channel 0 and 1, or 6 and 7) share the same timer, which means they cannot operate at different frequencies. Changing the frequency of one will immediately affect the other.
+</p>
+
+<p>
+To avoid conflicts, ESPShell uses only **even-numbered** channels by default. This ensures that each PWM output has a unique frequency, but reduces the number of available channels (only 4 on ESP32S3 instead of 8).
+</p>
+
+<p>
+In many applications, all PWM outputs share the same frequency while only the duty cycle varies. Examples include controlling multiple LED strips or multi-output power inverters.
+</p>
+
+<p>
+In such cases, ESPShell can be configured to use both odd and even channels by running the command:
+</p>
+<pre>
+  var pwm_ch_inc 1
+</pre>
+
+<p>
+You can also manually specify the hardware channel number. Usually this isn’t necessary since the shell auto-selects channels using the formula:
+</p>
+<pre>
+  Next_Channel = Current_Channel + pwm_ch_inc
+</pre>
+
+<p>
+Example: enable 1 kHz, 50% duty PWM on pin 1 using hardware channel 2:
+</p>
+<pre>
+  esp32#>pwm 1 1000 0.5 2
+</pre>
+
+<p>
+This changes the internal channel counter. For instance:
+</p>
+<pre>
+  esp32#>pwm 2 1000 0.5 5
+  % PWM on pin#2, 1000 Hz (0.5% duty cycle, channel#5) is enabled
+  % PWM channel 7 will be used next, if not explicitly specified
+</pre>
+
+<p>
+Channel 7 is chosen because the default <code>pwm_ch_inc</code> is 2. If you change it to 1:
+</p>
+<pre>
+  esp32#>var pwm_ch_inc 1
+
+  esp32#>pwm 2 1000 0.5 5
+  % PWM on pin#2, 1000 Hz (0.5% duty cycle, channel#5) is enabled
+  % PWM channel 6 will be used next, if not explicitly specified
+</pre>
+
+<p>
+Setting <code>pwm_ch_inc</code> to 0 will keep the current channel number unless specified manually.
+</p>
+
+<h2 id="show"><a href="#top">&#8686;</a> DISPLAYING PWM INFORMATION</h2>
+
+<p>
+To display the status and parameters of active PWM signals, use the <code>show</code> command:
+</p>
+
+<table>
+  <tr><td><b>show pwm</b></td><td>Displays the current state of all PWM sources</td></tr>
+</table>
+
+<p align="center">
+<img src="show_pwm.jpg" width="70%" height="70%" alt="Typical view" /><br>
+<i>Fig. 2: Example output of <b>"show pwm"</b> command</i>
+</p>
+
+<p>
+The table shows that pin #2 is generating a 10 MHz PWM signal with ~57% duty cycle. Although it was set to 50% with <code>pwm 2 10000000 0.5</code>, hardware limitations restrict duty cycle resolution to just 3 bits, resulting in a coarse approximation. Pin 18 is also active, running at 1 kHz and 75% duty.
+</p>
+
+<p>
+"**DutyAbs**" refers to the <i>absolute</i> duty cycle value, which depends on both the percentage and the resolution. Other columns include pin numbers, frequencies, and hardware channel assignments.
+</p>
+
+</body>
+</html>

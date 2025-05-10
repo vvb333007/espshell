@@ -1,42 +1,61 @@
-ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>ESPShell : Sketch Variables</title>
+  <link rel="stylesheet" href="espshell.css">
+</head>
+<body>
+<p align=center><a href="index.html"><img src="espshell_logo.jpg" alt="ESPShell for Arduino :: Index" width="70%" height="70%" /></a></p>
+<p>
+  <ul>
+    <li><a href="#variables">Sketch Variables</a></li>
+    <li><a href="#show">Displaying variables</a></li>
+    <li><a href="#set">Setting new values</a></li>
+    <li><a href="#conv">Numbers conversion</li></a>
+  </ul>
+</p>
 
+<p><h2 id=wit><a href="#top">&#8686;</a>SKETCH VARIABLES, REGISTERING</h2></p>
 
-Sketch Variables
-----------------
-
+<p>
 ESPShell has API to register and manipulate sketch variables, although variable
 types are limited to simple C types (unsigned/signed int, char, short, float or 
 generic void * pointer). Arrays of abovementioned simple types are supported as 
 well
-
+</p><p>
 In order to make an arbitrary sketch variable to be visible in the ESPShell
-one has to *register* it.
-
-Registration is done with convar_add() macro. There are also convar_addp() 
-and convar_adda() macros for registering pointers and arrays
-
+one has to <i>register</i> it.
+</p><p>
+Registration is done with convar_add() macro. There are also <span class=func>convar_addp()</span>
+and <span class=func>convar_adda()</span> etc macros for registering variables, pointers and arrays.
+</p><p>
 Typical use in Arduino sketch:
-
-
+</p><p>
+<pre>
   static int some_variable;
   unsigned char *pointer;
   char array[10];
 
   void setup() {
 
-    convar_add(some_variable);
-    convar_addp(pointer);
-    convar_adda(array);
+    convar_add(some_variable); < - Register simple type variable
+    convar_addp(pointer);      < - Register pointer to a simple type
+    convar_adda(array);        < - Register array of simple types
   }
+</pre>
 
+Other <i>convar_add</i> macros are: <b>convar_addap(Name)</b> - register an array of pointers, <b>convar_addpp(Name)</b> - register a pointer to a pointer
+</p>
+
+<p><h2 id=show><a href="#top">&#8686;</a>DISPLAYING VARIABLES LIST AND VALUES</h2></p>
+<p>
 There are 3 different variables defined in the code snippet above: int, pointer
 and an array. All three are registered with appropriate convar_addX() macros
 and after this is done these variables become accessible from the shell by using
-"var NAME" and "show memory ADDRESS" commands
-
-
-Entered without arguments, "var" command displays a list of registered variables:
-
+"<b>var</b> <i>NAME</i>" and "<b>show memory</b> <i>ADDRESS</i>" commands
+</p><p>
+Entered without arguments, "<b>var</b>" command displays a list of <i>registered</i> variables:
+</p><p><pre>
     esp32#>var
     % Sketch variables:
     % Variable X name | sizeof(X) |     typeof(X)    |     Value
@@ -53,21 +72,22 @@ Entered without arguments, "var" command displays a list of registered variables
     %    pcnt_channel |         4 |              int |                0
     %ls_show_dir_size |         4 |              int |                1
     esp32#>
-
+</pre>
+</p><p>
 Note that for pointers and arrays their address is displayed instead of memory 
 content pointed to. To dereference a pointer or to display an array content
-one can use "var VARIABLE_NAME":
-
-
+one can use "<b>var</b> <i>VAR_NAME</i>":
+</p><p>
+<pre>
     esp32#>var a4
     % float * a4 = 0x3ffbdbb4;  // Pointer to 4 bytes memory region
     % a4[1] = {
     %    10.000000, // a4[0]
     % };
-
-
+</pre>
+</p><p>
 Another example:
-
+</p><p><pre>
     esp32#>var table
     % int * table = 0x3ffbdb88;  // Array of 10 elements, (4 bytes per element)
     % int table[10] = {
@@ -82,44 +102,54 @@ Another example:
     %    9, // table[8]
     %    0, // table[9]
     % };
-
+</pre>
+</p><p>
 To access an array element simply add its index like in C language. 
-
+</p><p><pre>
     esp32#>var table[5]
     % int table[5] = 6;
     esp32#>
-
+</pre></p><p>
 Note that this syntax can also be used to access memory regions defined by pointers, not arrays.
 Using an index for a pointer variable simply means adding index value to the pointer before dereferencing.
 There will be warning message displayed in such case because ESPShell have no idea on memory ranges
-
+</p><p>
 In the same way other variables can be displayed:
-
+</p><p><pre>
     esp32#>var a1
     % unsigned char a1 = 99;
     esp32#>
+</pre></p>
 
-To set a variable to new value one can use "var VARIABLE_NAME NEW_VALUE" command.
+<p><h2 id=set><a href="#top">&#8686;</a>SETTING NEW VALUE TO THE VARIABLE</h2></p>
+<p>
+To set a variable to new value one can use "<b>var</b> <i>VARIABLE_NAME</i> <i>NEW_VALUE</i>" command.
 Lets set value of variable a1 to 88:
-
+</p><p><pre>
     esp32#>var a1 88
     esp32#>var a1
     % unsigned char a1 = 88;  // use "var 88" see this number in hex, oct, bin etc
     esp32#>
-
+</pre>
+</p><p>
 There are some basic type checking which forbids setting unsigned variables to 
 signed values or assign floating point values to integer variables. Also, changing 
 a value of an array has no effect. Address of array is defined by linker and can not
 be changed in runtime
+</p>
 
-Another use of "var" command is to convert & cast numbers: if argument to the "var"
+
+<p><h2 id=conv><a href="#top">&#8686;</a>NUMBER BASE CONVERSION</h2></p>
+
+<p>
+Another use of "<b>var</b>" command is to convert & cast numbers: if argument to the "<b>var</b>"
 command is a number (i.e. decimal, hexadecimal, floating point, octal or binary) then
 a table is displayed showing the number in different bases plus, an unsafe C-style memory
 cast is performed; main use of this "C-cast" is to see hex representation of a negative 
 or floating point numbers
-
+</p><p>
   Example:
-                          
+</p><p><pre>                          
     esp32#>var 666
     % "666" is a number, which can be written as:
     % C-style cast of a memory content:
@@ -131,9 +161,9 @@ or floating point numbers
     % Octal    : 01232
     % Binary   : 0b1010011010
     esp32#>
-
+</pre></p><p>
 Or
-
+</p><p><pre>
     esp32#>var 666.666
     % "666.666" is a number, which can be written as:
     % C-style cast of a memory content:
@@ -145,7 +175,10 @@ Or
     % Octal    : 010411525240
     % Binary   : 0b1000100001001101010101010100000
     esp32#>
+</pre></p><p>
 Or
+
+</p><p><pre>
     esp32#>var 0b111
     % "0b111" is a number, which can be written as:
     % C-style cast of a memory content:
@@ -157,4 +190,8 @@ Or
     % Octal    : 07
     % Binary   : 0b111
     esp32#>
+</pre>
+</p>
+</body>
+</html>
 
