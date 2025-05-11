@@ -27,7 +27,7 @@
 ESP32 has many pins (or GPIOs, both names are used interchangeable throughout
 the shell documentation) which can be configured to be either a general purpose
 pin (GPIO) or to bear some function: be a TX pin of a hardware UART interface 
-or be a CLOCK line for an I2C interface for example.
+or be a CLOCK line for an I<sup>2</sup>C interface for example.
 </p>
 <p>
 Some pins have system functions: so called "bootstrapping" pins. Their function 
@@ -52,7 +52,7 @@ can be done manually, thus eliminating fix/compile/upload/check cycles.
 <p>
 ESPShell is able to read digital value on <b>any</b> GPIO unlike <i>digitalRead( ... )</i>, which
 does not work with pins which are used as hardware interface pins (for example 
-one can not digitalRead() I2C lines). ESPShell uses low level access to pin
+one can not digitalRead() I<sup>2</sup>C lines). ESPShell uses low level access to pin
 values so it is completely ok to read values of actively working PWM pin for
 example. Command "<b>pin NUM read</b>" does this.
 </p>
@@ -186,7 +186,7 @@ pin mode is reset to zero and then new mode is applied
 <p>
           OUTPUT-only pin will be switched to INPUT-and-OUTPUT automatically. 
           Unlike digitalRead() this command is able to read any GPIO regardless
-          of its configuration and usage: e.g. can read values from UART or I2C 
+          of its configuration and usage: e.g. can read values from UART or I<sup>2</sup>C 
           lines</p>
 <p>
 <pre>

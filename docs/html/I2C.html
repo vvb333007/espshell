@@ -1,41 +1,53 @@
-ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>ESPShell : I2C</title>
+  <link rel="stylesheet" href="espshell.css">
+</head>
+<body>
+<p align=center><a href="index.html"><img src="espshell_logo.jpg" alt="ESPShell for Arduino :: Index" width="70%" height="70%" /></a></p>
+<p>
+  <ul>
+    <li><a href="#iic">I2C bus on ESP32</a></li>
+    <li><a href="#up">Setting up & shutting down an I2C bus</a></li>
+    <li><a href="#scan">Scanning for devices</a></li>
+    <li><a href="#help">Sending and receiving data</a></li>
+    <li><a href="#examples">Examples : RTC & EEPROM access</a></li>
+  </ul>
+</p>
 
+<p><h2 id=wit><a href="#top">&#8686;</a>I<sup>2</sup>C BUS</h2></p>
 
-I2C
----
-
-ESP32 has 2 hardware I2C interfaces. Default pins are different from model
-to model: ESP32-WROOM-32D chip has its I2C0 pins at 21(SDA) and 22(SCL).
-
-
-PURPOSE
--------
-
-The purpose of i2c commands is to be able to configure an i2c interface
-on arbitrary pins, scan i2c bus for devices and perform read/write operations
-on selected devices. It simplifies learning new i2c devices, simplifies 
-process of checking if i2c device is alive and responding, helps with a library
-development for new i2c devices: one can send test sequences to i2c device 
+<p>
+The purpose of I<sup>2</sup>C commands is to be able to configure an I<sup>2</sup>C interface
+on arbitrary pins, scan I<sup>2</sup>C bus for devices and perform read/write operations
+on selected devices. It simplifies learning new I<sup>2</sup>C devices, simplifies 
+process of checking if I<sup>2</sup>C device is alive and responding, helps with a library
+development for new I<sup>2</sup>C devices: one can send test sequences to I<sup>2</sup>C device 
 without recompiling whole sketch
+</p>
+
+<p>
+ESP32 has 2 hardware I<sup>2</sup>C interfaces. Default pins are different from model
+to model: ESP32-WROOM-32D chip has its I<sup>2</sup>C0 pins at 21(SDA) and 22(SCL).
+</p>
 
 
+<p><h2 id=wit><a href="#top">&#8686;</a>I<sup>2</sup>C : CONFIGURING, READING, WRITING AND SCANNING</h2></p>
 
-COMMANDS
---------
-
-To configure/access I2C interface command "iic X" is used where X is the
-number of I2C interface we want to configure. Once command is executed
-the espshell prompt changes to esp32-i2c#> indicating that we are in I2C
-configuration mode. Use command "exit" (or "ex") to exit this mode; or
-you can press Ctrl+Z which is the same as entering "exit" command (works
-in terminal, does not work in Arduino Serial Monitor)
-
-There are number of commands available under I2C configuration mode:
+<p>
+To configure/access I<sup>2</sup>C interface command "<b>iic</b> <i>I2C_NUM</i>" is used where <i>I2C_NUM</i> is the
+number of I<sup>2</sup>C interface we want to configure. Once command is executed
+the espshell prompt changes to "<b>esp32-i2c0&gt;</b>" indicating that we are in I<sup>2</sup>C
+configuration mode. Use command "exit" or <kbd>Ctrl+Z</kbd> to exit this mode.
+</p><p>
+There are 6 commands available under I<sup>2</sup>C configuration mode:
 (note you can also use all commands from the main tree, for example "pin"
-command can be used from within "esp32-i2c#>" command tree)
+command can be used from within "esp32-i2c>" command tree)
+</p><p><pre>
 
   esp32#>iic 0
-  esp32-i2c#>?
+  esp32-i2c>?
   % Enter "? command" to get details about the command.
   % List of available commands:
   %
@@ -43,96 +55,98 @@ command can be used from within "esp32-i2c#>" command tree)
   % "up"       : initialize interface (pins and speed)
   % "clock"    : Set clock
   % "read"     : Read data from a device
-  % "down"     : Shutdown i2c interface
-  % "scan"     : Scan i2c bus
+  % "down"     : Shutdown I<sup>2</sup>C interface
+  % "scan"     : Scan I<sup>2</sup>C bus
   % "write"    : Send bytes to the device
   % "exit"     : Exit
-  esp32-i2c#>
-
-
-All of these commands (except for "up") require I2C interface to be up
-and initialized. To initialize I2C interface command "up" is used. This
-command takes 3 arguments: RX pin, TX pin and clock rate to initialize uart
-
-Lets say we want to initialize I2C0 with clock rate 100 kHz on pins 21(SDA)
+  esp32-i2c>
+</pre>
+</p><p>
+All of these commands (except for "<b>up</b>") require I<sup>2</sup>C interface to be set up
+and initialized. To initialize I<sup>2</sup>C interface command "<b>up</b>" is used. This
+command takes 3 arguments: RX pin, TX pin and clock rate to initialize I<sup>2</sup>C
+</p><p>
+Lets say we want to initialize I<sup>2</sup>C0 with clock rate 100 kHz on pins 21(SDA)
 and 22(SCL):
-
+</p><p><pre>
   esp32#>iic 0
-  esp32-i2c#>up 21 22 100000
-
+  esp32-i2c>up 21 22 100000
+</pre></p><p>
 Now when bus is initialized we can perform read/write/scan operations. It
 is good idea to suspend main sketch execution to make sure it not interferes
-with our I2C access (see global commands "suspend" and "resume"). To shutdown
-the bus command "down" is used
-
-Lets scan our I2C bus. The example below shows 2 devices connected to I2C0:
-
+with our I<sup>2</sup>C access (see global commands "suspend" and "resume"). To shutdown
+the bus command "<b>down</b>" is used
+</p><p>
+Lets scan our I<sup>2</sup>C bus. The example below shows 2 devices connected to I<sup>2</sup>C0:
+</p><p><pre>
   esp32#>iic 0
-  esp32-i2c#>up 21 22 100000
-  esp32-i2c#>scan
-  % Scanning I2C bus 0...
+  esp32-i2c>up 21 22 100000
+  esp32-i2c>scan
+  % Scanning I<sup>2</sup>C bus 0...
   % Device found at address 57
   % Device found at address 68
   % 2 devices found
-  esp32-i2c#>
-
+  esp32-i2c>
+</pre></p><p>
 These two devices are DS3231 real time clock chip and 64K EEPROM both
 are on the same breakout board connected to pins 21 and 22
-
-
+</p><p>
 Ok, we found two devices. Lets communicate with clock chip: read current
 time. We will use "read" and "write" commands to send a time request and
 read the reply:
-
-  esp32-i2c#>write 0x68 0
-  % Sending 1 bytes over I2C0
-  esp32-i2c#>read 0x68 7
-  % I2C0 received 7 bytes:
-  24 25 22 03 18 09 24                <------- hex numbers
-
-
+</p><p><pre>
+  esp32-i2c>write 0x68 0
+  % Sending 1 bytes over I<sup>2</sup>C0
+  esp32-i2c>read 0x68 7
+  % I<sup>2</sup>C0 received 7 bytes:
+  24 25 22 03 18 09 24                < -- hex numbers
+</pre></p><p>
 Byte string received contains current time: 22:25:24 Third day of the week, 18
-of September 2024. Having datasheet of connected I2C device one can send and
+of September 2024. Having datasheet of connected I<sup>2</sup>C device one can send and
 receive data to the device. Might be useful when developing a library for a new
-I2C device
-
+I<sup>2</sup>C device
+</p><p>
 For simplicity, the data bytes dont have to contain "0x": instead of entering
 0x98 one can enter just 98: any input is treated as hexadecimal numbers:
-
-    esp32-i2c#>write 0x68 0x11 0x12 0x13
-
+</p><p><pre>
+    esp32-i2c>write 0x68 0x11 0x12 0x13
+</pre>
     is equal to
+<pre>
 
-    esp32-i2c#>write 0x68 11 12 13
-
-
+    esp32-i2c>write 0x68 11 12 13
+</pre>
+</p><p>
 Another example is about reading EEPROM (address 57):
-
+</p><p><pre>
   esp32#>iic 0
-  esp32-i2c#>up 21 22 100000
-  esp32-i2c#>scan
-  % Scanning I2C bus 0...
+  esp32-i2c>up 21 22 100000
+  esp32-i2c>scan
+  % Scanning I<sup>2</sup>C bus 0...
   % Device found at address 57
   % Device found at address 68
   % 2 devices found
-  esp32-i2c#>write 0x57 0 0
-  % Sending 2 bytes over I2C0
-  esp32-i2c#>read 57 56
-  % I2C0 received 56 bytes:
+  esp32-i2c>write 0x57 0 0
+  % Sending 2 bytes over I<sup>2</sup>C0
+  esp32-i2c>read 57 56
+  % I<sup>2</sup>C0 received 56 bytes:
         0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F   |0123456789ABCDEF
   ----------------------------------------------------------+----------------
   0000: de ad be ef  04 05 06 07  08 09 0a 0b  0c 0d 0e 0f  |î­Îÿ............
   0010: 10 22 33 44  55 66 77 88  99 aa bb cc  1c 1d 1e 1f  |."3DUfw‘°ŒËÜ....
   0020: 20 21 22 23  24 25 26 27  28 29 2a 2b  2c 2d 2e 2f  |.!"#$%&'()*+,-./
   0030: 30 31 32 33  34 35 36 37                            |01234567
-  esp32-i2c#>
-
+  esp32-i2c0>
+</pre></p><p>
   NOTE that if requested data size is more than 16 bytes then output is formatted
   as above.
-
-Command "clock" is used to change I2C clock: for axample "clock 150000" sets I2C
+</p><p>
+Command "<b>clock</b>" is used to change I<sup>2</sup>C clock: for axample "clock 150000" sets I<sup>2</sup>C
 clock to 150kHz.  Maximum value supported is 1 MHz.
-
-Command "down" shudowns I2C interface.
-
-Use command "exit" or Ctrl+Z to exit I2C configuration mode
+</p><p>
+Command "down" shudowns I<sup>2</sup>C interface.
+</p><p>
+Use command "exit" or Ctrl+Z to exit I<sup>2</sup>C configuration mode
+</p>
+</body>
+</html>
