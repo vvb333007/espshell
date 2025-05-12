@@ -438,7 +438,7 @@ static bool pin_not_exist_notice(unsigned char pin) {
     }
     if (!res)
       q_print("none");
-    q_print("</>\r\n");
+    q_printf("</>\r\n%% Pins %u and %u are \"virtual\": sources of constant 1/0\r\n",GPIO_MATRIX_CONST_ONE_INPUT,GPIO_MATRIX_CONST_ZERO_INPUT);
   }
 #endif  // WITH_HELP
   return false;
@@ -658,7 +658,7 @@ static int cmd_show_pin(int argc, char **argv) {
             if (fun_sel == PIN_FUNC_GPIO) {
               q_print("GPIO Matrix</>, ");
               if (sig_out == SIG_GPIO_OUT_IDX)
-                q_print("acts as simple GPIO output\r\n");
+                q_print("acts as a simple GPIO output\r\n");
               else
                 q_printf("provides path for signal ID: %lu\r\n", sig_out);
             } else
@@ -680,7 +680,7 @@ static int cmd_show_pin(int argc, char **argv) {
                   q_printf("%d, ", i);
                 }
               if (!informed)
-                q_print("acts as simple GPIO input");
+                q_print("acts as a simple GPIO input");
               q_print(CRLF);
             } else
               q_printf("IO MUX</>, (function: <i>%s</>)\r\n", iomux_funame(pin,fun_sel));

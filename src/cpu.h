@@ -15,6 +15,7 @@
 // not in .h files of ArduinoCore.
 EXTERN bool setCpuFrequencyMhz(uint32_t);
 
+#include <esp_rom_spiflash.h>
 #if 0
 // For Tensilica profiling 
 //
@@ -144,6 +145,21 @@ static int cmd_show_cpuid(int argc, char **argv) {
   unsigned long psram;
   if ((psram = heap_caps_get_total_size(MALLOC_CAP_SPIRAM)) > 0)
     q_printf("\r\n%% PSRAM (SPIRAM) size: %lu (%lu MB)",psram,  psram / (1024 * 1024));
+  
+  //
+  // global variable g_rom_flashchip is defined in linker file.
+  // TODO: may be use bootloader_read_flash_id() ?
+  q_printf( "\r\n%%\r\n%% <u>Flash chip (SPI Flash):</>\r\n"
+            "%% Chip ID: 0x%04X, manufacturer ID: %02X (see JEDEC JPL106 list)\r\n"
+            "%% Size <i>%lu</> bytes (%lu MB)\r\n"
+            "%% Block size is <i>%lu</>, sector size is %lu and page size is %lu)",
+            g_rom_flashchip.device_id & 0xffff,
+            (g_rom_flashchip.device_id >> 16) & 0xff,
+            1 << (g_rom_flashchip.device_id & 0xFF),
+            (1 << (g_rom_flashchip.device_id & 0xFF)) >> 20, // divide by 1024*1024
+            g_rom_flashchip.block_size,
+            g_rom_flashchip.sector_size,
+            g_rom_flashchip.page_size);
 
   q_print("\r\n%\r\n% <u>Firmware:</>\r\n");
   q_printf( "%% Sketch is running on <b>" ARDUINO_BOARD "</>, (an <b>" ARDUINO_VARIANT "</> variant), uses:\r\n"
