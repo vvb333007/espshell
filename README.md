@@ -110,9 +110,9 @@ sketch execution
 DOCUMENTATION
 -------------
 
-English (mostly up to date) is in "espshell/docs/"
+English (mostly up to date) is here: https://htmlpreview.github.io/?https://github.com/vvb333007/espshell/blob/main/docs/html/index.html
                         and
-Russian (outdated) is in "espshell/docs/ru_RU/"
+Russian (not yet done) is  here: https://htmlpreview.github.io/?https://github.com/vvb333007/espshell/blob/main/docs/html/index.ru.html
 
 Files named "Commands.txt" and "Pin_Commands.txt" are essential chapters
 and it is a good idea to spend some of your time reading it.
