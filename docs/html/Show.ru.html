@@ -1,0 +1,130 @@
+ESP32Shell for the Arduino Framework by vvb333007 <vvb@nym.hush.com>
+
+
+DISPLAYING SYSTEM INFORMATION
+-----------------------------
+
+In ESPShell user can display various information (about the sketch, cpu, memory, etc)
+by using dedicated "show" command.
+
+
+General syntax for the command is as follows:
+
+
+      "show KEYWORD ARG1 ARG2 ... ARGn"
+
+KEYWORD is one of keywords from the list below. Depending on a keyword used there may
+be 0, 1, 2 or more arguments. Some keywords are simply aliases to existing commands:
+for example "show pin 10" is an alias to "pin 10" and "show cpuid" is an alias to "cpu"
+command.
+
+
+Below is the "show ..." commands whic do not fit existing documentation files.
+
+
+"show cpuid" - this command is just an alias  to the "cpu" command (same text will be displayed on execution 
+of "cpu" command):
+
+    esp32#(/)>show cpu
+    % Hardware:
+    % CPU ID: ESP32-S3, Rev.: 0.2
+    % CPU frequency is 240Mhz, Xtal 40Mhz, APB bus 80Mhz
+    % Chip temperature: 30.4 C
+    %
+    % Firmware:
+    % Sketch is running on ESP32S3_DEV, an esp32s3 variant), uses:
+    % Arduino Core version 3.1.1, which uses
+    % Espressif ESP-IDF version "v5.3.2-282-gcfea4f7c98-dirty"
+    % ESP32Shell library 0.99.1
+    %
+    % Last boot:
+    % Last boot was 1 hour 2 minutes 24 seconds ago
+    % Restart reason was "Board power-on"
+    esp32#(/)>
+
+Output is split into 3 sections: Hardware, Firmware and Last boot. First section contains CPUID, CPU frequency, 
+xtal frequency, APB bus frequency and CPU core temperature. 
+
+Second section provides version information on various components used to build the firmware/sketch: ArdunoCore version
+(mismatched versions are common source of a headache), the ESP-IDF version and ESP32Shell own version number
+
+Third section contains output of "uptime" command: uptime and reason for last reboot.
+
+--
+
+"show memory" - A command without arguments, used to display brief information on memory available
+for the sketch (heap):
+
+    esp32#>sh mem
+    % -- Heap information --
+    %
+    % If using "malloc()" (default allocator))":
+    % 8762556 bytes total, 8698576 available, 8257524 max per allocation
+    %
+    % If using "heap_caps_malloc(MALLOC_CAP_INTERNAL)", internal SRAM:
+    % 373948 bytes total,  329836 available, 262132 max per allocation
+    %
+    % External SPIRAM detected (available to "malloc()"):
+    % Total 8Mb, of them 19868 bytes are allocated
+    esp32#>
+
+--
+
+"show memory  ADDRESS  [COUNT] [C-TYPE]"
+Displays a memory content, starting from a memory address ADDRESS. Address is expected to be a hex number
+with or without leading "0x":
+
+    esp32#>sh mem 0x3fc97a30
+           0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F  |0123456789ABCDEF
+    ----------------------------------------------------------+----------------
+    0000: 01 00 00 00  02 00 00 00  03 00 00 00  9d ff ff ff  |................
+    0010: 0c 0c 03 00  0b 00 00 00  5c 32 ca 3f  00 00 00 00  |........\2.?....
+    0020: 14 0e 09 3c  2c 2b ff ff  00 c2 01 00  1c 00 00 08  |...<,+..........
+    0030: 00 01 00 00  00 70 00 00  00 00 00 00  01 00 00 00  |.....p..........
+    0040: 00 00 00 00  ff ff ff ff  00 00 00 00  00 00 00 00  |................
+    0050: 00 00 00 00  00 00 00 00  00 00 00 00  02 00 00 00  |................
+    0060: 00 00 00 00  ff ff ff ff  00 00 00 00  00 00 00 00  |................
+    0070: 00 00 00 00  00 00 00 00  c8 7a c9 3f  ff ff 3f b3  |.........z.?..?.
+    0080: 00 00 00 00  03 00 00 00  00 00 00 00  00 00 00 00  |................
+    0090: 00 00 00 00  00 00 00 00  00 40 00 60  c8 bb 07 3c  |.........@.`...<
+    00a0: 00 00 00 00  cc bb 07 3c  00 00 00 00  d0 bb 07 3c  |.......<.......<
+    00b0: 00 00 00 00  d4 bb 07 3c  00 00 00 00  d8 bb 07 3c  |.......<.......<
+    00c0: 00 00 00 00  dc bb 07 3c  00 00 00 00  e0 bb 07 3c  |.......<.......<
+    00d0: 00 00 00 00  e4 bb 07 3c  00 00 00 00  e8 bb 07 3c  |.......<.......<
+    00e0: 00 00 00 00  ec bb 07 3c  00 00 00 00  f0 bb 07 3c  |.......<.......<
+    00f0: 00 00 00 00  f4 bb 07 3c  00 00 00 00  f8 bb 07 3c  |.......<.......<
+    esp32#>
+
+To specify number of elements to display, the COUNT argument may be used:
+
+    esp32#>sh mem 0x3fc97a30 32
+           0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F  |0123456789ABCDEF
+    ----------------------------------------------------------+----------------
+    0000: 01 00 00 00  02 00 00 00  03 00 00 00  9d ff ff ff  |................
+    0010: 0c 0c 03 00  0b 00 00 00  5c 32 ca 3f  00 00 00 00  |........\2.?....
+    esp32#>
+
+To specify the data type one can use additional arguments: "signed", "unsigned", "char", "short", "int" and "void *".
+Please note that if data type is specified then COUNT parameter defaults to 1, not to 256 as in first example above
+
+    esp32#>sh mem 0x3fc97a30 unsigned int
+    % 0x3fc97a30 : 1 (0x1 as hex)
+    esp32#>
+
+To display 3 elements of the same array:
+
+    esp32#>sh mem 0x3fc97a30 3 unsigned int
+    % Array of 3 elements, 4 bytes each
+    %  Address   :  Value
+    % 0x3fc97a30 : 1 (0x1 as hex)
+    % 0x3fc97a34 : 2 (0x2 as hex)
+    % 0x3fc97a38 : 3 (0x3 as hex)
+    esp32#>
+
+--
+
+
+"show version" - Shows current ESPShell version.
+
+
+
