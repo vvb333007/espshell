@@ -629,15 +629,29 @@ Signal number 208 is one of a few <i>user-defined</i> signals which is not conne
 </pre>
 </p>
 <p>
-Example above uses strange pin numbers: 0x30 and 0x38. These are virtual pins, which can be used as sources of constant 0 and constant 1 and thus can
+Example above uses unusual pin numbers: 0x30 and 0x38. These are virtual pins, which can be used as sources of constant 0 and constant 1 and thus can
 be used in GPIO Matrix interconnections. 
 </p>
 <p>
 <p align=center><img src="i/virtual_pins.jpg" alt="show pin 0x30 0x38" width="75%" height="75%"></p>
 </p>
 
+<p>
+ Example 13: Monitor analog signal on pin 36:
+</p>
+<p>
+Use "aread", "delay" and "loop" keywords to make simple monitor:
+<pre>
+  esp32#>pin 36 aread delay 500 loop infinite
+</pre>
+</p>
+<p>
+Command executes in foreground mode, updating analog values every 500ms.
+</p>
 
-</td></tr></table>
+<p>
+<p align=center><img src="i/pin_aread.jpg" alt="pin 36 aread" width="75%" height="75%"></p>
+</p>
 
 
 </body>

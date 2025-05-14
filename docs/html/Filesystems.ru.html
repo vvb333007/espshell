@@ -5,7 +5,7 @@
   <link rel="stylesheet" href="espshell.css">
 </head>
 <body>
-<p align=center><a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: Index" width="70%" height="70%" /></a></p>
+<p align=center><a href="index.ru.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: Index" width="70%" height="70%" /></a></p>
 <p>
   <ul>
     <li><a href="#fs">ESP32 file systems</a></li>
@@ -267,7 +267,7 @@ directory is used:
   %       146  1980-01-01 01:43:26  DIR [logs]
   %         0  1980-01-01 01:43:26  DIR [uphp]
   %         0  1980-01-01 01:43:26  DIR [tmp]
-  %        57  1980-01-01 01:46:18      index.html
+  %        57  1980-01-01 01:46:18      index.ru.html
   %
   % 4 directories, 1 file, 374 bytes
   esp32#(/wwwroot/)>
@@ -429,7 +429,7 @@ Note: A final \n is automatically added to each inserted line — there's no need 
 
   Display a file, insert a multiline string into the file:
 
-  esp32#(/wwwroot/)>cat -n index.html
+  esp32#(/wwwroot/)>cat -n index.ru.html
      1: <html>
      2: <head></head>
      3: <body>
@@ -437,9 +437,9 @@ Note: A final \n is automatically added to each inserted line — there's no need 
      5: </body>
      6: </html>
      7:
-  esp32#(/wwwroot/)>insert index.html 4 Hey! This line was inserted!\nAnd this line also!
+  esp32#(/wwwroot/)>insert index.ru.html 4 Hey! This line was inserted!\nAnd this line also!
   %% Line inserted
-  esp32#(/wwwroot/)>cat -n index.html
+  esp32#(/wwwroot/)>cat -n index.ru.html
      1: <html>
      2: <head></head>
      3: <body>
@@ -462,7 +462,7 @@ If COUNT is omitted, it defaults to 1:
 
 
 
-  esp32#(/wwwroot/)>cat -n index.html
+  esp32#(/wwwroot/)>cat -n index.ru.html
    1: <html>
    2: <head></head>
    3: <body>
@@ -472,9 +472,9 @@ If COUNT is omitted, it defaults to 1:
    7: </body>
    8: </html>
    9:
-  esp32#(/wwwroot/)>delete index.html 4 2
+  esp32#(/wwwroot/)>delete index.ru.html 4 2
   % 2 lines deleted starting at line 4
-  esp32#(/wwwroot/)>cat -n index.html
+  esp32#(/wwwroot/)>cat -n index.ru.html
    1: <html>
    2: <head></head>
    3: <body>
@@ -558,7 +558,7 @@ BASIC USAGE
 
 To display a file as plain text:
 
-  esp32#(/wwwroot/)>cat index.html
+  esp32#(/wwwroot/)>cat index.ru.html
   <html>
   <head></head>
   <body>
@@ -573,7 +573,7 @@ To display a file as plain text:
 DISPLAY SPECIFIC LINES
 You can use the LINE_NUM and COUNT arguments to display only part of the file:
 
-  esp32#(/wwwroot/)>cat index.html 4 2
+  esp32#(/wwwroot/)>cat index.ru.html 4 2
   Hey! This line was inserted!
   And this line also!
   esp32#(/wwwroot/)>
@@ -581,7 +581,7 @@ You can use the LINE_NUM and COUNT arguments to display only part of the file:
 SHOW LINE NUMBERS
 Use -n to prefix each line with its line number. Useful when using insert or delete:
 
-   esp32#(/wwwroot/)>cat -n index.html
+   esp32#(/wwwroot/)>cat -n index.ru.html
    1: <html>
    2: <head></head>
    3: <body>
@@ -597,7 +597,7 @@ DISPLAY FILE AS BINARY (HEX + ASCII)
 Use -b to interpret file contents as binary and display a hex dump:
 
 
-  esp32#(/wwwroot/)>cat -b index.html
+  esp32#(/wwwroot/)>cat -b index.ru.html
          0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F  |0123456789ABCDEF
   ----------------------------------------------------------+----------------
   0000: 3c 68 74 6d  6c 3e 0a 3c  68 65 61 64  3e 3c 2f 68  |<html>.<head></h

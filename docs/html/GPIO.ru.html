@@ -5,7 +5,7 @@
   <title>ESPShell : Everything about pins : GPIO manipulation</title>
 </head>
 <body>
-<p align=center><a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: Index"  width="70%" height="70%" /></a></p>
+<p align=center><a href="index.ru.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: Index"  width="70%" height="70%" /></a></p>
 <p>
   <ul>
     <li><a href="#pins">ESP32 pins (gpios)</a></li>
@@ -637,7 +637,22 @@ be used in GPIO Matrix interconnections.
 </p>
 
 
-</td></tr></table>
+<p>
+ Example 13: Monitor analog signal on pin 36:
+</p>
+<p>
+Use "aread", "delay" and "loop" keywords to make simple monitor:
+<pre>
+  esp32#>pin 36 aread delay 500 loop infinite
+</pre>
+</p>
+<p>
+Command executes in foreground mode, updating analog values every 500ms.
+</p>
+
+<p>
+<p align=center><img src="i/pin_aread.jpg" alt="pin 36 aread" width="75%" height="75%"></p>
+</p>
 
 
 </body>
