@@ -219,6 +219,28 @@ static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][IOMUX_NFUNC] = {
 #endif  // CONFIG_IDF_TARGET...
 }; //iomux function table
 
+
+// Run at startup to fetch RESERVED pins. Since RESERVED pins logic is broken on this version of ESP-IDF
+// we want to precache pin numbers
+static uint64_t Reserved = 0;
+
+static void __attribute__((constructor)) pin_get_reserved_pins() {
+    for (unsigned char p = 0; p < SOC_GPIO_PIN_COUNT; p++) {
+      unsigned char reserved = esp_gpio_is_pin_reserved(p) ? 1 : 0;
+#if CONFIG_IDF_TARGET_ESP32          
+        if (p > 33)
+          reserved = 0;
+#endif
+      if (reserved)
+        Reserved |= 1ULL << p;
+    }
+}
+
+static bool pin_is_reserved(unsigned char pin) {
+  return Reserved & (1ULL << pin);
+}
+
+
 // WARNING! Not reentrat, use with caution
 // WARNING! Undefined behaviour IF io_mux_func_name[][] is a long number, as a text: "12345". These numbers
 //          are pin numbers and are not expected to go beyound 255
@@ -273,7 +295,7 @@ static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
         color = 'g';
         mark = '+';
       }
-      if (esp_gpio_is_pin_reserved(pin)) {
+      if (pin_is_reserved(pin)) {
         mark = '!';
         if (color == 'n')
           color = 'w';
@@ -408,39 +430,52 @@ void pinForceMode(unsigned int pin, unsigned int flags) {
 //
 static bool pin_not_exist_notice(unsigned char pin) {
 #if WITH_HELP
-  unsigned char pin0 = pin;
   
-  /*if (pin == GPIO_MATRIX_CONST_ONE_INPUT || pin == GPIO_MATRIX_CONST_ZERO_INPUT)
-    q_printf("%% Pin %u is internal to GPIO matrix; source of constant %s\r\n",pin, pin == GPIO_MATRIX_CONST_ZERO_INPUT ? "LOW (0)" : "HIGH (1)");
-  else */{
-    if (pin >= SOC_GPIO_PIN_COUNT)
-      q_printf("%% Valid pin numbers are from <i>0</> to <i>%u</> and \r\n%% ", SOC_GPIO_PIN_COUNT - 1);
-    else
-      q_print("% Unfortunately ");
-    q_printf("following pin(s) do not exist: <i>%u  ", pin);
-  
-    // TODO: workaround the case where all pins are valid in the mask
-    for (pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++)
-      if (pin != pin0 && (SOC_GPIO_VALID_GPIO_MASK & ((uint64_t)1 << pin)) == 0)
-        q_printf("%u  ", pin);
-
-    // Dump RESERVED pins. ESP32's reserved pins are those used for SPIFLASH and SPIRAM.
-    // Defenitely must not be used; However on ESP32-S3 reserved pin is any pin which is used by any driver,
-    // for example GPIO 43 is an UART0 pin and it is reserved.
-    q_print("</>\r\n"
-            "% Reserved by SoC / drivers:<i> ");
-    int res = 0;
-    for (pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++) {
-        if (pin_exist_silent(pin) && esp_gpio_is_pin_reserved(pin)) {
-          q_printf("%u  ", pin);
+  // dump pin numbers. if /invert/==0 then RESERVED pins are dumped. if /invert/ == 1 then UNUSED pins are printed
+  void list_pins(unsigned char invert) {
+    unsigned char p, res = 0;
+    for (p = 0; p < SOC_GPIO_PIN_COUNT; p++) {
+        if (pin_exist_silent(p) && (pin_is_reserved(p) ^ invert)) {
+          q_printf("%u ", p);
           res++;
         }
     }
     if (!res)
-      q_print("none");
-    q_printf("</>\r\n%% Pins %u and %u are \"virtual\": sources of constant 1/0\r\n",GPIO_MATRIX_CONST_ONE_INPUT,GPIO_MATRIX_CONST_ZERO_INPUT);
+      q_print("none (?)</>");
+    else
+      q_printf("(%u pins)</>", res);
   }
+
+  
+  if (pin >= SOC_GPIO_PIN_COUNT)
+    q_printf("%% Valid pin numbers are from <i>0</> to <i>%u</>, plus to that\r\n%% ", SOC_GPIO_PIN_COUNT - 1);
+  else
+    q_print("% Unfortunately ");
+  q_printf("following pin(s) do not exist: <i>  ");
+  
+  // TODO: IMPERFECTION: workaround the case where all pins are valid in the mask
+  for (pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++)
+    if ((SOC_GPIO_VALID_GPIO_MASK & ((uint64_t)1 << pin)) == 0)
+      q_printf("%u  ", pin);
+
+  // Dump RESERVED pins.
+  q_print("</>\r\n"
+          "% Used by SoC: <i> ");
+  list_pins(0);
+  q_print("</>\r\n% Available: <g>");
+  list_pins(1);
+  q_print("</>\r\n");
+
+#if defined(GPIO_MATRIX_CONST_ONE_INPUT) && defined(GPIO_MATRIX_CONST_ZERO_INPUT)
+  q_printf("%% Pins %u and %u are \"virtual\": sources of constant 1/0\r\n",GPIO_MATRIX_CONST_ONE_INPUT,GPIO_MATRIX_CONST_ZERO_INPUT);
+#endif
+
+#if CONFIG_IDF_TARGET_ESP32
+  q_printf("%% Pins <g>34..39</> can be only used as INPUT!\r\n");
+#endif      
+
 #endif  // WITH_HELP
+
   return false;
 }
 
@@ -616,8 +651,8 @@ static int cmd_show_pin(int argc, char **argv) {
                 pin);
       else {
       // Normal GPIO
-        res = esp_gpio_is_pin_reserved(pin);
-        q_printf("%% GPIO%u is %s", pin, res ? "in use" : "unused");
+        res = pin_is_reserved(pin);
+        q_printf("%% GPIO%u is %s", pin, res ? "reserved" : "available");
 
         if (pin_is_strapping_pin(pin))
           q_print(", strapping pin");
@@ -880,8 +915,10 @@ static int cmd_pin(int argc, char **argv) {
 
   unsigned int count = 1; // Command loop count
 
-  if (argc < 2)
-    return CMD_MISSING_ARG;  //missing argument
+  if (argc < 2) {
+    pin_not_exist_notice(99);
+    return 0;
+  }
 
   //first argument must be a decimal number: a GPIO number
   if (!pin_exist((pin = q_atol(argv[1], DEF_BAD)))) 

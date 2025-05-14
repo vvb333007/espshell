@@ -157,15 +157,17 @@ static int q_print(const char *);                    // puts()
 static bool pin_is_input_only_pin(int pin);
 static bool pin_exist(unsigned char pin);
 static bool pin_exist_silent(unsigned char pin);
+static bool pin_is_reserved(unsigned char pin);
 
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 3, 0)
-// TODO: rename
 EXTERN bool esp_gpio_is_pin_reserved(unsigned int gpio);
 #else
 static INLINE bool esp_gpio_is_pin_reserved(unsigned int gpio) {
   return esp_gpio_is_reserved(1ULL << gpio);
 }
 #endif
+
+
 
 static NORETURN void must_not_happen(const char *message, const char *file, int line);
 

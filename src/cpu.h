@@ -149,14 +149,29 @@ static int cmd_show_cpuid(int argc, char **argv) {
   //
   // global variable g_rom_flashchip is defined in linker file.
   // TODO: may be use bootloader_read_flash_id() ?
+  const char *mfg; 
+  switch ((g_rom_flashchip.device_id >> 16) & 0xff) {
+    case 0x85:
+    case 0x5e: mfg =  "Puya Semiconductor(?)"; break;
+    case 0x84:
+    case 0xc8: mfg =  "Giga Device"; break;
+    case 0x68: mfg =  "Boya"; break;
+    case 0x9d: mfg =  "ISSI"; break;
+    case 0xc2: mfg =  "MACRONIX"; break;
+    case 0xcd: mfg =  "TH"; break;
+    case 0xef: mfg =  "Winbond"; break;
+    default:   mfg =  "see JEDEC JPL106 list:";
+  };
+
   q_printf( "\r\n%%\r\n%% <u>Flash chip (SPI Flash):</>\r\n"
-            "%% Chip ID: 0x%04X, manufacturer ID: %02X (see JEDEC JPL106 list)\r\n"
+            "%% Chip ID: 0x%04X, manufacturer ID: %02X (%s)\r\n"
             "%% Size <i>%lu</> bytes (%lu MB)\r\n"
             "%% Block size is <i>%lu</>, sector size is %lu and page size is %lu)",
-            g_rom_flashchip.device_id & 0xffff,
-            (g_rom_flashchip.device_id >> 16) & 0xff,
-            1 << (g_rom_flashchip.device_id & 0xFF),
-            (1 << (g_rom_flashchip.device_id & 0xFF)) >> 20, // divide by 1024*1024
+            (unsigned int)(g_rom_flashchip.device_id & 0xffff),
+            (unsigned int)((g_rom_flashchip.device_id >> 16) & 0xff),
+            mfg,
+            1UL << (g_rom_flashchip.device_id & 0xFF),
+            (1UL << (g_rom_flashchip.device_id & 0xFF)) >> 20, // divide by 1024*1024
             g_rom_flashchip.block_size,
             g_rom_flashchip.sector_size,
             g_rom_flashchip.page_size);
@@ -180,8 +195,10 @@ static int cmd_show_cpuid(int argc, char **argv) {
 //
 static int cmd_cpu(int argc, char **argv) {
 
+  unsigned int xtal = XTALFreq;
+
   if (argc < 2)
-    return CMD_MISSING_ARG;  // not enough arguments
+    goto show_hint_and_exit;
 
   unsigned int freq;
 
@@ -195,20 +212,18 @@ static int cmd_cpu(int argc, char **argv) {
   // additional frequencies
   while (freq != 240 && freq != 160 && freq != 120 && freq != 80) {
 
-    unsigned int xtal = XTALFreq;
-
     if ((freq == xtal) || 
         (freq == xtal / 2) ||
         ((xtal >= 40) && (freq == xtal / 4))) break;
     
     q_printf("%% <e>%u MHz is unsupported frequency</>\r\n", freq);
-#if WITH_HELP
+show_hint_and_exit:
     q_printf("%% Supported frequencies are: 240, 160, 120, 80, %u, %u", xtal, xtal / 2);
     if (xtal >= 40)
       q_printf(" and %u", xtal / 4);
     q_print(" MHz\r\n");
-#endif  //WITH_HELP
-    return 1;
+
+    return 0; // can't return 1 here because of goto.
   }
 
   if (!setCpuFrequencyMhz(freq))

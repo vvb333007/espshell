@@ -646,12 +646,12 @@ static const struct keywords_t keywords_main[] = {
   { "uptime", cmd_uptime, NO_ARGS,
     HELPK("% \"<b>uptime</>\"\r\n% Shows time passed since last boot; shows restart cause"), "System uptime" },
 
-  // System commands
+  // cpu FREQ
   { "cpu", cmd_cpu, 1,
     HELPK("% \"<b>cpu FREQ</>\"\r\n% Set CPU frequency to FREQ Mhz"), "Set/show CPU parameters" },
 
-  //{ "cpu", cmd_cpu, NO_ARGS,
-//    HELPK("% \"<b>cpu</>\"\r\n% Show CPUID and CPU/XTAL/APB frequencies"), NULL },
+  // cpu
+  { "cpu", cmd_cpu, NO_ARGS, HIDDEN_KEYWORD},
 
   { "suspend", cmd_suspend, NO_ARGS,
     HELPK("% \"<b>suspend</>\"\r\n% Suspend sketch execution (Hotkey: Ctrl+C). Resume with \"resume\""), "Suspend sketch/task execution" },
@@ -846,7 +846,7 @@ static const struct keywords_t keywords_main[] = {
           "% pin 1 pwm 5000 0.3       -set 5kHz, 30% duty square wave output\r\n"
           "% pin 1 pwm 0 0            -disable PWN on GPIO1\r\n"
           "% pin 1 high delay 500 low delay 500 loop 10 - Blink a led 10 times\r\n%\r\n"
-          "% (see \"docs/Pin_Commands.txt\" for more details & examples)\r\n"),
+          "% (see \"docs/html/GPIO.html\" for more details & examples)\r\n"),
     NULL },
 
   // PWM generation
