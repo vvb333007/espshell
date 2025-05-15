@@ -1,50 +1,51 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
-  <title>ESPShell : Introduction to ESPShell : basic concepts and command index</title>
+  <title>ESPShell: Введение в ESPShell – Основные понятия и индекс команд</title>
   <link rel="stylesheet" href="espshell.css">
 </head>
 <body>
-<p align=center><a href="index.ru.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: Index" width="70%" height="70%" /></a></p>
+<p align=center><a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell для Arduino :: Главная" width="70%" height="70%" /></a></p>
 <p>
   <ul>
-    <li><a href="#set">Setting CPU frequency</a></li>
-    <li><a href="#cpuid">Displaying CPU information</a></li>
+    <li><a href="#set">Настройка частоты ЦП</a></li>
+    <li><a href="#cpuid">Отображение информации о ЦП</a></li>
   </ul>
 </p>
 
-<p><h2 id=set><a href="#top">&#8686;</a>SETTING UP CPU FREQUENCY</h2></p>
-<p>ESP32 CPU supports frequency change (on classic ESP32 main CPU frequency may affect APB bus frequency also) in runtime:
-</p>
+<p><h2 id=set><a href="#top">&#8686;</a>НАСТРОЙКА ЧАСТОТЫ ЦП</h2></p>
+<p>ЦП ESP32 поддерживает изменение частоты во время выполнения (на классических ESP32 частота основного ЦП может также влиять на частоту шины APB).</p>
 <p><b>cpu</b> <i>FREQ</i></p>
-<p><i>FREQ</i> is the new CPU frequency in MHz (e.g. 240)</p>
-<p>ESP32 supports 240, 160, 80 MHz frequencies and also, depending on Xtal frequency, Xtal / 4 and/or Xtal / 2 frequencies can be available. List of available (supported) frequencies is displayed on attempt to set unsupported frequency:
+<p><i>FREQ</i> — новая частота ЦП в МГц (например, 240)</p>
+<p>ESP32 поддерживает частоты 240, 160 и 80 МГц. В зависимости от частоты кварцевого резонатора (XTAL) также могут быть доступны дополнительные значения, такие как XTAL / 4 и/или XTAL / 2.  
+Если задана неподдерживаемая частота, ESPShell отобразит список поддерживаемых частот:
 </p>
 <p><pre>
   esp32#>cpu 1
-  % 1 MHz is unsupported frequency
-  % Supported frequencies are: 240, 160, 120, 80, 40, 20 and 10 MHz
+  % 1 MHz is an unsupported frequency
+  % Supported frequencies are: 240, 160, 120, 80, 40, 20, and 10 MHz
   % Invalid 1st argument "1" ("? cpu" for help)
   </pre></p>
 
-
-<p><h2 id=cpuid><a href="#top">&#8686;</a>DISPLAYING CPU INFORMATION</h2></p>
+<p><h2 id=cpuid><a href="#top">&#8686;</a>ОТОБРАЖЕНИЕ ИНФОРМАЦИИ О ЦП</h2></p>
 
 <p><b>show cpuid</b></p>
-<p>Displays hardware & software information:</p>
+<p>Отображает информацию о «железе» и программном обеспечении:</p>
 <p align=center>
 <img src="i/show_cpuid.jpg" width="70%" height="70%" alt="show cpuid" /><br>
-<i>Fig. 1: Output of &quot;<b>show cpuid</b>&quot; command</i>
+<i>Рис. 1: Вывод команды &quot;<b>show cpuid</b>&quot;</i>
 </p>
 <p>
-Output is split into 3 sections: Hardware, Firmware and Last boot. First section contains CPUID, CPU frequency, 
-xtal frequency, APB bus frequency and CPU core temperature. 
+Вывод разделён на четыре секции: Аппаратное обеспечение, Память Flash, Прошивка и Последняя загрузка.  
+Первая секция содержит CPUID, частоту ЦП, частоту XTAL, частоту шины APB и температуру ядра процессора.
 </p><p>
-Second section provides version information on various components used to build the firmware/sketch: ArdunoCore version
-(mismatched versions are common source of a headache), the ESP-IDF version and ESP32Shell own version number
+Следующая секция содержит информацию о чипе Flash: его объём и идентификатор производителя.
+</p><p>
+Секция с прошивкой отображает сведения о версиях различных компонентов, использованных при сборке прошивки или скетча: версию Arduino Core  
+(несовпадение версий — частая причина проблем), версию ESP-IDF и номер версии самой ESPShell.
 </p>
 <p>
-Third section contains output of "<b>uptime</b>" command: uptime and reason for last reboot.
+Последняя секция включает вывод команды "<b>uptime</b>", показывая время непрерывной работы и причину последней перезагрузки.
 </p>
 </body>
 </html>

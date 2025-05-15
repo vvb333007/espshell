@@ -1,50 +1,52 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
-  <title>ESPShell : Introduction to ESPShell : basic concepts and command index</title>
+  <title>ESPShell: Introduction to ESPShell – Basic Concepts and Command Index</title>
   <link rel="stylesheet" href="espshell.css">
 </head>
 <body>
 <p align=center><a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: Index" width="70%" height="70%" /></a></p>
 <p>
   <ul>
-    <li><a href="#set">Setting CPU frequency</a></li>
-    <li><a href="#cpuid">Displaying CPU information</a></li>
+    <li><a href="#set">Setting CPU Frequency</a></li>
+    <li><a href="#cpuid">Displaying CPU Information</a></li>
   </ul>
 </p>
 
-<p><h2 id=set><a href="#top">&#8686;</a>SETTING UP CPU FREQUENCY</h2></p>
-<p>ESP32 CPU supports frequency change (on classic ESP32 main CPU frequency may affect APB bus frequency also) in runtime:
-</p>
+<p><h2 id=set><a href="#top">&#8686;</a>SETTING CPU FREQUENCY</h2></p>
+<p>The ESP32 CPU supports changing its frequency at runtime (on classic ESP32, the main CPU frequency may also affect the APB bus frequency).</p>
 <p><b>cpu</b> <i>FREQ</i></p>
-<p><i>FREQ</i> is the new CPU frequency in MHz (e.g. 240)</p>
-<p>ESP32 supports 240, 160, 80 MHz frequencies and also, depending on Xtal frequency, Xtal / 4 and/or Xtal / 2 frequencies can be available. List of available (supported) frequencies is displayed on attempt to set unsupported frequency:
+<p><i>FREQ</i> is the new CPU frequency in MHz (e.g., 240)</p>
+<p>The ESP32 supports 240, 160, and 80 MHz frequencies. Depending on the crystal oscillator (XTAL) frequency, additional options like XTAL / 4 and/or XTAL / 2 may also be available.
+If an unsupported frequency is specified, ESPShell will display a list of supported frequencies:
 </p>
 <p><pre>
   esp32#>cpu 1
-  % 1 MHz is unsupported frequency
-  % Supported frequencies are: 240, 160, 120, 80, 40, 20 and 10 MHz
+  % 1 MHz is an unsupported frequency
+  % Supported frequencies are: 240, 160, 120, 80, 40, 20, and 10 MHz
   % Invalid 1st argument "1" ("? cpu" for help)
   </pre></p>
-
 
 <p><h2 id=cpuid><a href="#top">&#8686;</a>DISPLAYING CPU INFORMATION</h2></p>
 
 <p><b>show cpuid</b></p>
-<p>Displays hardware & software information:</p>
+<p>Displays hardware and software information:</p>
 <p align=center>
 <img src="i/show_cpuid.jpg" width="70%" height="70%" alt="show cpuid" /><br>
-<i>Fig. 1: Output of &quot;<b>show cpuid</b>&quot; command</i>
+<i>Fig. 1: Output of the &quot;<b>show cpuid</b>&quot; command</i>
 </p>
 <p>
-Output is split into 3 sections: Hardware, Firmware and Last boot. First section contains CPUID, CPU frequency, 
-xtal frequency, APB bus frequency and CPU core temperature. 
+The output is divided into four sections: Hardware, Flash, Firmware, and Last Boot.  
+The first section shows CPUID, CPU frequency, XTAL frequency, APB bus frequency, and CPU core temperature.
 </p><p>
-Second section provides version information on various components used to build the firmware/sketch: ArdunoCore version
-(mismatched versions are common source of a headache), the ESP-IDF version and ESP32Shell own version number
+The next section contains flash chip information: size and manufacturer ID.
+</p><p>
+The firmware section displays version information for various components used to build the firmware/sketch: Arduino core version  
+(mismatched versions are a common source of issues), the ESP-IDF version, and the ESPShell version number.
 </p>
 <p>
-Third section contains output of "<b>uptime</b>" command: uptime and reason for last reboot.
+The last section includes the output of the "<b>uptime</b>" command, showing uptime and the reason for the last reboot.
 </p>
 </body>
 </html>

@@ -1,31 +1,31 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <title>ESPShell : IO control / Automation</title>
+  <title>ESPShell : IO Control / Automation</title>
   <link rel="stylesheet" href="espshell.css">
 </head>
 <body>
 
 <p align=center><a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: Index" width="70%" height="70%" /></a></p>
-<p><h2>COMMANDS AFFECTING ESPSHELL INTERFACE</h2></p>
+<p><h2>COMMANDS AFFECTING THE ESPSHELL INTERFACE</h2></p>
 <p>
-There are use cases when ESPShell is controlled by another software: i.e. it is not a human who issues commands and reads ESPShell replies.
-When it is a Human&harr;Machine interface, then we usually expect that Machine echoes our input back. Thats why we see what we are typing in our terminal program and thats why we are able to edit our command line.
-For Machine&harr;Machine interface we don't want any echo because it will interfere with ESPShell output so Machine has to filter out its own input.
+There are cases when ESPShell is controlled by another piece of software; that is, it is not a human who issues commands and reads ESPShell responses.  
+When it is a Human&harr;Machine interface, we usually expect the Machine to echo our input back. That's why we see what we're typing in our terminal program and why we can edit our command line.  
+For a Machine&harr;Machine interface, we don't want any echo, as it would interfere with ESPShell's output — the Machine would need to filter out its own input.
 </p>
 <p>
-ESPShell deals with this in a way modems do: A modem is an example of both a Human&harr;Machine (think of AT commands typed in a terminal) and a Machine&harr;Machine (think of your Windows driver talking to the modem).
-In modems one can enable or disable input echo with <i>AT commands</i> ("<b>ATE1</b>" and <b>"ATE0"</b>); in ESPShell commands "<b>echo on</b>" or  "<b>echo off</b>" do the same thing.
+ESPShell handles this in the same way as modems do:  
+A modem is an example of both a Human&harr;Machine interface (e.g., AT commands typed in a terminal) and a Machine&harr;Machine interface (e.g., your Windows driver talking to the modem).  
+In modems, input echo can be enabled or disabled with <i>AT commands</i> ("<b>ATE1</b>" and <b>"ATE0"</b>"). In ESPShell, the "<b>echo on</b>" and "<b>echo off</b>" commands provide the same functionality.
 </p>
 <p>
-All ESPShell output starts with "%" symbol and thus can be easily filtered and parsed if required
+All ESPShell output starts with a "%" symbol, which makes it easy to filter and parse if needed.
 </p>
 <p>
-The table below shows the list of commands that affect ESPShell interface and
-thus may be useful for <i>automated</i> shell access.
-Commands below do not show up on command lists (lists displayed by "?" 
-or "help" commands): these are rarely used and were hidden.
+The table below lists commands that affect the ESPShell interface and may be useful for <i>automated</i> shell access.  
+These commands do not appear in the general command list (shown with "?" or "help") as they are rarely used and intentionally hidden.
 </p>
+
 <p>
 <table>
 <tr>
@@ -33,13 +33,12 @@ or "help" commands): these are rarely used and were hidden.
 <b><p>history</b>&nbsp;[<b>on</b>|<b>off</b>]</p>
 </td><td>
 <p>
-  Enable / Disable command history.
-</p><p> By default command history is enabled and available on
-  pressing &uarr; and &darr; arrows (does not work in Arduino Serial Monitor). ESPShell saves up to 20 last commands in its history buffer. Size of the history buffer
- can be adjusted by editing <b>espshell.h</b> file (see "Compile-time settings" section at the beginning of espshell.h)
+  Enables or disables command history.
+</p><p>By default, command history is enabled and can be accessed by pressing the &uarr; and &darr; arrow keys (note: this doesn't work in the Arduino Serial Monitor).  
+  ESPShell stores up to 20 recent commands in its history buffer. The buffer size can be adjusted by editing the <b>espshell.h</b> file (see the "Compile-time settings" section at the top of espshell.h).
 </p>
 <p>
-  Command "<b>history</b>" without any arguments displays current state:
+  The "<b>history</b>" command without arguments displays the current state:
 </p>
 <p><pre>
   esp32#>history
@@ -48,26 +47,24 @@ or "help" commands): these are rarely used and were hidden.
 </pre></p>
 
 <p>
-  Default value is "enabled". Disabling command history also purges all the memory used for history entries.
+  The default value is "enabled". Disabling command history also clears all memory used for storing history entries.
 </p>
 </td></tr>
+
 <tr><td>
 <b><p>colors</b>&nbsp;[<b>on</b>|<b>off</b>|<b>auto</b>]</p></td><td>
 <p>
-  Enable or disable ANSI terminal colors.</p><p>If you are using a terminal software 
-  like PuTTY or TeraTerm then this option is better to be "on". For simple 
-  terminals like Arduino Serial Monitor it must be "off" or your screen will be 
-  flooded with strange messages like this:   1;36]m ]]J 7]m  and so on
+  Enables or disables ANSI terminal colors.
 </p><p>
-  Default value is "colors auto". In this mode ESPShell tries to guess user 
-  terminal type and switch colors on or off depending on that. Guessing works
-  by looking into what comes from the user: any keystrokes with lower keycodes
-  (never sent by Arduino Serial Monitor) trigger color mode ON.
+  If you're using terminal software like PuTTY or TeraTerm, it's recommended to set this option to "on".  
+  For simpler terminals like the Arduino Serial Monitor, it must be set to "off", otherwise your screen may be flooded with unreadable sequences like: 1;36]m ]]J 7]m etc.
 </p><p>
-  Disable colors with "colors off" if your terminal does not support colors, but 
-  ESPShell thinks it does.
+  The default value is "auto". In this mode, ESPShell tries to detect the terminal type and automatically enable or disable colors.  
+  Detection is based on received input: any keystrokes with lower keycodes (never sent by the Arduino Serial Monitor) trigger color mode ON.
 </p><p>
-  Executing this command without any arguments displays current state of colorer
+  Use "colors off" if your terminal doesn't support colors but ESPShell mistakenly enables them.
+</p><p>
+  Running this command without arguments displays the current color mode:
 </p><p>
 <pre>
     esp32#>colors
@@ -75,12 +72,16 @@ or "help" commands): these are rarely used and were hidden.
     esp32#>
 </pre>
 </p></td></tr>
+
 <tr><td>
 <b><p>echo</b>&nbsp;[<b>on</b>|<b>off</b>|<b>silent</b>]</p></td><td>
-<p>Enable / disable shell output & user input echo</p>
 <p>
-  By default, everything that user types is <i>echoed back</i> to user by ESPShell and this 
-  behavior can be controlled with the "<b>echo</b>" command; executing this command without any arguments show current <b>echo</b> state.
+  Enables or disables shell output and user input echo.
+</p>
+<p>
+  By default, everything typed by the user is <i>echoed back</i> by ESPShell.  
+  This behavior can be controlled using the "<b>echo</b>" command.  
+  Executing this command without arguments shows the current <b>echo</b> state:
 </p><p>
 <pre>
   esp32#>echo
@@ -88,54 +89,54 @@ or "help" commands): these are rarely used and were hidden.
   esp32#>
 </pre>
 </p><p>
-
-           <b>echo off</b> : Disables ESPShell from printing out its prompt and disables user
-           input echo. Input is processed but just not displayed; This command affects only user input, it does not supress commands output nor it supresses shell output (error messages as an example).
-</p></p>
-           Equivalent of "<b>ATE0</b>" command for modems. When echo is disabled, user
-           still can use line editing/history scrolling but it is just not displayed.
-</p><p>
-            <b>echo on</b>  : Enable user input echo. This is defsult behaviour and it is an equivalent of "<b>ATE1</b>" modem command
-
+  <b>echo off</b>: Disables ESPShell from printing its prompt and from echoing user input.  
+  Input is still processed, but not displayed.  
+  This command only affects input echo; it does not suppress command output or shell output (e.g., error messages).
 </p>
 <p>
-            <b>echo silent</b> : Completely disable all shell output to the terminal.
+  This is equivalent to the "<b>ATE0</b>" command in modems.  
+  Even with echo off, features like line editing and history still work — they’re just not visible.
+</p>
+<p>
+  <b>echo on</b>: Enables input echo. This is the default behavior and is equivalent to the "<b>ATE1</b>" modem command.
+</p>
+<p>
+  <b>echo silent</b>: Completely disables all ESPShell output to the terminal.
 <ul> 
 <li>No error messages will be displayed.</li>
-<li>User input is not echoed back</li>
-<li>Input is processed, commands are executed but <b>do not print anything</b>.</i>
+<li>User input is not echoed back.</li>
+<li>Input is processed, and commands are executed, but <b>nothing is printed</b>.</li>
 </ul>
-            This mode is used when we don't want espshell to interfere with sketch's
-            output. Sketch has full access to the Serial, while ESPShell doesn't print
-            anything to it;
-
+  This mode is useful when you don't want ESPShell to interfere with the sketch's output.  
+  The sketch retains full control over the serial interface, while ESPShell remains silent.
 </p>
 </td></tr>
+
 <tr><td>
 <b><p>tty</b>&nbsp;<i>NUMBER</i></p></td>
 <td><p>
-  Change ESPShell's input stream to uart UART.
+  Changes ESPShell's input source to a different UART.
 </p><p>
-  Default input source is UART0 (or USB-CDC) but it can be changed with "tty" command:
-  this is used in some automation scenarios when one needs to give control over the shell
-  to another user (connected to uart1 may be). With this command you can "give" but you
-  can't "take" : to get control back one must execute "tty 0" on uart1
+  The default input is UART0 (or USB-CDC), but this can be changed using the "tty" command.  
+  This is useful in automation scenarios where shell control is handed over to another user (e.g., connected to UART1).  
+  With this command you can "give" control, but you can't "take" it back — to regain control, the new user must run "tty 0" on UART1.
 </p>
 <p><pre>
   esp32#>tty 1
   % See you there
 </pre></p>
 <p>
-  The UART, user switches to, must be initialized otherwhise this command will fail.
+  The UART you're switching to must be initialized; otherwise, the command will fail.
 </p>
 <p><pre>
   esp32#>tty 1
   % UART1 is down. Use command "up" to initialize it
   esp32#>
 </pre></p>
-<p><i>NUMBER</i> is the new UART number (0..3, depending on the ESP32 model) or number 99 to switch to USB-CDC interface (exists on ESP32-S3 for example)</p>
+<p>
+  <i>NUMBER</i> is the target UART number (0–3 depending on the ESP32 model), or 99 to switch to the USB-CDC interface (e.g., available on ESP32-S3).
+</p>
 
 </td></tr></table>
 </body>
 </html>
-
