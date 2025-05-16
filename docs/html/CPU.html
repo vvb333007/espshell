@@ -2,51 +2,146 @@
 
 <html lang="en">
 <head>
-  <title>ESPShell: Introduction to ESPShell – Basic Concepts and Command Index</title>
+  <title>ESPShell: CPU & Memory</title>
   <link rel="stylesheet" href="espshell.css">
 </head>
 <body>
-<p align=center><a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: Index" width="70%" height="70%" /></a></p>
-<p>
-  <ul>
-    <li><a href="#set">Setting CPU Frequency</a></li>
-    <li><a href="#cpuid">Displaying CPU Information</a></li>
-  </ul>
+<p align="center">
+  <a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: Index" width="70%" height="70%" /></a>
 </p>
 
-<p><h2 id=set><a href="#top">&#8686;</a>SETTING CPU FREQUENCY</h2></p>
+<ul>
+  <li><a href="#set">Setting CPU Frequency</a></li>
+  <li><a href="#cpuid">Displaying CPU Information</a></li>
+  <li><a href="#meminfo">Displaying Memory Information</a></li>
+  <li><a href="#memdump">Examining Memory Content</a></li>
+</ul>
+
+<h2 id="set"><a href="#top">&#8686;</a> Setting CPU Frequency</h2>
 <p>The ESP32 CPU supports changing its frequency at runtime (on classic ESP32, the main CPU frequency may also affect the APB bus frequency).</p>
 <p><b>cpu</b> <i>FREQ</i></p>
-<p><i>FREQ</i> is the new CPU frequency in MHz (e.g., 240)</p>
+<p><i>FREQ</i> is the new CPU frequency in MHz (e.g., 240).</p>
 <p>The ESP32 supports 240, 160, and 80 MHz frequencies. Depending on the crystal oscillator (XTAL) frequency, additional options like XTAL / 4 and/or XTAL / 2 may also be available.
-If an unsupported frequency is specified, ESPShell will display a list of supported frequencies:
-</p>
-<p><pre>
+If an unsupported frequency is specified, ESPShell will display a list of supported frequencies:</p>
+<pre>
   esp32#>cpu 1
   % 1 MHz is an unsupported frequency
   % Supported frequencies are: 240, 160, 120, 80, 40, 20, and 10 MHz
   % Invalid 1st argument "1" ("? cpu" for help)
-  </pre></p>
+</pre>
 
-<p><h2 id=cpuid><a href="#top">&#8686;</a>DISPLAYING CPU INFORMATION</h2></p>
+<h2 id="cpuid"><a href="#top">&#8686;</a> Displaying CPU Information</h2>
 
 <p><b>show cpuid</b></p>
 <p>Displays hardware and software information:</p>
-<p align=center>
-<img src="i/show_cpuid.jpg" width="70%" height="70%" alt="show cpuid" /><br>
-<i>Fig. 1: Output of the &quot;<b>show cpuid</b>&quot; command</i>
+<p align="center">
+  <img src="i/show_cpuid.jpg" width="70%" height="70%" alt="show cpuid" /><br>
+  <i>Fig. 1: Output of the "<b>show cpuid</b>" command</i>
 </p>
 <p>
 The output is divided into four sections: Hardware, Flash, Firmware, and Last Boot.  
-The first section shows CPUID, CPU frequency, XTAL frequency, APB bus frequency, and CPU core temperature.
-</p><p>
-The next section contains flash chip information: size and manufacturer ID.
-</p><p>
-The firmware section displays version information for various components used to build the firmware/sketch: Arduino core version  
+The first section shows the CPUID, CPU frequency, XTAL frequency, APB bus frequency, and CPU core temperature.
+</p>
+<p>
+The second section provides flash chip details: size and manufacturer ID.
+</p>
+<p>
+The firmware section displays version information for components used to build the firmware/sketch, including the Arduino core version  
 (mismatched versions are a common source of issues), the ESP-IDF version, and the ESPShell version number.
 </p>
 <p>
-The last section includes the output of the "<b>uptime</b>" command, showing uptime and the reason for the last reboot.
+The last section includes the output of the "<b>uptime</b>" command, showing system uptime and the reason for the last reboot.
 </p>
+
+<h2 id="meminfo"><a href="#top">&#8686;</a> Displaying Memory Information</h2>
+
+<p>ESPShell provides two commands to display memory-related information: <b>show memory</b> and <b>show memory</b> <i>ADDRESS</i> ...</p>
+
+<table>
+  <tr><td><b>Command</b></td><td><b>Description and examples</b></td></tr>
+
+  <tr>
+    <td><b>show memory</b></td>
+    <td>
+      <p>Displays total and available memory as seen by the sketch:</p>
+      <p align="center">
+<pre>
+esp32#>sh mem
+% -- Heap information --
+%
+% If using "malloc()" (default allocator))":
+% 298824 bytes total, 249320 available, 110580 max per allocation
+%
+% If using "heap_caps_malloc(MALLOC_CAP_INTERNAL)", internal SRAM:
+% 347284 bytes total, 296928 available, 110580 max per allocation
+</pre>
+      This command can help identify memory leaks in your sketch.
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td><b>show memory</b> <i>ADDRESS</i></td>
+    <td>
+      <p><b>show memory</b> <i>ADDRESS</i> [ COUNT ] [signed|unsigned|float|void*|int|char|short]</p>
+      <p>Displays memory contents starting from a specific address. The address should be a hexadecimal number with or without the "0x" prefix:</p>
+<pre>
+esp32#>sh mem 0x3fc97a30
+       0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F  |0123456789ABCDEF
+----------------------------------------------------------+----------------
+0000: 01 00 00 00  02 00 00 00  03 00 00 00  9d ff ff ff  |................
+0010: 0c 0c 03 00  0b 00 00 00  5c 32 ca 3f  00 00 00 00  |........\2.?....
+0020: 14 0e 09 3c  2c 2b ff ff  00 c2 01 00  1c 00 00 08  |...<,+..........
+0030: 00 01 00 00  00 70 00 00  00 00 00 00  01 00 00 00  |.....p..........
+0040: 00 00 00 00  ff ff ff ff  00 00 00 00  00 00 00 00  |................
+0050: 00 00 00 00  00 00 00 00  00 00 00 00  02 00 00 00  |................
+0060: 00 00 00 00  ff ff ff ff  00 00 00 00  00 00 00 00  |................
+0070: 00 00 00 00  00 00 00 00  c8 7a c9 3f  ff ff 3f b3  |.........z.?..?.
+0080: 00 00 00 00  03 00 00 00  00 00 00 00  00 00 00 00  |................
+0090: 00 00 00 00  00 00 00 00  00 40 00 60  c8 bb 07 3c  |.........@.`...<
+00a0: 00 00 00 00  cc bb 07 3c  00 00 00 00  d0 bb 07 3c  |.......<.......<
+00b0: 00 00 00 00  d4 bb 07 3c  00 00 00 00  d8 bb 07 3c  |.......<.......<
+00c0: 00 00 00 00  dc bb 07 3c  00 00 00 00  e0 bb 07 3c  |.......<.......<
+00d0: 00 00 00 00  e4 bb 07 3c  00 00 00 00  e8 bb 07 3c  |.......<.......<
+00e0: 00 00 00 00  ec bb 07 3c  00 00 00 00  f0 bb 07 3c  |.......<.......<
+00f0: 00 00 00 00  f4 bb 07 3c  00 00 00 00  f8 bb 07 3c  |.......<.......<
+esp32#>
+</pre>
+
+      <h3 id="memdump">Optional Arguments</h3>
+
+      <p>To specify the number of elements to display, use the COUNT argument:</p>
+<pre>
+esp32#>sh mem 0x3fc97a30 32
+       0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F  |0123456789ABCDEF
+----------------------------------------------------------+----------------
+0000: 01 00 00 00  02 00 00 00  03 00 00 00  9d ff ff ff  |................
+0010: 0c 0c 03 00  0b 00 00 00  5c 32 ca 3f  00 00 00 00  |........\2.?....
+esp32#>
+</pre>
+
+      <p>To interpret the content as a specific data type, use one of the following types: "signed", "unsigned", "char", "short", "int", or "void *". If a type is specified, the default COUNT becomes 1 instead of 256.</p>
+
+      <p>Use the "void *" type for a 32-bit hex dump. Some ESP32 memory regions can only be accessed as 32-bit words:</p>
+<pre>
+esp32#>sh mem 0x3fc97a30 unsigned int
+% 0x3fc97a30 : 1 (0x1 as hex)
+esp32#>
+</pre>
+
+      <p>To display 3 elements of the same array:</p>
+<pre>
+esp32#>sh mem 0x3fc97a30 3 unsigned int
+% Array of 3 elements, 4 bytes each
+%  Address   :  Value
+% 0x3fc97a30 : 1 (0x1 as hex)
+% 0x3fc97a34 : 2 (0x2 as hex)
+% 0x3fc97a38 : 3 (0x3 as hex)
+esp32#>
+</pre>
+    </td>
+  </tr>
+</table>
+
 </body>
 </html>
