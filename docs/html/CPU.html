@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html lang="en">
 <head>
   <title>ESPShell: CPU & Memory</title>
@@ -18,17 +17,38 @@
 </ul>
 
 <h2 id="set"><a href="#top">&#8686;</a> Setting CPU Frequency</h2>
-<p>The ESP32 CPU supports changing its frequency at runtime (on classic ESP32, the main CPU frequency may also affect the APB bus frequency).</p>
-<p><b>cpu</b> <i>FREQ</i></p>
-<p><i>FREQ</i> is the new CPU frequency in MHz (e.g., 240).</p>
-<p>The ESP32 supports 240, 160, and 80 MHz frequencies. Depending on the crystal oscillator (XTAL) frequency, additional options like XTAL / 4 and/or XTAL / 2 may also be available.
-If an unsupported frequency is specified, ESPShell will display a list of supported frequencies:</p>
+<p>The ESP32 CPU supports changing its frequency at runtime. On classic ESP32, the main CPU frequency may also affect the APB bus frequency: if the CPU frequency drops below 80 MHz, the APB frequency becomes equal to the CPU frequency. This affects all timing-dependent modules like PWM, but you don't need to worry - ESPShell automatically recalculates all timings upon an APB frequency change.</p>
+
+<table>
+  <tr><td><b>Command</b></td><td><b>Description and examples</b></td></tr>
+
+  <tr>
+    <td><b>cpu</b></td>
+    <td>
+      <p>Displays the list of supported frequencies:</p>
 <pre>
-  esp32#>cpu 1
-  % 1 MHz is an unsupported frequency
-  % Supported frequencies are: 240, 160, 120, 80, 40, 20, and 10 MHz
-  % Invalid 1st argument "1" ("? cpu" for help)
+esp32#>cpu
+% Supported frequencies are: 240, 160, 120, 80, 40, 20 and 10 MHz
+esp32#>
 </pre>
+    </td>
+  </tr>
+
+  <tr>
+    <td><b>cpu</b> <i>FREQ</i></td>
+    <td>
+      <p>Sets the CPU frequency to <i>FREQ</i> MHz (e.g., 240).</p>
+      <p>The ESP32 supports 240, 160, and 80 MHz. Depending on the crystal oscillator (XTAL) frequency, additional options like XTAL / 4 and/or XTAL / 2 may be available.  
+      If an unsupported frequency is specified, ESPShell will display the list of supported frequencies:</p>
+<pre>
+esp32#>cpu 1
+% 1 MHz is an unsupported frequency
+% Supported frequencies are: 240, 160, 120, 80, 40, 20, and 10 MHz
+% Invalid 1st argument "1" ("? cpu" for help)
+</pre>
+    </td>
+  </tr>
+</table>
 
 <h2 id="cpuid"><a href="#top">&#8686;</a> Displaying CPU Information</h2>
 
@@ -40,17 +60,17 @@ If an unsupported frequency is specified, ESPShell will display a list of suppor
 </p>
 <p>
 The output is divided into four sections: Hardware, Flash, Firmware, and Last Boot.  
-The first section shows the CPUID, CPU frequency, XTAL frequency, APB bus frequency, and CPU core temperature.
+The Hardware section shows the CPUID, CPU frequency, XTAL frequency, APB bus frequency, and CPU core temperature.
 </p>
 <p>
-The second section provides flash chip details: size and manufacturer ID.
+The Flash section provides flash chip details: size and manufacturer ID.
 </p>
 <p>
-The firmware section displays version information for components used to build the firmware/sketch, including the Arduino core version  
-(mismatched versions are a common source of issues), the ESP-IDF version, and the ESPShell version number.
+The Firmware section displays version information for components used to build the sketch, including the Arduino core version  
+(mismatched versions are a common source of issues), the ESP-IDF version, and the ESPShell version.
 </p>
 <p>
-The last section includes the output of the "<b>uptime</b>" command, showing system uptime and the reason for the last reboot.
+The Last Boot section includes the output of the "<b>uptime</b>" command, showing system uptime and the reason for the last reboot.
 </p>
 
 <h2 id="meminfo"><a href="#top">&#8686;</a> Displaying Memory Information</h2>
@@ -69,10 +89,10 @@ The last section includes the output of the "<b>uptime</b>" command, showing sys
 esp32#>sh mem
 % -- Heap information --
 %
-% If using "malloc()" (default allocator))":
+% If using malloc() (default allocator):
 % 298824 bytes total, 249320 available, 110580 max per allocation
 %
-% If using "heap_caps_malloc(MALLOC_CAP_INTERNAL)", internal SRAM:
+% If using heap_caps_malloc(MALLOC_CAP_INTERNAL), internal SRAM:
 % 347284 bytes total, 296928 available, 110580 max per allocation
 </pre>
       This command can help identify memory leaks in your sketch.
@@ -80,56 +100,85 @@ esp32#>sh mem
     </td>
   </tr>
 
-  <tr>
+  <tr id="memdump">
     <td><b>show memory</b> <i>ADDRESS</i></td>
     <td>
-      <p><b>show memory</b> <i>ADDRESS</i> [ COUNT ] [signed|unsigned|float|void*|int|char|short]</p>
-      <p>Displays memory contents starting from a specific address. The address should be a hexadecimal number with or without the "0x" prefix:</p>
+      <p><b>show memory</b> <i>ADDRESS</i> [ <i>COUNT</i> ] [signed|unsigned|float|void*|int|char|short]</p>
+      <p>Displays memory contents starting from a specific address. The address should be a hexadecimal number with or without the "0x" prefix.</p>
+      <p>In its simplest form, this command requires only one argument - the address. It then displays a 256-byte hexdump from that location.  
+      Note that the ESP32 memory architecture is complex: some regions are only accessible through the instruction bus, some are restricted to CPU core #0 (ESPShell typically runs on Core #0), and some can only be accessed as 32-bit words.  
+      Espressif provides documents describing the memory maps for specific models:
+      <a href="https://dl.espressif.com/public/esp32s3-mm.pdf">ESP32-S3</a>, <a href="https://dl.espressif.com/public/esp32-mm.pdf">ESP32</a>, etc.</p>
+      <p><b>Example:</b> Show memory contents starting from address 0x3fc97a30</p>
 <pre>
-esp32#>sh mem 0x3fc97a30
-       0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F  |0123456789ABCDEF
-----------------------------------------------------------+----------------
-0000: 01 00 00 00  02 00 00 00  03 00 00 00  9d ff ff ff  |................
-0010: 0c 0c 03 00  0b 00 00 00  5c 32 ca 3f  00 00 00 00  |........\2.?....
-0020: 14 0e 09 3c  2c 2b ff ff  00 c2 01 00  1c 00 00 08  |...<,+..........
-0030: 00 01 00 00  00 70 00 00  00 00 00 00  01 00 00 00  |.....p..........
-0040: 00 00 00 00  ff ff ff ff  00 00 00 00  00 00 00 00  |................
-0050: 00 00 00 00  00 00 00 00  00 00 00 00  02 00 00 00  |................
-0060: 00 00 00 00  ff ff ff ff  00 00 00 00  00 00 00 00  |................
-0070: 00 00 00 00  00 00 00 00  c8 7a c9 3f  ff ff 3f b3  |.........z.?..?.
-0080: 00 00 00 00  03 00 00 00  00 00 00 00  00 00 00 00  |................
-0090: 00 00 00 00  00 00 00 00  00 40 00 60  c8 bb 07 3c  |.........@.`...<
-00a0: 00 00 00 00  cc bb 07 3c  00 00 00 00  d0 bb 07 3c  |.......<.......<
-00b0: 00 00 00 00  d4 bb 07 3c  00 00 00 00  d8 bb 07 3c  |.......<.......<
-00c0: 00 00 00 00  dc bb 07 3c  00 00 00 00  e0 bb 07 3c  |.......<.......<
-00d0: 00 00 00 00  e4 bb 07 3c  00 00 00 00  e8 bb 07 3c  |.......<.......<
-00e0: 00 00 00 00  ec bb 07 3c  00 00 00 00  f0 bb 07 3c  |.......<.......<
-00f0: 00 00 00 00  f4 bb 07 3c  00 00 00 00  f8 bb 07 3c  |.......<.......<
-esp32#>
+    esp32#>sh mem 0x3fc97a30
+           0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F  |0123456789ABCDEF
+    ----------------------------------------------------------+----------------
+    0000: 01 00 00 00  02 00 00 00  03 00 00 00  9d ff ff ff  |................
+    0010: 0c 0c 03 00  0b 00 00 00  5c 32 ca 3f  00 00 00 00  |........\2.?....
+    0020: 14 0e 09 3c  2c 2b ff ff  00 c2 01 00  1c 00 00 08  |...<,+..........
+    0030: 00 01 00 00  00 70 00 00  00 00 00 00  01 00 00 00  |.....p..........
+    0040: 00 00 00 00  ff ff ff ff  00 00 00 00  00 00 00 00  |................
+    0050: 00 00 00 00  00 00 00 00  00 00 00 00  02 00 00 00  |................
+    0060: 00 00 00 00  ff ff ff ff  00 00 00 00  00 00 00 00  |................
+    0070: 00 00 00 00  00 00 00 00  c8 7a c9 3f  ff ff 3f b3  |.........z.?..?.
+    0080: 00 00 00 00  03 00 00 00  00 00 00 00  00 00 00 00  |................
+    0090: 00 00 00 00  00 00 00 00  00 40 00 60  c8 bb 07 3c  |.........@.`...<
+    00a0: 00 00 00 00  cc bb 07 3c  00 00 00 00  d0 bb 07 3c  |.......<.......<
+    00b0: 00 00 00 00  d4 bb 07 3c  00 00 00 00  d8 bb 07 3c  |.......<.......<
+    00c0: 00 00 00 00  dc bb 07 3c  00 00 00 00  e0 bb 07 3c  |.......<.......<
+    00d0: 00 00 00 00  e4 bb 07 3c  00 00 00 00  e8 bb 07 3c  |.......<.......<
+    00e0: 00 00 00 00  ec bb 07 3c  00 00 00 00  f0 bb 07 3c  |.......<.......<
+    00f0: 00 00 00 00  f4 bb 07 3c  00 00 00 00  f8 bb 07 3c  |.......<.......<
+    esp32#>
 </pre>
 
-      <h3 id="memdump">Optional Arguments</h3>
+<h3>Optional Arguments: count and type</h3>
 
-      <p>To specify the number of elements to display, use the COUNT argument:</p>
+<p>To specify the number of elements to display, use the <i>COUNT</i> argument:</p>
 <pre>
-esp32#>sh mem 0x3fc97a30 32
-       0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F  |0123456789ABCDEF
-----------------------------------------------------------+----------------
-0000: 01 00 00 00  02 00 00 00  03 00 00 00  9d ff ff ff  |................
-0010: 0c 0c 03 00  0b 00 00 00  5c 32 ca 3f  00 00 00 00  |........\2.?....
-esp32#>
+    esp32#>sh mem 0x3fc97a30 32
+           0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F  |0123456789ABCDEF
+    ----------------------------------------------------------+----------------
+    0000: 01 00 00 00  02 00 00 00  03 00 00 00  9d ff ff ff  |................
+    0010: 0c 0c 03 00  0b 00 00 00  5c 32 ca 3f  00 00 00 00  |........\2.?....
+    esp32#>
+</pre>
+<p>If not specified, <i>COUNT</i> defaults to 256.</p>
+
+<p>To interpret memory content as a specific data type, use one of the following: <code>signed</code>, <code>unsigned</code>, <code>char</code>, <code>short</code>, <code>int</code>, or <code>void*</code>.  
+If a type is specified, <i>COUNT</i> defaults to 1 instead of 256.</p>
+
+<p>Use <code>void*</code> for a 32-bit hex dump. Some ESP32 memory regions are only accessible in 32-bit word format:</p>
+<pre>
+esp32#>sh mem 0x50000000 void *
+% 0x50000000 : 0x344dbbe1
 </pre>
 
-      <p>To interpret the content as a specific data type, use one of the following types: "signed", "unsigned", "char", "short", "int", or "void *". If a type is specified, the default COUNT becomes 1 instead of 256.</p>
+<p><b>Note:</b> Even though the <i>COUNT</i> was omitted, only one element was displayed due to the type specifier (<code>void*</code>).  
+To display more elements, <i>COUNT</i> must be explicitly set:</p>
 
-      <p>Use the "void *" type for a 32-bit hex dump. Some ESP32 memory regions can only be accessed as 32-bit words:</p>
 <pre>
-esp32#>sh mem 0x3fc97a30 unsigned int
-% 0x3fc97a30 : 1 (0x1 as hex)
-esp32#>
-</pre>
+esp32#>sh mem 0x50000000 10 void *
+% Array of 10 elements, 4 bytes each
+%  Address   :  Value
+% 0x50000000 : 0x344dbbe1
+% 0x50000004 : 0x9d2aa486
+% 0x50000008 : 0x476c2e42
+% 0x5000000c : 0x40da87ea
+% 0x50000010 : 0x607b4d64
+% 0x50000014 : 0xfc28182e
+% 0x50000018 : 0x97b54ec4
+% 0x5000001c : 0xefe11d7a
+% 0x50000020 : 0xd703bad6
+% 0x50000024 : 0x698b7ad1
+esp32#></pre>
 
-      <p>To display 3 elements of the same array:</p>
+<p><b>Note:</b> <code>void*</code>, <code>void *</code>, and <code>*</code> are treated identically - memory is interpreted as unsigned 32-bit values and displayed in hexadecimal format.</p>
+
+<p>This command can be used to display array or variable contents, provided their addresses are known.</p>
+
+<p><b>Example:</b> An unsigned integer array is located at address 0x3fc97a30. Display the first three elements:</p>
 <pre>
 esp32#>sh mem 0x3fc97a30 3 unsigned int
 % Array of 3 elements, 4 bytes each
