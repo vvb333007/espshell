@@ -2,97 +2,149 @@
 <html lang="en">
 <head>
   <link rel="stylesheet" href="espshell.css">
-  <title>ESPShell : Process control : kill, suspend and resume</title>
+  <title>ESPShell : Process Control : kill, suspend and resume</title>
 </head>
 <body>
 <p align=center><a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: Index" width="70%" height="70%" /></a></p>
 <p>
   <ul>
-    <li><a href="#process">Process control</a></li>
-    <li><a href="#suspend">Suspend, resume and kill</a></li>
+    <li><a href="#process">Process Control</a></li>
+    <li><a href="#suspend">Suspend, Resume and Kill</a></li>
   </ul>
 </p>
 
 <p id="process"><h2>PROCESS CONTROL</h2></p>
 
 <p>
-Process control is implemented as 3 commands: <b>suspend</b>, <b>resume</b> and <b>kill</b>. By processes
-we mean FreeRTOS tasks: main arduino <i>loop()</i> is handled by a dedicated "loop" FreeRTOS task,
-for example, so "<i>loop()</i>" is a process.
+Process control is implemented through three commands: <b>suspend</b>, <b>resume</b>, and <b>kill</b>. By "processes," 
+we mean FreeRTOS tasks. For example, the main Arduino <i>loop()</i> runs as a dedicated FreeRTOS task named "loop" -
+so "<i>loop()</i>" is a process.
 </p>
 
 <p>
-Tasks are accessed and controlled by their TASK_ID (a hex number, something like "0x3fca370c")
-except the main Arduino loop() task: main sketch execution can be controlled by ommitting a TASK_ID
-parameter in a command. I.e. to suspend a sketch, instead of "suspend 0x12345678" one can use 
-command "suspend" without any arguments.
+Tasks are accessed and controlled using their TASK_ID (a hexadecimal number, e.g., "0x3fca370c"), 
+except for the main Arduino loop() task: the main sketch execution can be controlled by omitting 
+the TASK_ID parameter in the command. That is, to suspend the sketch, instead of writing 
+"suspend 0x12345678", one can simply use "suspend" without arguments.
 </p>
 
+<p>
+Okay, but where can we get these task IDs?
+</p>
 
-<p id="suspend"><h2>SUSPEND, RESUME and KILL</h2></p>
-
 <p>
-There are 2 commands to suspend a sketch/task: "<b>suspend</b>" and "<b>suspend</b> <i>TASK_ID</i>".
-</p>
-<p>
-  "<b>suspend</b>"  - Pause Arduino's loop(). Tasks that were started by the loop()
-  task are not suspended by this command. Pressing Ctrl+C does the same thing if done in terminal
-</p><p>
-  "<b>suspend</b> <i>TASK_ID</i>" - suspends and arbitrary task providing Task ID is known. Command requires one
-  argument: a task ID (as hexadecimal number)
-</p>
-<p>
-And two sister  "resume" commands:
-</p>
-<p>
-  "<b>resume</b>"   - Resume execution of Arduino's loop() previously paused with "suspend" command
-</p><p>
-  "<b>resume</b> <i>TASK_ID</i>" - Resume execution of task TASK_ID
-</p>
-<p>
-To stop an ESPShell task (yes, ESPShell uses tasks to run background commands, see details in
-<a href="Basics.html#background">BACKGROUND EXECUTION</a> chapter) or an arbitrary FreeRTOS task one can use 
-command "kill":
-</p>
-<p>
-    "<b>kill</b> [-TERM | -15 | -KILL | -9] <i>TASK_ID</i>"
-</p>
-<p>
-Stops execution of task TASK_ID. The TASK_ID is either task id which is displayed upon execution 
-of a background command or generic FreeRTOS task id. If "&" symbol is used at the end of a command,
-then ESPShell executes such a command in a background by starting a new task:
-</p>
-<p>
+It's simple: every ESPShell command that is run as a background process displays its TASK_ID. 
+Let’s say we execute the command "pin 2 delay 1000" in the background:
 <pre>
-      esp32#>pin 2 delay 999 &                                  <--- note the "&" symbol
+esp32#>pin 2 delay 1000 &
+% Background task started
+% Copy/paste "kill 0x3ffb91dc" to abort
+esp32#>
+</pre>
+This command doesn’t do much -just waits for 1000ms. Once started, it prints its task ID along with 
+a convenient "kill" command that can be copied and executed: "kill 0x3ffb91dc".
+</p>
+
+<p>
+Another source of TASK_IDs is the "<b><a href="Pulse_Counter.html#show">show counters</a></b>" command.
+</p>
+
+<p id="suspend"><h2>SUSPEND, RESUME AND KILL</h2></p>
+
+<table>
+  <tr><td><b>Command</b></td><td><b>Description and examples</b></td></tr>
+
+  <tr>
+    <td><b>suspend</b></td>
+    <td>
+      <p>Pauses sketch execution by suspending Arduino’s <b>loop()</b>. Tasks that were started by <b>loop()</b> 
+      and <b>setup()</b> are <b>not suspended</b> by this command. Suspending a task along with all of its child tasks 
+      is a planned but not yet implemented feature. Ctrl+C is a hotkey for the "<b>suspend</b>" command.</p>
+    </td>
+  </tr>
+
+  <tr>
+    <td><b>suspend</b> <i>TASK_ID</i></td>
+    <td>
+      <p><b>suspend</b> <i>TASK_ID</i></p>
+      <p>Suspends an arbitrary task if its TASK_ID is known. The command requires one argument -a hexadecimal task ID.</p>
+    </td>
+  </tr>
+
+  <tr>
+    <td><b>resume</b></td>
+    <td>
+      <p>Resumes sketch execution.</p>
+    </td>
+  </tr>
+
+  <tr>
+    <td><b>resume</b> <i>TASK_ID</i></td>
+    <td>
+      <p><b>resume</b> <i>TASK_ID</i></p>
+      <p>Resumes an arbitrary task if its TASK_ID is known. The command requires one argument -a hexadecimal task ID.</p>
+    </td>
+  </tr>
+
+</table>
+
+<p>
+To stop an ESPShell task (ESPShell <a href="Basics.html#background">uses tasks</a> to run background commands) or any 
+arbitrary FreeRTOS task, use the <b>kill</b> command:
+</p>
+
+<table>
+  <tr><td><b>Command</b></td><td><b>Description and examples</b></td></tr>
+
+  <tr>
+    <td><b>kill</b> <i>TASK_ID</i></td>
+    <td>
+<p><b>kill</b> [-TERM | -15 | -KILL | -9] <i>TASK_ID</i></p>
+
+<p>
+Stops execution of the task with the given TASK_ID. This ID is either printed when a background command 
+is started or is the identifier of a generic FreeRTOS task. If the "&" symbol is used at the end of a command,
+ESPShell executes it in the background by spawning a new task:
+</p>
+
+<pre>
+      esp32#>pin 2 delay 999 &
       % Background task started
-      % Copy/paste "kill 0x3fca370c" command to stop execution  <--- note the TASK_ID
+      % Copy/paste "kill 0x3fca370c" command to stop execution  &larr; note the TASK_ID
       esp32#>
 </pre>
+
 <p>
-<p>
-Or it may be counter/frequency meter of the ESPShell which uses separate tasks to run counters in
-paralell (those TASK_ID's can be found in "<a href="Pulse_Counter.html#display"><b>show counters</b></a>" command output).
+In the simplest case -when only the TASK_ID is provided -the command <i>sends a notification</i> to the task
+in an attempt to initiate a graceful shutdown.
 </p>
+
 <p>
-In its simpliest case, when only 1 parameter (a TASK_ID) is used, this command <i>sends a notification</i> to 
-the task being killed in attempt to do graceful shutdown. 
+This command mimics the classic Linux <code>kill</code> command and accepts an optional signal parameter. 
+<b>-9</b> or <b>-KILL</b> means forcibly terminate the task: no notification is sent; the task is 
+suspended and then deleted via the FreeRTOS API <code>vTaskDelete()</code>. However, resources used by 
+the task are not freed. Force-killing a task holding a mutex may result in system lockups.
 </p>
+
 <p>
-  NOTE: This command tries to mimic a classic linux "kill" command and accepts optional parameter - **a signal**
-        to be sent: -9 or -KILL means force-kill the task. No notifications is sent, instead task is suspended 
-        and deleted via vTaskDelete() FreeRTOS API. No resources used by task are freed. Killing a task which 
-        holds mutex might result in lockups.
-</p><p>
-        All tasks, which are created by ESPShell must be killed in this way, without specifying any additional 
-        parameters. Specifying -9 or -KILL will lead to undefined behaviour!
-</p><p>
-Option -15, -TERM or just absence of any options is translated to "graceful shutdown": task is not deleted but
-allowed to shutdown itself, freeing all associated resources (if any).
-</p><p>
-Option -9 or -KILL will translate to task suspension and shortly after that - a deletion via FreeRTOS vTaskDelete()
-API. This option is an equivalent of linux's "kill -9" command but unlike it's linux counterpart, ESPShell does not
-free resources (possibly allocated by the task) up.
+All ESPShell-created tasks should normally be terminated this way -without using any additional parameters. 
+However, there are examples of ESPShell commands that can only be terminated using <code>kill -9</code>. 
+These special cases are described <a href="GPIO.html">in the documentation</a> for the "pin" command.
 </p>
+
+<p>
+Using <b>-15</b>, <b>-TERM</b>, or no signal at all indicates a graceful shutdown: the task is not deleted 
+but is given a chance to terminate itself and release any allocated resources.
+</p>
+
+<p>
+Using <b>-9</b> or <b>-KILL</b> results in immediate task suspension and deletion via FreeRTOS 
+<code>vTaskDelete()</code>. This is equivalent to the Linux <code>kill -9</code> command, but unlike its 
+Linux counterpart, ESPShell does not release any memory or resources allocated by the task.
+</p>
+    </td>
+  </tr>
+</table>
+
 </body>
 </html>
