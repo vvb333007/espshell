@@ -1,211 +1,211 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
-  <title>ESPShell : Pulse sequence generator</title>
+  <title>ESPShell : Генератор последовательностей импульсов</title>
   <link rel="stylesheet" href="espshell.css">
 </head>
 <body>
 <p align=center><a href="index.ru.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: Index" width="70%" height="70%" /></a></p>
 <p>
   <ul>
-    <li><a href="#pg">Pulse pattern generation</a></li>
-    <li><a href="#basic">Basic concept: "tick", "level" and "pulse"</a></li>
-    <li><a href="#send">Sending a pulse sequences</a></li>
-    <li><a href="#bits">Bit strings</a></li>
-    <li><a href="#mod">Modulation & End-Of-Transmission</a></li>
-    <li><a href="#show">Displaying information</a></li>
-    <li><a href="#examples">Examples</a></li>
-
+    <li><a href="#pg">Генерация импульсов</a></li>
+    <li><a href="#basic">Основные понятия: "тик", "уровень" и "импульс"</a></li>
+    <li><a href="#send">Отправка импульсных последовательностей</a></li>
+    <li><a href="#bits">Битовые строки</a></li>
+    <li><a href="#mod">Модуляция и Окончание Передачи</a></li>
+    <li><a href="#show">Отображение информации</a></li>
+    <li><a href="#examples">Примеры</a></li>
   </ul>
 </p>
 
-<p><h2 id=pg><a href="#top">&#8686;</a>PULSE PATTERN GENERATION</h2></p>
+<p><h2 id=pg><a href="#top">&#8686;</a>ГЕНЕРАЦИЯ ИМПУЛЬСОВ</h2></p>
 
 <p>
-ESP32 has dedicated peripherial for pulse train generation called RMT
-which main purpose is to generate arbitrary patterns with quite high 
-resolution down to 0.0125 microseconds.
+ESP32 имеет специальный периферийный модуль генерации импульсных последовательностей, называемый RMT, 
+основное назначение которого — создание произвольных сигналов с довольно высокой разрешающей способностью — до 0.0125 микросекунды (минимальная ширина импульса). 
+Если вам "вручную" нужно создать какой-то цифровой сигнал, то RMT это то, что нужно.
 </p>
 
 <p>
-It can be used as a general-purpose signal generator or an IR remote signal generator
+Может использоваться как генератор сигналов общего назначения или для генерации ИК-сигналов дистанционного управления. Для второго случая предусмотрена так же модуляция нулей или единиц в вашем сконструированном сигнале.
 </p>
 
-
-<p><h2 id=basic><a href="#top">&#8686;</a>BASIC CONCEPT: "TICK", "LEVEL" AND "PULSE"</h2></p>
+<p><h2 id=basic><a href="#top">&#8686;</a>ОСНОВНЫЕ ПОНЯТИЯ: "ТИК", "УРОВЕНЬ" И "ИМПУЛЬС"</h2></p>
 
 <p>
-Pulse pattern generation is available via "<b>sequence</b> <i>SEQ_ID</i>" and "<b>pin</b> <i>PIN</i> <b>seq</b> <i>SEQ_ID</i>"
-commands: the first one defines <i>a sequence of pulses</i> to be generated, 
-while second actually sends it. The sequence number (<i>SEQ_ID</i>) must be in range
-0..9 thus 10 different sequences can be created and used. In cases when more than 10 sequences are required one <a href="Compile.html">can change SEQUENCE_NUM macro</a> in <b>espshell.h</b>
+Генерация импульсов осуществляется с помощью команд "<b>sequence</b> <i>SEQ_ID</i>" и "<b>pin</b> <i>PIN</i> <b>seq</b> <i>SEQ_ID</i>":
+первая команда задает <i>последовательность импульсов</i>, а вторая — запускает её на исполнение. Номер последовательности (<i>SEQ_ID</i>) должен быть от 0 до 9, 
+то есть можно создать и использовать до 10 различных последовательностей. 
+Если требуется больше, можно <a href="Customizing.ru.html">изменить макрос SEQUENCE_NUM</a> в файле <b>espshell.h</b>.
 </p>
 
 <p>
-Before we proceed with examples and commands description lets look at terminology used through the document:
+Перед тем как перейти к описанию команд и примеров, рассмотрим основные термины:
 </p>
 
 <p>
 <ul>
-  <li>A <b>level</b> is either logic "0" or logic "1": it is simply a <i>voltage level</i> hence the name. Sequence can be made of <i>levels</i> or <i>pulses</i>.</li>
-  <li>A <b>pulse</b> is two consecutive <i>levels</i>: "logic 1 for X nanoseconds, then logic 0 for Y nanoseconds". Pulses are used in IR remote control protocol; Manchester encoding can be viewed as <i>pulse</i> sequence also.
-Unlike <i>levels</i>, pulses can be <i>modulated</i> (modulation can be applied to logic 1 or logic 0) to create pulse sequences suitable for IR Remote (NEC protocol).</li>
-  <li>A <b>tick</b> is a time interval. All time intervals in a sequence are measured in "ticks". Tick can be set to anything from 0.0125us up to 3.2us: it is user-defined value. When new sequence is created, its "tick" value is set to 1uS (default value).</li>
+  <li><b>Уровень</b> — это логический "0" или "1", то есть просто <i>уровень напряжения</i>. Последовательность может состоять из <i>уровней</i> или <i>импульсов</i>.</li>
+  <li><b>Импульс</b> — это два последовательных уровня: "лог.1 в течение X нс, затем лог.0 в течение Y нс". Импульсы используются в ИК-протоколах; например, 
+манчестерское кодирование можно представить как последовательность <i>импульсов</i>.
+ 
+В отличие от <i>уровней</i>, импульсы могут быть <i>модулированы</i> (на лог.1 или лог.0), что позволяет использовать их, например, в ИК-пультах (протокол NEC).</li>
+  <li><b>Тик</b> — это единица времени. Все интервалы в последовательности измеряются в "тиках". Тик можно установить в диапазоне от 0.0125 мкс до 3.2 мкс. 
+По умолчанию тик равен 1 мкс.</li>
 </ul>
 </p>
 
-
-
-
 <p>
-Lets solve a simple task: suppose we want to generate number of pulses on pin2 as follows:
+Рассмотрим простую задачу: нужно сгенерировать несколько импульсов на выводе pin2 следующим образом:
 </p>
 
 <p>
-"Set pin2 HIGH for 10uS, then LOW for 20uS then HIGH again for 30uS and 
-finally LOW for 100 microseconds"
+"Установить pin2 в HIGH на 10 мкс, затем в LOW на 20 мкс, снова HIGH на 30 мкс, и наконец LOW на 100 мкс"
 </p>
 
 <p>
-We start from entering sequence configuration mode:
+Начинаем с режима конфигурации последовательности:
 </p>
 
-<p>
 <pre>
   esp32#>sequence 0
   esp32-seq0>
 </pre>
+
+<p>
+Команда "<b>sequence 0</b>" создаёт пустую последовательность с номером 0 и переключает оболочку в режим конфигурации, что видно по изменению приглашения на "<b>esp32-seq0></b>". 
+Чтобы выйти из этого режима, используйте "<b>exit</b>" или нажмите <kbd>Ctrl+Z</kbd>.
 </p>
 
 <p>
-Command "<b>sequence 0</b>"  creates Sequence0 pulse sequence (an empty sequence) and enters <i>sequence configuration mode</i>. This command changes 
-the espshell prompt to "<b>esp32-seq0></b>" indicating that user is in sequence configuration mode. To exit this mode type "<b>exit</b>" or press <kbd>Ctrl+Z</kbd>.
+Сначала установим <i>разрешение</i> последовательности, то есть "длину тика".
 </p>
 
 <p>
-First we need to set a <i>resolution</i> for the sequence, a so-called "tick length".
+Выберем тик длиной 1 мкс:
 </p>
 
-<p>
-Lets choose "<b>tick</b>" to be 1 microsecond long:
-</p>
-<p><pre>
+<pre>
   esp32#>sequence 0
   esp32-seq0>tick 1
 </pre>
+
+<p>
+По умолчанию тик уже равен 1 мкс, поэтому команду "tick 1" можно опустить.
 </p>
 
 <p>
-By default sequences are created with the tick set to 1 microsecond so 
-command "tick 1" can be omitted in example above
+Теперь зададим последовательность <i>в виде уровней</i>:
 </p>
 
-<p>
-Now input our sequence <i>as a sequence of <b>levels</b></i>:
-</p>
-
-<p><pre>
+<pre>
   esp32#>sequence 0
   esp32-seq0>tick 1
   esp32-seq0>levels 1/10 0/20 1/30 0/100
 </pre>
+
+<p>
+Команда "levels" принимает параметры в формате "A/B", где A — это "1" или "0", а B — длительность уровня в тиках (от 1 до 32767). 
+Для удобства можно использовать символ "/" как сокращение для 32767: "1//" то же самое, что "1/32767".
 </p>
 
 <p>
-Command "levels" takes arguments in form "A/B" where "A" is either "1" or "0" and "B" tells how long this level must be
-held (1..32767 ticks). Using command "show" one can check the sequence total
-length in ticks and microseconds. Hint: use "/" as an alias to 32767: "1//"
-is the same as "1/32767"
+Команда выше означает: "лог.1 в течение 10 тиков, лог.0 — 20 тиков и т.д.". 
+Поскольку мы установили тик равным 1 мкс, длительности получаются в микросекундах.
 </p>
+
+<p><h2 id=send><a href="#top">&#8686;</a>ОТПРАВКА ИМПУЛЬСНЫХ ПОСЛЕДОВАТЕЛЬНОСТЕЙ</h2></p>
 
 <p>
-Command "<b>levels</b>" above says: "Set output to logic 1 for 10 ticks, then set it to 0 for 20 ticks..." etc. Since we chose out tick to be 1 microsecond then 
-these length are simply lengths in microseconds
+Теперь, когда последовательность 0 сконфигурирована, можно воспроизвести её на GPIO2:
 </p>
 
-
-<p><h2 id=send><a href="#top">&#8686;</a>SENDING A PULSE SEQUENCES</h2></p>
-
-<p>
-Now we have configured sequence number 0. Lets play it back on GPIO2:
-</p>
-
-<p><pre>
+<pre>
   esp32#>sequence 0
   esp32-seq0>tick 1
   esp32-seq0>levels 1/10 0/20 1/30 0/100
   esp32-seq0>exit
   esp32#>pin 2 seq 0
 </pre>
-</p>
 
 <p>
-Or, send it 4 times in a row:
+Или отправить 4 раза подряд:
 </p>
-<p><pre>
+
+<pre>
   esp32#>sequence 0
   esp32-seq0>tick 1
   esp32-seq0>levels 1/10 0/20 1/30 0/100
   esp32-seq0>exit
-  esp32#>pin 2 seq 0                          <-- send once
-  esp32#>pin 2 seq 0 seq 0 seq 0 seq 0        <-- send 4 times
+  esp32#>pin 2 seq 0                          &larr; один раз
+  esp32#>pin 2 seq 0 seq 0 seq 0 seq 0        &larr; 4 раза подряд
 </pre>
+
+<p>
+Примечание: есть и альтернативный способ отправить 4 раза — использовать команду "pin 2 seq 0 loop 4"
+</p>
+
+<p><h2 id=bits><a href="#top">&#8686;</a>ПРЕОБРАЗОВАНИЕ БИТОВ В УРОВНИ ИЛИ ИМПУЛЬСЫ</h2></p>
+
+<p>
+Хотя можно задавать уровни вручную, для длинных последовательностей это неудобно. Вместо этого можно использовать команды "<b>bits</b>", "<b>one</b>" и "<b>zero</b>", 
+вместо прямого задания уровней через "<b>levels</b>".
 </p>
 
 <p>
-NOTE: Another way to send 4 sequences as shown above is to use "pin 2 seq 0 loop 4" command
+Команда "bits" задаёт битовую строку, а команды "one" и "zero" определяют, как в уровнях выглядят лог.1 и лог.0. Например, мы хотим передать:
 </p>
 
+<p align=center>
+  "HIGH 10 мкс, LOW 20 мкс, HIGH 30 мкс, LOW 100 мкс"
+</p>
 
-<p><h2 id=bits><a href="#top">&#8686;</a>BITS TO LEVELS, BITS TO PULSES</h2></p>
-<p>
-Although you can set all the levels manually just as in examples above but for longer sequences it may be impractical.
-Alternative way to define a sequence is to use  "<b>bits</b>", "<b>one</b>" and "<b>zero</b>" 
-commands instead of encoding all individual values using "<b>levels</b>" command. 
-</p><p>
-Command "bits" defines a bit stream to be sent while "one" and "zero" commands
-define <i>what 1 and 0 actually are</i> in terms of LOW/HIGH. Lets say we want to send 
-sequence of pulses below (same sequence is used in a previous example):
-</p><p align=center>
-  "high for 10us, low 20us, high 30us,low 100us"
-</p><p>
-Here are shell commands which do the job (note we use default tick of 1us ):
-</p><p><pre>
+<p>Команды будут такими:</p>
+
+<pre>
   esp32#>sequence 0
-  esp32-seq0>bits 1001110000000000
-  esp32-seq0>one 1/10
-  esp32-seq0>zero 0/10
-</pre></p><p>
-Commands "one" and "zero" define "1" to be "HIGH for 10uS long" and "0" is defined as "LOW for 10uS"
-as well. Then we use proper number of 1s and 0s to achieve timings we need:
-</p><p><pre>
-  1          - HIGH for 10uS
-  00         - LOW  for 20uS
-  111        - HIGH for 30uS
-  0000000000 - LOW for 100uS
+  esp32-seq0>one 1/10               &larr; "Один" это HIGH на 10 тиков
+  esp32-seq0>zero 0/10              &larr; "Ноль" это LOW на 10 тиков
+  esp32-seq0>bits 1001110000000000  
 </pre>
-</p><p>
-Command "<b>bits</b>" discards previously set "<b>levels</b>" and vice versa: setting "<b>levels</b>"
-will reset "<b>bits</b>". Once "tick", "bits", "one" and "zero" are set then levels
-are automatically generated and can be seen with "<b>show</b>" command:
-</p><p><pre>
 
+<p>
+Здесь "1" означает HIGH на 10 мкс, а "0" — LOW на 10 мкс. Чтобы достичь нужной длительности, мы просто дублируем биты:
+</p>
+
+<pre>
+  1          - HIGH на 10 мкс  
+  00         - LOW на 20 мкс  
+  111        - HIGH на 30 мкс  
+  0000000000 - LOW на 100 мкс  
+</pre>
+
+<p>
+Установка "bits" сбрасывает "levels" и наоборот. После задания "tick", "bits", "one" и "zero", уровни автоматически генерируются и могут быть просмотрены через "show":
+</p>
+
+<pre>
+  esp32#>sequence 0
+  esp32-seq0>one 1/10               &larr; "Один" это HIGH на 10 тиков
+  esp32-seq0>zero 0/10              &larr; "Ноль" это LOW на 10 тиков
+  esp32-seq0>bits 1001110000000000  
   esp32-seq0>show
   %
   % Sequence #0:
   % Resolution : 1.0000uS  (Frequency: 1000000 Hz)
   % Levels are :
-  % 1/10, 0/10, 0/10, 1/10, 1/10, 1/10 ....              < -- generated
+  % 1/10, 0/10, 0/10, 1/10, 1/10, 1/10 ....              < -- сгенерировано
 </pre>
-</p><p>
-The ESP32's hardware behind this pulse generation is a remote-control perephirial
-which is designed for IR protocols encoding. The difference is that 1 and 0 are 
-not simple levels (say 1 for X microseconds) but pulses. Pulses can be configured
-using "one" and "zero" commands extra arguments. Lets say we want to send a bit 
-string "100111" where logic 1 is a pulse (HIGH 150uS then LOW 50uS) and logic 0 
-is a pulse as well (HIGH 50uS then LOW for 150uS):
-</p><p><pre>
 
+<p>
+Периферия ESP32, отвечающая за генерацию импульсов, изначально предназначена для ИК-протоколов, где 1 и 0 — это не просто уровни, а импульсы. 
+Они настраиваются с помощью аргументов в командах "one" и "zero". Например:
+</p>
+<p>
+  Определим наш алфавит так: единица это HIGH на 150мкс, а затем LOW на 50 мкс; Ноль же определим наоборот: HIGH на 50 и LOW на 150 мкс.
+  Передадим строчку битов 100111 используя указанный алфавит:
+</p>
+<pre>
   esp32#>seq 0
   esp32-seq0>tick 1
   esp32-seq0>one 1/150 0/50
@@ -218,78 +218,88 @@ is a pulse as well (HIGH 50uS then LOW for 150uS):
   % Levels are :
   % 1/150, 0/50, 1/50, 0/150, 1/50, 0/150, 1/150, 0/50,
   % 1/150, 0/50, 1/150, 0/50,
-  % Total: 12 levels, duration: 1200 ticks, (~1200 uS)  < -- total sequence time
-</pre></p>
+  % Total: 12 levels, duration: 1200 ticks, (~1200 uS)
+</pre>
 
-<p><h2 id=mod><a href="#top">&#8686;</a>MODULATION AND END-OF-TRANSMISSION</h2></p>
 <p>
-TBD:
+Обратите внимание на то, что команды one и zero в примере выше задают не <i>уровень</i> а <i>импульс</i>, но команда show показывает, что у нас заданы уровни.
+Так и должно быть: эти уровни были сгенерированы из алвавита и битовой строчки.
 </p>
 
-<p><h2 id=show><a href="#top">&#8686;</a>DISPLAYING INFORMATION</h2></p>
+<p><h2 id=mod><a href="#top">&#8686;</a>МОДУЛЯЦИЯ И ОКОНЧАНИЕ ПЕРЕДАЧИ</h2></p>
 
 <p>
-Command "<b>show sequence</b> <i>NUM</i>" - used to display information on configured sequences. command has 1 mandatory
-argument - a sequence number. Sequences are numbered starting from 0, and total of 10 sequences
-can be created and used.
-</p><p>
-
-    Example output:
-       <pre>
-      esp32#>sh seq 0
-      %
-      % Sequence #0:
-      % Resolution : 1.0000uS  (Frequency: 1000000 Hz)
-      % Levels are
-      % 1/50, 0/20, 1/100, 0/20, 1/100, 0/20, 1/50, 0/20,
-      % 1/50, 0/20, 1/50, 0/20, 1/50, 0/20, 1/100, 0/20,
-      % 1/50, 0/20, 1/100, 0/20, 1/50, 0/20, 1/50, 0/20,
-      % 1/50, 0/20, 1/50, 0/20,
-      % Total: 28 levels, duration: 1180 ticks, (~1180 uS)
-      % Modulation  : yes, "LOW" are modulated at 100Hz, duty 30.00%
-      % Bit sequence is : (14 bits) "10011110101111"
-      % Zero is 1/100 0/20
-      % One is 1/50 0/20
-      % Hold LOW after transmission is done
-      esp32#>
-           </pre>
+В разработке...
 </p>
 
-<p><h2 id=examples><a href="#top">&#8686;</a>EXAMPLES</h2></p>
+<p><h2 id=show><a href="#top">&#8686;</a>ОТОБРАЖЕНИЕ ИНФОРМАЦИИ</h2></p>
+
 <p>
-Example: Create pattern which blink LED connected to GPIO2. We want that LED
-to blink around 1Hz.
-</p><p>
-Given the frequency of 1Hz the tick must be as long as possible and duration of
-each 1 or 0 should be maximal. The maximum tick allowed is 3.2uS so we just 
-choose 3.2 and define "one" and "zero" to maximum length:
-</p><p><pre>
+Команда "<b>show sequence</b> <i>NUM</i>" показывает информацию о последовательности под номером NUM. Всего доступно до 10 последовательностей, нумерация начинается с 0.
+</p>
+
+<p>
+Пример вывода:
+</p>
+
+<pre>
+  esp32#>sh seq 0
+  %
+  % Sequence #0:
+  % Resolution : 1.0000uS  (Frequency: 1000000 Hz)
+  % Levels are
+  % 1/50, 0/20,1/50, 0/20,1/50, 0/20,1/50, 0/20,1/50, 0/20, ...
+  % Total: 28 levels, duration: 1180 ticks, (~1180 uS)
+  % Modulation  : yes, "LOW" are modulated at 100Hz, duty 30.00%
+  % Bit sequence is : (14 bits) "10011110101111"
+  % Zero is 1/100 0/20
+  % One is 1/50 0/20
+  % Hold LOW after transmission is done
+</pre>
+
+<p><h2 id=examples><a href="#top">&#8686;</a>ПРИМЕРЫ</h2></p>
+
+<p>
+Пример: создать последовательность, при которой светодиод на GPIO2 мигает с частотой около 1 Гц.
+</p>
+
+<p>
+Для частоты 1 Гц тик должен быть максимально возможным, а длительность 1 и 0 — максимальной. 
+Максимальный тик — 3.2 мкс. Используем его и зададим максимальную длительность:
+</p>
+
+<pre>
   esp32-seq0>tick 3.2
   esp32-seq0>one 1//
   esp32-seq0>zero 0//
   esp32-seq0>bits 111111111000000000111111111000000000
 </pre>
 
-Note "/" symbol use instead of "32767"
-</p><p>
-Exit sequence configuration mode using "exit" command or by pressing Ctrl+Z. Note 
-that commands can be entered in their short form (say "seq" instead of "sequence" 
-or "ex" instead of "exit")
-</p><p>
-Assign sequence to the pin (start the sequence). If you have LED connected to 
-pin 2 you'll see it blinking
-</p><p><pre>
+<p>
+Знак "/" означает 32767.
+</p>
+
+<p>
+Выйти из режима последовательности можно с помощью "exit" или Ctrl+Z. Можно использовать сокращения: "seq" вместо "sequence", "ex" вместо "exit".
+</p>
+
+<p>
+Запускаем последовательность на пине. Если на pin2 подключен светодиод — он должен мигать:
+</p>
+
+<pre>
   esp32-seq0>ex
-  esp32#>pin 2 seq 0
+  esp32#>pin 2 seq 0 loop inf & &larr; "loop inf &" == "повторять бесконечно, в фоне"
   % Sending sequence 0 over GPIO 2
-  esp32#>
-</pre></p><p>
-There are some extra commands in "sequence" category which were not covered
-in this text. Explore them by typing "?" before command name and pressing
-&lt;Enter&gt;
-</p><p>
-NOTE: by default, command which sends sequence ("<b>pin X sequence Y</b>") is blocking.
-      Use "&" flag as the very last argument to the "pin" command to make it non-blocking (<a href="Basics.html#background">run in a background</a>)
+</pre>
+
+<p>
+Есть и дополнительные команды категории "sequence", которые не описаны здесь. Посмотреть их можно с помощью "<kbd>?</kbd>" перед именем команды и нажатием Enter.
+</p>
+
+<p>
+Примечание: по умолчанию команда отправки последовательности ("<b>pin X sequence Y</b>") является блокирующей. 
+Чтобы сделать её неблокирующей, добавьте "&" в конце (<a href="Basics.ru.html#background">запуск в фоновом режиме</a>).
 </p>
 
 </body>

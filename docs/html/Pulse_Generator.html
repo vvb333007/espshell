@@ -1,211 +1,180 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <title>ESPShell : Pulse sequence generator</title>
+  <title>ESPShell: Pulse Sequence Generator</title>
   <link rel="stylesheet" href="espshell.css">
 </head>
 <body>
-<p align=center><a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: Index" width="70%" height="70%" /></a></p>
+<p align=center><a href="index.ru.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: Index" width="70%" height="70%" /></a></p>
 <p>
   <ul>
     <li><a href="#pg">Pulse pattern generation</a></li>
-    <li><a href="#basic">Basic concept: "tick", "level" and "pulse"</a></li>
-    <li><a href="#send">Sending a pulse sequences</a></li>
+    <li><a href="#basic">Basic concept: "tick", "level", and "pulse"</a></li>
+    <li><a href="#send">Sending pulse sequences</a></li>
     <li><a href="#bits">Bit strings</a></li>
     <li><a href="#mod">Modulation & End-Of-Transmission</a></li>
     <li><a href="#show">Displaying information</a></li>
     <li><a href="#examples">Examples</a></li>
-
   </ul>
 </p>
 
-<p><h2 id=pg><a href="#top">&#8686;</a>PULSE PATTERN GENERATION</h2></p>
+<p><h2 id=pg><a href="#top">&#8686;</a> PULSE PATTERN GENERATION</h2></p>
 
 <p>
-ESP32 has dedicated peripherial for pulse train generation called RMT
-which main purpose is to generate arbitrary patterns with quite high 
-resolution down to 0.0125 microseconds.
+ESP32 features a dedicated peripheral called RMT (Remote Control) for pulse train generation. Its primary purpose is to produce arbitrary signal patterns with high precision — down to 0.0125 microseconds.
 </p>
 
 <p>
-It can be used as a general-purpose signal generator or an IR remote signal generator
+It can be used as a general-purpose signal generator or for IR remote signal generation.
 </p>
 
-
-<p><h2 id=basic><a href="#top">&#8686;</a>BASIC CONCEPT: "TICK", "LEVEL" AND "PULSE"</h2></p>
+<p><h2 id=basic><a href="#top">&#8686;</a> BASIC CONCEPT: "TICK", "LEVEL", AND "PULSE"</h2></p>
 
 <p>
-Pulse pattern generation is available via "<b>sequence</b> <i>SEQ_ID</i>" and "<b>pin</b> <i>PIN</i> <b>seq</b> <i>SEQ_ID</i>"
-commands: the first one defines <i>a sequence of pulses</i> to be generated, 
-while second actually sends it. The sequence number (<i>SEQ_ID</i>) must be in range
-0..9 thus 10 different sequences can be created and used. In cases when more than 10 sequences are required one <a href="Compile.html">can change SEQUENCE_NUM macro</a> in <b>espshell.h</b>
+Pulse pattern generation is controlled using the "<b>sequence</b> <i>SEQ_ID</i>" and "<b>pin</b> <i>PIN</i> <b>seq</b> <i>SEQ_ID</i>" commands. The former defines <i>a sequence of pulses</i> to generate, while the latter transmits it. The sequence number (<i>SEQ_ID</i>) must be in the range 0–9, allowing up to 10 different sequences to be created. If more are needed, one can <a href="Customizing.html">modify the SEQUENCE_NUM macro</a> in <b>espshell.h</b>.
 </p>
 
 <p>
-Before we proceed with examples and commands description lets look at terminology used through the document:
+Before diving into commands and examples, let’s clarify some terminology used throughout this document:
 </p>
 
-<p>
 <ul>
-  <li>A <b>level</b> is either logic "0" or logic "1": it is simply a <i>voltage level</i> hence the name. Sequence can be made of <i>levels</i> or <i>pulses</i>.</li>
-  <li>A <b>pulse</b> is two consecutive <i>levels</i>: "logic 1 for X nanoseconds, then logic 0 for Y nanoseconds". Pulses are used in IR remote control protocol; Manchester encoding can be viewed as <i>pulse</i> sequence also.
-Unlike <i>levels</i>, pulses can be <i>modulated</i> (modulation can be applied to logic 1 or logic 0) to create pulse sequences suitable for IR Remote (NEC protocol).</li>
-  <li>A <b>tick</b> is a time interval. All time intervals in a sequence are measured in "ticks". Tick can be set to anything from 0.0125us up to 3.2us: it is user-defined value. When new sequence is created, its "tick" value is set to 1uS (default value).</li>
+  <li><b>Level</b>: either logic "0" or logic "1" — a voltage level. A sequence can consist of <i>levels</i> or <i>pulses</i>.</li>
+  <li><b>Pulse</b>: two consecutive <i>levels</i>, e.g., "logic 1 for X nanoseconds, then logic 0 for Y nanoseconds." Pulses are used in IR protocols and Manchester encoding. Unlike levels, pulses can be <i>modulated</i> (modulation applies to either logic 1 or logic 0) to create IR-compatible signals like those used in the NEC protocol.</li>
+  <li><b>Tick</b>: a time unit used in sequences. Tick duration can range from 0.0125 µs to 3.2 µs and is defined by the user. When a sequence is created, its tick value defaults to 1 µs.</li>
 </ul>
-</p>
-
-
-
 
 <p>
-Lets solve a simple task: suppose we want to generate number of pulses on pin2 as follows:
+Let’s solve a simple task: suppose we want to generate a series of pulses on pin 2:
 </p>
 
 <p>
-"Set pin2 HIGH for 10uS, then LOW for 20uS then HIGH again for 30uS and 
-finally LOW for 100 microseconds"
+"Set pin 2 HIGH for 10 µs, then LOW for 20 µs, then HIGH for 30 µs, and finally LOW for 100 µs."
 </p>
 
 <p>
-We start from entering sequence configuration mode:
+We begin by entering sequence configuration mode:
 </p>
-
-<p>
 <pre>
   esp32#>sequence 0
   esp32-seq0>
 </pre>
+
+<p>
+The command "<b>sequence 0</b>" creates an empty Sequence0 and enters <i>sequence configuration mode</i>. The shell prompt changes to "<b>esp32-seq0></b>" to indicate the new mode. To exit, use "<b>exit</b>" or press <kbd>Ctrl+Z</kbd>.
 </p>
 
 <p>
-Command "<b>sequence 0</b>"  creates Sequence0 pulse sequence (an empty sequence) and enters <i>sequence configuration mode</i>. This command changes 
-the espshell prompt to "<b>esp32-seq0></b>" indicating that user is in sequence configuration mode. To exit this mode type "<b>exit</b>" or press <kbd>Ctrl+Z</kbd>.
+First, set the resolution for the sequence — the so-called tick length:
 </p>
-
-<p>
-First we need to set a <i>resolution</i> for the sequence, a so-called "tick length".
-</p>
-
-<p>
-Lets choose "<b>tick</b>" to be 1 microsecond long:
-</p>
-<p><pre>
+<pre>
   esp32#>sequence 0
   esp32-seq0>tick 1
 </pre>
+
+<p>
+By default, sequences are created with a 1 µs tick, so the "tick 1" command is optional.
 </p>
 
 <p>
-By default sequences are created with the tick set to 1 microsecond so 
-command "tick 1" can be omitted in example above
+Now, input the sequence <i>as a series of <b>levels</b></i>:
 </p>
-
-<p>
-Now input our sequence <i>as a sequence of <b>levels</b></i>:
-</p>
-
-<p><pre>
+<pre>
   esp32#>sequence 0
   esp32-seq0>tick 1
   esp32-seq0>levels 1/10 0/20 1/30 0/100
 </pre>
+
+<p>
+The "levels" command accepts arguments in the form "A/B", where A is "1" or "0", and B is the duration (1–32767 ticks). Use "show" to inspect the total sequence duration in ticks and microseconds. Tip: "1//" is a shorthand for "1/32767".
 </p>
 
 <p>
-Command "levels" takes arguments in form "A/B" where "A" is either "1" or "0" and "B" tells how long this level must be
-held (1..32767 ticks). Using command "show" one can check the sequence total
-length in ticks and microseconds. Hint: use "/" as an alias to 32767: "1//"
-is the same as "1/32767"
+The command above means: set output HIGH for 10 ticks, LOW for 20 ticks, etc. Since we use a 1 µs tick, the durations directly match the microsecond values.
 </p>
+
+<p><h2 id=send><a href="#top">&#8686;</a> SENDING PULSE SEQUENCES</h2></p>
 
 <p>
-Command "<b>levels</b>" above says: "Set output to logic 1 for 10 ticks, then set it to 0 for 20 ticks..." etc. Since we chose out tick to be 1 microsecond then 
-these length are simply lengths in microseconds
+Now that sequence 0 is configured, let’s send it on GPIO2:
 </p>
-
-
-<p><h2 id=send><a href="#top">&#8686;</a>SENDING A PULSE SEQUENCES</h2></p>
-
-<p>
-Now we have configured sequence number 0. Lets play it back on GPIO2:
-</p>
-
-<p><pre>
+<pre>
   esp32#>sequence 0
   esp32-seq0>tick 1
   esp32-seq0>levels 1/10 0/20 1/30 0/100
   esp32-seq0>exit
   esp32#>pin 2 seq 0
 </pre>
-</p>
 
 <p>
-Or, send it 4 times in a row:
+To send it 4 times in a row:
 </p>
-<p><pre>
+<pre>
   esp32#>sequence 0
   esp32-seq0>tick 1
   esp32-seq0>levels 1/10 0/20 1/30 0/100
   esp32-seq0>exit
-  esp32#>pin 2 seq 0                          <-- send once
-  esp32#>pin 2 seq 0 seq 0 seq 0 seq 0        <-- send 4 times
+  esp32#>pin 2 seq 0
+  esp32#>pin 2 seq 0 seq 0 seq 0 seq 0
 </pre>
+
+<p>
+NOTE: An alternative is to use the "pin 2 seq 0 loop 4" command.
+</p>
+
+<p><h2 id=bits><a href="#top">&#8686;</a> BITS TO LEVELS, BITS TO PULSES</h2></p>
+
+<p>
+While you can define all levels manually, it becomes impractical for longer sequences. Instead, use the "<b>bits</b>", "<b>one</b>", and "<b>zero</b>" commands.
 </p>
 
 <p>
-NOTE: Another way to send 4 sequences as shown above is to use "pin 2 seq 0 loop 4" command
+The "bits" command defines the bit stream, while "one" and "zero" specify how logic 1 and 0 are represented in terms of HIGH/LOW durations. Let’s recreate the earlier pulse sequence:
+</p>
+<p align=center>
+"HIGH for 10 µs, LOW 20 µs, HIGH 30 µs, LOW 100 µs"
 </p>
 
-
-<p><h2 id=bits><a href="#top">&#8686;</a>BITS TO LEVELS, BITS TO PULSES</h2></p>
 <p>
-Although you can set all the levels manually just as in examples above but for longer sequences it may be impractical.
-Alternative way to define a sequence is to use  "<b>bits</b>", "<b>one</b>" and "<b>zero</b>" 
-commands instead of encoding all individual values using "<b>levels</b>" command. 
-</p><p>
-Command "bits" defines a bit stream to be sent while "one" and "zero" commands
-define <i>what 1 and 0 actually are</i> in terms of LOW/HIGH. Lets say we want to send 
-sequence of pulses below (same sequence is used in a previous example):
-</p><p align=center>
-  "high for 10us, low 20us, high 30us,low 100us"
-</p><p>
-Here are shell commands which do the job (note we use default tick of 1us ):
-</p><p><pre>
+Shell commands:
+</p>
+<pre>
   esp32#>sequence 0
   esp32-seq0>bits 1001110000000000
   esp32-seq0>one 1/10
   esp32-seq0>zero 0/10
-</pre></p><p>
-Commands "one" and "zero" define "1" to be "HIGH for 10uS long" and "0" is defined as "LOW for 10uS"
-as well. Then we use proper number of 1s and 0s to achieve timings we need:
-</p><p><pre>
-  1          - HIGH for 10uS
-  00         - LOW  for 20uS
-  111        - HIGH for 30uS
-  0000000000 - LOW for 100uS
 </pre>
-</p><p>
-Command "<b>bits</b>" discards previously set "<b>levels</b>" and vice versa: setting "<b>levels</b>"
-will reset "<b>bits</b>". Once "tick", "bits", "one" and "zero" are set then levels
-are automatically generated and can be seen with "<b>show</b>" command:
-</p><p><pre>
 
+<p>
+"One" defines logic 1 as HIGH for 10 µs, and "zero" defines logic 0 as LOW for 10 µs. The bit stream encodes timing as follows:
+</p>
+<pre>
+  1          - HIGH for 10 µs
+  00         - LOW for 20 µs
+  111        - HIGH for 30 µs
+  0000000000 - LOW for 100 µs
+</pre>
+
+<p>
+The "bits" command clears any previously set "levels", and vice versa. Once tick, bits, one, and zero are configured, levels are generated automatically and shown via "show":
+</p>
+<pre>
   esp32-seq0>show
   %
   % Sequence #0:
   % Resolution : 1.0000uS  (Frequency: 1000000 Hz)
   % Levels are :
-  % 1/10, 0/10, 0/10, 1/10, 1/10, 1/10 ....              < -- generated
+  % 1/10, 0/10, 0/10, 1/10, 1/10, 1/10 ....
 </pre>
-</p><p>
-The ESP32's hardware behind this pulse generation is a remote-control perephirial
-which is designed for IR protocols encoding. The difference is that 1 and 0 are 
-not simple levels (say 1 for X microseconds) but pulses. Pulses can be configured
-using "one" and "zero" commands extra arguments. Lets say we want to send a bit 
-string "100111" where logic 1 is a pulse (HIGH 150uS then LOW 50uS) and logic 0 
-is a pulse as well (HIGH 50uS then LOW for 150uS):
-</p><p><pre>
 
+<p>
+The ESP32 RMT peripheral is designed for IR protocol encoding, where 1 and 0 are typically <i>pulses</i> rather than static levels. Pulses can be defined using "one" and "zero" with two durations each. For example, to encode:
+</p>
+<ul>
+<li>logic 1 as HIGH 150 µs then LOW 50 µs</li>
+<li>logic 0 as HIGH 50 µs then LOW 150 µs</li>
+</ul>
+<pre>
   esp32#>seq 0
   esp32-seq0>tick 1
   esp32-seq0>one 1/150 0/50
@@ -218,25 +187,23 @@ is a pulse as well (HIGH 50uS then LOW for 150uS):
   % Levels are :
   % 1/150, 0/50, 1/50, 0/150, 1/50, 0/150, 1/150, 0/50,
   % 1/150, 0/50, 1/150, 0/50,
-  % Total: 12 levels, duration: 1200 ticks, (~1200 uS)  < -- total sequence time
-</pre></p>
+  % Total: 12 levels, duration: 1200 ticks, (~1200 uS)  &larr; total sequence time
+</pre>
 
-<p><h2 id=mod><a href="#top">&#8686;</a>MODULATION AND END-OF-TRANSMISSION</h2></p>
+<p><h2 id=mod><a href="#top">&#8686;</a> MODULATION AND END-OF-TRANSMISSION</h2></p>
 <p>
-TBD:
+TBD
 </p>
 
-<p><h2 id=show><a href="#top">&#8686;</a>DISPLAYING INFORMATION</h2></p>
+<p><h2 id=show><a href="#top">&#8686;</a> DISPLAYING INFORMATION</h2></p>
 
 <p>
-Command "<b>show sequence</b> <i>NUM</i>" - used to display information on configured sequences. command has 1 mandatory
-argument - a sequence number. Sequences are numbered starting from 0, and total of 10 sequences
-can be created and used.
-</p><p>
+Use the "<b>show sequence</b> <i>NUM</i>" command to view a configured sequence. The command requires a sequence number (0–9).
+</p>
 
-    Example output:
-       <pre>
-      esp32#>sh seq 0
+<p>Example output:</p>
+<pre>
+esp32#>sh seq 0
       %
       % Sequence #0:
       % Resolution : 1.0000uS  (Frequency: 1000000 Hz)
@@ -252,44 +219,47 @@ can be created and used.
       % One is 1/50 0/20
       % Hold LOW after transmission is done
       esp32#>
-           </pre>
+</pre>
+
+<p><h2 id=examples><a href="#top">&#8686;</a> EXAMPLES</h2></p>
+
+<p>
+Example: Blink an LED connected to GPIO2 at ~1 Hz.
 </p>
 
-<p><h2 id=examples><a href="#top">&#8686;</a>EXAMPLES</h2></p>
 <p>
-Example: Create pattern which blink LED connected to GPIO2. We want that LED
-to blink around 1Hz.
-</p><p>
-Given the frequency of 1Hz the tick must be as long as possible and duration of
-each 1 or 0 should be maximal. The maximum tick allowed is 3.2uS so we just 
-choose 3.2 and define "one" and "zero" to maximum length:
-</p><p><pre>
+Given a 1 Hz frequency, choose the longest possible tick and level durations. The maximum tick is 3.2 µs. Define "one" and "zero" with the maximum length:
+</p>
+<pre>
   esp32-seq0>tick 3.2
   esp32-seq0>one 1//
   esp32-seq0>zero 0//
   esp32-seq0>bits 111111111000000000111111111000000000
 </pre>
 
-Note "/" symbol use instead of "32767"
-</p><p>
-Exit sequence configuration mode using "exit" command or by pressing Ctrl+Z. Note 
-that commands can be entered in their short form (say "seq" instead of "sequence" 
-or "ex" instead of "exit")
-</p><p>
-Assign sequence to the pin (start the sequence). If you have LED connected to 
-pin 2 you'll see it blinking
-</p><p><pre>
+<p>
+Note: The "/" symbol is a shortcut for "32767"
+</p>
+
+<p>
+Exit sequence mode using "exit" or Ctrl+Z. You can also use short forms like "seq" and "ex".
+</p>
+
+<p>
+To play the sequence (e.g., blink the LED on GPIO2):
+</p>
+<pre>
   esp32-seq0>ex
   esp32#>pin 2 seq 0
   % Sending sequence 0 over GPIO 2
-  esp32#>
-</pre></p><p>
-There are some extra commands in "sequence" category which were not covered
-in this text. Explore them by typing "?" before command name and pressing
-&lt;Enter&gt;
-</p><p>
-NOTE: by default, command which sends sequence ("<b>pin X sequence Y</b>") is blocking.
-      Use "&" flag as the very last argument to the "pin" command to make it non-blocking (<a href="Basics.html#background">run in a background</a>)
+</pre>
+
+<p>
+Several additional "sequence" commands are not covered here. Type "?" before a command name to explore further.
+</p>
+
+<p>
+NOTE: By default, the "pin X sequence Y" command is blocking. To make it non-blocking, append the "&" flag (<a href="Basics.html#background">run in background</a>).
 </p>
 
 </body>
