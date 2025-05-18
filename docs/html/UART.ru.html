@@ -1,23 +1,23 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
   <title>ESPShell: UART</title>
   <link rel="stylesheet" href="espshell.css">
 </head>
 <body>
-<p align=center><a href="index.ru.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: UARTs" width="70%" height="70%" /></a></p>
+<p align=center><a href="index.ru.html"><img src="i/espshell_logo.jpg" alt="ESPShell для Arduino :: UART" width="70%" height="70%" /></a></p>
 <ul>
-  <li><a href="#uarts">UARTs on ESP32</a></li>
-  <li><a href="#send">Initializing UART: Sending and Receiving Data</a></li>
-  <li><a href="#tap">UART Bridge: Talk to Modems & GPS</a></li>
+  <li><a href="#uarts">UART на ESP32</a></li>
+  <li><a href="#send">Инициализация UART: передача и приём данных</a></li>
+  <li><a href="#tap">UART-мост: взаимодействие с модемами и GPS</a></li>
 </ul>
 
-<h2 id=uarts><a href="#top">&#8686;</a>UARTs on ESP32</h2>
+<h2 id=uarts><a href="#top">&#8686;</a>UART на ESP32</h2>
 
 <p>
-The ESP32 has up to 3 hardware UARTs depending on the model (the basic ESP32 has 3 UARTs, while the ESP32-S2 has two). UART0 is used as the primary input/output port for both programming the chip and sketch I/O. In the Arduino framework, it is referenced as <span class=func>Serial0</span> or <span class=func>Serial</span>. (On USB-OTG-enabled boards, the USB port is used as the primary I/O.)
+ESP32 имеет до 3 аппаратных UART в зависимости от модели (обычный ESP32 имеет 3 UART, а ESP32-S2 — два). UART0 используется в качестве основного порта ввода/вывода как для прошивки, так и для ввода/вывода скетча. В среде Arduino он обозначается как <span class=func>Serial0</span> или <span class=func>Serial</span>. (На платах с поддержкой USB-OTG основным портом ввода/вывода выступает USB.)
 </p><p>
-When ESPShell starts, it waits for the sketch to initialize <span class=func>Serial</span>. This is typically done in <span class=func>setup()</span>, like this:
+При запуске ESPShell ожидает инициализации <span class=func>Serial</span> скетчем. Обычно это делается в <span class=func>setup()</span>, например так:
 </p><p>
 <pre>
 void setup() {
@@ -27,58 +27,58 @@ void setup() {
 }
 </pre>
 </p><p>
-Once ESPShell detects that <span class=func>Serial</span> is up and running, it begins reading and executing user commands.
+Как только ESPShell обнаружит, что <span class=func>Serial</span> работает, он начнёт принимать и выполнять команды пользователя.
 </p><p>
-The main idea is to simplify debugging of UART-to-UART communication between the ESP32 and another device (e.g., a GSM modem or GPS module). UART commands allow you to initialize a UART interface on arbitrary pins and communicate with the connected device.
+Основная идея — упростить отладку связи по UART между ESP32 и другим устройством (например, GSM-модемом или GPS-модулем). Команды UART позволяют инициализировать интерфейс UART на произвольных пинах и взаимодействовать с подключённым устройством.
 </p><p>
-In conjunction with the "<b>suspend</b>" command, this can also be used to reconfigure the UART used by the sketch (e.g., to adjust UART speed or change pin numbers).
+Совместно с командой "<b>suspend</b>" это также может быть использовано для перенастройки UART, используемого скетчем (например, для изменения скорости или смены пинов).
 </p>
 
-<h2 id=send><a href="#top">&#8686;</a>Initializing UART: Sending and Receiving Data</h2>
+<h2 id=send><a href="#top">&#8686;</a>Инициализация UART: передача и приём данных</h2>
 
 <p>
-UARTs are accessed using the "<b>uart</b> <i>UART_NUMBER</i>" command. After executing this command, the ESPShell prompt changes from "esp32#>" to "esp32-uartX>" (where X is the UART number), indicating that you are in UART configuration mode. Entering "?" and pressing &lt;Enter&gt; will show a full list of available commands:
+UART настраивается с помощью команды "<b>uart</b> <i>UART_НОМЕР</i>". После её выполнения приглашение ESPShell меняется с "esp32#>" на "esp32-uartX>", где X — номер UART, что означает переход в режим настройки UART. Ввод "?" и нажатие &lt;Enter&gt; покажет список доступных команд:
 </p>
 <pre>
  esp32#>ua 1
  esp32-uart1>?
- % Enter "? command" to get details about the command.
- % List of available commands:
+ % Введите "? команда", чтобы получить подробности.
+ % Список доступных команд:
  %
- % "?"        : Show the list of available commands
- % "up"       : Initialize UART (pins/speed)
- % "baud"     : Set baud rate
- % "down"     : Shut down
- % "read"     : Read data from UART
- % "tap"      : Talk to UART device
- % "write"    : Send bytes over this UART
- % "exit"     : Exit
+ % "?"        : Показать список команд
+ % "up"       : Инициализировать UART (пины/скорость)
+ % "baud"     : Изменить скорость UART
+ % "down"     : Остановить UART
+ % "read"     : Прочитать данные из UART
+ % "tap"      : Подключиться к устройству по UART
+ % "write"    : Отправить байты по UART
+ % "exit"     : Выход
  esp32-uart1>
 </pre>
 <p>
-The output above shows that there are 6 UART-specific commands available, along with 2 common commands ("?" and "exit"). The question mark prints the command list, and "exit" (or Ctrl+Z) exits the UART configuration mode.
+Как видно из вывода выше, доступно 6 команд, специфичных для UART, а также 2 общие команды ("?" и "exit"). Знак вопроса выводит список команд, а "exit" (или Ctrl+Z) завершает режим конфигурации UART.
 </p><p>
-You can also use global commands from within the UART context. For example, the "<b>pin</b>" command works inside "esp32-uart1>" as well.
+Также можно использовать глобальные команды внутри контекста UART. Например, команда "<b>pin</b>" работает и в "esp32-uart1>".
 </p>
 
 <table>
-  <tr><td><b>Command</b></td><td><b>Description</b></td></tr>
+  <tr><td><b>Команда</b></td><td><b>Описание</b></td></tr>
   
   <tr><td><p>up</p></td><td>
-    <p><b>up</b> <i>RX_PIN</i> <i>TX_PIN</i> <i>SPEED</i> [<i>BITS</i> [no|even|odd [1|1.5|2]]]</p>
-    <p>Initializes the UART. If the UART is already up, this command does nothing.</p>
-    <p>The command has 3 mandatory parameters (RX pin, TX pin, baud rate) and 3 optional ones (data bits, parity, stop bits).</p>
-    <p>Baud rate can later be changed using the "<b>baud</b>" command.</p>
-    <p>No other UART-specific commands will work until "up" completes successfully.</p>
-    <p>Default values for optional parameters are: 8 data bits, no parity, 1 stop bit.</p>
-    <p>Valid <i>BITS</i> values: 5, 6, 7 or 8 bits. Parity: "no", "even", or "odd". Stop bits: 1, 1.5, or 2.</p>
-    <p>Example: Initialize UART2 on pins 18 and 19 at 115200 baud:</p>
+    <p><b>up</b> <i>RX_PIN</i> <i>TX_PIN</i> <i>СКОРОСТЬ</i> [<i>БИТЫ</i> [no|even|odd [1|1.5|2]]]</p>
+    <p>Инициализирует UART. Если UART уже активен, команда ничего не делает.</p>
+    <p>Команда требует 3 обязательных параметра (пины RX и TX, скорость) и до 3 необязательных (число бит данных, чётность, стоп-биты).</p>
+    <p>Скорость можно изменить позже командой "<b>baud</b>".</p>
+    <p>Пока команда "up" не выполнится успешно, другие команды UART использовать нельзя.</p>
+    <p>Значения по умолчанию: 8 бит данных, без чётности, 1 стоп-бит.</p>
+    <p>Допустимые значения <i>БИТЫ</i>: 5, 6, 7 или 8. Чётность: "no", "even" или "odd". Стоп-биты: 1, 1.5 или 2.</p>
+    <p>Пример: инициализация UART2 на пинах 18 и 19 со скоростью 115200:</p>
 <pre>
   esp32#>uart 2
   esp32-uart2>up 18 19 115200
 </pre>
 
-    <p>Example: Initialize UART2 on pins 18 and 19 at 9600 baud, 8 data bits, 1 stop bit, "even" parity:</p>
+    <p>Пример: инициализация UART2 на пинах 18 и 19 со скоростью 9600, 8 бит, 1 стоп-бит, чётность "even":</p>
 <pre>
   esp32#>uart 2
   esp32-uart2>up 18 19 9600 8 even 1
@@ -88,40 +88,40 @@ You can also use global commands from within the UART context. For example, the 
 
   <tr><td><p>down</p></td><td>
     <p><b>down</b></p>
-    <p>Shuts down the previously initialized UART. If the UART is not up, the command has no effect.</p>
-    <p>Note: Your sketch may still be reading/writing on the UART when you run "down". Use the global "<b>suspend</b>" command to pause the sketch and avoid undefined behavior.</p>
+    <p>Останавливает ранее инициализированный UART. Если UART не был активен, команда не делает ничего.</p>
+    <p>Примечание: ваш скетч может продолжать использовать UART во время выполнения "down". Используйте глобальную команду "<b>suspend</b>", чтобы приостановить скетч и избежать непредсказуемого поведения.</p>
   </td></tr>
 
   <tr><td><p>baud</p></td><td>
-    <p><b>baud</b> <i>SPEED</i></p>
-    <p>Changes the UART speed. Changing the baud rate on UART0 may cause you to lose connection with your serial monitor. Adjust its baud rate accordingly.</p>
+    <p><b>baud</b> <i>СКОРОСТЬ</i></p>
+    <p>Изменяет скорость UART. При изменении скорости UART0 может прерваться связь с монитором порта. Убедитесь, что вы установили ту же скорость на мониторе.</p>
   </td></tr>
 
   <tr><td><p>read</p></td><td>
     <p><b>read</b></p>
-    <p>Reads all bytes available at the moment of execution. Printable characters (including \t, \n, \r) are shown as-is. Non-printable characters are shown as "\0xAB", where AB is the hex value.</p>
+    <p>Читает все доступные на данный момент байты. Печатаемые символы (включая \t, \n, \r) выводятся как есть. Непечатаемые отображаются как "\0xAB", где AB — шестнадцатеричное значение.</p>
   </td></tr>
 
   <tr><td><p>write</p></td><td>
-    <p><b>write</b> <i>TEXT1</i> <i>TEXT2</i> ... <i>TEXTn</i></p>
-    <p>Sends strings of bytes over UART. You can use printable characters or special sequences: "\n", "\r", "\t", "\\" for LF, CR, TAB, and backslash. Arbitrary bytes can be sent using <b>\AB</b> where AB is the hex value.</p>
-    <p>Multiple spaces are compressed to one (commands "<b>write Hello&nbsp;&nbsp;&nbsp;&nbsp;World!</b>" and "<b>write Hello World!</b>" are equivalent.). To send several spaces, use "\20" (ASCII 32): : "<b>write</b> Hello\20\20\20World!"</p>
-    <p>Using command "<b>write</b>" on UART0 sends data directly to your serial monitor:</p>
+    <p><b>write</b> <i>ТЕКСТ1</i> <i>ТЕКСТ2</i> ... <i>ТЕКСТn</i></p>
+    <p>Отправляет строку байтов по UART. Допустимы печатаемые символы и спецпоследовательности: "\n", "\r", "\t", "\\" для перевода строки, возврата каретки, табуляции и обратного слэша. Можно отправлять произвольные байты через <b>\AB</b>, где AB — hex-код.</p>
+    <p>Несколько пробелов сокращаются до одного (команды "<b>write Hello&nbsp;&nbsp;&nbsp;&nbsp;World!</b>" и "<b>write Hello World!</b>" эквивалентны). Чтобы отправить несколько пробелов, используйте "\20" (ASCII 32): "<b>write</b> Hello\20\20\20World!"</p>
+    <p>При использовании "<b>write</b>" на UART0 данные отправляются напрямую в монитор порта:</p>
 
     <p align=center>
-      <img src="i/uart0_write.jpg" width="70%" height="70%" alt="Typical view" /><br>
-      <i>Fig. 1: "write" command executed on UART0</i>
+      <img src="i/uart0_write.jpg" width="70%" height="70%" alt="Типичное отображение" /><br>
+      <i>Рис. 1: команда "write" на UART0</i>
     </p>
 
-    <p>Example: Communicate with a SIMCOM SIM7600E modem on pins 21 (RX) and 22 (TX):</p>
+    <p>Пример: обмен данными с модемом SIMCOM SIM7600E на пинах 21 (RX) и 22 (TX):</p>
 <pre>  
   esp32#>uart 2
   esp32-uart2>up 21 22 115200
-  esp32-uart2>write \ff\ff\CC\r\n    &larr; Send junk bytes: ignored by the modem
+  esp32-uart2>write \ff\ff\CC\r\n    &larr; Отправка мусора: игнорируется модемом
   5 bytes sent 
-  esp32-uart2>write ATI\r\n          &larr; Send ATI command
+  esp32-uart2>write ATI\r\n          &larr; Отправка команды ATI
   5 bytes sent
-  esp32-uart2>read                   &larr; Read reply
+  esp32-uart2>read                   &larr; Чтение ответа
   ATI
   Manufacturer: SIMCOM INCORPORATED
   Model: SIMCOM_SIM7600E
@@ -133,33 +133,33 @@ You can also use global commands from within the UART context. For example, the 
   
   137 bytes read
 </pre>
-<p>This example shows how to set up a UART and send the "ATI" command to a device on UART2. The first "write" sends junk, the second sends a valid command. "read" retrieves the modem's response.</p>
+<p>Этот пример показывает, как настроить UART и отправить команду "ATI" устройству на UART2. Первая команда "write" посылает мусор, вторая — правильную команду. "read" получает ответ модема.</p>
   </td></tr>
 </table>
 
-<h2 id=tap><a href="#top">&#8686;</a>Talking Directly to the Device</h2>
+<h2 id=tap><a href="#top">&#8686;</a>Прямое взаимодействие с устройством</h2>
 <p>
-If you have a GSM/LTE modem connected to your ESP32's UART, you may want to send AT commands. Or maybe you have a GPS module and want to monitor its NMEA output. Or perhaps two ESP32s are connected via UART, both running ESPShell, and you'd like to run remote shell commands.
+Если у вас подключён GSM/LTE модем к UART ESP32, возможно, вы захотите отправлять AT-команды. Или у вас есть GPS-модуль и вы хотите наблюдать за его выводом NMEA. Или два ESP32 соединены через UART и оба работают под управлением ESPShell — и вы хотите выполнять удалённые команды.
 </p>
 <p>
-All this is possible using the "<b>tap</b>" command, which creates a bridge between the user terminal (e.g., UART0) and another UART:
+Всё это возможно с помощью команды "<b>tap</b>", которая создаёт мост между пользовательским терминалом (например, UART0) и другим UART:
 </p>
 <table>
-  <tr><td><b>Command</b></td><td><b>Description</b></td></tr>
+  <tr><td><b>Команда</b></td><td><b>Описание</b></td></tr>
   
   <tr><td><p>tap</p></td><td>
     <p><b>tap</b></p>
-    <p>Bridges the user terminal to the connected UART device. All output from the UART is forwarded to the user, and all user input is sent to the UART. This is especially useful for debugging modems with AT commands.</p>
-    <p><b>Note:</b> Arduino Serial Monitor does not support pressing <kbd>Ctrl+C</kbd> to exit tap mode.</p>
+    <p>Устанавливает мост между терминалом пользователя и устройством на UART. Всё, что приходит с UART, отображается пользователю, а всё, что вводит пользователь, отправляется на UART. Особенно полезно при отладке модемов с AT-командами.</p>
+    <p><b>Примечание:</b> монитор порта Arduino не поддерживает выход из режима tap по <kbd>Ctrl+C</kbd>.</p>
 
-    <p>Example: Communicate with a SIM7600E modem on pins 18 (RX) and 19 (TX), send the ATI command, and exit:</p>
+    <p>Пример: подключение к модему SIM7600E на пинах 18 (RX) и 19 (TX), отправка команды ATI и выход:</p>
 <pre> 
   esp32#>uart 1
   esp32-uart1>up 18 19 115200
   esp32-uart1>tap
   Tapping to UART1, CTRL+C to exit
-  ATI                               &larr; Sent by user
-  Manufacturer: SIMCOM INCORPORATED &larr; This and below: a modem reply
+  ATI                               &larr; Отправлено пользователем
+  Manufacturer: SIMCOM INCORPORATED &larr; Ответ модема
   Model: SIMCOM_SIM7600E
   Revision: SIM7600M21-A_V1.1
   IMEI: 861005075537800
@@ -167,7 +167,7 @@ All this is possible using the "<b>tap</b>" command, which creates a bridge betw
 
   OK
 
-  Exit                              &larr; Ctrl+C pressed
+  Exit                              &larr; Нажат Ctrl+C
   esp32#>
 </pre> 
   </td></tr>
