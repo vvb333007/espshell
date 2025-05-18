@@ -1,84 +1,80 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
   <title>ESPShell : I2C</title>
   <link rel="stylesheet" href="espshell.css">
 </head>
 <body>
-<p align=center><a href="index.ru.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: I2C" width="70%" height="70%" /></a></p>
-<p>
-  <ul>
-    <li><a href="#iic">I2C bus on ESP32</a></li>
-    <li><a href="#up">Setting up & shutting down an I2C bus</a></li>
-    <li><a href="#scan">Scanning for devices</a></li>
-    <li><a href="#help">Sending and receiving data</a></li>
-    <li><a href="#examples">Examples : RTC & EEPROM access</a></li>
-  </ul>
-</p>
+<p align="center"><a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell для Arduino :: I2C" width="70%" height="70%" /></a></p>
 
-<p><h2 id=wit><a href="#top">&#8686;</a>I<sup>2</sup>C BUS</h2></p>
+<ul>
+  <li><a href="#iic">Шина I2C на ESP32</a></li>
+  <li><a href="#up">Инициализация и завершение работы I2C</a></li>
+  <li><a href="#scan">Сканирование устройств</a></li>
+  <li><a href="#help">Отправка и приём данных</a></li>
+  <li><a href="#examples">Примеры: доступ к RTC и EEPROM</a></li>
+</ul>
+
+<h2 id="iic"><a href="#top">&#8686;</a>ШИНА I<sup>2</sup>C</h2>
 
 <p>
-The purpose of I<sup>2</sup>C commands is to be able to configure an I<sup>2</sup>C interface
-on arbitrary pins, scan I<sup>2</sup>C bus for devices and perform read/write operations
-on selected devices. It simplifies learning new I<sup>2</sup>C devices, simplifies 
-process of checking if I<sup>2</sup>C device is alive and responding, helps with a library
-development for new I<sup>2</sup>C devices: one can send test sequences to I<sup>2</sup>C device 
-without recompiling whole sketch
+Команды I<sup>2</sup>C позволяют настроить интерфейс I<sup>2</sup>C на произвольных пинах, просканировать шину на наличие устройств и выполнять операции чтения/записи с выбранными устройствами. Это упрощает работу с новыми I<sup>2</sup>C-устройствами, проверку их доступности и разработку библиотек: можно отправлять тестовые последовательности в устройство без перекомпиляции всего скетча.
 </p>
 
 <p>
-ESP32 has 2 hardware I<sup>2</sup>C interfaces. Default pins are different from model
-to model: ESP32-WROOM-32D chip has its I<sup>2</sup>C0 pins at 21(SDA) and 22(SCL).
+ESP32 имеет два аппаратных интерфейса I<sup>2</sup>C. Назначение пинов по умолчанию зависит от модели: например, у чипа ESP32-WROOM-32D пины для I<sup>2</sup>C0 — это 21 (SDA) и 22 (SCL).
 </p>
 
-
-<p><h2 id=wit><a href="#top">&#8686;</a>I<sup>2</sup>C : CONFIGURING, READING, WRITING AND SCANNING</h2></p>
+<h2 id="up"><a href="#top">&#8686;</a>I<sup>2</sup>C: НАСТРОЙКА, ЧТЕНИЕ, ЗАПИСЬ И СКАНИРОВАНИЕ</h2>
 
 <p>
-To configure/access I<sup>2</sup>C interface command "<b>iic</b> <i>I2C_NUM</i>" is used where <i>I2C_NUM</i> is the
-number of I<sup>2</sup>C interface we want to configure. Once command is executed
-the espshell prompt changes to "<b>esp32-i2c0&gt;</b>" indicating that we are in I<sup>2</sup>C
-configuration mode. Use command "exit" or <kbd>Ctrl+Z</kbd> to exit this mode.
-</p><p>
-There are 6 commands available under I<sup>2</sup>C configuration mode:
-(note you can also use all commands from the main tree, for example "pin"
-command can be used from within "esp32-i2c>" command tree)
-</p><p><pre>
+Для настройки или доступа к интерфейсу I<sup>2</sup>C используется команда "<b>iic</b> <i>I2C_NUM</i>", где <i>I2C_NUM</i> — номер интерфейса. После выполнения команды приглашение ESPShell сменится на "<b>esp32-i2c0&gt;</b>", что означает переход в режим конфигурации I<sup>2</sup>C. Для выхода из этого режима используйте команду "exit" или нажмите <kbd>Ctrl+Z</kbd>.
+</p>
 
+<p>
+В режиме конфигурации I<sup>2</sup>C доступны 6 команд:
+(Также можно использовать команды из основного дерева, например, "pin" доступна и внутри "esp32-i2c>")
+</p>
+
+<pre>
   esp32#>iic 0
   esp32-i2c>?
   % Enter "? command" to get details about the command.
   % List of available commands:
   %
   % "?"        : Show the list of available commands
-  % "up"       : initialize interface (pins and speed)
-  % "clock"    : Set clock
+  % "up"       : Initialize interface (pins and speed)
+  % "clock"    : Set clock speed
   % "read"     : Read data from a device
-  % "down"     : Shutdown I<sup>2</sup>C interface
+  % "down"     : Shut down I<sup>2</sup>C interface
   % "scan"     : Scan I<sup>2</sup>C bus
   % "write"    : Send bytes to the device
   % "exit"     : Exit
   esp32-i2c>
 </pre>
-</p><p>
-All of these commands (except for "<b>up</b>") require I<sup>2</sup>C interface to be set up
-and initialized. To initialize I<sup>2</sup>C interface command "<b>up</b>" is used. This
-command takes 3 arguments: RX pin, TX pin and clock rate to initialize I<sup>2</sup>C
-</p><p>
-Lets say we want to initialize I<sup>2</sup>C0 with clock rate 100 kHz on pins 21(SDA)
-and 22(SCL):
-</p><p><pre>
+
+<p>
+Все команды (кроме "<b>up</b>") требуют предварительной инициализации интерфейса. Для этого используется команда "<b>up</b>", принимающая три аргумента: пин SDA, пин SCL и частоту тактирования (в Гц).
+</p>
+
+<p>
+Например, чтобы инициализировать I<sup>2</sup>C0 с частотой 100 кГц на пинах 21 (SDA) и 22 (SCL):
+</p>
+
+<pre>
   esp32#>iic 0
   esp32-i2c>up 21 22 100000
-</pre></p><p>
-Now when bus is initialized we can perform read/write/scan operations. It
-is good idea to suspend main sketch execution to make sure it not interferes
-with our I<sup>2</sup>C access (see global commands "suspend" and "resume"). To shutdown
-the bus command "<b>down</b>" is used
-</p><p>
-Lets scan our I<sup>2</sup>C bus. The example below shows 2 devices connected to I<sup>2</sup>C0:
-</p><p><pre>
+</pre>
+
+<p>
+После инициализации шины можно выполнять команды чтения, записи и сканирования. Рекомендуется приостановить выполнение основного скетча, чтобы избежать конфликтов (см. команды "suspend" и "resume"). Для завершения работы шины используйте команду "<b>down</b>".
+</p>
+
+<p>
+Просканируем шину I<sup>2</sup>C. В этом примере к I<sup>2</sup>C0 подключены два устройства:
+</p>
+
+<pre>
   esp32#>iic 0
   esp32-i2c>up 21 22 100000
   esp32-i2c>scan
@@ -87,38 +83,43 @@ Lets scan our I<sup>2</sup>C bus. The example below shows 2 devices connected to
   % Device found at address 68
   % 2 devices found
   esp32-i2c>
-</pre></p><p>
-These two devices are DS3231 real time clock chip and 64K EEPROM both
-are on the same breakout board connected to pins 21 and 22
-</p><p>
-Ok, we found two devices. Lets communicate with clock chip: read current
-time. We will use "read" and "write" commands to send a time request and
-read the reply:
-</p><p><pre>
+</pre>
+
+<p>
+Эти два устройства — часы реального времени DS3231 и EEPROM на 64К, размещённые на одной плате и подключённые к пинам 21 и 22.
+</p>
+
+<p>
+Теперь пообщаемся с чипом часов и прочитаем текущее время. Мы воспользуемся командами "write" и "read", чтобы запросить и получить данные:
+</p>
+
+<pre>
   esp32-i2c>write 0x68 0
-  % Sending 1 bytes over I<sup>2</sup>C0
+  % Sending 1 byte over I<sup>2</sup>C0
   esp32-i2c>read 0x68 7
   % I<sup>2</sup>C0 received 7 bytes:
-  24 25 22 03 18 09 24                < -- hex numbers
-</pre></p><p>
-Byte string received contains current time: 22:25:24 Third day of the week, 18
-of September 2024. Having datasheet of connected I<sup>2</sup>C device one can send and
-receive data to the device. Might be useful when developing a library for a new
-I<sup>2</sup>C device
-</p><p>
-For simplicity, the data bytes dont have to contain "0x": instead of entering
-0x98 one can enter just 98: any input is treated as hexadecimal numbers:
-</p><p><pre>
+  24 25 22 03 18 09 24                < -- hexadecimal values
+</pre>
+
+<p>
+Принятые байты представляют текущее время: 22:25:24, третий день недели, 18 сентября 2024. Имея даташит на устройство, можно легко расшифровать и отправлять собственные команды — полезно при разработке библиотеки для нового I<sup>2</sup>C-устройства.
+</p>
+
+<p>
+Для удобства необязательно использовать префикс "0x": вместо "0x98" можно просто ввести "98", ввод трактуется как шестнадцатеричный.
+</p>
+
+<pre>
     esp32-i2c>write 0x68 0x11 0x12 0x13
 </pre>
-    is equal to
+<p>эквивалентно</p>
 <pre>
-
     esp32-i2c>write 0x68 11 12 13
 </pre>
-</p><p>
-Another example is about reading EEPROM (address 57):
-</p><p><pre>
+
+<h2 id="examples"><a href="#top">&#8686;</a>Пример: чтение из EEPROM (адрес 57)</h2>
+
+<pre>
   esp32#>iic 0
   esp32-i2c>up 21 22 100000
   esp32-i2c>scan
@@ -132,21 +133,28 @@ Another example is about reading EEPROM (address 57):
   % I<sup>2</sup>C0 received 56 bytes:
         0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F   |0123456789ABCDEF
   ----------------------------------------------------------+----------------
-  0000: de ad be ef  04 05 06 07  08 09 0a 0b  0c 0d 0e 0f  |���............
-  0010: 10 22 33 44  55 66 77 88  99 aa bb cc  1c 1d 1e 1f  |."3DUfw�����....
-  0020: 20 21 22 23  24 25 26 27  28 29 2a 2b  2c 2d 2e 2f  |.!"#$%&'()*+,-./
+  0000: de ad be ef  04 05 06 07  08 09 0a 0b  0c 0d 0e 0f  |............... 
+  0010: 10 22 33 44  55 66 77 88  99 aa bb cc  1c 1d 1e 1f  |."3DUfw.........
+  0020: 20 21 22 23  24 25 26 27  28 29 2a 2b  2c 2d 2e 2f  | !"#$%&'()*+,-./
   0030: 30 31 32 33  34 35 36 37                            |01234567
   esp32-i2c0>
-</pre></p><p>
-  NOTE that if requested data size is more than 16 bytes then output is formatted
-  as above.
-</p><p>
-Command "<b>clock</b>" is used to change I<sup>2</sup>C clock: for axample "clock 150000" sets I<sup>2</sup>C
-clock to 150kHz.  Maximum value supported is 1 MHz.
-</p><p>
-Command "down" shudowns I<sup>2</sup>C interface.
-</p><p>
-Use command "exit" or Ctrl+Z to exit I<sup>2</sup>C configuration mode
+</pre>
+
+<p>
+ПРИМЕЧАНИЕ: если размер запрошенных данных превышает 16 байт, вывод форматируется, как показано выше.
 </p>
+
+<p>
+Команда "<b>clock</b>" используется для изменения частоты I<sup>2</sup>C. Например, "clock 150000" установит частоту 150 кГц. Максимально поддерживаемое значение — 1 МГц.
+</p>
+
+<p>
+Команда "<b>down</b>" завершает работу интерфейса I<sup>2</sup>C.
+</p>
+
+<p>
+Для выхода из режима конфигурации I<sup>2</sup>C используйте команду "exit" или <kbd>Ctrl+Z</kbd>.
+</p>
+
 </body>
 </html>
