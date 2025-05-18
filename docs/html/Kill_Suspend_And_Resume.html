@@ -6,7 +6,7 @@
 </head>
 <body>
 <p align=center><a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: Index" width="70%" height="70%" /></a></p>
-<h3 align=center><a href="Kill_Suspend_And_Resume.ru.html">[ Õ‡ ÛÒÒÍÓÏ ]</a>&nbsp;&harr;&nbsp;<a href="Kill_Suspend_And_Resume.html">[ English ]</a></h3>
+<h3 align=center><a href="Kill_Suspend_And_Resume.ru.html">[ –ù–∞ —Ä—É—Å—Å–∫–æ–º ]</a>&nbsp;&harr;&nbsp;<a href="Kill_Suspend_And_Resume.html">[ English ]</a></h3>
 
 <p>
   <ul>
@@ -36,14 +36,14 @@ Okay, but where can we get these task IDs?
 
 <p>
 It's simple: every ESPShell command that is run as a background process displays its TASK_ID. 
-Letís say we execute the command "pin 2 delay 1000" in the background:
+Let's say we execute the command "pin 2 delay 1000" in the background:
 <pre>
 esp32#>pin 2 delay 1000 &
 % Background task started
 % Copy/paste "kill 0x3ffb91dc" to abort
 esp32#>
 </pre>
-This command doesnít do much -just waits for 1000ms. Once started, it prints its task ID along with 
+This command doesn't do much -just waits for 1000ms. Once started, it prints its task ID along with 
 a convenient "kill" command that can be copied and executed: "kill 0x3ffb91dc".
 </p>
 
@@ -59,7 +59,7 @@ Another source of TASK_IDs is the "<b><a href="Pulse_Counter.html#show">show cou
   <tr>
     <td><b>suspend</b></td>
     <td>
-      <p>Pauses sketch execution by suspending Arduinoís <b>loop()</b>. Tasks that were started by <b>loop()</b> 
+      <p>Pauses sketch execution by suspending Arduino's <b>loop()</b>. Tasks that were started by <b>loop()</b> 
       and <b>setup()</b> are <b>not suspended</b> by this command. Suspending a task along with all of its child tasks 
       is a planned but not yet implemented feature. Ctrl+C is a hotkey for the "<b>suspend</b>" command.</p>
     </td>

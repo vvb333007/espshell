@@ -6,7 +6,7 @@
 </head>
 <body>
 <p align=center><a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: GPIOs"  width="70%" height="70%" /></a></p>
-<h3 align=center><a href="GPIO.ru.html">[ Õ‡ ÛÒÒÍÓÏ ]</a>&nbsp;&harr;&nbsp;<a href="GPIO.html">[ English ]</a></h3>
+<h3 align=center><a href="GPIO.ru.html">[ –ù–∞ —Ä—É—Å—Å–∫–æ–º ]</a>&nbsp;&harr;&nbsp;<a href="GPIO.html">[ English ]</a></h3>
 <p>
   <ul>
     <li><a href="#pins">ESP32 Pins (GPIOs)</a></li>
@@ -26,7 +26,7 @@
 <p id="pins"><h2><a href="#top">&#8686;</a>ESP32 PINS (GPIOs)</h2></p>
 
 <p>
-The ESP32 has many pins (or GPIOsóboth terms are used interchangeably throughout
+The ESP32 has many pins (or GPIOs - both terms are used interchangeably throughout
 this documentation) which can be configured as general-purpose input/output (GPIO) or assigned
 special functions. For example, a pin can act as a TX line for a hardware UART interface
 or serve as a CLOCK line for an I<sup>2</sup>C bus.
@@ -128,7 +128,7 @@ esp32#>pin 4
 esp32#></pre>
 </p>
 <p id="show_pin">
-The related command "<b>show pin</b> <i>NUM</i>" is equivalent to "<b>pin</b> <i>NUM</i>" ó both display information about pin number <i>NUM</i>. 
+The related command "<b>show pin</b> <i>NUM</i>" is equivalent to "<b>pin</b> <i>NUM</i>" - both display information about pin number <i>NUM</i>. 
 The only difference is that the "<b>show pin</b>" command accepts multiple arguments (pin numbers), so the example above can also be written as a single command: "<b>show pin 0 8 1 4</b>".
 </p>
 
@@ -203,7 +203,7 @@ is first cleared (reset to zero), and then the new mode is applied.
       <p>The command "<code>pin 2 read</code>" performs a <code>digitalRead()</code> on pin 2 and displays the result (HIGH or LOW).</p>
       <p>
         Pins configured as OUTPUT-only will be temporarily set to INPUT/OUTPUT automatically. 
-        Unlike the standard <code>digitalRead()</code>, this command can read the value of <b>any</b> GPIO, regardless of its current configuration or usage ó 
+        Unlike the standard <code>digitalRead()</code>, this command can read the value of <b>any</b> GPIO, regardless of its current configuration or usage - 
         for example, it can read values from pins used for UART or I<sup>2</sup>C lines.
       </p>
       <p>
@@ -334,7 +334,7 @@ Example: Blink an LED connected to pin 2 at 0.5Hz:
 
 <p>
 It is possible to temporarily save a pin's state (i.e. pin mode, value, and IOMUX function) and restore it later. 
-An internal stack is used to store this information, but it is only one level deep ó meaning any new <b>save</b> operation will overwrite the previous one.
+An internal stack is used to store this information, but it is only one level deep - meaning any new <b>save</b> operation will overwrite the previous one.
 The keywords "<b>save</b>" and "<b>load</b>" are used to store and restore pin state. 
 It is also possible to lock (freeze) a pin's output value, preventing any changes. However, once the pin is unfrozen, all changes made while it was frozen 
 will be applied immediately, as if they had been delayed. The keywords "<b>hold</b>" and "<b>release</b>" are used for this.
@@ -436,7 +436,7 @@ The "<b>show iomux</b>" command displays the current "pin-to-function" mappings:
 
 <p>
 From the sample output above, you can see that GPIO0 is assigned to Function 0 (Simple GPIO0).
-Changing it to Function 2 would not make a difference in behavior, because both refer to "simple GPIO"ó
+Changing it to Function 2 would not make a difference in behavior, because both refer to "simple GPIO"-
 Function 0 routes through IO_MUX, while Function 2 routes through GPIO_Matrix.
 </p>
 
@@ -460,10 +460,10 @@ No, it doesn't.
 </p>
 
 <p>
-UART0 can also be configured using the GPIO Matrix ó and this is exactly what happens when you assign UART0 to pins other than 1 and 3.  
+UART0 can also be configured using the GPIO Matrix - and this is exactly what happens when you assign UART0 to pins other than 1 and 3.  
 For example, if we want to initialize UART0 on pins 18 and 19, those pins will be switched to <i>GPIO Matrix mode</i>, which is indicated by selecting Function #2 (on the ESP32; other ESP models may use Function #1 for this).  
 Once GPIO Matrix mode is selected, the pins are connected to the <i>peripheral signals</i> UART0_RX and UART0_TX.  
-Signal routing (i.e., connecting or disconnecting signals) can also be done manually ó see the "<b>matrix</b>" keyword below.
+Signal routing (i.e., connecting or disconnecting signals) can also be done manually - see the "<b>matrix</b>" keyword below.
 </p>
 
 <p>
@@ -753,7 +753,7 @@ It's often easier to learn from examples than from reading endless tables and de
 <p>
   NOTE: The "pin" command can be interrupted during long delays (>5 seconds) by pressing any key in your terminal 
   or sending any character via the Arduino IDE Serial Monitor. 
-  Shorter delays cannot be interruptedóyou'll need to wait until they finish.
+  Shorter delays cannot be interrupted-you'll need to wait until they finish.
 </p>
 
 <p><b>Example </b>7. Set pin 2 HIGH, pin 3 LOW, wait 1 second, then invert the pin states:</p>

@@ -6,7 +6,7 @@
 </head>
 <body>
 <p align=center><a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: File systems" width="70%" height="70%" /></a></p>
-<h3 align=center><a href="Filesystems.ru.html">[ Õ‡ ÛÒÒÍÓÏ ]</a>&nbsp;&harr;&nbsp;<a href="Filesystems.html">[ English ]</a></h3>
+<h3 align=center><a href="Filesystems.ru.html">[ –ù–∞ —Ä—É—Å—Å–∫–æ–º ]</a>&nbsp;&harr;&nbsp;<a href="Filesystems.html">[ English ]</a></h3>
 <p>
   <ul>
     <li><a href="#fs">ESP32 file systems</a></li>
@@ -171,7 +171,7 @@ combining "/" with the partition label (as shown in the previous screenshot).
 
 If the filesystem fails to mount, it will be formatted and the process will be retried.
 
-The LABEL can be shortened, but this does not affect the generated mount point ó it 
+The LABEL can be shortened, but this does not affect the generated mount point - it 
 will still be the full label name:
 
 
@@ -227,7 +227,7 @@ data transmission errors.
 Opposite of "mount" : unregister filesystems. Takes one optional argument: the mountpoint
 path. If mountpoint is not specified then it is derived from the current working directory:
 
-The unmount command is the opposite of mount ó it unregisters filesystems. It takes one 
+The unmount command is the opposite of mount - it unregisters filesystems. It takes one 
 optional argument: the mountpoint path. If the mountpoint is not specified, it is derived 
 from the current working directory:
 
@@ -319,7 +319,7 @@ There are three variations of the "cd" command:
         esp32#(/wwwroot/)>
 
   2. "cd .."
-  Changes the current directory to its parent. Only one level is changed per command ó 
+  Changes the current directory to its parent. Only one level is changed per command - 
   compound paths like ../../ are not supported.  If the parent directory does not exist 
   (as is often the case with complex mountpoints like /my/mount/point/ where intermediate 
   directories /my and /mount do not physically exist), then cd .. continues upward until 
@@ -403,13 +403,13 @@ and the next line consisting of bytes 61 62 63 64 65 \n:
   % 18 bytes written
   esp32#(/wwwroot/)>
 
-If PATH includes subdirectories that donít yet exist, they will be automatically created.
+If PATH includes subdirectories that don't yet exist, they will be automatically created.
 
 
 
 <p><h3 id=append><a href="#top">&#8686;</a>APPEND BYTES : "append PATH TEXT"</h3></p>
 
-Appends data to the end of an existing file ó works similarly to the write command, 
+Appends data to the end of an existing file - works similarly to the write command, 
 but does not erase existing content.
 
   esp32#(/wwwroot/)>append test.cfg \nNew line
@@ -424,7 +424,7 @@ but does not erase existing content.
 
 Inserts TEXT (which may include multiple lines separated by \n) before the line number LINE_NUM 
 in the file at PATH.
-Note: A final \n is automatically added to each inserted line ó there's no need to manually include 
+Note: A final \n is automatically added to each inserted line - there's no need to manually include 
 \n at the end of every string unless you're inserting multiple lines.
 
 
@@ -487,7 +487,7 @@ If COUNT is omitted, it defaults to 1:
 
 <p><h3 id=mkdir><a href="#top">&#8686;</a>CREATE DIRECTORY/IES : "mkdir PATH1 PATH2 ... PATHn"</h3></p>
 
-Creates one or more directories. Nested path creation is supported ó for 
+Creates one or more directories. Nested path creation is supported - for 
 example, "mkdir 1/2/3/4" will create all missing intermediate directories as needed.
 
 Example 1: Create multiple directories under /wwwroot
@@ -500,7 +500,7 @@ Example 1: Create multiple directories under /wwwroot
   esp32#(/wwwroot/)>
 
 
-This command cannot create directories directly in the root / directory ó use 
+This command cannot create directories directly in the root / directory - use 
 the "mount" command to create or define new entries under /.
 
 NOTE on paths with spaces:
@@ -616,7 +616,7 @@ Use -b to interpret file contents as binary and display a hex dump:
 TRANSMIT FILE OVER UART
 
 The cat command can also be used to send file content over an initialized UART interface. 
-When the -b option is used, the fileís raw content (binary data) is transmitted over UART, 
+When the -b option is used, the file's raw content (binary data) is transmitted over UART, 
 without formatting or line numbers.
 
 This is especially useful for transferring files to devices connected via UART. For example, 
