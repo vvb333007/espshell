@@ -1,63 +1,51 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
-  <title>ESPShell : PWM</title>
+  <title>ESPShell : ШИМ (PWM)</title>
   <link rel="stylesheet" href="espshell.css">
 </head>
 <body>
 
-<p align=center><a href="index.ru.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: Index" width="70%" height="70%" /></a></p>
-
-
+<p align=center><a href="index.ru.html"><img src="i/espshell_logo.jpg" alt="ESPShell для Arduino :: Индекс" width="70%" height="70%" /></a></p>
 
 <p>
   <ul>
-    <li><a href="#pwm">Pulse width modulation (PWM)</a></li>
-    <li><a href="#duty">Duty cycle and its resolution</a></li>
-    <li><a href="#channels">PWM channels</a></li>
-    <li><a href="#show">Displaying PWM information</a></li>
+    <li><a href="#pwm">Широтно-импульсная модуляция (ШИМ)</a></li>
+    <li><a href="#duty">Длительность импульса и её разрешение</a></li>
+    <li><a href="#channels">Каналы ШИМ</a></li>
+    <li><a href="#show">Отображение информации о ШИМ</a></li>
   </ul>
 </p>
 
-
-
-
-
-<p id=pwm><h2><a href="#top">&#8686;</a>PULSE WIDTH MODULATION</h2></p>
+<p id=pwm><h2><a href="#top">&#8686;</a>ШИРИНА ИМПУЛЬСА (PWM)</h2></p>
 <p>
-ESPShell includes ability to generate a squarewave signal on any pin with
-user configurable frequency and duty cycle. Frequency can be set from 1Hz
-up to 10 MHz with duty cycle ranging from 0 (=0%) to 1 (=100%). Default
-value for the duty cycle is 0.5 which means 50% duty cycle. LEDC driver is
-used for this squarewave generator.
+ESPShell поддерживает генерацию прямоугольного сигнала на любом выводе с
+настраиваемой пользователем частотой и скважностью. Частота может быть установлена от 1 Гц
+до 10 МГц, с длительностью импульса от 0 (=0%) до 1 (=100%). Значение длительности по умолчанию — 0.5, что соответствует 50% скважности. Для генерации используется драйвер LEDC.
 </p>
 <p>
-Minimum and maximum frequencies which can be achieved with ESP32's PWM
-depend on many factors and can not be precisely stated here. ESP32 can
-go down to 1 Hz, while ESP32S3 low limit is higher. 
+Минимальные и максимальные частоты, достижимые на ШИМ ESP32,
+зависят от множества факторов и не могут быть точно указаны здесь. ESP32
+может работать от 1 Гц, тогда как у ESP32S3 минимальная частота выше.
 </p>
 <p>
-Although ESP32S3 chip has 8 PWM channels but only 4 timers so it is 4
-different frequences can be generated at the same time through 4 different 
-pins. It is little better with basic ESP32 which has 16 channels thus
-allowing for 8 frequencies. 
+Хотя у чипа ESP32S3 есть 8 каналов ШИМ, но всего 4 таймера, поэтому одновременно
+можно генерировать 4 разных частоты на 4 разных выводах. С базовым ESP32 ситуация лучше — там 16 каналов, что позволяет использовать 8 частот.
 </p>
 <p>
-There are 4 commands that are used to start/stop PWM generation, change
-some settings and displaying information:
+Для управления ШИМ в ESPShell используется 4 команды:
 </p>
 <p>
  <ul>
-  <li><b>pwm</b> <i>PIN FREQ</i> [ <i>DUTY</i> [ <i>CHANNEL</i> ] ]"</li>
+  <li><b>pwm</b> <i>PIN FREQ</i> [ <i>DUTY</i> [ <i>CHANNEL</i> ] ]</li>
   <li><b>show pwm</b></li>
-
   <li><b>var ledc_res</b> [<i>NUMBER</i>]</li>
   <li><b>var pwm_ch_inc</b>  [<i>NUMBER</i>]</li>
 </ul>
 </p>
 
 <p>
-Command "pwm" starts a squarewave output on given pin:
+Команда "pwm" запускает генерацию прямоугольного сигнала на указанном выводе:
 </p>
 <p>
 <pre>
@@ -65,21 +53,19 @@ Command "pwm" starts a squarewave output on given pin:
 </pre>
 </p>
 <p>
-The command above starts a 1 kHz squarewave on pin 2 (duty cycle is 50%)
-It is not blocking command, so it is not necessary to use "<B>&</B>" option
-to the command (see <a href="Basics.html#background">background execution</a>): it executes in a background by 
-default.
+Приведённая команда запускает прямоугольный сигнал с частотой 1 кГц на выводе 2 (скважность 50%).
+Это неблокирующая команда, поэтому нет необходимости использовать опцию "<b>&</b>"
+(см. <a href="Basics.html#background">фоновое выполнение</a>): выполнение происходит в фоне по умолчанию.
 </p>
 <p>
-The duty cycle parameter can be set as third argument to the "pwm" 
-command: lets set frequency on pin 2 to 5000Hz, duty cycle around 30%:
+Параметр длительности импульса можно задать третьим аргументом команды "pwm":
+например, установим частоту 5000 Гц на выводе 2, длительность около 30%:
 </p>
 <p><pre>
   esp32#>pwm 2 5000 0.3
 </pre></p>
 <p>
-To stop a squarewave generator on given pin use "pwm" command with just one 
-parameter. Example below shows how to stop squarewave generation on pin 2
+Для остановки генерации на выводе используйте команду "pwm" с одним параметром. Пример остановки на выводе 2:
 </p>
 <p>
 <pre>
@@ -88,8 +74,8 @@ parameter. Example below shows how to stop squarewave generation on pin 2
 </p>
 
 <p>
-Setting frequency to 0 Hz or using a keyword "off" in place of frequency
-will have the same effect: disabling PWM on pin. Three commands below are equivalent:
+Установка частоты в 0 Гц или использование ключевого слова "off" вместо частоты
+даёт тот же эффект: отключение ШИМ на выводе. Три команды ниже эквивалентны:
 </p>
 
 <p><pre>
@@ -98,27 +84,23 @@ will have the same effect: disabling PWM on pin. Three commands below are equiva
   esp32#>pwm 2 off
 </pre></p>
 
-<p id=duty><h2><a href="#top">&#8686;</a>PWM DUTY CYCLE AND ITS RESOLUTION</h2></p>
+<p id=duty><h2><a href="#top">&#8686;</a>ДЛИТЕЛЬНОСТЬ ИМПУЛЬСА И ЕЁ РАЗРЕШЕНИЕ</h2></p>
 
 <p>
-One important thing to consider is the <i>duty cycle resolution</i>. Although
-ESPShell expects a floating point number as a duty cycle (e.g. 0.721), the
-hardware has its limits: the higher the PWM frequency is the less precise 
-we can set a duty cycle. For example, 1000 Hz frequency generator has
-14 bit precision for its duty cycle. That means, the duty cycle can be anything
-from zero to 2^14-1. With frequency of 10MHz we have only 3 bits to represent
-our duty cycle: only 4 values are available, so duty of 0.721 will be adjusted to something like 0.66
+Важным аспектом является <i>разрешение длительности импульса</i>. Несмотря на то, что
+ESPShell ожидает число с плавающей точкой (например, 0.721), у аппаратного обеспечения есть ограничения: чем выше частота ШИМ, тем ниже точность задания длительности.
+Например, при частоте 1000 Гц точность длительности составляет 14 бит. Это значит, длительность может принимать значения от 0 до 2^14-1.
+При частоте 10 МГц разрешение снижается до 3 бит: доступно всего 4 значения, поэтому длительность 0.721 будет приблизительно преобразована к 0.75.
 </p>
 
 <p>
-ESPShell selects best available duty cycle precision (resolution) for
-given frequency. This default behaviour however, can be overriden with 
-"var ledc_res" command: being set to a positive value it overrides calculated 
-duty resolution.
+ESPShell автоматически выбирает наилучшее доступное разрешение длительности для
+указанной частоты. Это поведение по умолчанию можно изменить командой
+"var ledc_res": установив положительное значение, вы переопределяете вычисленное разрешение.
 </p>
 
 <p>
-Example:
+Пример:
 </p>
 <p>
 <pre>
@@ -126,40 +108,41 @@ Example:
 </pre>
 </p>
 <p>
-  The command above sets PWM duty cycle resolution to 8 bits. Attempt to start
-  10Mhz PWM will fail in this case
+  Эта команда задаёт разрешение длительности ШИМ в 8 бит. Попытка запустить
+  ШИМ с частотой 10 МГц при таком разрешении завершится ошибкой.
 </p>
 
-<p id=channels><h2><a href="#top">&#8686;</a>PWM CHANNELS</h2></p>
+<p id=channels><h2><a href="#top">&#8686;</a>КАНАЛЫ ШИМ</h2></p>
 
 <p>
-ESP32 has 16 (while ESP32S3 has 8) so-called LEDC (PWM) channels. Adjacent 
-channels (i.e. channel0 and channel1  or channel6 and channel7) share same timer 
-thus not able to generate 2 different frequencies: instead, changing channel 
-frequency immediately changes frequency on its adjacent channel.
-</p>
-
-<p>
-Because of this, ESPShell selects only **even** channel numbers for its operation.
-Doing so guarantees that every other PWM output has its unique frequency; however it
-reduces the number of available channels: instead of 8 only 4 are available on ESP32S3.
+У ESP32 есть 16 каналов LEDC (ШИМ), а у ESP32S3 — 8 каналов. Смежные
+каналы (например, канал 0 и канал 1, или канал 6 и канал 7) используют один таймер,
+поэтому не могут генерировать разные частоты одновременно: изменение частоты на одном канале
+сразу меняет частоту на соседнем.
 </p>
 
 <p>
-For many PWM applications involving many PWM outputs, the frequency is usually the same, while 
-duty cycle can vary: one of such example is a multiple led strips. Multiple-output regulated
-power inverter is the another example.
+Из-за этого ESPShell использует только **чётные** номера каналов.
+Это гарантирует, что каждый второй канал может иметь уникальную частоту,
+но уменьшает количество доступных каналов: вместо 8 доступно только 4 на ESP32S3.
 </p>
 
 <p>
-In such cases ESPShell can be set to use both odd and even numbers so all available channels
-can be used (up to 16 on original ESP32): this is done by executing "var pwm_ch_inc 1" shell command.
+Для многих задач, где используется множество ШИМ-выводов, частоты обычно одинаковы,
+а длительность импульса меняется. Пример — несколько светодиодных лент.
+Другой пример — многовыходный регулируемый инвертор.
 </p>
 
 <p>
-Additionally one can manually set hardware channel number to use.
-In most cases we don't need to specify this channel number: it is autoselected by cycling
-through numbers 0, 2, 4, ...; Shell uses simple formula to select channels to use:
+В таких случаях ESPShell можно настроить на использование как чётных, так и нечётных каналов,
+чтобы использовать все доступные каналы (до 16 на ESP32).
+Для этого выполните команду "var pwm_ch_inc 1" в shell.
+</p>
+
+<p>
+Кроме того, можно вручную указать номер аппаратного канала.
+В большинстве случаев это не нужно — канал выбирается автоматически, перебирая номера 0, 2, 4, ...
+Shell использует простую формулу для выбора следующего канала:
 </p>
 
 <p><pre>
@@ -167,12 +150,12 @@ through numbers 0, 2, 4, ...; Shell uses simple formula to select channels to us
 </pre></p>
 
 <p>
-Below is the command to enable 1kHz 50% duty PWM on pin1, using hardware channel 2:
+Ниже пример команды, включающей ШИМ 1 кГц с 50% скважностью на выводе 1, используя канал 2:
 <pre>
-  esp32#>pwm 1 1000 0.5 2     < --- 4th argument is a channel number
+  esp32#>pwm 1 1000 0.5 2     &larr; 4-й аргумент — номер канала
 </pre>
 
-Doing so results in altering internal espshell channel counter:
+Это изменит внутренний счётчик каналов ESPShell:
 
 <pre>
   esp32#>pwm 2 1000 0.5 5
@@ -180,8 +163,7 @@ Doing so results in altering internal espshell channel counter:
   % PWM channel 7 is to be used next, if not explicitly set
 </pre>
 
-Channel #7 was selected because of <b>pwm_ch_inc</b> default value which is 2. Lets look
-at example below to see how changing this variable affects channel selection behaviour:
+Канал #7 выбран из-за значения по умолчанию переменной <b>pwm_ch_inc</b>, равного 2. Посмотрим, как изменение этой переменной влияет на выбор канала:
 
 <pre>
   esp32#>pwm 2 1000 0.5 5
@@ -195,37 +177,34 @@ at example below to see how changing this variable affects channel selection beh
   % PWM channel 6 is to be used next, if not explicitly set        < -- channel 6
 </pre>
 
-Setting "pwm_ch_inc "to 0 will prevent channel number from changing (unless /channel/
-argument is used)
+Установка "pwm_ch_inc" в 0 предотвратит изменение номера канала (если не задан явно через аргумент).
 </p>
 
-<p id=show><h2><a href="#top">&#8686;</a>DISPLAYING PWM INFORMATION</h2></p>
+<p id=show><h2><a href="#top">&#8686;</a>ОТОБРАЖЕНИЕ ИНФОРМАЦИИ О ШИМ</h2></p>
 
 <p>
-To display status & parameters of PWM signals there is a dedicated "show" command:
+Для отображения статуса и параметров ШИМ-сигналов есть команда "show":
 </p>
 <p>
 
-<table>  <tr><td><b>show pwm</b></td><td>Displays current state of all PWM sources</td></tr></table>
+<table>  <tr><td><b>show pwm</b></td><td>Отображает текущее состояние всех источников ШИМ</td></tr></table>
 
-
-  Example output looks similar to the one below
+  Пример вывода примерно такой:
 </p>
 <p align=center>
-<img src="i/show_pwm.jpg" width="70%" height="70%" alt="Typical view" /><br>
-<i>Fig. 2: Example output of &quot;<b>show pwm</b>&quot; command</i>
+<img src="i/show_pwm.jpg" width="70%" height="70%" alt="Типичный вид" /><br>
+<i>Рис. 2: Пример вывода команды &quot;<b>show pwm</b>&quot;</i>
 </p>
 
 <p>
-
-  Table above says that pin#2 is active PWM source, 10MHz, 57% duty cycle; Although it
-  was set to 50% by command "pwm 2 10000000 0.5", limitations of the hardware only allow
-  3 bits as the duty value, so it can be set only approximately; Pin 18 is a PWM source too, with frequency of 1KHz and duty cycle of 75%.
+  Таблица показывает, что вывод #2 активен, частота 10 МГц, длительность 57%;
+  Хотя установлено 50% командой "pwm 2 10000000 0.5", аппаратные ограничения
+  допускают только 3 бита для значения длительности, поэтому она указана приблизительно;
+  Вывод 18 также активен, частота 1 кГц и длительность 75%.
 </p>
-<p>  
-  DutyAbs is the <i>absolute</i> duty cycle value, which depends on duty % and duty resolution 
-  parameters; Other columns carry pin numbers, frequencies and a hardware channel number
-  used.
+<p>
+  DutyAbs — это <i>абсолютное</i> значение длительности импульса, зависящее от
+  процента длительности и разрешения; Другие столбцы показывают номера выводов, частоты и используемый аппаратный канал.
 </p>
  
 </body>
