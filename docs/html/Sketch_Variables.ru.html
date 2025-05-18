@@ -1,35 +1,30 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
-  <title>ESPShell : Sketch Variables</title>
+  <title>ESPShell : Переменные скетча</title>
   <link rel="stylesheet" href="espshell.css">
 </head>
 <body>
-<p align=center><a href="index.ru.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: Index" width="70%" height="70%" /></a></p>
+<p align=center><a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell для Arduino :: Индекс" width="70%" height="70%" /></a></p>
 <p>
   <ul>
-    <li><a href="#variables">Sketch Variables</a></li>
-    <li><a href="#show">Displaying variables</a></li>
-    <li><a href="#set">Setting new values</a></li>
-    <li><a href="#conv">Numbers conversion</li></a>
+    <li><a href="#variables">Переменные скетча</a></li>
+    <li><a href="#show">Просмотр переменных</a></li>
+    <li><a href="#set">Установка значений</a></li>
+    <li><a href="#conv">Преобразование чисел</a></li>
   </ul>
 </p>
 
-<p><h2 id=wit><a href="#top">&#8686;</a>SKETCH VARIABLES, REGISTERING</h2></p>
+<p><h2 id=wit><a href="#top">&#8686;</a>ПЕРЕМЕННЫЕ СКЕТЧА: РЕГИСТРАЦИЯ</h2></p>
 
 <p>
-ESPShell has API to register and manipulate sketch variables, although variable
-types are limited to simple C types (unsigned/signed int, char, short, float or 
-generic void * pointer). Arrays of abovementioned simple types are supported as 
-well
+ESPShell предоставляет API для регистрации и управления переменными скетча. Поддерживаются только простые типы C, такие как <i>unsigned/signed int</i>, <i>char</i>, <i>short</i>, <i>float</i>, а также указатели типа <i>void*</i>. Также поддерживаются массивы этих простых типов.
 </p><p>
-In order to make an arbitrary sketch variable to be visible in the ESPShell
-one has to <i>register</i> it.
+Чтобы переменная стала доступной в ESPShell, её необходимо <i>зарегистрировать</i>.
 </p><p>
-Registration is done with convar_add() macro. There are also <span class=func>convar_addp()</span>
-and <span class=func>convar_adda()</span> etc macros for registering variables, pointers and arrays.
+Для регистрации используется макрос <span class=func>convar_add()</span>. Также существуют специализированные макросы, такие как <span class=func>convar_addp()</span> для указателей и <span class=func>convar_adda()</span> для массивов.
 </p><p>
-Typical use in Arduino sketch:
+Пример использования в Arduino-скетче: допустим, у нас есть три переменные, которые мы хотим сделать доступными в командной строке shell:
 </p><p>
 <pre>
   static int some_variable;
@@ -37,24 +32,23 @@ Typical use in Arduino sketch:
   char array[10];
 
   void setup() {
-
-    convar_add(some_variable); < - Register simple type variable
-    convar_addp(pointer);      < - Register pointer to a simple type
-    convar_adda(array);        < - Register array of simple types
+    ...
+    convar_add(some_variable); &larr; Регистрация простой переменной
+    convar_addp(pointer);      &larr; Регистрация указателя
+    convar_adda(array);        &larr; Регистрация массива
+    ...
   }
 </pre>
-
-Other <i>convar_add</i> macros are: <b>convar_addap(Name)</b> - register an array of pointers, <b>convar_addpp(Name)</b> - register a pointer to a pointer
+</p><p>
+Другие доступные макросы: <b>convar_addap(Name)</b> — регистрация массива указателей, <b>convar_addpp(Name)</b> — регистрация указателя на указатель.
 </p>
 
-<p><h2 id=show><a href="#top">&#8686;</a>DISPLAYING VARIABLES LIST AND VALUES</h2></p>
+<p><h2 id=show><a href="#top">&#8686;</a>ПРОСМОТР ПЕРЕМЕННЫХ И ИХ ЗНАЧЕНИЙ</h2></p>
+
 <p>
-There are 3 different variables defined in the code snippet above: int, pointer
-and an array. All three are registered with appropriate convar_addX() macros
-and after this is done these variables become accessible from the shell by using
-"<b>var</b> <i>NAME</i>" and "<b>show memory</b> <i>ADDRESS</i>" commands
+В приведённом выше примере регистрируются три типа переменных: целочисленная, указатель и массив. После регистрации с помощью соответствующих макросов <span class=func>convar_addX()</span>, эти переменные становятся доступными через shell с помощью команд <b>var <i>NAME</i></b> и <b>show memory <i>ADDRESS</i></b>.
 </p><p>
-Executed without arguments, "<b>var</b>" command displays list of <i>registered</i> variables:
+Если команда <b>var</b> вызывается без аргументов, выводится список всех <i>зарегистрированных</i> переменных:
 </p><p><pre>
     esp32#>var
     % Sketch variables:
@@ -74,22 +68,20 @@ Executed without arguments, "<b>var</b>" command displays list of <i>registered<
     esp32#>
 </pre>
 </p><p>
-Note that for pointers and arrays their address is displayed instead of memory 
-content pointed to. To dereference a pointer or to display an array content
-one can use "<b>var</b> <i>VAR_NAME</i>":
+Обрати внимание: для указателей и массивов отображается адрес, а не содержимое памяти. Чтобы разыменовать указатель или отобразить содержимое массива, используй <b>var <i>VAR_NAME</i></b>:
 </p><p>
 <pre>
     esp32#>var a4
-    % float * a4 = 0x3ffbdbb4;  // Pointer to 4 bytes memory region
+    % float * a4 = 0x3ffbdbb4;  // Pointer to a 4-byte memory region
     % a4[1] = {
     %    10.000000, // a4[0]
     % };
 </pre>
 </p><p>
-Another example:
+Другой пример:
 </p><p><pre>
     esp32#>var table
-    % int * table = 0x3ffbdb88;  // Array of 10 elements, (4 bytes per element)
+    % int * table = 0x3ffbdb88;  // Array of 10 elements (4 bytes each)
     % int table[10] = {
     %    1, // table[0]
     %    2, // table[1]
@@ -104,27 +96,25 @@ Another example:
     % };
 </pre>
 </p><p>
-To access an array element simply add its index like in C language. 
+Чтобы обратиться к конкретному элементу массива, укажи индекс, как в языке C:
 </p><p><pre>
     esp32#>var table[5]
     % int table[5] = 6;
     esp32#>
 </pre></p><p>
-Note that this syntax can also be used to access memory regions defined by pointers, not arrays.
-Using an index for a pointer variable simply means adding index value to the pointer before dereferencing.
-There will be warning message displayed in such case because ESPShell have no idea on memory ranges
+Такой синтаксис можно использовать и для указателей. Использование индекса к переменной-указателю означает смещение указателя перед разыменованием. В таком случае ESPShell выводит предупреждение, так как не может определить допустимые границы памяти.
 </p><p>
-In the same way other variables can be displayed:
+Ещё один пример:
 </p><p><pre>
     esp32#>var a1
     % unsigned char a1 = 99;
     esp32#>
 </pre></p>
 
-<p><h2 id=set><a href="#top">&#8686;</a>SETTING NEW VALUE TO THE VARIABLE</h2></p>
+<p><h2 id=set><a href="#top">&#8686;</a>УСТАНОВКА НОВОГО ЗНАЧЕНИЯ</h2></p>
 <p>
-To set a variable to new value one can use "<b>var</b> <i>VARIABLE_NAME</i> <i>NEW_VALUE</i>" command.
-Lets set value of variable a1 to 88:
+Чтобы изменить значение переменной, используй команду <b>var <i>VARIABLE_NAME</i> <i>NEW_VALUE</i></b>.  
+Пример: изменим значение переменной <code>a1</code> на 88:
 </p><p><pre>
     esp32#>var a1 88
     esp32#>var a1
@@ -132,23 +122,15 @@ Lets set value of variable a1 to 88:
     esp32#>
 </pre>
 </p><p>
-There are some basic type checking which forbids setting unsigned variables to 
-signed values or assign floating point values to integer variables. Also, changing 
-a value of an array has no effect. Address of array is defined by linker and can not
-be changed in runtime
+Выполняется базовая проверка типов: нельзя присвоить знаковое значение беззнаковой переменной, или значение с плавающей точкой — целочисленной. Также невозможно изменить адрес массива, так как он фиксируется компоновщиком и не может быть изменён во время выполнения.
 </p>
 
-
-<p><h2 id=conv><a href="#top">&#8686;</a>NUMBER BASE CONVERSION</h2></p>
+<p><h2 id=conv><a href="#top">&#8686;</a>ПРЕОБРАЗОВАНИЕ ЧИСЕЛ</h2></p>
 
 <p>
-Another use of "<b>var</b>" command is to convert & cast numbers: if argument to the "<b>var</b>"
-command is a number (i.e. decimal, hexadecimal, floating point, octal or binary) then
-a table is displayed showing the number in different bases plus, an unsafe C-style memory
-cast is performed; main use of this "C-cast" is to see hex representation of a negative 
-or floating point numbers
+Команда <b>var</b> также может использоваться для преобразования чисел между системами счисления. Если аргумент команды — число (десятичное, шестнадцатеричное, вещественное, восьмеричное или бинарное), ESPShell отображает таблицу с представлением числа в разных системах счисления, а также выполняет небезопасное C-подобное преобразование памяти. Это полезно для просмотра внутреннего представления отрицательных или вещественных чисел.
 </p><p>
-  Example:
+Пример:
 </p><p><pre>                          
     esp32#>var 666
     % "666" is a number, which can be written as:
@@ -162,7 +144,7 @@ or floating point numbers
     % Binary   : 0b1010011010
     esp32#>
 </pre></p><p>
-Or
+Или:
 </p><p><pre>
     esp32#>var 666.666
     % "666.666" is a number, which can be written as:
@@ -176,7 +158,7 @@ Or
     % Binary   : 0b1000100001001101010101010100000
     esp32#>
 </pre></p><p>
-Or
+Или:
 
 </p><p><pre>
     esp32#>var 0b111
@@ -194,4 +176,3 @@ Or
 </p>
 </body>
 </html>
-
