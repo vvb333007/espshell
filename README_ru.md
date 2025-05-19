@@ -75,13 +75,11 @@ ESPShell выполняется на втором ядре (в многопро�
 
 # ДОКУМЕНТАЦИЯ
 
-- Английская версия (актуальна):  
-  [Документация ESPShell (EN)](https://htmlpreview.github.io/?https://github.com/vvb333007/espshell/blob/main/docs/html/index.html)
+- English:  
+  [ESPShell Documentation (EN)](https://vvb333007.github.io/espshell/html/index.html)
 
-- Русская версия (в разработке):  
-  [Документация ESPShell (RU)](https://htmlpreview.github.io/?https://github.com/vvb333007/espshell/blob/main/docs/html/index.ru.html)
-
-Файлы **`Commands.txt`** и **`Pin_Commands.txt`** являются обязательными к прочтению — рекомендуется ознакомиться.
+- На русском:  
+  [ESPShell Documentation (RU)](https://vvb333007.github.io/espshell/html/index.ru.html)
 
 ---
 

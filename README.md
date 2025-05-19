@@ -77,12 +77,10 @@ ESPShell runs on the other core (on multicore systems) to minimize interference 
 # DOCUMENTATION
 
 - English:  
-  [ESPShell Documentation (EN)](https://htmlpreview.github.io/?https://github.com/vvb333007/espshell/blob/main/docs/html/index.html)
+  [ESPShell Documentation (EN)](https://vvb333007.github.io/espshell/html/index.html)
 
 - На русском:  
-  [ESPShell Documentation (RU)](https://htmlpreview.github.io/?https://github.com/vvb333007/espshell/blob/main/docs/html/index.ru.html)
-
-The files **`Commands.txt`** and **`Pin_Commands.txt`** are essential reading — it's highly recommended to review them.
+  [ESPShell Documentation (RU)](https://vvb333007.github.io/espshell/html/index.ru.html)
 
 ---
 
