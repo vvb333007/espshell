@@ -72,18 +72,18 @@ ESPShell можно настроить (до компиляции), измени
 <tr><td><p><b>WITH_HISTORY</b></p></td><td><p><b>1</b></td><td><p><b>0</b></p></td><td><p>Установите 0 для отключения истории команд. История может быть отключена, если вы используете ESPShell исключительно через Arduino Serial Monitor — у него есть собственная память истории, доступная по клавишам &uarr; и &darr;</p></td></tr>
 <tr><td><p><b>HIST_SIZE</b></p></td><td><p><b>20</b></td><td><p><b>1</b></p></td><td><p>Размер буфера истории (количество запоминаемых команд)</p></td></tr>
 <tr><td><p><b>WITH_ESPCAM</b></p></td><td><p><b>1</b></td><td><p><b>1</b></p></td><td><p>Установите 0, если не планируете использовать камеру на вашей плате</p></td></tr>
-<tr><td><p><b>WITH_VAR</b></p></td><td><p><b>1</b></td><td><p><b>1</b></p></td><td><p>Установите 0 для отключения поддержки <a href="Sketch_Variables.html">переменных скетча</a></p></td></tr>
-<tr><td><p><b>STARTUP_ECHO</b></p></td><td><p><b>1</b></td><td><p><b>0</b></p></td><td><p>Режим эхо при запуске оболочки (-1=тихий режим, 0=без эхо, 1=включено). Подробнее о режимах эхо — <a href="Automation.html">здесь</a> </p></td></tr>
+<tr><td><p><b>WITH_VAR</b></p></td><td><p><b>1</b></td><td><p><b>1</b></p></td><td><p>Установите 0 для отключения поддержки <a href="Sketch_Variables.ru.html">переменных скетча</a></p></td></tr>
+<tr><td><p><b>STARTUP_ECHO</b></p></td><td><p><b>1</b></td><td><p><b>0</b></p></td><td><p>Режим эхо при запуске оболочки (-1=тихий режим, 0=без эхо, 1=включено). Подробнее о режимах эхо — <a href="Automation.ru.html">здесь</a> </p></td></tr>
 <tr><td><p><b>WITH_COLOR</b></p></td><td><p><b>1</b></td><td><p><b>0</b></p></td><td><p>Включение поддержки цветного вывода. Установите 0, чтобы сэкономить память ИЛИ если ваш терминал не поддерживает цвета (например, Arduino Serial Monitor)</p></td></tr>
 <tr><td><p><b>AUTO_COLOR</b></p></td><td><p><b>1</b></td><td><p><b>0</b></p></td><td><p>Позволяет ESPShell самостоятельно решать, включать ли цвет. Команда "color on|off|auto" управляет этим</p></td></tr>
-<tr><td><p><b>WITH_FS</b></p></td><td><p><b>1</b></td><td><p><b>1</b></p></td><td><p>Поддержка <a href="Filesystems.html">файловых систем</a> (fat/spiffs/littlefs). Установите 0, если файловая система не требуется, чтобы сэкономить место</p></td></tr>
+<tr><td><p><b>WITH_FS</b></p></td><td><p><b>1</b></td><td><p><b>1</b></p></td><td><p>Поддержка <a href="Filesystems.ru.html">файловых систем</a> (fat/spiffs/littlefs). Установите 0, если файловая система не требуется, чтобы сэкономить место</p></td></tr>
 <tr><td><p><b>MOUNTPOINTS_NUM</b></p></td><td><p><b>5</b></td><td><p><b>5</b></p></td><td><p>Максимальное количество одновременно смонтированных файловых систем. Уменьшите до 1, чтобы сэкономить DRAM</p></td></tr>
 <tr><td><p><b>WITH_SPIFFS</b></p></td><td><p><b>1</b></td><td><p><b>1</b></p></td><td><p>Включить поддержку файловой системы SPIFFS?</p></td></tr>
 <tr><td><p><b>WITH_LITTLEFS</b></p></td><td><p><b>1</b></td><td><p><b>1</b></p></td><td><p>Включить поддержку файловой системы LittleFS</p></td></tr>
 <tr><td><p><b>WITH_FAT</b></p></td><td><p><b>1</b></td><td><p><b>1</b></p></td><td><p>Включить поддержку FAT (должно быть включено, если вы хотите использовать WITH_SD ниже)</p></td></tr>
 <tr><td><p><b>WITH_SD</b></p></td><td><p><b>1</b></td><td><p><b>1</b></p></td><td><p>Поддержка файловой системы FAT на SD/TF-картах через SPI</p></td></tr>
 <tr><td><p><b>DIR_RECURSION_DEPTH</b></p></td><td><p><b>127</b></td><td><p><b>127</b></p></td><td><p>Максимальная глубина вложенности директорий. Уменьшите значение, если возникают сбои при работе с файловыми системами</p></td></tr>
-<tr><td><p><b>SEQUENCES_NUM</b></p></td><td><p><b>10</b></td><td><p><b>10</b></p></td><td><p>Максимальное число <a href="Pulse_Generator.html">последовательностей</a>, доступных для команды "sequence". Уменьшите (до минимума 1), чтобы сэкономить DRAM</p></td></tr>
+<tr><td><p><b>SEQUENCES_NUM</b></p></td><td><p><b>10</b></td><td><p><b>10</b></p></td><td><p>Максимальное число <a href="Pulse_Generator.ru.html">последовательностей</a>, доступных для команды "sequence". Уменьшите (до минимума 1), чтобы сэкономить DRAM</p></td></tr>
 <tr><td><p><b>STARTUP_PORT</b></p></td><td><p><b>0 (или 99)</b></td><td><p><b>0 (или 99)</b></p></td><td><p>Номер UART (0..2 или 99 для USB-CDC), на котором запускается оболочка. По умолчанию ESPShell запускается на UART0 или USB-CDC</p></td></tr>
 </table>
 

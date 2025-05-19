@@ -157,7 +157,8 @@ How many pins are available on your particular ESP32 board? To find out which pi
 </p>
 <p>Command <b>pin</b> is used to set pin <i>mode</i> (e.g. PULL_UP/PULL_DOWN, INPUT/OUTPUT, OPEN_DRAIN) and <i>value</i>; equivalent of <i>pinMode()</i> and/or <i>digitalRead()/digitalWrite()/analogRead()</i></p>
 <p>
-<table><tr><td><b>Keyword</b></td><td><b>Description and examples</b></td></tr>
+<table>
+<tr><th>Keyword</th><th>Description and examples</th></tr>
 <tr>
 <td><p><i>NUMBER</i></p></td><td><p><b>pin </b><i>PIN_NUMBER</i><br />A pin number to work with. The very first argument
           of the "pin" command is a pin number. This <i>pin number</i> keyword can 
@@ -191,11 +192,7 @@ is first cleared (reset to zero), and then the new mode is applied.
 <p id="reading"><h2><a href="#top">&#8686;</a>READING/WRITING PIN VALUES</h2></p>
 
 <table>
-  <tr>
-    <td><b>Keyword</b></td>
-    <td><b>Description and examples</b></td>
-  </tr>
-
+<tr><th>Keyword</th><th>Description and examples</th></tr>
   <tr>
     <td>read</td>
     <td>
@@ -270,11 +267,7 @@ or even ultra-low-frequency signals and custom patterns.
 </p>
 
 <table>
-  <tr>
-    <td><b>Keyword</b></td>
-    <td><b>Description and examples</b></td>
-  </tr>
-
+<tr><th>Keyword</th><th>Description and examples</th></tr>
   <tr>
     <td><b>sequence</b>&nbsp;<i>NUM</i></td>
     <td>
@@ -342,8 +335,7 @@ will be applied immediately, as if they had been delayed. The keywords "<b>hold<
 </p>
 
 <table>
-  <tr><td><b>Keyword</b></td><td><b>Description and examples</b></td></tr>
-
+<tr><th>Keyword</th><th>Description and examples</th></tr>
   <tr>
     <td><b>hold<br>release</b></td>
     <td>
@@ -394,7 +386,7 @@ Looped commands can be interrupted either by pressing a key (for commands runnin
 </p>
 
 <table>
-<tr><td><b>Keyword</b></td><td><b>Description and examples</b></td></tr>
+<tr><th>Keyword</th><th>Description and examples</th></tr>
 <tr>
 <td><p><b>loop</b></p></td>
 <td>
@@ -530,7 +522,7 @@ esp32-uart2>sh pin 18 19
 </pre>
 
 <table>
-<tr><td><b>Keyword</b></td><td><b>Description and examples</b></td></tr>
+<tr><th>Keyword</th><th>Description and examples</th></tr>
 
 <tr>
 <td><b>iomux</b>&nbsp;[<i>FUNC</i>]</td>
