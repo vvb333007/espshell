@@ -1,131 +1,99 @@
-<pre>                                                                                  
-                      ,-.----.                                                    
-    ,---,.  .--.--.   \    /  \              ,---,                ,--,    ,--,    
-  ,'  .' | /  /    '. |   :    \           ,--.' |              ,--.'|  ,--.'|    
-,---.'   ||  :  /`. / |   |  .\ :          |  |  :              |  | :  |  | :    
-|   |   .';  |  |--`  .   :  |: | .--.--.  :  :  :              :  : '  :  : '    
-:   :  |-,|  :  ;_    |   |   \ :/  /    ' :  |  |,--.   ,---.  |  ' |  |  ' |    
-:   |  ;/| \  \    `. |   : .   /  :  /`./ |  :  '   |  /     \ '  | |  '  | |    
-|   :   .'  `----.   \;   | |`-'|  :  ;_   |  |   /' : /    /  ||  | :  |  | :    
-|   |  |-,  __ \  \  ||   | ;    \  \    `.'  :  | | |.    ' / |'  : |__'  : |__  
-'   :  ;/| /  /`--'  /:   ' |     `----.   \  |  ' | :'   ;   /||  | '.'|  | '.'| 
-|   |    \'--'.     / :   : :    /  /`--'  /  :  :_:,''   |  / |;  :    ;  :    ; 
-|   :   .'  `--'---'  |   | :   '--'.     /|  | ,'    |   :    ||  ,   /|  ,   /  
-|   | ,'              `---'.|     `--'---' `--''       \   \  /  ---`-'  ---`-'   
-`----'                  `---`                           `----'                    
-                                                                
-</pre>
+# WHAT IS THIS
 
-WHAT IS THIS:
--------------
+This is a debugging and development tool (a library for the Arduino framework) intended for use with **ESP32 hardware**.
 
- This is a debugging/development tool (a library for Arduino framework) for use 
- with Arduino projects on *ESP32 hardware*.
+It provides a command-line interface (CLI) over the serial port (UART or USB), running in parallel with your Arduino sketch. This is **not** a standalone program — the tool integrates into your sketch at compile time and enhances any sketch (even an empty one) with a shell. ESPShell also allows you to pause and resume sketch execution.
 
- Provides a command line interface (CLI) on serial port (uart or usb) running in 
- parallel to your Arduino sketch. It is not standalone program - this tool attaches
- to the user sketch (at compile time) and enchances any sketch (even empty one)
- with a shell. ESPShell has ability to pause/resume sketch execution.
+Users can enter and execute commands (including many built-in ones) in a manner similar to a Linux shell, all while their sketch continues to run. ESPShell works with the Arduino IDE Serial Monitor or any other terminal software like *PuTTY* or *Tera Term*. Linux users have a wide variety of terminal options — even the `cu` utility will do the job.
 
- User can enter and execute commands (there are many built-in commands) in a way 
- similar to Linux shell while their sketch is running. ESPShell can be used 
- either from Arduino IDE Serial Monitor or any other communication software like
- *PuTTY* or *TeraTerm*. Linux users have plenty of communication software to 
- choose from but even "cu" utility can do the job.
+This library is useful for:
 
- This library can be useful for: 
+1. **Developers** working with I2C or UART devices. ESPShell includes commands to create/delete hardware interfaces, send/receive data, etc.  
+   Examples:
+   - Interfacing UART-based GPS chips or GSM modems  
+   - Building libraries for I2C devices  
+   - Testing/debugging boards that control multiple relays with a single command  
+   - Viewing or modifying sketch variables  
+   - Changing pin or interface parameters (e.g., UART speed or pin pull-up/down mode) on the fly — no more constant compile/upload cycles
 
- 1. Developers who are interfacing new I2C or UART devices as espshell has 
-    commands to create/delete hardware interfaces, send/receive data and so on. 
+2. **Beginners** who want to experiment with hardware without writing any code
 
-    Interfacing GPS (uart-based) chips or GSM modems, making libraries for I2C 
-    devices.
+3. **Arduino-compatible board manufacturers**. A pre-installed shell can be useful for:
+   - Production testing  
+   - Allowing users to interact with hardware without any programming  
+   - Running demos like blinking LEDs or toggling relays via ESPShell commands
 
-    Boards, which control number of relays, can be easily tested/debugged with 
-    one single command.
+---
 
-    Displaying/Changing sketch variables.
+# HOW TO INSTALL
 
-    Changing pin or interface parameters (uart speed for example, or pull mode 
-    for the pin) while sketch is running. Saves your time on 
-    countless "run/change/recompile/upload" cycles: wrong variable value? Now 
-    you can change it.
- 
- 2. Beginners who wish to play with hardware without actually writing any code
+This library is available via the **Arduino Library Manager**:
 
- 3. Arduino-compatible board makers: preinstalled shell can be used in number 
-    of ways: production testing, users now can play with a hardware without 
-    writing any code. (as an example: it is possible to make various 
-    "blinking-led" or "relay-on/off" demos just using ESPShell commands
+1. Open the **Library Manager**
+2. Search for `espshell`
+3. Choose the latest version and click **Install**
 
-HOW TO INSTALL
---------------
+**To install manually** (e.g., the latest source code from GitHub):
 
- This library is available for installation from **Arduino Library Manager.**:
- Click the **Library  Manager** icon and type "espshell" in a search box. 
- Choose latest version and click "INSTALL".
+1. Create the folder: `/YourSketchBook/libraries/espshell`  
+2. Copy the library contents (`/docs`, `/src`, `/examples`, etc.) into that folder  
+3. Restart the Arduino IDE
 
- **For those who wish to install it manually** (say, latest source code from GitHub)
- here are instructions:
+---
 
- Create folder /YourSketchBook/libraries/espshell
- Copy library content (i.e. /docs, /src, /examples, etc) to that folder
- Restart Arduino IDE
+# HOW TO USE IT IN MY PROJECT?
 
+1. Add `#include "espshell.h"` to your sketch  
+2. Compile and upload as usual  
+3. Open the Serial Monitor, type `?`, and press **Enter**
 
-HOW TO USE IT IN MY PROJECT?
-----------------------------
+> **NOTE:** The Serial Monitor is not ideal. It’s recommended to use dedicated terminal software like **Tera Term**.
 
- Add #include "espshell.h" to your sketch
- Compile and upload as usual
- Open Serial Monitor, type "?" and press **Enter**
- (**NOTE: SerialMonitor is not the best option. Preferred way is to use
-    a dedicated terminal software like **Tera Term**)
+---
 
-CAN I EXECUTE SHELL COMMANDS DIRECTLY FROM MY SKETCH?
------------------------------------------------------
+# CAN I EXECUTE SHELL COMMANDS DIRECTLY FROM MY SKETCH?
 
-Yes, there is a function **espshell_exec()** which executes an arbitrary
-shell command(s). Multiple commands are allowed (in a single call) as far as they are 
-separated with a newline character. The function above is an asyncronous call (returns 
-immediately).
+Yes. Use the function **`espshell_exec()`**, which executes arbitrary shell command(s).  
+Multiple commands can be passed at once, separated by newline characters.  
+This function is asynchronous and returns immediately.
 
-To check, if command was executed, one can use **espshell_exec_finished()** call.
+To check whether the command has finished executing, use **`espshell_exec_finished()`**.
 
+---
 
+# WHAT IS ESPSHELL'S MEMORY/CPU FOOTPRINT?
 
-WHAT IS ESPSHELL MEMORY/CPU FOOTPRINT?
-----------------------------------
+The latest GitHub version I checked had the following overhead:
 
-Latest GitHub version I checked was:
+- **Code size (.text):** +100 KB (Flash)  
+- **Data size (.data + .bss):** +2.5 KB (DRAM)  
+- **IRAM code (.iram):** -512 B (IRAM)  
+- Some small code sections are marked with `IRAM_ATTR` (stored in IRAM permanently)
 
-  Code size (i.e. binary size): +81kbytes to the sketch
-  Data size (data + BSS): +2kbytes
-  There are also tiny portions of code with IRAM_ATTR (means they are in IRAM permanently)
+ESPShell runs on the other core (on multicore systems) to minimize interference with the main sketch.
 
-ESPShell executes on another core (on multicore systems) to minimize interference to 
-sketch execution
+---
 
+# DOCUMENTATION
 
-DOCUMENTATION
--------------
+- English:  
+  [ESPShell Documentation (EN)](https://htmlpreview.github.io/?https://github.com/vvb333007/espshell/blob/main/docs/html/index.html)
 
-English (mostly up to date) is here: https://htmlpreview.github.io/?https://github.com/vvb333007/espshell/blob/main/docs/html/index.html
-                        and
-Russian (not yet done) is  here: https://htmlpreview.github.io/?https://github.com/vvb333007/espshell/blob/main/docs/html/index.ru.html
+- На русском:  
+  [ESPShell Documentation (RU)](https://htmlpreview.github.io/?https://github.com/vvb333007/espshell/blob/main/docs/html/index.ru.html)
 
-Files named "Commands.txt" and "Pin_Commands.txt" are essential chapters
-and it is a good idea to spend some of your time reading it.
+The files **`Commands.txt`** and **`Pin_Commands.txt`** are essential reading — it's highly recommended to review them.
 
-ESPSHELL DEVELOPMENT
---------------------
+---
 
-ESPShell code is written in pure C, developer friendly and well-commented. 
+# ESPSHELL DEVELOPMENT
 
-There are few areas which calls for attention and they are can be found as 
-"TODO:" throughout the code. There are docs/PROBLEMS.txt and docs/PLANS.txt
-for further reading
+ESPShell is written in pure C. It’s developer-friendly and well-commented.
 
-The code itself is quite simple and linear, with non-obvious parts well 
-commented. Please note that author is not a native English speaker and thats
-why comments in the code have mistakes, language misuse, etc.
+Some areas are marked with **`TODO:`** in the source code. Additional information is available in:
+
+- `docs/PROBLEMS.txt`
+- `docs/PLANS.txt`
+
+The code is generally simple and linear. Non-obvious parts are well documented.  
+Please note that the author is not a native English speaker, so some in-code comments may contain minor language mistakes.
