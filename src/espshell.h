@@ -22,7 +22,7 @@
 #define espshell_h
 
 // Code version, dont change. 
-#define ESPSHELL_VERSION "0.99.8"
+#define ESPSHELL_VERSION "0.99.9"
 
 // -- Compile-time ESPShell settings --
 //

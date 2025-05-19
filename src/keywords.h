@@ -152,13 +152,15 @@ static int cmd_alias_if(int, char **);
 
 #if WITH_ALIAS
 static const struct keywords_t keywords_alias[] = {
- 
+
   KEYWORDS_BEGIN
 
+  // These entries go first, to avoid matching against "*"
   { "delete", NULL, 1,
     HELPK("% \"<b>delete</> [all | LINE_NUMBER]\"\r\n" 
           "%\r\n"
-          "% Delete lines from an alias: no arguments means \"last line\"\r\n"
+          "% Delete lines from the alias: no arguments means \"delete the last line\"\r\n"
+          "% \"delete all\" erases whole alias content\r\n"
           "% LINE_NUMBER is a line number, which can be displayed by \"list\" command" ),
     HELPK("Delete lines") },
 
@@ -170,6 +172,12 @@ static const struct keywords_t keywords_alias[] = {
           "% Display current alias content"),
     HELPK("Display content") },
 
+  { "end", cmd_exit, NO_ARGS,
+    HELPK("% \"<b>end</>\r\n" 
+          "% Exit from the alias configuration modes.\r\n"),
+    HELPK("Exit") },
+
+
   // Special entry. Matches any command just as MANY_ARGS matches any number of arguments
   { "*", NULL, MANY_ARGS,
     HELPK("% \"<b>COMMAND ARG1 ARG2 ... ARGn</>\"\r\n" 
@@ -177,7 +185,9 @@ static const struct keywords_t keywords_alias[] = {
           "% Any command with any number of arguments"),
     HELPK("Enter commands one by one") },
 
-  KEYWORDS_END
+  {
+    NULL, NULL, 0, NULL, NULL
+  }
 };
 #endif
 
@@ -797,6 +807,14 @@ static const struct keywords_t keywords_main[] = {
           "% Model name can be omitted and then current camera pinout is displayed\r\n"
           "% Model name can be \"custom\" to display your custom camera pinout\r\n"
           ),NULL},
+#endif
+#if WITH_ALIAS
+  { "show", cmd_show, MANY_ARGS,
+    HELPK("% \"<b>show alias</> [<o>ALIAS_NAME</>]\"\r\n"
+          "%\r\n"
+          "% \"show alias\"     - Display list of configured aliases\r\n"
+          "% \"show alias NAME\"- Display alias NAME listing "),NULL},
+
 #endif
 
   // Switch espshell's input to another UART. 
