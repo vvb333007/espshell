@@ -1,81 +1,72 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
-  <title>ESPShell : Filesystems</title>
+  <title>ESPShell : Файловые системы</title>
   <link rel="stylesheet" href="espshell.css">
   <meta charset="UTF-8">
 </head>
 <body>
-<p align=center><a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: File systems" width="70%" height="70%" /></a></p>
+<p align=center><a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell для Arduino :: Файловые системы" width="70%" height="70%" /></a></p>
 <h3 align=center><a href="Filesystems.ru.html">[ На русском ]</a>&nbsp;&harr;&nbsp;<a href="Filesystems.html">[ English ]</a></h3>
 <p>
   <ul>
-    <li><a href="#fs">ESP32 file systems</a></li>
-    <li><a href="#purpose">ESPShell's file manager purpose</a></li>
-    <li><a href="#cmds">File manager commands</a></li>
-    <li>&nbsp;&nbsp;<a href="#mount0">Show partition table & mounted filesystems : "<b>mount</b>"</a></li>
-    <li>&nbsp;&nbsp;<a href="#mount">Mount partition</a></li>
-    <li>&nbsp;&nbsp;<a href="#unmount">Unmount partition previously mounted with "mount" : "unmount [path]"</a></li>
-    <li>&nbsp;&nbsp;<a href="#format">Format filesystem : "<b>format</b> [label]"</a></li>
-    <li>&nbsp;&nbsp;<a href="#ls">Directory listing : "<b>ls</b> [path]"</a></li>
-    <li>&nbsp;&nbsp;<a href="#cd">Change directory : "<b>cd</b> [path|..]"</a></li>
-    <li>&nbsp;&nbsp;<a href="#rm">Delete files/directories : "<b>rm</b> path"</a></li>
-    <li>&nbsp;&nbsp;<a href="#write">Write bytes : "<b>write</b> path [text]"</a></li>
-    <li>&nbsp;&nbsp;<a href="#append">Append bytes : "<b>append</b> path text"</a></li>
-    <li>&nbsp;&nbsp;<a href="#insert">Insert bytes into text file : "<b>insert</b> path line_num [text]"</a></li>
-    <li>&nbsp;&nbsp;<a href="#delete">Delete lines in text file : "<b>delete path</b> line_num [count]"</a></li>
-    <li>&nbsp;&nbsp;<a href="#mkdir">Create directory/ies : "<b>mkdir</b> path1 path2 ... pathn"</a></li>
-    <li>&nbsp;&nbsp;<a href="#touch">Create new or update timestamps on existing file(s) : "<b>touch</b> path1 path2 ... pathn"</a></li>
-    <li>&nbsp;&nbsp;<a href="#cat">Display/transmit text/binary file : "<b>cat</b> [-n|-b] path [line_num [count]] [uart num]"</a></li>
-    <li>&nbsp;&nbsp;<a href="#mv">Move/rename files or directories : "<b>mv</b>"</a></li>
-    <li>&nbsp;&nbsp;<a href="#cp">Copy files or directories : "<b>cp</b>"</a></li>
-    <li>&nbsp;&nbsp;<a href="#show">Displaying information : "<b>show mount</b> [PATH]"</a></li>
+    <li><a href="#fs">Файловые системы ESP32</a></li>
+    <li><a href="#purpose">Назначение файлового менеджера ESPShell</a></li>
+    <li><a href="#cmds">Команды файлового менеджера</a></li>
+    <li>&nbsp;&nbsp;<a href="#mount0">Показать таблицу разделов и смонтированные файловые системы: "<b>mount</b>"</a></li>
+    <li>&nbsp;&nbsp;<a href="#mount">Монтировать раздел</a></li>
+    <li>&nbsp;&nbsp;<a href="#unmount">Размонтировать ранее смонтированный раздел: "unmount [path]"</a></li>
+    <li>&nbsp;&nbsp;<a href="#format">Форматировать файловую систему: "<b>format</b> [label]"</a></li>
+    <li>&nbsp;&nbsp;<a href="#ls">Список файлов в каталоге: "<b>ls</b> [path]"</a></li>
+    <li>&nbsp;&nbsp;<a href="#cd">Сменить каталог: "<b>cd</b> [path|..]"</a></li>
+    <li>&nbsp;&nbsp;<a href="#rm">Удалить файлы/каталоги: "<b>rm</b> path"</a></li>
+    <li>&nbsp;&nbsp;<a href="#write">Записать байты: "<b>write</b> path [text]"</a></li>
+    <li>&nbsp;&nbsp;<a href="#append">Дописать байты: "<b>append</b> path text"</a></li>
+    <li>&nbsp;&nbsp;<a href="#insert">Вставить байты в текстовый файл: "<b>insert</b> path line_num [text]"</a></li>
+    <li>&nbsp;&nbsp;<a href="#delete">Удалить строки из текстового файла: "<b>delete path</b> line_num [count]"</a></li>
+    <li>&nbsp;&nbsp;<a href="#mkdir">Создать каталог(и): "<b>mkdir</b> path1 path2 ... pathn"</a></li>
+    <li>&nbsp;&nbsp;<a href="#touch">Создать или обновить метки времени у файла(ов): "<b>touch</b> path1 path2 ... pathn"</a></li>
+    <li>&nbsp;&nbsp;<a href="#cat">Показать/отправить текстовый или бинарный файл: "<b>cat</b> [-n|-b] path [line_num [count]] [uart num]"</a></li>
+    <li>&nbsp;&nbsp;<a href="#mv">Переместить/переименовать файлы или каталоги: "<b>mv</b>"</a></li>
+    <li>&nbsp;&nbsp;<a href="#cp">Копировать файлы или каталоги: "<b>cp</b>"</a></li>
+    <li>&nbsp;&nbsp;<a href="#show">Показать информацию: "<b>show mount</b> [PATH]"</a></li>
   </ul>
 </p>
 
-<p><h2 id=fs><a href="#top">&#8686;</a>ESP32 FILESYSTEMS</h2></p>
+<p><h2 id=fs><a href="#top">&#8686;</a>ФАЙЛОВЫЕ СИСТЕМЫ ESP32</h2></p>
 
 <p>
-As of 2024, there are three filesystems commonly used on ESP32 in IDF and 
-Arduino projects: LittleFS, FAT, and SPIFFS (the latter is being deprecated soon). 
-All three filesystems are supported by ESPShell in its tiny file manager.
+По состоянию на 2024 год, в проектах ESP32 на базе IDF и Arduino обычно используются три файловые системы: LittleFS, FAT и SPIFFS (последняя скоро будет устаревшей).
+Все три файловые системы поддерживаются в мини-файловом менеджере ESPShell.
 </p><p>
-There is a sample "partitions.csv" file that defines all three filesystems for 
-testing purposes. This file, when placed in the sketch directory, will be used 
-during the firmware upload process.
+Для тестирования доступен пример файла "partitions.csv", в котором описаны все три файловые системы. Этот файл, если он находится в каталоге проекта, будет использоваться при загрузке прошивки.
 </p><p>
-The following common storage media are supported:
+Поддерживаются следующие типы носителей:
 </p><p>
 <ul>
-  <li>Internal flash memory: This is where your sketch gets uploaded.</li>
-  <li>SD card on SPI interface.</li>
+  <li>Встроенная флэш-память: здесь размещается прошивка (скетч).</li>
+  <li>SD-карта по SPI-интерфейсу.</li>
 </ul>
 </p><p>
-SDMMC with full 4-bit data lines is the fastest way to read/write SD cards. However, 
-many devboards have only one data line connected (for example, the ESP32Cam). 
-SDMMC in 1-bit mode is still faster than using an SD card on the SPI interface.
+SDMMC с полноценной 4-битной шиной данных — самый быстрый способ чтения/записи на SD-карты. Однако на многих отладочных платах подключена только одна линия данных (например, у ESP32Cam). Тем не менее, даже SDMMC в 1-битном режиме быстрее, чем SD по SPI.
 </p>
 
-<p><h2 id=purpose><a href="#top">&#8686;</a>ESPSHELL'S FILE MANAGER PURPOSE</h2></p>
+<p><h2 id=purpose><a href="#top">&#8686;</a>НАЗНАЧЕНИЕ ФАЙЛОВОГО МЕНЕДЖЕРА ESPSHELL</h2></p>
 
+<p>
+Основная цель файлового менеджера ESPShell — копирование, перемещение, переименование и удаление файлов и каталогов, которые могут использоваться в прошивке. Это, например, конфигурационные файлы, изображения с камеры, страницы веб-сервера, логи и т.д.
 </p><p>
-The main purpose of ESPShell's file manager is to copy, move, rename, and delete 
-files and directories that may be used by the sketch. Examples include configuration 
-files, images from the camera, web server pages, logs, and so on.
+ESPShell позволяет выполнять операции копирования и перемещения между разными файловыми системами. Например, файл можно переместить из FAT в LittleFS.
 </p><p>
-ESPShell allows for copy and move operations across different filesystems. For example, 
-a file can be copied or moved from FAT to LittleFS.
+Поддерживаются SD-карты, подключенные по шине SPI.
 </p><p>
-The shell supports SD memory cards over the SPI bus.
-</p><p>
-Additionally, ESPShell provides basic binary and text file editing capabilities. 
-Users can create files, append strings or bytes to files, and insert or remove lines 
-in text files.
+Кроме того, ESPShell предоставляет базовые функции редактирования бинарных и текстовых файлов. Пользователь может создавать файлы, дописывать строки или байты, вставлять или удалять строки в текстовых файлах.
 </p>
 
-<p><h2 id=cmds><a href="#top">&#8686;</a>FILE MANAGER COMMANDS</h2></p>
-</p><p>
-To enter the file manager mode, type "<b>files</b>" and press &lt;Enter&gt;:
+<p><h2 id=cmds><a href="#top">&#8686;</a>КОМАНДЫ ФАЙЛОВОГО МЕНЕДЖЕРА</h2></p>
+
+<p>
+Чтобы войти в режим файлового менеджера, введите "<b>files</b>" и нажмите &lt;Enter&gt;:
 </p><p><pre>
   esp32#>files
   % Entering filesystem configuration mode. Ctrl+Z or "exit" to return
@@ -83,54 +74,45 @@ To enter the file manager mode, type "<b>files</b>" and press &lt;Enter&gt;:
   esp32#(/)>
 </pre>
 </p><p>
-Now, you can see the current working directory displayed in the prompt, in 
-brackets. This is called the root directory. The root directory is virtual 
-and cannot be used like other directories. It is impossible to create files 
-or directories in the root directory. It is used exclusively to hold mount 
-points.
+Теперь в командной строке отображается текущий рабочий каталог в скобках. Это называется корневым каталогом. Он виртуальный и не может использоваться как обычный каталог: нельзя создать в нём файлы или папки. Он используется исключительно для хранения точек монтирования.
 </p><p>
-A mount point is a directory whose name starts with "/", 
-for example, "/wwwroot", where the actual filesystem is deployed.
+Точка монтирования — это каталог, имя которого начинается с "/", например, "/wwwroot", где размещается реальная файловая система.
 </p><p>
-NOTE: If you want to include spaces (" ") in your path, use an asterisk "*" 
-instead of spaces. ESPShell will convert the asterisks to spaces in paths and 
-filenames. ESPShell does not support:        
+ПРИМЕЧАНИЕ: если вы хотите использовать пробелы (" ") в пути, используйте вместо них звёздочку "*". ESPShell автоматически заменит звёздочки на пробелы. ESPShell не поддерживает:
 </p><p><ul><li>
-  File name completion, </li><li>
-  Path wildcards</li></ul>
+  автодополнение имён файлов, </li><li>
+  подстановочные символы в путях</li></ul>
 </p><p>
-Now, let's take a look at the file manager commands (you can exit file manager
-mode by pressing Ctrl+Z or typing "exit" and pressing &lt;Enter&gt;):
+Теперь давайте рассмотрим команды файлового менеджера (выйти из режима можно нажатием Ctrl+Z или вводом "exit" + Enter):
 </p><p><pre>
   esp32#(/)>?
   % Enter "? command" to get details about specific command.
   % Enter "? keys" to display the espshell keyboard help page
   %
-  % "?"          : Commands list & help
-  % "mount"      : Mount partition/Show partition table
-  % "unmount"    : Unmount partition
-  % "ls"         : List directory
-  % "pwd"        : Working directory
-  % "cd"         : Change directory
-  % "rm"         : Delete files
-  % "mv"         : Move/Rename files
-  % "cp"         : Copy files
-  % "write"      : Write bytes
-  % "append"     : Append bytes
-  % "insert"     : Insert bytes
-  % "delete"     : Delete lines
-  % "mkdir"      : Create directory
-  % "cat"        : Display text/binary file
-  % "touch"      : Touch/Create file
-  % "format"     : Erase old & create new filesystem
-  % "exit"       : Exit
+  % "?"          : Список команд и помощь
+  % "mount"      : Смонтировать раздел / Показать таблицу разделов
+  % "unmount"    : Размонтировать раздел
+  % "ls"         : Список каталога
+  % "pwd"        : Показать текущий каталог
+  % "cd"         : Сменить каталог
+  % "rm"         : Удалить файлы
+  % "mv"         : Переместить/переименовать файлы
+  % "cp"         : Копировать файлы
+  % "write"      : Записать байты
+  % "append"     : Дописать байты
+  % "insert"     : Вставить байты
+  % "delete"     : Удалить строки
+  % "mkdir"      : Создать каталог
+  % "cat"        : Показать текстовый/бинарный файл
+  % "touch"      : Обновить метку времени / создать файл
+  % "format"     : Стереть старую и создать новую файловую систему
+  % "exit"       : Выйти
   esp32#(/)>
 </pre>
 </p>
-<p><h3 id=mount0><a href="#top">&#8686;</a>SHOW PARTITION TABLE & MOUNTED FILESYSTEMS: "mount"</h3></p>
+<p><h3 id=mount0><a href="#top">&#8686;</a>ПОКАЗАТЬ ТАБЛИЦУ РАЗДЕЛОВ И СМОНТИРОВАННЫЕ ФАЙЛОВЫЕ СИСТЕМЫ: "mount"</h3></p>
 <p>
-The command without arguments displays the partition table and some information 
-about mounted filesystems (the command "mount" was shortened to "m"):
+Команда без аргументов отображает таблицу разделов и информацию о смонтированных файловых системах (команда "mount" сокращена до "m"):
 </p><p><pre>
   esp32#(/)>m
   %  Partition label |   Type    |   Size  |    Mounted on    |Total(Kb)|Free(Kb)
@@ -145,113 +127,78 @@ about mounted filesystems (the command "mount" was shortened to "m"):
   % 3 mountable partitions found
   esp32#(/)>
 </pre>
-The output above shows that there are 3 different partitions, two of which 
-are mounted under "/wwwroot" and "/logs". The "Size" column represents the 
-raw filesystem size as it appears on the flash chip. The "Total" and "Free" 
-columns display the total and available space within the filesystems.
+Вывод выше показывает, что есть 3 различных раздела, два из которых смонтированы по путям "/wwwroot" и "/logs". Столбец "Size" показывает размер файловой системы на флеш-памяти. Столбцы "Total" и "Free" показывают общий и свободный объём файловой системы соответственно.
 </p>
 
-
-<p><h3 id=mount><a href="#top">&#8686;</a>MOUNT PARTITION: "mount LABEL [/PATH]"</h3></p>
+<p><h3 id=mount><a href="#top">&#8686;</a>МОНТИРОВАТЬ РАЗДЕЛ: "mount LABEL [/PATH]"</h3></p>
 <p>
-
-This command, when used with one or two arguments, mounts filesystems located on 
-the flash partition with the specified LABEL under the specified /PATH. 
-If /PATH (a mount point) is not provided, it is automatically generated by 
-combining "/" with the partition label (as shown in the previous screenshot).
+Эта команда с одним или двумя аргументами монтирует файловую систему, находящуюся на разделе с указанной меткой LABEL, в указанный путь /PATH.
+Если /PATH (точка монтирования) не задан, он автоматически формируется путём объединения "/" и имени метки раздела (как показано выше).
 </p><p>
-If the filesystem fails to mount, it will be formatted and the process will be retried.
+Если файловая система не монтируется, она будет отформатирована, после чего монтирование будет повторено.
 </p><p>
-The LABEL can be shortened, but this does not affect the generated mount point - it 
-will still be the full label name:
+LABEL можно указывать укороченно, но это не влияет на итоговую точку монтирования — она всё равно формируется по полному имени метки:
 </p><p><pre>
-
   esp32#(/)>mount www
   %  FAT/exFAT  on partition "wwwroot" is mounted under "/wwwroot"
   esp32#(/)>
 </pre>
-Here we used short label name ("www" instead of "wwwroot") but it was treated as if it 
-was full name. The mountpoint was omitted and autogenerated from partition label name 
-and "/"
+Здесь мы использовали укороченную метку ("www" вместо "wwwroot"), но она была распознана как полное имя. Путь монтирования был опущен, поэтому он сгенерирован автоматически из имени метки.
 </p><p>
-Once mounted the filesystem is accessible under /PATH ("/wwwroot" in this case): user 
-can "cd /wwwroot" and explore/modify the filesystem
+После монтирования файловая система становится доступной по пути /PATH (в данном случае — /wwwroot): пользователь может выполнить "cd /wwwroot" и исследовать/изменять содержимое.
 </p><p>
-In this example, we used the shortened label "www" instead of "wwwroot", but the 
-system treated it as the full label name. The mount point was automatically 
-generated based on the partition label and "/".
-</p><p>
-Once the filesystem is mounted, it can be accessed under /PATH (in this case, 
-/wwwroot). The user can then use the cd command to navigate and explore/modify 
-the filesystem:
-</p><p>
-Example: Mount the filesystem on the "wwwroot" partition under the mount point "/my/point":
+Пример: смонтировать файловую систему с раздела "wwwroot" в точку "/my/point":
 <pre>
   esp32#(/)>mount wwwroot /my/point
   %  FAT/exFAT  on partition "wwwroot" is mounted under "/my/point"
   esp32#(/)>
 </pre>
 </p>
-<p><h3 id=sd><a href="#top">&#8686;</a>MOUNTING AN SD CARD</h3></p>
+
+<p><h3 id=sd><a href="#top">&#8686;</a>МОНТИРОВАНИЕ SD-КАРТЫ</h3></p>
 
 <p>
 "mount spi1|spi2|spi3|hspi|fspi|vspi MOSI MISO CLK CS [FREQ_KHZ] [/PATH]"
 </p><p>
-An SD card on an SPI bus can be mounted using the command above. The first argument specifies 
-the SPI interface to use. The safest choice, which will work with all ESP32 models, is "hspi". 
-Both the Arduino SPI interface naming convention and ESP-IDF (spi1, spi2, etc.) naming 
-conventions are supported.
+SD-карта может быть смонтирована по SPI-шине с помощью приведённой выше команды. Первый аргумент указывает, какой SPI-интерфейс использовать. Самый безопасный выбор — "hspi", он работает на всех моделях ESP32. Поддерживаются оба соглашения об именовании SPI-интерфейсов: Arduino (hspi, vspi) и ESP-IDF (spi1, spi2 и т. д.).
 </p><p>
-MOSI, MISO, CLK, and CS are the SPI bus pins (these are arbitrary GPIO pins where your SD 
-card is connected).
+MOSI, MISO, CLK и CS — это пины SPI-шины (GPIO, к которым подключена SD-карта).
 </p><p>
-FREQ_KHZ is an optional parameter specifying the SPI bus frequency. By default, SD cards 
-are mounted and accessed at 20 MHz. However, when using longer connecting wires, such as 
-on breadboards, it may be necessary to use a lower frequency (as low as 400 kHz) to avoid 
-data transmission errors.
+FREQ_KHZ — необязательный параметр, определяющий частоту SPI-шины. По умолчанию SD-карты работают на частоте 20 МГц. Однако при использовании длинных проводов (например, на макетных платах) рекомендуется понижать частоту (вплоть до 400 кГц) для предотвращения ошибок передачи данных.
 </p>
 
-
-<p><h3 id=unmount><a href="#top">&#8686;</a>UNMOUNT PARTITION PREVIOUSLY MOUNTED WITH "MOUNT" : "unmount [PATH]"</h3></p>
+<p><h3 id=unmount><a href="#top">&#8686;</a>РАЗМОНТИРОВАТЬ РАЗДЕЛ, СМОНТИРОВАННЫЙ ЧЕРЕЗ "MOUNT": "unmount [PATH]"</h3></p>
 
 <p>
-Opposite of "mount" : unregister filesystems. Takes one optional argument: the mountpoint
-path. If mountpoint is not specified then it is derived from the current working directory:
-</p><p>
-The unmount command is the opposite of mount - it unregisters filesystems. It takes one 
-optional argument: the mountpoint path. If the mountpoint is not specified, it is derived 
-from the current working directory:
+Противоположность команде "mount": выполняет размонтирование файловой системы. Принимает один необязательный аргумент — путь монтирования.
+Если путь не указан, он определяется из текущей рабочей директории:
 </p><p><pre>
-
   esp32#(/wwwroot/1/2/)>unmount
   % Unmounted  FAT/exFAT  partition "/wwwroot"
   esp32#(/)>
 </pre>
-There is also command "umount" which is simply an alias for "unmount"
+Также доступна команда "umount", являющаяся алиасом для "unmount".
 </p>
 
-
-<p><h3 id=format><a href="#top">&#8686;</a>FORMAT FILESYSTEM : "format [LABEL]"</h3></p>
+<p><h3 id=format><a href="#top">&#8686;</a>ФОРМАТИРОВАНИЕ ФАЙЛОВОЙ СИСТЕМЫ: "format [LABEL]"</h3></p>
 
 <p>
-The format command is used to format the partition specified by the LABEL. If 
-the LABEL is omitted, ESPShell derives the partition label from the current working directory:
+Команда "format" используется для форматирования раздела, указанного по LABEL.
+Если LABEL не указан, ESPShell определяет метку раздела по текущей директории:
 </p><p><pre>
   esp32#(/wwwroot/)>format
   % Formatting partition "wwwroot", file system type is " FAT/exFAT "
   % done
   esp32#(/wwwroot/)>
 </pre>
-The filesystem type is defined by the partitions.csv file and cannot be changed at runtime. 
-For FAT filesystems, a quick format is performed (no data is erased, only the file allocation 
-tables are cleared).
+Тип файловой системы определяется в файле partitions.csv и не может быть изменён во время выполнения.
+Для FAT выполняется быстрое форматирование (таблицы размещения очищаются, данные не затираются).
 </p>
 
-<p><h3 id=ls><a href="#top">&#8686;</a>DIRECTORY LISTING : "ls [PATH]"</h3></p>
+<p><h3 id=ls><a href="#top">&#8686;</a>СПИСОК ФАЙЛОВ В ДИРЕКТОРИИ: "ls [PATH]"</h3></p>
 
 <p>
-The "ls" command displays a directory listing. If the PATH is omitted, the current working 
-directory is used:
+Команда "ls" отображает содержимое директории. Если PATH не указан, используется текущая директория:
 <pre>
   esp32#(/wwwroot/)>ls
   %    Size        Modified          *  Name
@@ -265,20 +212,19 @@ directory is used:
   % 4 directories, 1 file, 374 bytes
   esp32#(/wwwroot/)>
 </pre>
-Displayed information: file/directory last modification time, file size in bytes, entry 
-type (directories marked as DIR, files have no makrkings) and file/directory name.
+Выводимые данные включают: время последнего изменения, размер файла в байтах, тип (директории помечены как DIR, файлы — нет) и имя.
 </p><p>
-Displayed information includes:
+Подробности:
 </p><p>
-  Size: File or directory size in bytes<br />
-  Modified: Last modification time<br />
-  Type: Directories are marked as DIR, and files have no marking<br />
-  Name: File or directory name, with directory names displayed in square brackets.<br />
-  The special .. directory (to go up one level) is also shown.
+  Size: размер файла или директории в байтах<br />
+  Modified: дата и время последнего изменения<br />
+  Type: директории помечаются как DIR, файлы — без пометок<br />
+  Name: имя файла или директории (имена директорий отображаются в квадратных скобках)<br />
+  Специальный каталог [..] означает «на уровень выше»
 </p><p>
-The entries are ordered by creation time, with no sorting applied.
+Файлы отображаются в порядке создания, без сортировки.
 </p><p>
-Example: Display the content of the /wwwroot/index/ directory:
+Пример: вывод содержимого директории /wwwroot/index/:
 <pre>
   esp32#(/)>ls wwwroot/index
   %    Size        Modified          *  Name
@@ -290,34 +236,27 @@ Example: Display the content of the /wwwroot/index/ directory:
   % 0 directories, 3 files, 171 bytes
   esp32#(/)>
 </pre>
-The PATH argument must be a directory path, with or without a trailing /.
+Путь (PATH) должен указывать на директорию, с / или без него на конце.
 </p><p>
-Important: By default, the ls command displays the total size of directories, calculated recursively. 
-This may take time and consume memory. If this is an issue, you can change the behavior by running 
-the command var ls_show_dir_size 0, which will disable directory size reporting in the ls command.
+Важно: по умолчанию ls рекурсивно вычисляет общий размер директорий. Это может замедлить выполнение и потреблять память. Чтобы отключить это поведение, выполните:
+<pre>
+  var ls_show_dir_size 0
+</pre>
 </p>
 
-
-<p><h3 id=cd><a href="#top">&#8686;</a>CHANGE DIRECTORY : "cd [PATH|..]"</h3></p>
+<p><h3 id=cd><a href="#top">&#8686;</a>СМЕНА ДИРЕКТОРИИ: "cd [PATH|..]"</h3></p>
 
 <p>
-There are three variations of the "cd" command:
+Команда "cd" поддерживает три варианта:
 </p><p>
-  1. "cd"
-  Without parameters, changes the current working directory (CWD) to the root of the 
-  currently mounted filesystem (not to be confused with the root directory /, which is 
-  the global root for all filesystems):
+  1. "cd" — без параметров: перейти в корень текущей смонтированной ФС (не путать с глобальным "/"):
 <pre>
         esp32#(/wwwroot/1/2/)>cd
         esp32#(/wwwroot/)>
 </pre>
 </p><p>
-  2. "cd .."
-  Changes the current directory to its parent. Only one level is changed per command - 
-  compound paths like ../../ are not supported.  If the parent directory does not exist 
-  (as is often the case with complex mountpoints like /my/mount/point/ where intermediate 
-  directories /my and /mount do not physically exist), then cd .. continues upward until 
-  a valid directory is reached.
+  2. "cd .." — перейти на уровень вверх. Путь вроде "../../" не поддерживается. 
+  Если родительской директории не существует, переход осуществляется к ближайшей существующей:
 <pre>
        esp32#(/)>mount wwwroot /a/mount/point
        %  FAT/exFAT  on partition "wwwroot" is mounted under "/a/mount/point"
@@ -325,31 +264,26 @@ There are three variations of the "cd" command:
        esp32#(/a/mount/point/)>cd ..
        esp32#(/)>
 </pre>
-  In this case, cd .. brings us back to /, not to /a/mount, because /a/mount/point is 
-  treated as a single virtual mount path rather than a nested directory structure.
+  В данном случае команда возвращает нас в "/", так как путь монтирования рассматривается как единый виртуальный путь.
 </p><p>
-  3. "cd PATH"
-  Changes the current working directory to PATH, similar to Linux or Windows shells.
-  Absolute paths must start with a mountpoint
-</p><p>
-  Relative paths are interpreted relative to the current directory
+  3. "cd PATH" — перейти в директорию PATH. Абсолютные пути начинаются с точки монтирования.<br />
+  Относительные пути задаются от текущей директории.
 <pre>
-       esp32#(/wwwroot/)>cd test_dir/dir2       # change dir (relative path)
-       esp32#(/wwwroot/test_dir/dir2/)>cd       # back to filesystem root
-       esp32#(/wwwroot/)>cd ..                  # and 1 more level up 
+       esp32#(/wwwroot/)>cd test_dir/dir2
+       esp32#(/wwwroot/test_dir/dir2/)>cd
+       esp32#(/wwwroot/)>cd ..
        esp32#(/)>
 </pre>
 </p>
 
-
-<p><h3 id=rm><a href="#top">&#8686;</a>DELETE FILES/DIRECTORIES : "rm PATH"</h3></p>
+<p><h3 id=rm><a href="#top">&#8686;</a>УДАЛЕНИЕ ФАЙЛОВ И ДИРЕКТОРИЙ: "rm PATH"</h3></p>
 
 <p>
-Deletes the file or directory specified by PATH.
+Удаляет указанный файл или директорию:
 </p><p>
 <ul>
-  <li>If PATH is a file, it will be deleted.</li>
-  <li>If PATH is a directory, the directory and all of its contents will be deleted recursively, with no confirmation.</li>
+  <li>Если PATH — файл, он будет удалён.</li>
+  <li>Если PATH — директория, она и всё её содержимое будут удалены рекурсивно, без подтверждения.</li>
 </ul>
 <pre>
   esp32#(/)>ls wwwroot/test_dir
@@ -357,9 +291,7 @@ Deletes the file or directory specified by PATH.
   %               -- level up --    DIR [..]
   %            1980-01-01 01:00:24  DIR [dir2]
   %         4  1980-01-01 01:16:20      test.cfg
-  %
   % 1 directory, 1 file, 4 bytes
-
 
   esp32#(/)>rm wwwroot/test_dir
   % Directory removed: "/wwwroot/test_dir/dir2/"
@@ -368,64 +300,55 @@ Deletes the file or directory specified by PATH.
   % 3 files/directories were deleted
   esp32#(/)>
 </pre>
-  Directories in the root "/" (virtual root of all mountpoints) cannot be deleted with "rm": for example "rm /wwwroot" will fail.
-  To remove those, use the unmount command instead.
+Удаление директорий из корня "/" (виртуальный корень всех точек монтирования) невозможно: например, "rm /wwwroot" не сработает. Используйте для этого команду unmount.
 </p>
 
-<p><h3 id=write><a href="#top">&#8686;</a>WRITE BYTES : "write PATH [TEXT]"</h3></p>
+<p><h3 id=write><a href="#top">&#8686;</a>ЗАПИСЬ БАЙТ В ФАЙЛ: "write PATH [TEXT]"</h3></p>
 <p>
-Writes an arbitrary string of bytes or characters to a file. If the file does not exist, it is created.
-If the file exists, its entire content is overwritten each time "write" is used.
+Записывает строку байтов или символов в файл. Если файл не существует — создаётся. Если существует — содержимое перезаписывается полностью.
 </p><p>
-To append or modify files without overwriting, use the commands "append", "insert", or "delete".
+Чтобы дописать или изменить данные без перезаписи, используйте команды "append", "insert" или "delete".
 </p><p>
-The TEXT argument (data to be written) can include:
+Аргумент TEXT может содержать:
 </p><p>
-  regular characters and spaces, escape sequences:
+  обычные символы, пробелы, escape-последовательности:
 <pre>
-    \\  = backslash
-    \n  = newline
-    \r  = carriage return
-    \t  = tab
-    \AB = byte with hexadecimal value AB
+    \\  = обратный слэш
+    \n  = перевод строки
+    \r  = возврат каретки
+    \t  = табуляция
+    \AB = байт с шестнадцатеричным значением AB
 </pre>
-If TEXT is omitted, a single newline (\n) is written.
+Если TEXT опущен, записывается перевод строки (\n).
 </p><p>
-  Example 1: Create a new file test.cfg (or overwrite an existing one) with the "Hello World!", and the next line consisting of bytes 61 62 63 64 65 \n:
+Пример 1: создать или перезаписать test.cfg с "Hello World!" и строкой байт 61 62 63 64 65 \n:
 <pre>
-
   esp32#(/wwwroot/)>write test.cfg Hello World\n\61\62\63\64\65\n
   % 18 bytes written
   esp32#(/wwwroot/)>
 </pre>
-If PATH includes subdirectories that don't yet exist, they will be automatically created.
-
+Если в пути указаны несуществующие директории, они будут созданы автоматически.
 </p>
 
-<p><h3 id=append><a href="#top">&#8686;</a>APPEND BYTES : "append PATH TEXT"</h3></p>
+<p><h3 id=append><a href="#top">&#8686;</a>ДОБАВЛЕНИЕ БАЙТ: "append PATH TEXT"</h3></p>
 
 <p>
-Appends data to the end of an existing file - works similarly to the write command, 
-but does not erase existing content.
+Добавляет данные в конец существующего файла. Работает как write, но не затирает данные:
 <pre>
   esp32#(/wwwroot/)>append test.cfg \nNew line
   % 9 bytes written
   esp32#(/wwwroot/)>
 </pre>
-  Use "write" to overwrite a file, or "insert" / "delete" to modify specific lines.
+Используйте "write" для перезаписи файла, "insert"/"delete" — для изменения строк.
 </p>
-
-
-<p><h3 id=insert><a href="#top">&#8686;</a>INSERT BYTES INTO TEXT FILE : "insert PATH LINE_NUM [TEXT]"</h3></p>
+<p><h3 id=insert><a href="#top">&#8686;</a>ВСТАВКА БАЙТ В ТЕКСТОВЫЙ ФАЙЛ: "insert PATH LINE_NUM [TEXT]"</h3></p>
 
 <p>
-Inserts TEXT (which may include multiple lines separated by \n) before the line number LINE_NUM 
-in the file at PATH.
-Note: A final \n is automatically added to each inserted line - there's no need to manually include 
-\n at the end of every string unless you're inserting multiple lines.
+Вставляет TEXT (который может содержать несколько строк, разделённых символами \n) перед строкой с номером LINE_NUM в файле по пути PATH.<br>
+Примечание: В конец каждой вставляемой строки автоматически добавляется символ новой строки (\n) — нет необходимости вручную добавлять \n в конец каждой строки, если только вы не вставляете несколько строк.
 </p><p>
 
-  Example: Display a file, insert a multiline string into the file:
+  Пример: Отобразить файл и вставить в него многострочную строку:
 <pre>
   esp32#(/wwwroot/)>cat -n index.html
      1: <html>
@@ -449,15 +372,15 @@ Note: A final \n is automatically added to each inserted line - there's no need 
      9:
   esp32#(/wwwroot/)>
 </pre>
-As with the write command, escape sequences like \n, \r, \t, and \XX (hex byte) are supported.
-If TEXT is omitted entirely, a single newline (empty line) is inserted.
+Как и в команде write, поддерживаются escape-последовательности, такие как \n, \r, \t и \XX (шестнадцатеричный байт).<br>
+Если TEXT полностью опущен, будет вставлена одна пустая строка (перенос строки).
 </p>
 
-<p><h3 id=delete><a href="#top">&#8686;</a>DELETE LINES IN TEXT FILE : "delete PATH LINE_NUM [COUNT]"</h3></p>
+<p><h3 id=delete><a href="#top">&#8686;</a>УДАЛЕНИЕ СТРОК ИЗ ТЕКСТОВОГО ФАЙЛА: "delete PATH LINE_NUM [COUNT]"</h3></p>
 
 </p>
-Deletes COUNT lines starting from line number LINE_NUM in the file PATH.
-If COUNT is omitted, it defaults to 1:
+Удаляет COUNT строк, начиная с строки под номером LINE_NUM в файле по пути PATH.<br>
+Если COUNT опущен, по умолчанию удаляется 1 строка:
 <pre>
   esp32#(/wwwroot/)>cat -n index.html
    1: <html>
@@ -482,13 +405,12 @@ If COUNT is omitted, it defaults to 1:
 </pre>
 </p>
 
-<p><h3 id=mkdir><a href="#top">&#8686;</a>CREATE DIRECTORY/IES : "mkdir PATH1 PATH2 ... PATHn"</h3></p>
+<p><h3 id=mkdir><a href="#top">&#8686;</a>СОЗДАНИЕ КАТАЛОГОВ: "mkdir PATH1 PATH2 ... PATHn"</h3></p>
 
 <p>
-Creates one or more directories. Nested path creation is supported - for 
-example, "mkdir 1/2/3/4" will create all missing intermediate directories as needed.
+Создаёт один или несколько каталогов. Поддерживается создание вложенных путей — например, команда "mkdir 1/2/3/4" создаст все отсутствующие промежуточные каталоги.
 </p><p>
-Example 1: Create multiple directories under /wwwroot
+Пример 1: Создание нескольких каталогов в /wwwroot
 <pre>
   esp32#(/)>cd wwwroot
   esp32#(/wwwroot/)>mkdir 1 2 3
@@ -498,30 +420,29 @@ Example 1: Create multiple directories under /wwwroot
   esp32#(/wwwroot/)>
 </pre>
 
-This command cannot create directories directly in the root / directory - use 
-the "mount" command to create or define new entries under /.
+Эта команда не может создавать каталоги напрямую в корневом каталоге / — используйте команду "mount" для создания или определения новых точек монтирования в /.
 </p><p>
-NOTE on paths with spaces:
-  If you need spaces in directory or file names, use an asterisk (*) instead of a space.
-  ESPShell will automatically convert asterisks to spaces during path processing. 
+ПРИМЕЧАНИЕ по путям с пробелами:<br>
+Если вам нужно использовать пробелы в именах файлов или каталогов, используйте вместо пробела символ звёздочки (*).<br>
+ESPShell автоматически заменит звёздочки на пробелы при обработке пути.
 </p><p>
-  Example:
+  Пример:
 <pre>
   esp32#(/wwwroot/)>mkdir My*Documents
   % Directory created: "/wwwroot/My Documents/"
 </pre>
- Limitation: When creating nested directories with asterisks in the path (e.g., mkdir My*Folder/Sub*Dir), the conversion may not work as expected. This is a known issue.
+Ограничение: При создании вложенных каталогов с пробелами (например, mkdir My*Folder/Sub*Dir) замена может сработать некорректно. Это известная проблема.
 </p>
 
-<p><h3 id=touch><a href="#top">&#8686;</a>CREATE NEW OR UPDATE TIMESTAMPS ON EXISTING FILE(S) : "touch PATH1 PATH2 ... PATHn"</h3></p>
+<p><h3 id=touch><a href="#top">&#8686;</a>СОЗДАНИЕ НОВЫХ ФАЙЛОВ ИЛИ ОБНОВЛЕНИЕ МЕТКИ ВРЕМЕНИ: "touch PATH1 PATH2 ... PATHn"</h3></p>
 <p>
-This command works similarly to its Linux counterpart:
+Эта команда работает аналогично команде `touch` в Linux:
 </p><p>
-  It creates new empty files if they don't exist.<br>
-  It updates modification timestamps on existing files.<br>
-  If the specified PATH includes subdirectories, ESPShell will automatically create all required directories leading up to the file.<br>
+  Создаёт пустые файлы, если они не существуют.<br>
+  Обновляет метку времени изменения для существующих файлов.<br>
+  Если указанный путь включает подкаталоги, ESPShell автоматически создаст все необходимые каталоги.<br>
 </p><p>
-  Example 1: Create multiple new files in the current directory
+  Пример 1: Создание нескольких новых файлов в текущем каталоге
 <pre>
   esp32#(/wwwroot/)>touch file1.txt file2.txt file3.txt
   % File created: "/wwwroot/file1.txt"
@@ -530,13 +451,13 @@ This command works similarly to its Linux counterpart:
   esp32#(/wwwroot/)>
 </pre>
 
-  Example 2: Update timestamp of an existing file
+  Пример 2: Обновление времени последнего изменения существующего файла
 <pre>
   esp32#(/wwwroot/)>touch file1.txt
   esp32#(/wwwroot/)>
 </pre>
 
-  Example 3: Create a file in a nested directory (with auto-creation of missing folders)
+  Пример 3: Создание файла во вложенном каталоге (с автосозданием недостающих папок)
 <pre>
   esp32#(/wwwroot/)>touch dir1/dir2/config.json
   % Directory created: "/wwwroot/dir1/"
@@ -546,15 +467,15 @@ This command works similarly to its Linux counterpart:
 </pre>
 </p>
 
-<p><h3 id=cat><a href="#top">&#8686;</a>DISPLAY/TRANSMIT TEXT/BINARY FILE : "cat [-n|-b] PATH [LINE_NUM [COUNT]] [uart NUM]"</h3></p>
+<p><h3 id=cat><a href="#top">&#8686;</a>ОТОБРАЖЕНИЕ/ПЕРЕДАЧА ТЕКСТОВОГО/БИНАРНОГО ФАЙЛА: "cat [-n|-b] PATH [LINE_NUM [COUNT]] [uart NUM]"</h3></p>
 
 </p>
-This command displays the content of a file (text or binary) or transmits it over a UART port.
-Unlike its Linux counterpart, ESPShell's cat command does not support multiple files (so it can not be used to join files).
+Эта команда отображает содержимое файла (текстового или бинарного) или передаёт его по интерфейсу UART.<br>
+В отличие от Linux, команда cat в ESPShell не поддерживает объединение нескольких файлов (нельзя использовать для склейки файлов).
 </p><p>
-BASIC USAGE
+ОСНОВНОЕ ИСПОЛЬЗОВАНИЕ
 </p><p>
-To display a file as plain text:
+Чтобы вывести файл как обычный текст:
 <pre>
   esp32#(/wwwroot/)>cat index.html
   <html>
@@ -568,18 +489,18 @@ To display a file as plain text:
   esp32#(/wwwroot/)>
 </pre>
 </p><p>
-DISPLAY SPECIFIC LINES
+ОТОБРАЖЕНИЕ ОПРЕДЕЛЁННЫХ СТРОК
 </p><p>
-You can use the LINE_NUM and COUNT arguments to display only part of the file:
+Можно использовать аргументы LINE_NUM и COUNT, чтобы вывести только часть файла:
 <pre>
   esp32#(/wwwroot/)>cat index.html 4 2
   Hey! This line was inserted!
   And this line also!
   esp32#(/wwwroot/)>
 </pre>
-SHOW LINE NUMBERS
+ПОКАЗ НОМЕРОВ СТРОК
 </p><p>
-Use -n to prefix each line with its line number. Useful when using insert or delete:
+Используйте флаг -n для вывода номеров строк. Полезно при работе с insert и delete:
 <pre>
    esp32#(/wwwroot/)>cat -n index.html
    1: <html>
@@ -592,11 +513,10 @@ Use -n to prefix each line with its line number. Useful when using insert or del
    8: </html>
    esp32#(/wwwroot/)>
 </pre>
-DISPLAY FILE AS BINARY (HEX + ASCII)
+ОТОБРАЖЕНИЕ ФАЙЛА В ВИДЕ ДВОИЧНОГО (HEX + ASCII)
 </p><p>
-Use -b to interpret file contents as binary and display a hex dump:
+Флаг -b интерпретирует содержимое как бинарные данные и отображает их в виде hex-дампа:
 <pre>
-
   esp32#(/wwwroot/)>cat -b index.html
          0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F  |0123456789ABCDEF
   ----------------------------------------------------------+----------------
@@ -611,16 +531,12 @@ Use -b to interpret file contents as binary and display a hex dump:
   esp32#(/wwwroot/)>
 </pre>
 
-
-TRANSMIT FILE OVER UART
+ПЕРЕДАЧА ФАЙЛА ПО UART
 </p><p>
-The cat command can also be used to send file content over an initialized UART interface. 
-When the -b option is used, the file's raw content (binary data) is transmitted over UART, 
-without formatting or line numbers.
+Команда cat также может использоваться для передачи содержимого файла по инициализированному UART-интерфейсу.<br>
+При использовании флага -b файл передаётся как есть (в бинарном виде), без форматирования или номеров строк.
 </p><p>
-This is especially useful for transferring files to devices connected via UART. For example, 
-the SIM7600 LTE module, which has a 64GB internal storage, can be used to send large files 
-over LTE. The transfer is handled by the module itself, reducing CPU load on the host device.
+Это особенно полезно для передачи файлов на устройства, подключённые по UART. Например, модуль SIM7600 LTE с 64 ГБ встроенной памяти может использоваться для отправки больших файлов по LTE. Передача обрабатывается самим модулем, снижая нагрузку на основной процессор.
 <pre>
   esp32#(/wwwroot/)>cat -b firmware.bin uart 2
   % Binary file sent over UART2 (14832 bytes)
@@ -629,15 +545,15 @@ over LTE. The transfer is handled by the module itself, reducing CPU load on the
 </p>
 
 
-<p><h3 id=mv><a href="#top">&#8686;</a>MOVE/RENAME FILES OR DIRECTORIES : "mv"</h3></p>
-<p><h3 id=cp><a href="#top">&#8686;</a>COPY FILES OR DIRECTORIES : "cp"</h3></p>
-<p><h3 id=show><a href="#top">&#8686;</a>DISPLAYING INFORMATION</h3></p>
+<p><h3 id=mv><a href="#top">&#8686;</a>ПЕРЕМЕЩЕНИЕ/ПЕРЕИМЕНОВАНИЕ ФАЙЛОВ И КАТАЛОГОВ: "mv"</h3></p>
+<p><h3 id=cp><a href="#top">&#8686;</a>КОПИРОВАНИЕ ФАЙЛОВ И КАТАЛОГОВ: "cp"</h3></p>
+<p><h3 id=show><a href="#top">&#8686;</a>ОТОБРАЖЕНИЕ ИНФОРМАЦИИ</h3></p>
 
 <p>
 "show mount [/PATH]" 
 </p><p>
-The "show mount" command displays information about mounted filesystems.
-Without arguments, it shows a list of available partitions and mountpoints for partitions that are already mounted:
+Команда "show mount" выводит информацию о смонтированных файловых системах.<br>
+Без аргументов показывает список доступных разделов и точек монтирования для уже смонтированных разделов:
 <pre>
     esp32#>sh mount
     % Disk partition |M|File system| Size on |    Mounted on    |Capacity |  Free
@@ -653,9 +569,9 @@ Without arguments, it shows a list of available partitions and mountpoints for p
     % 3 mountable partitions found. (+) - mountable partition
     esp32#>
 </pre>
-This keyword is an alias to "mount" filesystem command.
+Эта команда является псевдонимом для команды "mount", работающей с файловыми системами.
 </p><p>
-Used with 1 argument (a directory path) displays information on a given mountpoint:
+При использовании с аргументом (путь к каталогу) отображает информацию о конкретной точке монтирования:
 <pre>
     esp32#>sh mount /w
     % Mount point "/wwwroot",  FAT/exFAT , (partition label is "wwwroot")
