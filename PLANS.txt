@@ -36,15 +36,17 @@ Command processor:
 
 
 Sequence generator:
+-------------------
 
-1. add sequence capture (using RMT), captured sequence display
+1. add sequence capture (using RMT), captured sequence display and saving to a FS
 
-2. add support for hardware ON/OFF for PCNT counters (via dedicated start/stop GPIO). 
+2. make RMT's clock divisor be configurable
 
 3. add support for byte strings (currently only bitstrings are recognized)
 
 
 Pulse counter / Frequency meter:
+--------------------------------
 
 1. Add support for start/stop pin (i.e. hardware, externally controlled start/stop). This can improve accuracy: setting GPIO high/low from an PCNT interrupt handler
    is much faster than sending TaskNotification
