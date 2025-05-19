@@ -13,6 +13,14 @@ td {
   padding-right: 1pc;
 }
 
+th {
+  vertical-align: top;
+  background-color: #acffd4;
+  padding: 4px;
+  padding-left: 1pc;
+  padding-right: 1pc;
+}
+
 h2 a {
   padding-right: 1pc;
   text-decoration: none;

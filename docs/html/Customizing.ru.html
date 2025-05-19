@@ -6,55 +6,86 @@
   <meta charset="UTF-8">
 </head>
 <body>
-<p align=center><a href="index.ru.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: Кастомизация ESPShell : настройки" width="70%" height="70%" /></a></p>
+<p align=center><a href="index.ru.html"><img src="i/espshell_logo.jpg" alt="ESPShell для Arduino :: Настройка ESPShell : настройки компиляции" width="70%" height="70%" /></a></p>
 <h3 align=center><a href="Customizing.ru.html">[ На русском ]</a>&nbsp;&harr;&nbsp;<a href="Customizing.html">[ English ]</a></h3>
 <h2>НАСТРОЙКИ КОМПИЛЯЦИИ ESPSHELL</h2>
 <p>
-ESPShell может быть настроен (до компиляции) с помощью <i>параметров оболочки</i>, которые задаются через макроопределения в начале файла <b>espshell.h</b>:
+ESPShell можно настроить (до компиляции), изменив <i>настройки оболочки</i> — макросы, расположенные в начале файла <b><a href="https://github.com/vvb333007/espshell/blob/main/src/espshell.h">espshell.h</a></b>.
+Эти макросы имеют <i>значения по умолчанию</i>, которые также являются <i>рекомендуемыми</i> для большинства пользователей.
+
 <pre>
 #ifndef espshell_h
 #define espshell_h
 
-// Code version, dont change. 
-#define ESPSHELL_VERSION "0.99.8"
+#define ESPSHELL_VERSION "0.99.8"            // Версия библиотеки. Можно менять на что угодно.
 
-// -- Compile-time ESPShell settings --
+// -- Настройки ESPShell  --
 //
-#define AUTOSTART 1              // Установите 0 для ручного запуска оболочки через espshell_start().
-#define STACKSIZE (5 * 1024)     // Размер стека задачи оболочки
+#define AUTOSTART 1
+#define STACKSIZE (5 * 1024)
 
-#define WITH_HELP 1              // Установите 0, чтобы сэкономить память за счёт исключения справки и связанных функций
-#define WITH_HISTORY 1           // Включить историю команд (!! установите 0 при использовании MEMTEST !!)
-#define HIST_SIZE 20             // Размер буфера истории (число запоминаемых команд)
+#define WITH_HELP 1
+#define WITH_HISTORY 1
+#define HIST_SIZE 20
 
-#define WITH_ESPCAM 1            // Включить команды для работы с камерой
+#define WITH_ESPCAM 1
 
-#define WITH_VAR 1               // Включить поддержку переменных скетча
+#define WITH_VAR 1
 
-#define STARTUP_ECHO 1           // Режим эхо при запуске оболочки (-1=чёрная дыра, 0=без эхо, 1=с эхо)
-#define WITH_COLOR 1             // Включить поддержку цветов в терминале
-#define AUTO_COLOR 1             // Разрешить ESPShell автоматически выбирать, включать ли цвета. Команда "color on|off|auto" управляет этим
+#define STARTUP_ECHO 1
+#define WITH_COLOR 1
+#define AUTO_COLOR 1
 
-#define WITH_FS 1                // Поддержка файловых систем (fat/spiffs/littlefs)
-#define MOUNTPOINTS_NUM 5        // Максимальное число одновременно смонтированных файловых систем
-#define WITH_SPIFFS 1            // Поддержка файловой системы SPIFFS
-#define WITH_LITTLEFS 1          // Поддержка LittleFS
-#define WITH_FAT 1               // Поддержка FAT (включите, если хотите использовать WITH_SD)
-#define WITH_SD 1                // Поддержка файловой системы FAT на SD/TF карте через SPI
-#define DIR_RECURSION_DEPTH 127  // Максимальная глубина рекурсии каталогов. TODO: протестировать длинный путь вида "/a/a/a/.../a"
+#define WITH_FS 1
+#define MOUNTPOINTS_NUM 5
+#define WITH_SPIFFS 1
+#define WITH_LITTLEFS 1
+#define WITH_FAT 1
+#define WITH_SD 1
+#define DIR_RECURSION_DEPTH 127
 
-#define SEQUENCES_NUM 10         // Максимальное количество последовательностей, доступных для команды "sequence"
+#define SEQUENCES_NUM 10
 
-#if ARDUINO_USB_CDC_ON_BOOT      // Режим USB?
+#if ARDUINO_USB_CDC_ON_BOOT      
 #  define SERIAL_IS_USB 1        
-#  define STARTUP_PORT 99        // не изменяйте это значение
+#  define STARTUP_PORT 99        
 #else                             
 #  define SERIAL_IS_USB 0
-#  define STARTUP_PORT UART_NUM_0  // UART-порт, на котором запускается оболочка. Можно изменить.
+#  define STARTUP_PORT 0
 #endif                            
+...
+...
 </pre>
+</p><p>
+В таблице ниже приведены описания всех настроек компиляции ESPShell, а также две колонки: "<b>H</b>" (от "Human" — человек) и "<b>M</b>" — "Machine" (машина).
+</p><p>
+Колонка "<b>H</b>" содержит рекомендуемые значения в случае, если вы используете ESPShell вручную (например, как обычный пользователь), а колонка "<b>M</b>" —
+значения, рекомендованные для случаев <a href="Automation.ru.html">автоматического доступа к оболочке</a>. Под автоматическим доступом понимается, что команды ESPShell отправляются другим программным обеспечением и/или оборудованием, которое также читает и анализирует ответы.
+</p><p>
 
-Комментарии в коде достаточно пояснительные.
-</p>
+<table>
+<tr><th>Параметр</th><th>H<sub>uman</sub></th><th>M<sub>achine</sub></th><th>Описание</th></tr>
+
+<tr><td><p><b>AUTOSTART</b></p></td><td><p><b>1</b></td><td><p><b>1</b></p></td><td><p>Установите 0 для ручного запуска оболочки (вызовом <b>espshell_start()</b>). </p></td></tr>
+<tr><td><p><b>STACKSIZE</b></p></td><td><p><b>5000</b></td><td><p><b>4000</b></p></td><td><p>Размер стека задачи оболочки в байтах</p></td></tr>
+<tr><td><p><b>WITH_HELP</b></p></td><td><p><b>1</b></td><td><p><b>0</b></p></td><td><p>Установите 0, чтобы сэкономить место в программе за счёт исключения подсистемы справки. Это отключает не только страницы, доступные через "?", но и фрагменты кода, выводящие советы в процессе работы</p></td></tr>
+<tr><td><p><b>WITH_HISTORY</b></p></td><td><p><b>1</b></td><td><p><b>0</b></p></td><td><p>Установите 0 для отключения истории команд. История может быть отключена, если вы используете ESPShell исключительно через Arduino Serial Monitor — у него есть собственная память истории, доступная по клавишам &uarr; и &darr;</p></td></tr>
+<tr><td><p><b>HIST_SIZE</b></p></td><td><p><b>20</b></td><td><p><b>1</b></p></td><td><p>Размер буфера истории (количество запоминаемых команд)</p></td></tr>
+<tr><td><p><b>WITH_ESPCAM</b></p></td><td><p><b>1</b></td><td><p><b>1</b></p></td><td><p>Установите 0, если не планируете использовать камеру на вашей плате</p></td></tr>
+<tr><td><p><b>WITH_VAR</b></p></td><td><p><b>1</b></td><td><p><b>1</b></p></td><td><p>Установите 0 для отключения поддержки <a href="Sketch_Variables.html">переменных скетча</a></p></td></tr>
+<tr><td><p><b>STARTUP_ECHO</b></p></td><td><p><b>1</b></td><td><p><b>0</b></p></td><td><p>Режим эхо при запуске оболочки (-1=тихий режим, 0=без эхо, 1=включено). Подробнее о режимах эхо — <a href="Automation.html">здесь</a> </p></td></tr>
+<tr><td><p><b>WITH_COLOR</b></p></td><td><p><b>1</b></td><td><p><b>0</b></p></td><td><p>Включение поддержки цветного вывода. Установите 0, чтобы сэкономить память ИЛИ если ваш терминал не поддерживает цвета (например, Arduino Serial Monitor)</p></td></tr>
+<tr><td><p><b>AUTO_COLOR</b></p></td><td><p><b>1</b></td><td><p><b>0</b></p></td><td><p>Позволяет ESPShell самостоятельно решать, включать ли цвет. Команда "color on|off|auto" управляет этим</p></td></tr>
+<tr><td><p><b>WITH_FS</b></p></td><td><p><b>1</b></td><td><p><b>1</b></p></td><td><p>Поддержка <a href="Filesystems.html">файловых систем</a> (fat/spiffs/littlefs). Установите 0, если файловая система не требуется, чтобы сэкономить место</p></td></tr>
+<tr><td><p><b>MOUNTPOINTS_NUM</b></p></td><td><p><b>5</b></td><td><p><b>5</b></p></td><td><p>Максимальное количество одновременно смонтированных файловых систем. Уменьшите до 1, чтобы сэкономить DRAM</p></td></tr>
+<tr><td><p><b>WITH_SPIFFS</b></p></td><td><p><b>1</b></td><td><p><b>1</b></p></td><td><p>Включить поддержку файловой системы SPIFFS?</p></td></tr>
+<tr><td><p><b>WITH_LITTLEFS</b></p></td><td><p><b>1</b></td><td><p><b>1</b></p></td><td><p>Включить поддержку файловой системы LittleFS</p></td></tr>
+<tr><td><p><b>WITH_FAT</b></p></td><td><p><b>1</b></td><td><p><b>1</b></p></td><td><p>Включить поддержку FAT (должно быть включено, если вы хотите использовать WITH_SD ниже)</p></td></tr>
+<tr><td><p><b>WITH_SD</b></p></td><td><p><b>1</b></td><td><p><b>1</b></p></td><td><p>Поддержка файловой системы FAT на SD/TF-картах через SPI</p></td></tr>
+<tr><td><p><b>DIR_RECURSION_DEPTH</b></p></td><td><p><b>127</b></td><td><p><b>127</b></p></td><td><p>Максимальная глубина вложенности директорий. Уменьшите значение, если возникают сбои при работе с файловыми системами</p></td></tr>
+<tr><td><p><b>SEQUENCES_NUM</b></p></td><td><p><b>10</b></td><td><p><b>10</b></p></td><td><p>Максимальное число <a href="Pulse_Generator.html">последовательностей</a>, доступных для команды "sequence". Уменьшите (до минимума 1), чтобы сэкономить DRAM</p></td></tr>
+<tr><td><p><b>STARTUP_PORT</b></p></td><td><p><b>0 (или 99)</b></td><td><p><b>0 (или 99)</b></p></td><td><p>Номер UART (0..2 или 99 для USB-CDC), на котором запускается оболочка. По умолчанию ESPShell запускается на UART0 или USB-CDC</p></td></tr>
+</table>
+
 </body>
 </html>
