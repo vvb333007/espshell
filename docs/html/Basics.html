@@ -269,12 +269,11 @@ Below is the example of "<b>? count</b>" execution:
   The "?" is a hotkey and this behaviour might be annoying in cases when you need
   to enter actual symbol "?" and not invoke help system instead. For example, you
   are writing "Hello World?" string into some file: pressing "?" will invoke help
-  page and this is not what we want. Well, one of the solutions is to use &lt;ESC&gt;63&lt;ESC&gt;
-  to enter an ascii code (63 is "?") or, disable "?" hotkey processing by executing
+  page and this is not what we want. Well, one of the solutions is to disable "?" hotkey processing by executing
 <pre>
   esp32#>var bypass_qm 1
 </pre>
-command. (<i>Command <b>var</b> here sets internal shell variable "bypass_qm" to 1</i>)
+command. (<i>Command <b>var</b> here sets internal shell variable "bypass_qm" to 1</i>). Help subsystem still will be available but instead of "<b>?</b>" one have to type "<b>help</b>"
 </p>
 
 <p>
@@ -380,7 +379,7 @@ This behaviour could be changed by using an &amp; symbol:
 </p><p><pre>
   Example: 
 
-      Entering UART0 command directory:
+      <b>&rarr;Entering UART0 command directory:</b>
 
       esp32#>uart 0
       % You are about to configure the Serial espshell is running on. Be careful
@@ -388,7 +387,7 @@ This behaviour could be changed by using an &amp; symbol:
       % Hint: Main commands are still avaiable (but not visible in "?" command list)
 
 
-      List all available commands:
+      <b>&rarr;List all available commands:</b>
 
       esp32-uart0>?
       % Enter "? command" to get details about specific command.
@@ -403,7 +402,7 @@ This behaviour could be changed by using an &amp; symbol:
       % "write"      : Send bytes over this UART
       % "exit"       : Exit
 
-      Execute command, which is not on the list but exists in main commands list:
+      <b>&rarr;Execute command, which is not on the list but exists in main commands list:</b>
 
       esp32-uart0>uptime
       % Last boot was 17 seconds ago
