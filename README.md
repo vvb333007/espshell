@@ -1,4 +1,4 @@
-Этот текст, но на русском, находится тут](https://github.com/vvb333007/espshell/blob/main/README_ru.md)
+[Этот текст, но на русском, находится тут](https://github.com/vvb333007/espshell/blob/main/README_ru.md)
 
 # WHAT IS THIS
 
