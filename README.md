@@ -1,3 +1,5 @@
+Этот текст, но на русском, находится тут](https://github.com/vvb333007/espshell/blob/main/README_ru.md)
+
 # WHAT IS THIS
 
 This is a debugging and development tool (a library for the Arduino framework) intended for use with **ESP32 hardware**.
