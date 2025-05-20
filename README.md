@@ -72,7 +72,7 @@ The latest GitHub version I checked had the following overhead:
 
 ESPShell runs on the other core (on multicore systems) to minimize interference with the main sketch.
 
-Can we lover ESPShell's footprint even more?  [Sure!](https://vvb333007.github.io/espshell/html/Customizing.html)
+Can we lower ESPShell's footprint even more?  [Sure!](https://vvb333007.github.io/espshell/html/Customizing.html)
 
 ---
 
