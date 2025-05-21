@@ -21,7 +21,8 @@ static int memory_display_content(unsigned char *address, unsigned int count, un
   if (length >= tbl_min_len)
     HELP(q_printf("%% Memory content (starting from %08x, %u bytes)\r\n", (unsigned int)address,length * count));
 
-  if ((length > 1))
+  // If length == 1 then it is "char". We display unsigned char as ordinary hexdump, and signed as a table
+  if (length > 1 || !isu) 
     q_printtable(address, count, length, isu, isf, isp);
   else
     q_printhex(address, count * length);
@@ -62,7 +63,7 @@ static int cmd_show_memory_address(int argc, char **argv) {
       if (!q_strcmp(argv[i],"float")) isf = true; else
       if (!q_strcmp(argv[i],"int") || !q_strcmp(argv[i],"long")) length = sizeof(int); else
       if (!q_strcmp(argv[i],"short")) length = sizeof(short); else
-      if (!q_strcmp(argv[i],"char") || !q_strcmp(argv[i],"void") || !q_strcmp(argv[i],"signed")) {} else
+      if (!q_strcmp(argv[i],"char") || !q_strcmp(argv[i],"void") || !q_strcmp(argv[i],"signed")) {} else // TODO: signed char!
         q_printf("%% Unrecognized keyword \"%s\" ignored\r\n",argv[i]);
       if (isp || isf)
         length = sizeof(void *);
