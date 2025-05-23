@@ -219,9 +219,12 @@ static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][IOMUX_NFUNC] = {
 #endif  // CONFIG_IDF_TARGET...
 }; //iomux function table
 
-
+// Long story short: as of Arduino Core 3.2.0, the uart & i2c ESP-IDF code has bug which 
+// was fixed quite ago but still not merged into Arduino Core libs.
+//
 // Run at startup to fetch RESERVED pins. Since RESERVED pins logic is broken on this version of ESP-IDF
-// we want to precache pin numbers
+// we want to precache pin numbers. There will be FLASH SPI pins but not UART0 - as it gets initialized later
+//
 static uint64_t Reserved = 0;
 
 static void __attribute__((constructor)) pin_get_reserved_pins() {
@@ -352,7 +355,7 @@ static bool pin_set_iomux_function(unsigned char pin, unsigned char function) {
   
   // Sanity check for arguments
   if (function >= IOMUX_NFUNC) {
-    HELP(q_printf("%% <e>Invalid function number! Good ones are these: [0 .. %d]</>\r\n",IOMUX_NFUNC - 1));
+    HELP(q_printf("%% <e>Invalid function number! Good ones are these: 0..%d</>\r\n",IOMUX_NFUNC - 1));
     return false;
   }
 
@@ -448,10 +451,10 @@ static bool pin_not_exist_notice(unsigned char pin) {
 
   
   if (pin >= SOC_GPIO_PIN_COUNT)
-    q_printf("%% Valid pin numbers are from <i>0</> to <i>%u</>, plus to that\r\n%% ", SOC_GPIO_PIN_COUNT - 1);
+    q_printf("%% Valid pin numbers are from <i>0</> to <i>%u</>, please note that\r\n%% ", SOC_GPIO_PIN_COUNT - 1);
   else
     q_print("% Unfortunately ");
-  q_printf("following pin(s) do not exist: <i>  ");
+  q_printf("following pins do not exist: <i>  ");
   
   // TODO: IMPERFECTION: workaround the case where all pins are valid in the mask
   for (pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++)

@@ -366,7 +366,7 @@ static int cmd_count(int argc, char **argv) {
   if ((unit = count_claim_unit()) < 0) {
     q_print("% <e>All " xstr(PCNT_UNIT_MAX) "counters are in use</>\r\n% Use \"kill\" to free up counter resources\r\n");
     if (pcnt_unit != PCNT_UNIT_0)
-      HELP(q_printf("%% Or decrease \"pcnt_unit\" variable: (\"var pcnt_unit %u\")\r\n",pcnt_unit - 1));
+      HELP(q_printf("%% Or decrease the \"pcnt_unit\" variable: (\"var pcnt_unit %u\")\r\n",pcnt_unit - 1));
     return 0;
   }
 
@@ -402,7 +402,7 @@ static int cmd_count(int argc, char **argv) {
       if (i + 1 >= argc) {
 bad_filter:        
         HELP(q_printf("%% Pulse width in nanoseconds [%d .. %d] is expected\r\n"
-                      "%% Time interval precision is %u ns; means %uns and %uns are the same\r\n", low, high, low, 5*low, 6*low - 1));
+                      "%% Time interval precision is %u ns; means %uns and %uns are the same\r\n", low, high, low, 5*low + 1, 6*low - 1));
         count_release_unit(unit);
         return CMD_MISSING_ARG;
       }
@@ -459,7 +459,7 @@ bad_filter:
   if (filter) {
     pcnt_set_filter_value(unit, val );
     pcnt_filter_enable(unit);
-    VERBOSE(q_printf("%% PCNT filter is enabled, %u APB cycles (%u ns)\r\n",(uint16_t)val, units[unit].filter_value));
+    VERBOSE(q_printf("%% PCNT filter is enabled: %u APB cycles (%u ns)\r\n",(uint16_t)val, units[unit].filter_value));
   } else
     pcnt_filter_disable(unit);
 
@@ -512,7 +512,7 @@ release_hardware_and_exit:
   // print measurement results. TODO: make <1Hz display possible
   unsigned int freq;
   count_read_counter(unit,&freq,NULL);
-  q_printf("%% %u pulses in approx. %llu ms (%u Hz, %u interrupts)\r\n", units[unit].count, units[unit].interval / 1000ULL, freq, units[unit].overflow);
+  q_printf("%% %u pulses in approx. %llu ms (%u Hz, %u IRQs)\r\n", units[unit].count, units[unit].interval / 1000ULL, freq, units[unit].overflow);
 
   return 0;
 }
@@ -549,7 +549,7 @@ static int cmd_show_counters(UNUSED int argc, UNUSED char **argv) {
 
   if (pcnt_counters) {
     q_printf("%% %u counter%s %s currently in use\r\n",PPA(pcnt_counters), pcnt_counters == 1 ? "is" : "are");
-    HELP(q_print("% Use command \"<i>kill TASK_ID</>\" to stop a running counter\r\n"));
+    HELP(q_print("% Use the command \"<i>kill TASK_ID</>\" to stop a running counter\r\n"));
   }
   else
     q_print("% All counters are stopped\r\n");

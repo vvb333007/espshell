@@ -33,6 +33,8 @@ static int memory_display_content(unsigned char *address, unsigned int count, un
 // Implementation of "show memory address ARG1 ARG2 ... ARGn"
 // This one is called from cmd_show()
 // TODO: support int64_t and uint64_t
+// TODO: refactor with switch()
+// TODO: refactor ifs
 
 static int cmd_show_memory_address(int argc, char **argv) {
 
@@ -45,8 +47,13 @@ static int cmd_show_memory_address(int argc, char **argv) {
 
   // read the rest of arguments if specified
   int i = 3;
-  bool count_is_specified = false;
-  bool isu = false, isf = false, isp = false;
+  bool count_is_specified = false,  // user has provided COUNT
+        sign_is_specified = false,  // "signed" or "unsigned" keywords seen
+        type_is_specified = false,  // "char", "void", "int", "short" ... etc seen
+        isu = false,                // Display unsigned values
+        isf = false,                // Display as floating point
+        isp = false;                // Generic 32bit hex display
+
   while (i < argc) {
     if (isnum(argv[i])) {
       count = q_atol(argv[3], count);
@@ -58,18 +65,36 @@ static int cmd_show_memory_address(int argc, char **argv) {
       if (!count_is_specified)
         count = 1;
 
-      if (!q_strcmp(argv[i],"unsigned")) isu = true; else
+      type_is_specified = true;
+
+
+      if (!q_strcmp(argv[i],"signed")) { isu = false; sign_is_specified = true; } else
+      if (!q_strcmp(argv[i],"unsigned")) { isu = true; sign_is_specified = true; } else
       if (!q_strcmp(argv[i],"void*") || argv[i][0] == '*') isp = true; else
       if (!q_strcmp(argv[i],"float")) isf = true; else
       if (!q_strcmp(argv[i],"int") || !q_strcmp(argv[i],"long")) length = sizeof(int); else
       if (!q_strcmp(argv[i],"short")) length = sizeof(short); else
-      if (!q_strcmp(argv[i],"char") || !q_strcmp(argv[i],"void") || !q_strcmp(argv[i],"signed")) {} else // TODO: signed char!
+      if (!q_strcmp(argv[i],"char") || !q_strcmp(argv[i],"void")) {} else
         q_printf("%% Unrecognized keyword \"%s\" ignored\r\n",argv[i]);
       if (isp || isf)
         length = sizeof(void *);
     }
     i++;
   }
+
+  // Make simple form "sh mem ADDRESS" to use isu=true, length=1, count=256
+  // If signedness was not specified but type was specified, then we assume SIGNED argument: "int" == "signed int"
+  if (!sign_is_specified) {
+    if (!type_is_specified)
+      isu = true;
+    else
+      isu = false;
+  } else {
+    if (isp || isf)
+      q_print("% \"signed\" and \"unsigned\" keywords were ignored\r\n");
+  }
+
+
 
   if (!is_valid_address(address, count * length)) {
     HELP(q_print("% Bad address range. Must be  a hex number > 0x2000000 (e.g. 3fff0000)\r\n"));

@@ -1136,7 +1136,7 @@ static int cmd_exit(int argc, char **argv) {
     if (argc > 1 && !q_strcmp(argv[1], "exit"))
       Exit = true;
     else {
-      HELP(q_print("% Not in a subdirectory; (to close the shell use \"exit ex\")\r\n"));
+      HELP(q_print("% Not in a subdirectory; (to close the shell type \"exit ex\")\r\n"));
     }
   }
   return 0;

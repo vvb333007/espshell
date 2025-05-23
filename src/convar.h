@@ -89,7 +89,7 @@ static const char *__uina = "unsigned int *";
 //
 static bool variable_type_is_ok(unsigned int size) {
   if (size != sizeof(char) && size != sizeof(short) && size != sizeof(int) && size != sizeof(float)) {
-    q_printf("%% Variable was not registered (unsupported size %u)\r\n",size);
+    q_printf("%% Variable was not registered (unsupported size: %u)\r\n",size);
     return false;
   }
   return true;
@@ -266,7 +266,7 @@ static struct convar *convar_get(char *name) {
     }
     *br = '\0';
     if ((idx = q_atol(index,DEF_BAD)) == DEF_BAD) {
-      q_print("% <e>Numeric index is expected within []</>\r\n");
+      q_print("% <e>Numeric index is expected inside []</>\r\n");
       return NULL;
     }
 
@@ -277,7 +277,7 @@ static struct convar *convar_get(char *name) {
 
     // Index only applies to pointers and arrays
     if (!var->isp) {
-      q_printf("%% Variable \"%s\" is not a pointer nor array\r\n",name);
+      q_printf("%% Variable \"%s\" is neither a pointer nor an array\r\n", name);
       return NULL;
     }
     
@@ -285,7 +285,7 @@ static struct convar *convar_get(char *name) {
     // In other hand it might be useful for accessing pointers as arrays
     if (idx >= var->counta) {
       if (var->counta > 1) { // an array. defenitely we don't want to go beyound its boundaries
-        q_printf("%% Requested element %u is beyound the array range 0..%u\r\n",idx,var->counta - 1);
+        q_printf("%% Requested element %u is beyond the array range 0..%u\r\n", idx, var->counta - 1);
         return NULL;
       }
       // Pointers unlike arrays always have their .counta set to 1, so we don't know the real boundaries.
@@ -370,7 +370,7 @@ static int convar_show_var(char *name) {
     // In case of a pointer or array, print its content
     if (var->isp) {
       if (var->counta == 1) // arrays of 1 element are treated as plain pointers
-        q_printf("// Pointer to %u-byte memory region", var->sizea);
+        q_printf("// Pointer a to %u-byte memory region", var->sizea);
       else
         q_printf("// Array of %u elements, (%u bytes per element)", var->counta, var->sizea);
       if (var->counta < ARRAY_TOO_BIG) {
@@ -468,7 +468,7 @@ static int convar_show_number(const char *p) {
           memcpy(&inumber, &fnumber, sizeof(inumber));
         } else {
           // No brother, this defenitely not a number.
-          q_printf("%% <e>A number is expected. \"%s\" doesn't look like number</>\r\n",p);
+          q_printf("%% <e>A number is expected. \"%s\" doesn't look like a number</>\r\n",p);
           return 0;
         }
     }
@@ -543,7 +543,7 @@ static int cmd_var(int argc, char **argv) {
     if (isfloat(argv[2])) {
       u.fval = q_atof(argv[2], 0);
     } else {
-      HELP(q_printf("%% <e>Variable \"%s\" is \"float\" and expects floating point argument</>\r\n", var->name));
+      HELP(q_printf("%% <e>Variable \"%s\" expects a floating point argument</>\r\n", var->name));
       return 2;
     }
   } else {
@@ -552,14 +552,14 @@ static int cmd_var(int argc, char **argv) {
     //
     if (q_isnumeric(argv[2])) {
       if (q_findchar(argv[2],'.')) {
-        q_printf("%% <e>Variable \"%s\" is integer, new value is not set</>\r\n",var->name);
+        q_printf("%% <e>Variable \"%s\" is integer: value not changed</>\r\n",var->name);
         return 0;
       }
 
       // New value is a negative integer?
       if (argv[2][0] == '-') {
         if (var->isu) {
-          q_printf("%% <e>Variable \"%s\" is unsigned, new value is not set</>\r\n",var->name);
+          q_printf("%% <e>Variable \"%s\" is unsigned: value not changed</>\r\n",var->name);
           return 0;
         }
         signed int val = -q_atol(&(argv[2][1]), 0);
@@ -582,7 +582,7 @@ static int cmd_var(int argc, char **argv) {
           u.uchar = val;
         else {
 report_and_exit:          
-          q_printf("%% Bad variable size %u\r\n",var->size); 
+          q_printf("%% Bad variable size: %u\r\n",var->size); 
           return 0; 
         }
       }
