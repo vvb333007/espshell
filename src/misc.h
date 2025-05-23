@@ -31,6 +31,27 @@ static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
     "<i>reset by JTAG",                  "<e>reset due to eFuse error",         "<w>power glitch detected",  "<e>CPU lock up (double exception)"
   };
 
+  const char *rr2[] = { 
+    "",
+    "Power on reset",
+    "",
+    "Software resets the digital core",
+    "",
+    "Deep sleep reset the digital core",
+    "SDIO module resets the digital core",
+    "Main watch dog 0 resets digital core",
+    "Main watch dog 1 resets digital core",
+    "RTC watch dog resets digital core",
+    "",
+    "Main watch dog resets CPU",
+    "Software resets CPU",
+    "RTC watch dog resets CPU",
+    "CPU0 resets CPU1 by DPORT_APPCPU_RESETTING",
+    "Reset when the VDD voltage is not stable",
+    "RTC watch dog resets digital core and RTC module"
+  };
+
+
   unsigned int val, sec = q_millis() / 1000, div = 60 * 60 * 24;
 
   // lets check if esp_reset_reason_t is still what we think it is: RST_CPU_LOCKUP must be the last entry (entry #15)
@@ -51,10 +72,24 @@ static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
   XX(hour,60);
   XX(minute,60);
 
-  q_printf( "%u second%s ago\r\n"
-            "%% Reset reason: \"%s</>\"\r\n", 
-            PPA(sec), 
-            rr[esp_reset_reason()]);
+  q_printf( "%u second%s ago\r\n",PPA(sec));
+
+
+  // Reset Reason.
+  unsigned char i, core;
+
+  // "Classic" ESP-IDF reset reason:
+  if ((i = esp_reset_reason()) > ESP_RST_CPU_LOCKUP)
+    i = 0;
+  
+  q_printf("%% Reset reason: \"%s</>\"\r\n", rr[i]);
+
+  // "Bootloader-style" reset reason (for each core):
+  // TODO: is this legit? should we call IDF api to query number of cores?
+  for (core = 0; core < portNUM_PROCESSORS; core++)
+    if ((i = esp_rom_get_reset_reason(core)) < sizeof(rr2) / sizeof(rr2[0]))
+      q_printf("%%    CPU%u: %s\r\n",core, rr2[i]);
+
   return 0;
 }
 

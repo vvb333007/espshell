@@ -152,6 +152,7 @@ enum {
 // Check if memory address is in valid range. This function does not check memory access
 // rights, only boundaries are checked.
 // sizeof(unsigned int) == sizeof(void *) is ensured in espshell.c static_asserts section
+// TODO: implement memory maps query (ESP32_Memory_Maps/maps.h)
 //
 bool __attribute__((const)) is_valid_address(const void *addr, unsigned int count) {
   
