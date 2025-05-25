@@ -130,6 +130,7 @@ static int help_command(int argc, char **argv) {
 
   int i = 0;
   int found = 0;
+  const char *prev = "*";
 
   // go through all matched commands (only name is matched) and print their
   // help lines. hidden commands are ignored
@@ -137,22 +138,31 @@ static int help_command(int argc, char **argv) {
     if (keywords[i].help || keywords[i].brief) {  //skip hidden commands
       if (!q_strcmp(argv[1], keywords[i].cmd)) {
         // print common header for the first entry
-        if (!found && keywords[i].brief) {
-          unsigned int blen = strlen(keywords[i].brief);
-          if (blen + 8 >= sizeof(Spaces) - 1)
-            blen = sizeof(Spaces) - 1;
-          else
-            blen = blen + 8;
-          q_printf("\r\n%%<r> -- %s --%s</>\r\n", keywords[i].brief, &Spaces[blen]);
+        if (q_strcmp(prev, keywords[i].cmd) && keywords[i].brief) {
+
+          unsigned int spaces_idx = strlen(keywords[i].brief);
+          // sizeof("% --  --") == 8
+          // strlen( brief ) + 8 must be < 40 so we have room for padding.
+          // calculate index to Spaces to get our padding string
+          spaces_idx = (spaces_idx + 8 >= sizeof(Spaces) - 1) ? sizeof(Spaces) - 1 // index points to '\0', i.e. empty padding string
+                                                              : spaces_idx + 8;    
+          // Print header. It is printed once for repeating (/found/ ==  1) commands
+          q_printf("\r\n%%<r> -- %s --%s</>\r\n", 
+                    keywords[i].brief,    // Header text is derived from /.brief/
+                    &Spaces[spaces_idx]); // Padding with spaces, so our <r> tag will be visible
         }
 
-        q_printf("%s\r\n\r\n", keywords[i].help ? keywords[i].help : (keywords[i].brief ? keywords[i].brief : "FIXME:"));
+        // Print help page
+        q_printf("%s\r\n\r\n",keywords[i].help ? keywords[i].help                        // use /.help/ if it is exists
+                                               : (keywords[i].brief ? keywords[i].brief  // otherwise use /.brief/
+                                                                    : "Help page is missing. Please report it to the author"));
+        // Disable header printing for subsequent commands on the list
         found++;
       }
     }
     i++;
   }
-  // if we didnt find anything, return 1 (index of failed argument)
+  // If we didn't find anything, return 1 (index of a failed argument)
   return found ? 0 : 1;
 }
 
@@ -167,10 +177,11 @@ static int help_command_list(int argc, char **argv) {
 
   int i = 0;
   const char *prev = "", *spaces;
+  // TODO: use /Spaces/ array, get rid of this one
   const char indent[ESPSHELL_MAX_CNLEN + 1] = {' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','\0'};
 
-  q_print("% Enter \"? COMMAND\" to get details about specific command.\r\n"
-          "% Enter \"? <i>keys</>\" to display the espshell keyboard help page\r\n"
+  q_print("% Enter \"<b>?</> <i>COMMAND</>\" to view details about a specific command.\r\n"
+          "% Enter \"<b>? <i>keys</>\" to display the ESPShell keyboard help page.\r\n"
           "%\r\n");
 
   //run through the keywords[] and print brief info for every entry
@@ -215,7 +226,7 @@ static bool help_page_for_inputline(unsigned char *raw) {
     while (*raw && isspace(*raw))
       raw++;
 
-    // have characters?
+    // got characters?
     if (*raw) {
       unsigned char *end = raw + 1;
       char qm[] = {'?', '\0'};

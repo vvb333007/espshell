@@ -40,10 +40,12 @@ struct keywords_t {
 // Common commands inserted in every command tree at the beginning and HELP macro:
 #  define KEYWORDS_BEGIN { "?", cmd_question, MANY_ARGS, \
                          "% \"? [<o>KEYWORD</>|<o>keys</>]\"\r\n" \
-                         "% Show list of commands available or display help page for commands:\r\n" \
-                         "% \"?\"         - Show list of available commands\r\n" \
-                         "% \"? <i>KEYWORD</>\" - Help page on command KEYWORD\r\n" \
-                         "% \"? <i>keys</>\"    - Information on terminal keys used by ESPShell", \
+                         "%\r\n" \
+                         "% Displays a <u>list of commands</> or shows <u>help page for a command</>:\r\n" \
+                         "%\r\n" \
+                         "% \"?\"         - Display a list of available commands\r\n" \
+                         "% \"? <i>KEYWORD</>\" - Show the help page for the specified command\r\n" \
+                         "% \"? <i>keys</>\"    - Show information about terminal keys supported by ESPShell", \
                          "Commands list & help" }, \
                          { "help", cmd_question, MANY_ARGS, HIDDEN_KEYWORD }, //an alias for the "?" command.
 #else
