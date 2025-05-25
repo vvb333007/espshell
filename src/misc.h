@@ -81,7 +81,6 @@ static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
   // "Classic" ESP-IDF reset reason:
   if ((i = esp_reset_reason()) > ESP_RST_CPU_LOCKUP)
     i = 0;
-  
   q_printf("%% Reset reason: \"%s</>\"\r\n", rr[i]);
 
   // "Bootloader-style" reset reason (for each core):
@@ -97,22 +96,29 @@ static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
 //"tty NUM"
 //
 // Set UART (or USBCDC) to use by this shell.
-// this command is hidden to not confuse users
 //
 static int cmd_tty(int argc, char **argv) {
 
   unsigned char tty;
 
-  if (argc < 2)
-    return CMD_MISSING_ARG;
+  // No arguments? Print currently used UART number
+  if (argc < 2) {
+    tty = console_here(-1);
+    q_printf("%% TTY device is %s%u\r\n", 
+              tty < 99 ? "UART" : "USB", 
+              tty < 99 ? tty : 0);
+      
+    return 0;
+  }
 
+  // Arguments were provided: read UART number and switch espshell input accordingly
   if ((tty = q_atol(argv[1], 100)) < 100) {
     // if not USB then check if requested UART is up & running
     if ((tty == 99) || ((tty < 99) && uart_isup(tty))) {
       HELP(q_print("% See you there\r\n"));
       console_here(tty);
       return 0;
-    }
+    } 
   } else {
     HELP(q_print("%% <e>UART number is expected. (use 99 for USB CDC)</>\r\n"));
     return 1;
@@ -236,17 +242,19 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
   // Print location & cause of this MUST NOT HAPPEN event
   q_printf("%% ESPShell internal error: \"<i>%s</>\" in file\r\n%% %s, line: %u\r\n%% ESPShell is stopped\r\n",message,file,line);
 
-  // forcefully kill our own background task
+  // forcefully kill our parent task (the shell command processor) if we are running in a background
   if (is_background_task()) {
-    // Signal ESPShell to exit its main loop
-    Exit = true; 
-    task_signal(taskid_self(), SIGNAL_KILL); // executes vTaskDelete
-    // UNREACHABLE (TODO: test it) 
+    vTaskSuspend((TaskHandle_t)shell_task);
+    q_delay(100);
+    vTaskDelete((TaskHandle_t)shell_task);
   }
+  // Kill our own task (shell command processor for foreground tasks)
+  vTaskDelete(NULL);
   
-  // Sleep for ever
+  
+  // UNREACHABLE CODE:
   while(1)
-    q_delay(999999);
+    q_delay(1);
 }
 
 #endif // #if COMPILING_ESPSHELL
