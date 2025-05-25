@@ -68,7 +68,7 @@ struct keywords_t {
 // 0  : successful operation
 // >0 : command has failed. returned value is an index of a failed argument (0 < INDEX < argc). espshell_command() displays error text
 // -1 : "not enough arguments". espshell_command() displays error text
-// -2 : "other failure". command handler displays error text
+// -2 : "other failure". command handler displays error text, ESPShell keeps silent.
 
 #define CMD_SUCCESS      0    // unused. code uses "0" instead.
 #define CMD_MISSING_ARG -1

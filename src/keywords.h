@@ -21,8 +21,10 @@
 // Handlers have access to user input via argc/argv mechanism. Return value is 0 if it was success, or contains an index of a failed
 // argument. Other return codes are in keywords_defs.h, see CMD_FAILED, CMD_SUCCESS.
 //
-// For the code simplicity, the success value is returned as 0, not as CMD_SUCCESS. If the return value is CMD_FAIL, then it is up to handler
-// to give an explanation of a problem. ESPShell prints error messages for other error codes and keeps silent for CMD_FAIL
+// For the code simplicity, the success value is returned as 0, not as CMD_SUCCESS. If the return value is CMD_FAILED, then it is up to handler
+// to give an explanation of a problem. ESPShell prints error messages for other error codes and keeps silent for CMD_FAILED
+//
+// Handlers are associated with commands below, see "-- Shell Commands --" section below
 
 // Camera commands
 #if WITH_ESPCAM
@@ -146,8 +148,18 @@ static int cmd_alias_if(int, char **);
 // Help lines (/full/ and /brief/) are enclosed with HELPK macro which expands to empty strings if ESPShell is compiled
 // with its help system off (see WITH_HELP flag in espshell.h)
 //
-// There are number of keyword arrays: keywords_main is the main command array, keyword_uart and keyword_i2c are other
-// examples. Switching between arrays is possible via change_command_directory() function
+// There are number of keyword arrays: 
+//
+// keywords_alias    : don't use it
+// keywords_uart     : UART commands
+// keywords_i2c      : I2C commands
+// keywords_spi      : don't use it
+// keywords_sequence : Pulse generator commands
+// keywords_files    : Filesystem commands
+// keywords_main     : Main command directory
+// keywords_espcam   : ESP Camera commands
+// 
+// Switching between arrays is possible via change_command_directory() function
 //
 
 #if WITH_ALIAS
@@ -174,6 +186,7 @@ static const struct keywords_t keywords_alias[] = {
 
   { "end", cmd_exit, NO_ARGS,
     HELPK("% \"<b>end</>\r\n" 
+          "%\r\n"
           "% Exit from the alias configuration modes.\r\n"),
     HELPK("Exit") },
 
@@ -189,7 +202,7 @@ static const struct keywords_t keywords_alias[] = {
     NULL, NULL, 0, NULL, NULL
   }
 };
-#endif
+#endif //WITH_ALIAS
 
 
 // UART commands.
@@ -197,8 +210,7 @@ static const struct keywords_t keywords_alias[] = {
 //
 static const struct keywords_t keywords_uart[] = {
 
-  // defined in keywords_defs.h, contains common entries, like "exit" or "?"
-  KEYWORDS_BEGIN
+  KEYWORDS_BEGIN // defined in keywords_defs.h, contains common entries, like "exit" or "?"
 
   { "up", cmd_uart_up, 3,
     HELPK("% \"<b>up</> <i>RX TX SPEED</> <o>[BITS] [no|even|odd] [1|1.5|2]</>\"\r\n" 
@@ -283,7 +295,7 @@ static const struct keywords_t keywords_i2c[] = {
   { "scan", cmd_i2c_scan, NO_ARGS,
     HELPK("% \"<b>scan</>\"\r\n"
           "%\r\n"
-          "% Scan I2C bus X for devices. Interface must be initialized!"),
+          "% Scan I2C bus for devices. (i2c must be initialized)"),
     HELPK("Scan i2c bus for devices") },
 
   { "write", cmd_i2c_write, MANY_ARGS,
@@ -318,21 +330,21 @@ static const struct keywords_t keywords_spi[] = {
   KEYWORDS_BEGIN
 
   { "up", cmd_spi_up, 3,
-    HELPK("% \"up MOSI MISO CLK\"\r\n"
+    HELPK("% \"<b>up</> <i>MOSI MISO CLK</>\"\r\n"
           "%\r\n"
           "% Initialize SPI interface in MASTER mode, use pins MOSI/MISO/CLK\r\n"
           "% Ex.: up 23 19 18 - Initialize SPI at pins 23,19,18"),
     HELPK("Initialize interface") },
 
   { "clock", cmd_spi_clock, 1,
-    HELPK("% \"clock SPEED\"\r\n"
+    HELPK("% \"<b>clock</> <i>SPEED</>\"\r\n"
           "%\r\n"
           "% Set SPI master clock (SPI must be initialized)\r\n"
           "% Ex.: clock 1000000 - Set SPI clock to 1 MHz"),
     HELPK("Set clock") },
 
   { "write", cmd_spi_write, MANY_ARGS,
-    HELPK("% \"write CHIP_SELECT D1 [D2 ... Dn]\"\r\n"
+    HELPK("% \"<b>write</> <i>CHIP_SELECT</> <g>D1</> [<o>D2 D3 ... Dn</>]\"\r\n"
           "%\r\n"
           "% Write bytes D1..Dn (hex values) to SPI bus whicle setting CHIP_SELECT pin low\r\n"
           "% Ex.: write 4 0 0xff - write 2 bytes, CS=4"),
@@ -340,7 +352,7 @@ static const struct keywords_t keywords_spi[] = {
 
 
   { "down", cmd_spi_down, NO_ARGS,
-    HELPK("% \"down\"\r\n"
+    HELPK("% \"<b>down</>\"\r\n"
           "%\r\n"
           "% Shutdown SPI interface X"),
     HELPK("Shutdown SPI interface") },
@@ -374,7 +386,7 @@ static const struct keywords_t keywords_sequence[] = {
   { "zero", cmd_seq_zeroone, 2,
     HELPK("% \"<b>zero</> <i>LEVEL/DURATION</> [<o>LEVEL2/DURATION2</>]\"\r\n"
           "%\r\n"
-          "% Define a logic \"0\"\r\n"
+          "% Defines logic \"0\"\r\n"
           "% Ex.: <b>zero 0/50</>      - 0 is a level: LOW for 50 ticks\r\n"
           "% Ex.: <b>zero 1/50 0/20</> - 0 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"),
     HELPK("Define a zero") },
@@ -384,7 +396,7 @@ static const struct keywords_t keywords_sequence[] = {
   { "one", cmd_seq_zeroone, 2,
     HELPK("% \"<b>one</> <i>LEVEL/DURATION</> [<o>LEVEL2/DURATION2</>]\"\r\n"
           "%\r\n"
-          "% Define a logic \"1\"\r\n"
+          "% Defines logic \"1\"\r\n"
           "% Ex.: <b>one 1/50</>       - 1 is a level: HIGH for 50 ticks\r\n"
           "% Ex.: <b>one 1/50 0/20</>  - 1 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"),
     HELPK("Define an one") },
@@ -402,7 +414,7 @@ static const struct keywords_t keywords_sequence[] = {
     HELPK("Set pattern to transmit") },
 
   { "levels", cmd_seq_levels, MANY_ARGS,
-    HELPK("% \"<b>levels</> <o>L1/D1 L2/D2 ... Ln/Dn</>\"\r\n"
+    HELPK("% \"<b>levels</> <i>L1/D1</> [<o>L2/D2 ... Ln/Dn</>]\"\r\n"
           "%\r\n"
           "% A bit pattern to be used as a sequnce. L is either 1 or 0 and \r\n"
           "% D is the duration measured in ticks [0..32767] (see \"tick\" command) \r\n"
@@ -415,7 +427,7 @@ static const struct keywords_t keywords_sequence[] = {
     HELPK("Set levels to transmit") },
 
   { "modulation", cmd_seq_modulation, 3,
-    HELPK("% \"<b>modulation</> <i>FREQ</> [ <o>DUTY [low|high]</> ]\"\r\n"
+    HELPK("% \"<b>modulation</> <i>FREQ</> [<o>DUTY</> [<o>low|high</>] ]\"\r\n"
           "%\r\n"
           "% Enables/disables an output signal modulation with frequency FREQ\r\n"
           "% Optional parameters are: DUTY (from 0 to 1) and LEVEL (either high or low)\r\n"
@@ -428,39 +440,22 @@ static const struct keywords_t keywords_sequence[] = {
   { "modulation", cmd_seq_modulation, 2, HIDDEN_KEYWORD },
   { "modulation", cmd_seq_modulation, 1, HIDDEN_KEYWORD },
 
-  { "show", cmd_seq_show, 0, "Show sequence", NULL },
+  { "show", cmd_seq_show, NO_ARGS,
+    HELPK("% \"<b>show</>\"\r\n"
+          "%\r\n"
+          "% Display <u>this</> sequence; Alias for \"show sequence NUM\""), HELPK("Show sequence") },
+
 
   KEYWORDS_END
 };
 
 #if WITH_FS
 // Filesystem commands. this commands subdirectory is enabled
-// with "files" command /cmd_files_if()/
+// with the "files" command /cmd_files_if()/
 //
 static const struct keywords_t keywords_files[] = {
 
   KEYWORDS_BEGIN
-
-  { "mount", cmd_files_mount_sd, 6,
-    HELPK("% \"<b>mount vspi|hspi|fspi MISO MOSI CLK CS</> <o>[SPI_FREQ] [/MOUNT_POINT]</>\"\r\n"
-          "%\r\n"
-          "% Mount a FAT filesystem located on SD card connected to SPI bus\r\n"
-          "%\r\n"
-          "% <i>1st argument</>: SPI bus to use (<i>hspi</> is the safest choise)\r\n"
-          "% <i>MISO, MOSI, CLK</> and <i>CS</> are SPI pins to use (19,23,18 and 5 for example)\r\n"
-          "% <o>SPI_FREQ</> : optional parameter, SPI frequency in kHz (20000 if not set)\r\n"
-          "% <o>/MOUNT_POINT</> - A path, starting with \"/\" where filesystem will be mounted.\r\n"
-          "% If mount point is omitted then autogenerated name will be used, like \"scard4\"\r\n"
-          "%\r\n"
-          "% Ex.: mount vspi 19 23 18 4 /sdcard  - Mount an SD card located on VSPI pins 19,\r\n"
-          "%                                       23, 18 and 4.\r\n"
-          "% Ex.: mount spi3 19 23 18 4 400      - Same as above but SPI bus is at 400kHz\r\n"
-          "% Ex.: mount spi1 19 23 18 4 1000 /sd - 1 MHz SPI bus, mount to \"/sd\" directory\r\n"),
-
-    HELPK("Mount partition/Show partition table") },
-
-  { "mount", cmd_files_mount_sd, 7, HIDDEN_KEYWORD },
-  { "mount", cmd_files_mount_sd, 5, HIDDEN_KEYWORD },
 
 
   { "mount", cmd_files_mount0, NO_ARGS,
@@ -468,10 +463,10 @@ static const struct keywords_t keywords_files[] = {
           "%\r\n"
           "% Command \"mount\" <u>without arguments</> displays information about partitions\r\n"
           "% and mounted file systems (mount point, FS type, total/used counters)"),
-    NULL },
+    HELPK("Mount partition/Show partition table") },
 
   { "mount", cmd_files_mount, 2,
-    HELPK("% \"<b>mount LABEL</> <o>[/MOUNT_POINT]</>\"\r\n"
+    HELPK("% \"<b>mount</> <i>LABEL</> [<o>/MOUNT_POINT</>]\"\r\n"
           "%\r\n"
           "% Mount a filesystem located on built-in SPI FLASH\r\n"
           "%\r\n"
@@ -483,11 +478,30 @@ static const struct keywords_t keywords_files[] = {
           "% Ex.: mount ffat     - mount partition \"ffat\" at directory \"/ffat\""),
     NULL },
 
-    { "mount", cmd_files_mount, 1, HIDDEN_KEYWORD },
+  { "mount", cmd_files_mount, 1, HIDDEN_KEYWORD },
 
+  { "mount", cmd_files_mount_sd, 6,
+    HELPK("% \"<b>mount <i>vspi|hspi|fspi</> <i>MISO MOSI CLK CS</> [<o>FREQ</>] [<o>/MOUNTPOINT</>]\"\r\n"
+          "%\r\n"
+          "% Mount a FAT filesystem located on SD card connected to SPI bus\r\n"
+          "%\r\n"
+          "% <i>vspi, hspi, fspi</>: SPI bus to use (<i>hspi</> is the safest choise)\r\n"
+          "% <i>MISO, MOSI, CLK, CS</>: SPI pins to use (19,23,18 and 5 for example)\r\n"
+          "% <o>FREQ</> : Optional parameter, SPI frequency in kHz (20000 if not set)\r\n"
+          "% <o>/MOUNTPOINT</>: A path, starting with \"/\" where filesystem will be mounted.\r\n"
+          "%\r\n"
+          "% If mount point is omitted then autogenerated name will be used, like \"scard4\"\r\n"
+          "% Examples:\r\n"
+          "%   mount vspi 19 23 18 4 400      - Same as above but SPI bus is at 400kHz\r\n"
+          "%   mount hspi 19 23 18 4 1000 /sd - 1 MHz SPI2 bus, mount to \"/sd\" directory\r\n"
+          "%   mount vspi 19 23 18 4 /sdcard  - Mount an SD card located on VSPI pins 19,\r\n"
+          "%                                  23, 18 and 4"), NULL},
+
+  { "mount", cmd_files_mount_sd, 7, HIDDEN_KEYWORD },
+  { "mount", cmd_files_mount_sd, 5, HIDDEN_KEYWORD },
 
   { "unmount", cmd_files_unmount, 1,
-    HELPK("% \"<b>unmount</> <o>[/MOUNT_POINT]</>\"\r\n"
+    HELPK("% \"<b>unmount</> [<o>/MOUNT_POINT</>]\"\r\n"
           "%\r\n"
           "% Unmount file system specified by its mountpoint\r\n"
           "% If mount point is omitted then current (by CWD) filesystem is unmounted\r\n"),
@@ -498,7 +512,7 @@ static const struct keywords_t keywords_files[] = {
   { "umount", cmd_files_unmount, NO_ARGS, HIDDEN_KEYWORD },  // for unix folks
 
   { "ls", cmd_files_ls, 1,
-    HELPK("% \"ls [PATH]\"\r\n"
+    HELPK("% \"<b>ls</> [<o>PATH</>]\"\r\n"
           "%\r\n"
           "% Show directory listing at PATH given\r\n"
           "% If PATH is omitted then current directory list is shown"),
@@ -507,48 +521,48 @@ static const struct keywords_t keywords_files[] = {
   { "ls", cmd_files_ls, 0, HIDDEN_KEYWORD },
 
   { "cd", cmd_files_cd, MANY_ARGS,
-    HELPK("% \"cd [PATH|..]\"\r\n"
+    HELPK("% \"<b>cd</> [<o>PATH | ..</>]\"\r\n"
           "%\r\n"
           "% Change current directory. Paths having .. (i.e \"../dir/\") are not supported\r\n"
           "%\r\n"
           "% Ex.: \"cd\"            - change current directory to filesystem's root\r\n"
           "% Ex.: \"cd ..\"         - go one directory up\r\n"
           "% Ex.: \"cd /ffat/test/  - change to \"/ffat/test/\"\r\n"
-          "% Ex.: \"cd test2/test3/ - change to \"/ffat/test/test2/test3\"\r\n"),
+          "% Ex.: \"cd test2/test3/ - change to \"/ffat/test/test2/test3\""),
     HELPK("Change directory") },
 
   { "rm", cmd_files_rm, MANY_ARGS,
-    HELPK("% \"rm PATH1 [PATH2 PATH3 ... PATHn]\"\r\n"
+    HELPK("% \"<b>rm</> <i>PATH1</> [<o>PATH2 PATH3 ... PATHn</>]\"\r\n"
           "%\r\n"
           "% Remove files or a directories with files.\r\n"
           "% When removing directories: removed with files and subdirs"),
     HELPK("Delete files/dirs") },
 
   { "mv", cmd_files_mv, 2,
-    HELPK("% \"mv SOURCE DESTINATION\\r\n"
+    HELPK("% \"<b>mv</> <i>SOURCE DESTINATION</>\r\n"
           "%\r\n"
           "% Move or Rename file or directory SOURCE to DESTINATION\r\n"
-          "%\r\n"
-          "% Ex.: \"mv /ffat/dir1 /ffat/dir2\"             - rename directory \"dir1\" to \"dir2\"\r\n"
-          "% Ex.: \"mv /ffat/fileA.txt /ffat/fileB.txt\"   - rename file \"fileA.txt\" to \"fileB.txt\"\r\n"
-          "% Ex.: \"mv /ffat/dir1/file1 /ffat/dir2\"       - move file to directory\r\n"
-          "% Ex.: \"mv /ffat/fileA.txt /spiffs/fileB.txt\" - move file between filesystems\r\n"),
+          "% Examples:\r\n"
+          "% \"mv /ffat/dir1 /ffat/dir2\"             - rename directory \"dir1\" to \"dir2\"\r\n"
+          "% \"mv /ffat/fileA.txt /ffat/fileB.txt\"   - rename file \"fileA.txt\" to \"fileB.txt\"\r\n"
+          "% \"mv /ffat/dir1/file1 /ffat/dir2\"       - move file to directory\r\n"
+          "% \"mv /ffat/fileA.txt /spiffs/fileB.txt\" - move file between filesystems"),
     HELPK("Move/rename files and/or directories") },
 
   { "cp", cmd_files_cp, 2,
-    HELPK("% \"cp SOURCE DESTINATION\\r\n"
+    HELPK("% \"<b>cp</> <i>SOURCE DESTINATION</>\r\n"
           "%\r\n"
           "% Copy file SOURCE to file DESTINATION.\r\n"
           "% Files SOURCE and DESTINATION can be on different filesystems\r\n"
-          "%\r\n"
-          "% Ex.: \"cp /ffat/test.txt /ffat/test2.txt\"       - copy file to file\r\n"
-          "% Ex.: \"cp /ffat/test.txt /ffat/dir/\"            - copy file to directory\r\n"
-          "% Ex.: \"cp /ffat/dir_src /ffat/dir/\"             - copy directory to directory\r\n"
-          "% Ex.: \"cp /spiffs/test.txt /ffat/dir/test2.txt\" - copy between filesystems\r\n"),
+          "% Examples:\r\n"
+          "% \"cp /ffat/test.txt /ffat/test2.txt\"       - copy file to file\r\n"
+          "% \"cp /ffat/test.txt /ffat/dir/\"            - copy file to directory\r\n"
+          "% \"cp /ffat/dir_src /ffat/dir/\"             - copy directory to directory\r\n"
+          "% \"cp /spiffs/test.txt /ffat/dir/test2.txt\" - copy between filesystems"),
     HELPK("Copy files/dirs") },
 
   { "write", cmd_files_write, MANY_ARGS,
-    HELPK("% \"write FILENAME [TEXT]\"\r\n"
+    HELPK("% \"<b>write</> <i>FILENAME</> [<o>TEXT</>]\"\r\n"
           "%\r\n"
           "% Write an ascii/hex string(s) to file\r\n"
           "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
@@ -558,7 +572,7 @@ static const struct keywords_t keywords_files[] = {
     HELPK("Write strings/bytes to the file") },
 
   { "append", cmd_files_write, MANY_ARGS,
-    HELPK("% \"append FILENAME [TEXT]\"\r\n"
+    HELPK("% \"<b>append</> <i>FILENAME</> [<o>TEXT</>]\"\r\n"
           "%\r\n"
           "% Append an ascii/hex string(s) to file\r\n"
           "% Escape sequences & ascii codes are accepted just as in \"write\" command\r\n"
@@ -567,7 +581,8 @@ static const struct keywords_t keywords_files[] = {
     HELPK("Append strings/bytes to the file") },
 
   { "insert", cmd_files_insdel, MANY_ARGS,
-    HELPK("% \"insert FILENAME LINE_NUM [TEXT]\"\r\n"
+    HELPK("% \"<b>insert</> <i>FILENAME LINE_NUM</> [<o>TEXT</>]\"\r\n"
+          "%\r\n"
           "% Insert TEXT to file FILENAME before line LINE_NUM\r\n"
           "% \"\\n\" is appended to the string being inserted, \"\\r\" is not\r\n"
           "% Escape sequences & ascii codes accepted just as in \"write\" command\r\n"
@@ -577,7 +592,8 @@ static const struct keywords_t keywords_files[] = {
     HELPK("Insert lines to text file") },
 
   { "delete", cmd_files_insdel, 3,
-    HELPK("% \"delete FILENAME LINE_NUM [COUNT]\"\r\n"
+    HELPK("% \"<b>delete</> <i>FILENAME LINE_NUM</> [<o>COUNT</>]\"\r\n"
+          "%\r\n"
           "% Delete line LINE_NUM from a text file FILENAME\r\n"
           "% Optionsl COUNT argument is the number of lines to remove (default is 1)"
           "% Lines are numbered starting from 1. Use \"cat -n\" command to find out line numbers\r\n"
@@ -588,13 +604,13 @@ static const struct keywords_t keywords_files[] = {
   { "delete", cmd_files_insdel, 2, HIDDEN_KEYWORD },
 
   { "mkdir", cmd_files_mkdir, MANY_ARGS,
-    HELPK("% \"mkdir PATH1 [PATH2 PATH3 ... PATHn]\"\r\n"
+    HELPK("% \"<b>mkdir</> <i>PATH1</> [<o>PATH2 PATH3 ... PATHn</>]\"\r\n"
           "%\r\n"
-          "% Create empty directories PATH1 ... PATHn\r\n"),
+          "% Create empty directories PATH1 ... PATHn"),
     HELPK("Create directories") },
 
   { "cat", cmd_files_cat, MANY_ARGS,
-    HELPK("% \"cat [-n|-b] PATH [START [COUNT]] [uart NUM]\"\r\n"
+    HELPK("% \"<b>cat</> [<o>-n|-b</>] <i>PATH</> [<o>START</> [<o>COUNT</>]] [<o>uart NUM</>]\"\r\n"
           "%\r\n"
           "% Display (or send by UART) a binary or text file PATH\r\n"
           "% -n : display line numbers\r\n"
@@ -617,13 +633,13 @@ static const struct keywords_t keywords_files[] = {
     HELPK("Display/transmit text/binary file") },
 
   { "touch", cmd_files_touch, MANY_ARGS,
-    HELPK("% \"touch PATH1 [PATH2 PATH3 ... PATHn]\"\r\n"
+    HELPK("% \"<b>touch</> <i>PATH1</> [<o>PATH2 PATH3 ... PATHn</>]\"\r\n"
           "%\r\n"
-          "% Ceate new files or \"touch\" existing\r\n"),
+          "% Ceate new files or \"touch\" existing"),
     HELPK("Create/touch files") },
 
   { "format", cmd_files_format, 1,
-    HELPK("% \"format [LABEL]\"\r\n"
+    HELPK("% \"<b>format</> [<o>LABEL</>]\"\r\n"
           "%\r\n"
           "% Format partition LABEL. If LABEL is omitted then current working\r\n"
           "% directory is used to determine partition label"),
@@ -646,7 +662,7 @@ static const struct keywords_t keywords_main[] = {
 
 #if WITH_ALIAS
   { "alias", cmd_alias_if, 1,
-    HELPK("% \"<b>alias NAME</>\"\r\n"
+    HELPK("% \"<b>alias</> <i>NAME</>\"\r\n"
           "%\r\n"
           "% Create command alias NAME and enter alias configuration mode\r\n"
           "% Ex.: \"alias set\" - create & start editing alias NAME"),
@@ -654,29 +670,45 @@ static const struct keywords_t keywords_main[] = {
 #endif
 
   { "uptime", cmd_uptime, NO_ARGS,
-    HELPK("% \"<b>uptime</>\"\r\n% Shows time passed since last boot; shows restart cause"), "System uptime" },
+    HELPK("% \"<b>uptime</>\"\r\n"
+          "%\r\n"
+          "% Shows time passed since last boot; shows restart cause"), "System uptime" },
 
   // cpu FREQ
   { "cpu", cmd_cpu, 1,
-    HELPK("% \"<b>cpu FREQ</>\"\r\n% Set CPU frequency to FREQ Mhz"), "Set/show CPU parameters" },
+    HELPK("% \"<b>cpu</> <i>FREQ_MHZ</>\"\r\n"
+          "%\r\n"
+          "% Set CPU frequency to FREQ_MHZ Mhz"), "Set/show CPU parameters" },
 
   // cpu
-  { "cpu", cmd_cpu, NO_ARGS, HIDDEN_KEYWORD},
+  { "cpu", cmd_cpu, NO_ARGS,
+    HELPK("% \"<b>cpu</>\"\r\n"
+          "%\r\n"
+          "% Show supported CPU frequencies"), NULL },
 
   { "suspend", cmd_suspend, NO_ARGS,
-    HELPK("% \"<b>suspend</>\"\r\n% Suspend sketch execution (Hotkey: Ctrl+C). Resume with \"resume\""), "Suspend sketch/task execution" },
+    HELPK("% \"<b>suspend</>\"\r\n"
+          "%\r\n"
+          "% Suspend sketch execution (Hotkey: Ctrl+C). Resume with \"resume\""), "Suspend sketch/task execution" },
 
   { "suspend", cmd_suspend, 1,
-    HELPK("% \"<b>suspend <i>TASK_ID</>\"\r\n% Suspend an arbitrary FreeRTOS task"), NULL },
+    HELPK("% \"<b>suspend <i>TASK_ID</>\"\r\n"
+          "%\r\n"
+          "% Suspend an arbitrary FreeRTOS task"), NULL },
 
   { "resume", cmd_resume, NO_ARGS,
-    HELPK("% \"<b>resume</>\"\r\n% Resume sketch execution"), "Resume sketch/task execution" },
+    HELPK("% \"<b>resume</>\"\r\n"
+          "%\r\n"
+          "% Resume sketch execution"), "Resume sketch/task execution" },
 
   { "resume", cmd_resume, 1,
-    HELPK("% \"<b>resume <i>TASK_ID</>\"\r\n% Resume an arbitrary FreeRTOS task"), NULL },
+    HELPK("% \"<b>resume <i>TASK_ID</>\"\r\n"
+          "%\r\n"
+          "% Resume an arbitrary FreeRTOS task"), NULL },
 
   { "kill", cmd_kill, 2,
     HELPK("% \"<b>kill <o>[-term|-kill|-9|-15] <i>TASK_ID</>\"\r\n"
+          "%\r\n"
           "% Send a signal to an arbitrary task\r\n"
           "% If <i>-9</> (or <i>-kill</>) option is used then task is deleted (unsafe)\r\n"
           "% No options, <i>-term</> or <i>-15</>: ask a task to finish (safe)\r\n"
@@ -687,37 +719,45 @@ static const struct keywords_t keywords_main[] = {
   { "kill", cmd_kill, 1, HIDDEN_KEYWORD },
 
   { "reload", cmd_reload, NO_ARGS,
-    HELPK("% \"<b>reload</>\"\r\n% Restarts CPU"), "Restarts CPU" },
+    HELPK("% \"<b>reload</>\"\r\n"
+          "%\r\n"
+          "% Restarts CPU, performs a software reboot"), "Restarts CPU" },
 
   { "nap", cmd_nap, 1,
-    HELPK("% \"<b>nap SEC</>\"\r\n%\r\n% Put the CPU into light sleep mode for SEC seconds."), "CPU sleep" },
+    HELPK("% \"<b>nap</> <i>SEC</>\"\r\n"
+          "%\r\n"
+          "% Put the CPU into light sleep mode for SEC seconds."), "CPU sleep" },
 
   { "nap", cmd_nap, NO_ARGS,
-    HELPK("% \"nap\"\r\n%\r\n% Put the CPU into light sleep mode, wakeup by console"), NULL },
+    HELPK("% \"<b>nap</>\"\r\n"
+          "%\r\n"
+          "% Put the CPU into light sleep mode, wakeup by console"), NULL },
 
   // Interfaces (UART,I2C, RMT, FileSystem..)
   { "iic", cmd_i2c_if, 1,
-    HELPK("% \"<b>iic X</>\" \r\n%\r\n"
-          "% Enter I2C interface X configuration mode \r\n"
-          "% Ex.: iic 0 - configure/use interface I2C0"),
-    "I2C commands" },
+    HELPK("% \"<b>iic</> <i>I2C_NUM</>\"\r\n"
+          "%\r\n"
+          "% Enter I2C interface configuration mode (i2c0, i2c1, ...)\r\n"
+          "% Ex.: iic 0 - configure/use interface I2C0"), "I2C commands" },
+
 #if WITH_SPI
 #  warning "SPI submodule is barely functional and is under development now"
   { "spi", cmd_spi_if,1,
-    HELPK("% \"<b>spi [fspi|hspi|vspi]</>\" \r\n%\r\n"
+    HELPK("% \"<b>spi</> [<o>fspi|hspi|vspi</>]\" \r\n"
+          "%\r\n"
           "% Enter SPI interface configuration mode \r\n"
           "% Ex.: spi vspi - configure/use interface SPI3 (VSPI)"),
     HELPK("SPI commands") },
 #endif
   { "uart", cmd_uart_if, 1,
-    HELPK("% \"<b>uart X</>\"\r\n"
+    HELPK("% \"<b>uart</> <i>UART_NUM</>\"\r\n"
           "%\r\n"
-          "% Enter UART interface X configuration mode\r\n"
+          "% Enter UART interface configuration mode (uart0, uart1 and uart2)\r\n"
           "% Ex.: uart 1 - configure/use interface UART 1"),
     "UART commands" },
 
   { "sequence", cmd_seq_if, 1,
-    HELPK("% \"<b>sequence X</>\"\r\n"
+    HELPK("% \"<b>sequence</> <i>NUM</>\"\r\n"
           "%\r\n"
           "% Create/configure a sequence\r\n"
           "% Ex.: sequence 0 - configure Sequence0"),
@@ -756,6 +796,12 @@ static const struct keywords_t keywords_main[] = {
           "% Display currently active PWM generators:\r\n"
           "% GPIO number, frequency and duty cycle"),NULL},
 
+  { "show", HELP_ONLY,
+    HELPK("% \"<b>show <i>pin</> ARG1 ARG2 .. ARGn\"\r\n"
+          "%\r\n"
+          "% Display information on pins ARG1, ARG2, ..., ARGn\r\n"
+          "% at once"),NULL},
+
   { "show",  HELP_ONLY,
     HELPK("% \"<b>show <i>counters</>\"\r\n"
           "%\r\n"
@@ -763,7 +809,7 @@ static const struct keywords_t keywords_main[] = {
           "% Depending on a SoC used it may be up to 8 hardware counters"),NULL},
 
   { "show", HELP_ONLY,
-    HELPK("% \"<b>show <i>sequence</> NUMBER</>\"\r\n"
+    HELPK("% \"<b>show <i>sequence</> NUMBER\"\r\n"
           "%\r\n"
           "% Display sequence configuration for given index:\r\n"
           "% \"show sequence 6\"  - display Sequence #6 configuration"),NULL},
@@ -775,7 +821,11 @@ static const struct keywords_t keywords_main[] = {
           "% \"show mount\"           - display filesystem information\r\n"
           "% \"show mount /my_disk\"  - display information about mountpoint \"/my_disk\""), NULL},
 
-  // shadowed entry. For helptext only
+  { "show", HELP_ONLY,
+    HELPK("% \"<b>show <i>memory</>\"\r\n"
+          "%\r\n"
+          "% Display HEAP information / availability"),NULL},
+
   { "show", HELP_ONLY,
     HELPK("% \"<b>show <i>memory</> <i>ADDRESS</> [<o>COUNT</>] [<o>unsigned|signed|char|int|short|float|void *</>]\"\r\n"
           "%\r\n"
@@ -785,58 +835,68 @@ static const struct keywords_t keywords_main[] = {
           "% Default data type is \"unsigned char\"\r\n"
           "% Address is either decimal or hex (with or without leading \"0x\")\r\n%\r\n"
           "% COUNT is optional and its default value is 256 bytes. Can be decimal or hex\r\n"
-          "% NOTE: if type specifier is used and COUNT is not set, then COUNT defaults to 1\r\n"
-          "%\r\n"
-          "% \"<b>show <i>memory</>\"\r\n"
-          "%\r\n"
-          "% Display HEAP information / availability"),NULL},
+          "% NOTE: if type specifier is used and COUNT is not set, then COUNT defaults to 1"),NULL},
+
+
 #if WITH_ESPCAM
   { "show", HELP_ONLY,
-    HELPK("% \"<b>show camera</> <i>models | settings | sensor</>\"\r\n"
+    HELPK("% \"<b>show <i>camera</> <i>models | resolutions | settings | sensor</>\"\r\n"
           "%\r\n"
-          "% <i>models</>   : Displays list of 3rd-party boards supported by the shell\r\n"
-          "% <i>settings</> : Displays current camera settings\r\n"
-          "% <i>sensor</>   : Displays camera low-level information\r\n"
+          "% <i>models</>     : Displays list of supported boards\r\n"
+          "% <i>resolutions</>: List of supported resolutions\r\n"
+          "% <i>settings</>   : Displays current camera settings\r\n"
+          "% <i>sensor</>     : Displays camera low-level information\r\n"
           "% Example: \"show camera settings\"\r\n"
           ),NULL},
 
   { "show", HELP_ONLY,
-    HELPK("% \"<b>show camera</> <i>pinout</> [<o>MODEL</> | <o>custom</>]\"\r\n"
+    HELPK("% \"<b>show <i>camera</> <i>pinout</> [<o>MODEL</> | <o>custom</>]\"\r\n"
           "%\r\n"
           "% Displays camera pinout for camera model MODEL\r\n"
           "% Model name can be omitted and then current camera pinout is displayed\r\n"
           "% Model name can be \"custom\" to display your custom camera pinout\r\n"
           ),NULL},
+
 #endif
 #if WITH_ALIAS
-  { "show", cmd_show, MANY_ARGS,
-    HELPK("% \"<b>show alias</> [<o>ALIAS_NAME</>]\"\r\n"
+  { "show", HELP_ONLY,
+    HELPK("% \"<b>show</> <i>alias</> [<o>ALIAS_NAME</>]\"\r\n"
           "%\r\n"
           "% \"show alias\"     - Display list of configured aliases\r\n"
           "% \"show alias NAME\"- Display alias NAME listing "),NULL},
 
 #endif
 
-  // Switch espshell's input to another UART. 
-  { "tty", cmd_tty, 1, HIDDEN_KEYWORD },
+  // Switch espshell's input to another UART
+  { "tty", cmd_tty, MANY_ARGS, HIDDEN_KEYWORD },
 
   { "echo", cmd_echo, 1,
-    HELPK("% \"<b>echo [on|off|silent]</>\"\r\n"
+    HELPK("% \"<b>echo</> [<i>on | off | silent</>]\"\r\n"
+          "%\r\n"
           "% Echo user input on/off (default is on)\r\n"
           "% Without arguments displays current echo state\r\n"), 
     HELPK("Enable/Disable user input echo") },
 
   { "echo", cmd_echo, NO_ARGS, HIDDEN_KEYWORD },  //hidden command, displays echo status
 
-  // 1 arg "pin" command is declared first, because cmd_pin() has MANY_ARGS and will match any pin command otherwhise
-  { "pin", cmd_show_pin, 1,
-    HELPK("% \"<b>pin X</>\"\r\n"
-          "% Show pin X configuration and digital value\r\n"
-          "% Ex.: \"pin 2\" - show GPIO2 information"), 
+  // 0 and 1 arg "pin" commands are declared first, because cmd_pin() has MANY_ARGS and will match any pin command otherwhise
+  { "pin", cmd_pin, NO_ARGS,
+    HELPK("% \"<b>pin</>\"\r\n"
+          "%\r\n"
+          "% Display available/reserved pins, general GPIO information\r\n"
+          "% Ex.: \"pin\" - show GPIO availability"), 
     HELPK("GPIO commands") },
 
+  { "pin", cmd_show_pin, 1,
+    HELPK("% \"<b>pin</> <i>PIN_NUM</>\"\r\n"
+          "%\r\n"
+          "% Show PIN_NUM GPIO configuration and its digital value\r\n"
+          "% Ex.: \"pin 2\" - show GPIO2 information"), 
+    NULL },
+
   { "pin", cmd_pin, MANY_ARGS,
-    HELPK("% \"<b>pin X [<o>ARG1 | ARG2 | ... | ARGn]*</>\"\r\n"
+    HELPK("% \"<b>pin</> <i>PIN_NUM</i> [<o>ARG1 | ARG2 | ... | ARGn]*</>\"\r\n"
+          "%\r\n"
           "% Manipulate pin (GPIO) state, configuration, level, signal routing, etc\r\n"
           "% Accepts a list of keywords (or just 1 keyword): \r\n"
           "%\r\n"
@@ -864,29 +924,28 @@ static const struct keywords_t keywords_main[] = {
           "% pin 1 pwm 5000 0.3       -set 5kHz, 30% duty square wave output\r\n"
           "% pin 1 pwm 0 0            -disable PWN on GPIO1\r\n"
           "% pin 1 high delay 500 low delay 500 loop 10 - Blink a led 10 times\r\n%\r\n"
-          "% (see \"docs/html/GPIO.html\" for more details & examples)\r\n"),
-    NULL },
+          "% (see \"docs/html/GPIO.html\" for more details & examples)\r\n"),  NULL },
 
   // PWM generation
   { "pwm", cmd_pwm, 4,
-    HELPK("% \"<b>pwm PIN</> <o>FREQ</> [<o>DUTY</> [CHANNEL]]\"\r\n"
-          "% \"<b>pwm PIN</> <i>off</>\"\r\n"
+    HELPK("% \"<b>pwm <i>PIN</> [<o>FREQ</> [<o>DUTY</> [<o>CHANNEL</>] ] ]\"\r\n"
+          "% \"<b>pwm <i>PIN off</>\"\r\n"
           "%\r\n"
           "% Start or stop a PWM generator on pin PIN, frequency FREQ Hz and duty cycle\r\n"
-          "%of DUTY. Keywords \"<b>off</>\" or \"0\" are used to stop PWM output.\r\n"
+          "% of DUTY. Keywords \"<b>off</>\" or \"0\" are used to stop PWM output.\r\n"
           "% FREQ is in range [0 .. " xstr(PWM_MAX_FREQUENCY) "] Hz\r\n"
           "%\r\n"
           "% DUTY is optional (0.5 (50%) if omitted); DUTY range is [0.00 .. 1.00])\r\n"
-          "% Note that above 150kHz duty resolution may drops to 8 bits, at 10MHz it is 2 bits\r\n"
-          "% Resolution is autoselected but can be overriden with \"var ledc_res BITS\"\r\n"
+          "% DUTY resolution is autoselected but can be overriden with \"var ledc_res BITS\"\r\n"
           "%\r\n"
           "% CHANNEL is optional parameter, selects PWM channel to be used (0..15)\r\n"
-          "%Examples:\r\n"
-          "% pwm <g>2 <i>1000</>      - enable PWM of 1kHz, 50% duty cycle on pin 2\r\n"
-          "% pwm <g>2</> <i>100 0.15</> - enable PWM of 100 Hz, 15% duty cycle on pin 2\r\n"
-          "% pwm <g>2</>                 - disable PWM on pin 2\r\n"
-          "% pwm <g>2</> <i>0</>               - same as above\r\n"
-          "% pwm <g>2</> <i>off</>             - same as above"),  "PWM output" },
+          "% Examples:\r\n"
+          "%   pwm 2 <i>1000</>      - enable PWM of 1kHz, 50% duty cycle on pin 2\r\n"
+          "%   pwm 2 <i>100 0.15</>  - enable PWM of 100 Hz, 15% duty cycle on pin 2\r\n"
+          "%   pwm 2 <i>100 0.15 4</>- 100 Hz, 15% duty ,pin 2, Hardware channel 4\r\n"
+          "%   pwm 2           - disable PWM on pin 2\r\n"
+          "%   pwm 2 <i>0</>         - same as above\r\n"
+          "%   pwm 2 <i>off</>       - same as above"),  "PWM output" },
 
   { "pwm", cmd_pwm, 3, HIDDEN_KEYWORD }, // pwm PIN FREQ DUTY
   { "pwm", cmd_pwm, 2, HIDDEN_KEYWORD }, // pwm PIN FREQ, pwm PIN off, pwm PIN 0
@@ -894,7 +953,8 @@ static const struct keywords_t keywords_main[] = {
 
   // Pulse counting/frequency meter
   { "count", cmd_count, MANY_ARGS,
-    HELPK("% \"<b>count PIN</> [<o>NUMBER</>| <o>infinite</> | <o>trigger</> | <o>filter LENGTH</>]*\"\r\n%\r\n"
+    HELPK("% \"<b>count <i>PIN</> [<o>NUMBER</>| <o>infinite</> | <o>trigger</> | <o>filter LENGTH</>]*\"\r\n"
+          "%\r\n"
           "% Count pulses on pin PIN for NUMBER milliseconds (default value is 1 second, use \r\n"
           "% keyword <i>infinite</> if you want this time to be very large)\r\n" 
           "% Optional \"trigger\" keyword suspends the counter until the first pulse\r\n"
@@ -912,7 +972,8 @@ static const struct keywords_t keywords_main[] = {
           "%                         shorter than 300ns"), "Pulse counter" },
 
   { "count", HELP_ONLY,
-    HELPK("% \"<b>count PIN</> <i>clear</>\"\r\n"
+    HELPK("% \"<b>count <i>PIN</> <i>clear</>\"\r\n"
+          "%\r\n"
           "% Clear counters associated with pin PIN. These may be stopped, \r\n"
           "% running or in \"trigger\" state\r\n"
           "% Example: \r\n"
@@ -920,12 +981,13 @@ static const struct keywords_t keywords_main[] = {
     
 #if WITH_ESPCAM
   { "camera", cmd_cam, MANY_ARGS, 
-    HELPK("% \"<b>camera</> <i>up</> [<o>MODEL | custom | clock HZ | i2c NUMBER</>]*\r\n" \
-          "% Detect & initialize the camera\n\r" \
-          "%\n\r" \
-          "% <i>MODEL</>    - The camera model; Supported models list is here: \"show camera models\"\n\r" \
-          "%            Use word \"custom\" to specify custom camera model. (see \"camera pinout\")\r\n" \
-          "% <i>clock HZ</> - Set XCLK frequency, Hertz. Default value is 16000000 (16Mhz)\n\r" \
+    HELPK("% \"<b>camera</> <i>up</> [<o>MODEL | custom | clock HZ | i2c NUMBER</>]*\r\n"
+          "%\r\n"
+          "% Detect & initialize the camera\n\r"
+          "%\n\r"
+          "% <i>MODEL</>    - The camera model; Supported models list is here: \"show camera models\"\n\r"
+          "%            Use word \"custom\" to specify custom camera model. (see \"camera pinout\")\r\n"
+          "% <i>clock HZ</> - Set XCLK frequency, Hertz. Default value is 16000000 (16Mhz)\n\r"
           "% <i>i2c NUM</>  - Use existing i2c interface, ignore SDA & SCL pins\r\n%\r\n"
           "%\r\n"
           "%Examples:\r\n"
@@ -936,17 +998,18 @@ static const struct keywords_t keywords_main[] = {
   },
 
   { "camera", HELP_ONLY,
-    HELPK("% \"<b>camera</> <i>down|settings|capture|filesize|transfer</>\" - Camera commands:\n\r" \
-          "%\n\r" \
-          "% <b>settings</> - Enter camera setting\n\r" \
-          "% <b>capture</>  - Capture a single shot\n\r" \
-          "% <b>filesize</> - Display last captured shot file size\n\r" \
-          "% <b>transfer</> - Transmit last picture taken (over UART)\n\r" \
+    HELPK("% \"<b>camera</> <i>down|settings|capture|filesize|transfer</>\" - Camera commands:\n\r"
+          "%\n\r"
+          "% <b>settings</> - Enter camera setting\n\r"
+          "% <b>capture</>  - Capture a single shot\n\r"
+          "% <b>filesize</> - Display last captured shot file size\n\r"
+          "% <b>transfer</> - Transmit last picture taken (over UART)\n\r"
           "% <b>down</>     - Camera shutdown & power-off"), NULL },
 
 
   { "camera", HELP_ONLY,
     HELPK("% \"<b>camera pinout</> <o>PWDN RESET</> XCLK <o>SDA SCL</> <i>D7 D6 D5 D4 D3 D2 D1 D0 VSYNC HREF PCLK</>\r\n"
+          "%\r\n"
           "% Set custom pinout for the camera model \"<i>custom</>\"\r\n"
           "% Later it can be used with \"camera up custom\"\n\r"
           "%\n\r"
@@ -968,13 +1031,14 @@ static const struct keywords_t keywords_main[] = {
 #endif //WITH_ESPCAM
   // TODO: split helplines between different entries
   { "var", cmd_var, 2,
-    HELPK("% \"<b>var</> [<o>VARIABLE_NAME</> [<o>NEW_VALUE</>]]</>\"\r\n%\r\n"
-          "% Set sketch variable to new value\r\n"
+    HELPK("% \"<b>var</> <i>VARIABLE_NAME</> [<o>NEW_VALUE</>]</>\"\r\n"
+          "%\r\n"
+          "%  a. Display sketch variable value\r\n"
+          "%S b. Set sketch variable to new value\r\n"
           "% VARIABLE_NAME is the variable name (\"var\" to see the list of all vars)\r\n"
           "% NEW_VALUE can be integer or float point values, positive or negative\r\n"
           "%\r\n"
           "% Examples:\r\n"
-          "% <b>var</>             - List all registered sketch variables\r\n"
           "% <b>var</> <i>button1</>     - Display current value of \"button1\" sketch variable\r\n"
           "% <b>var</> <i>angle</> <g>-12.3</> - Set sketch variable \"angle\" to \"-12.3\"\r\n"
           "%\r\n"
@@ -982,7 +1046,7 @@ static const struct keywords_t keywords_main[] = {
           "% Note#2: Use prefix \"0x\" for hex, \"0\" for octal or \"0b\" for binary numbers"), "Sketch variables" },
 
   { "var", cmd_var, 1,
-    HELPK("% \"<b>var</> <g>NUMBER</>\"\r\n"
+    HELPK("% \"<b>var</> <i>NUMBER</>\"\r\n"
           "%\r\n"
           "% Display a NUMBER in differtent bases and perform unsafe C-style\r\n"
           "% cast of a memory content\r\n"
@@ -995,7 +1059,14 @@ static const struct keywords_t keywords_main[] = {
           "% var 01234       -                 on an octal number..\r\n"
           "% var 0b1001110   - and on a binary number"), NULL },
 
-  { "var", cmd_var_show, NO_ARGS, HIDDEN_KEYWORD },
+  { "var", cmd_var_show, NO_ARGS,
+    HELPK("% \"<b>var</>\"\r\n"
+          "%\r\n"
+          "% Display the list of sketch variables accessible from the shell\r\n"
+          "% Variables must be registered with convar_add() macro\r\n"
+          "%\r\n"
+          "% Examples:\r\n"
+          "%   var - Display variables list\r\n"), NULL },
 
 
   { "history", cmd_history, 1, HIDDEN_KEYWORD },
@@ -1015,65 +1086,74 @@ static const struct keywords_t keywords_main[] = {
 //
 // Handlers are implemented in espcam.h
 //
-static struct keywords_t keywords_espcam[] = {
+static const struct keywords_t keywords_espcam[] = {
 
   KEYWORDS_BEGIN
 
   { "gain", cmd_camera_set_gain, 1, 
-    HELPK("\"<b>gain</> <i>auto</>|(0..30)\"\n\r"
+    HELPK("% \"<b>gain</> <i>auto</>|(0..30)\"\n\r"
+          "%\r\n"
           "% Set camera sensetivity (auto or 0..30)"), "Gain" },
 
   { "balance", cmd_camera_set_balance, 1, 
     HELPK("% <b>balance</> <i>none</>|<i>auto</>|<i>sunny</>|<i>cloudy</>|<i>office</>|<i>home</>\n\r"
+          "%\r\n"
           "% Set camera White Balance correction"),  "White balance" },
 
   { "exposure", cmd_camera_set_exposure, 2, 
-    HELPK("% exposure auto [-2..2]\n\r"
+    HELPK("% <b>exposure</> <i>auto</> [<o>-2..2</>]\n\r"
           "% \n\r"
           "% Set camera exposure mode to auto & optional AE shift:\r\n"
-          "% exposure auto     - set exposure to auto\r\n"
-          "% exposure auto -2  - same as above + correction factor of -2"), "Exposure" },
+          "% Example:\r\n"
+          "%   exposure auto     - set exposure to auto\r\n"
+          "%   exposure auto -2  - same as above + correction factor of -2"), "Exposure" },
 
   { "exposure", cmd_camera_set_exposure, 1, 
-    HELPK("% exposure (0..1200)\n\r"
+    HELPK("% <b>exposure</> (<i>0..1200</>)\n\r"
           "%\n\r"
           "% Set manual camera exposure:\r\n"
-          "% exposure 800 - Set exposure parameter to 800"),"Exposure" },
+          "% Example:\r\n"
+          "%   exposure 800 - Set exposure parameter to 800"),"Exposure" },
 
 
   { "brightness", cmd_camera_set_qbcss, 1,
-      HELPK("% brightness (-2..2)\n\r"
+      HELPK("% <b>brightness</> (<i>-2..2</>)\n\r"
           "%\n\r"
           "% Set brightness correction (gamma):\r\n"
-          "% exposure -1 - Make things darker"), "Brightness" },
+          "% Example:\r\n"
+          "%   exposure -1 - Make things darker"), "Brightness" },
 
   { "saturation", cmd_camera_set_qbcss, 1,
-      HELPK("% saturation (-2..2)\n\r"
+      HELPK("% <b>saturation</> (<i>-2..2</>)\n\r"
           "%\n\r"
           "% Set saturation correction (vivid colors):\r\n"
-          "% saturation 2 - Set saturation to its maximum"), "Saturation" },
+          "% Example:\r\n"
+          "%   saturation 2 - Set saturation to its maximum"), "Saturation" },
 
   { "contrast", cmd_camera_set_qbcss, 1,
-      HELPK("% contrast (-2..2)\n\r"
+      HELPK("% <b>contrast</> (<i>-2..2</>)\n\r"
           "%\n\r"
           "% Set contrast correction:\r\n"
-          "% contrast 2 - Set contrast parameter to its maximum"), "Contrast" },
+          "% Example:\r\n"
+          "%   contrast 2 - Set contrast parameter to its maximum"), "Contrast" },
 
   { "sharpness", cmd_camera_set_qbcss, 1,
-      HELPK("% sharpness (-2..2)\n\r"
+      HELPK("% <b>sharpness</> (<i>-2..2</>)\n\r"
           "%\n\r"
           "% Set image sharpness correction:\r\n"
-          "% sharpness -2 - Decrease sharpness to its minimum"), "Sharpness" },
+          "% Example:\r\n"
+          "%   sharpness -2 - Decrease sharpness to its minimum"), "Sharpness" },
 
-  { "compression", cmd_camera_set_qbcss, 1,
-      HELPK("% compression (2..63)\n\r"
+  { "compress", cmd_camera_set_qbcss, 1,
+      HELPK("% <b>compression</> (<i>2..63</>)\n\r"
           "%\n\r"
           "% Set JPEG compression factor (2 - best quality, 63 - smallest size)\r\n"
-          "% compression 4 - Higher picture quality, larger file"), "compression" },
+          "% Example:\r\n"
+          "%   compression 4 - Higher picture quality, larger file"), "JPEG compression settings" },
 
   { "size", cmd_camera_set_size, 1, 
     HELPK("% \"size vga|svga|xga|hd|sxga|uxga...\"\n\r"
-          "\n\r"
+          "%\n\r"
           "% Set picture size:\n\r"
           "% vga   - 640x480\n\r"
           "% svga  - 800x600\n\r"
