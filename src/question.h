@@ -114,6 +114,15 @@ static int help_keys(UNUSED int argc, UNUSED char **argv) {
 }
 
 
+// 40 spaces asciiz string, used in formatting. It is located in PROGMEM 
+static const char Spaces[41] = {
+  ' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',
+  ' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',
+  ' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',
+  ' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',
+  '\0'
+};
+
 // "? NAME"
 // display command NAME usage details (e.g. "? pin")
 //
@@ -128,8 +137,14 @@ static int help_command(int argc, char **argv) {
     if (keywords[i].help || keywords[i].brief) {  //skip hidden commands
       if (!q_strcmp(argv[1], keywords[i].cmd)) {
         // print common header for the first entry
-        if (!found && keywords[i].brief)
-          q_printf("\r\n%% -- %s --\r\n", keywords[i].brief);
+        if (!found && keywords[i].brief) {
+          unsigned int blen = strlen(keywords[i].brief);
+          if (blen + 8 >= sizeof(Spaces) - 1)
+            blen = sizeof(Spaces) - 1;
+          else
+            blen = blen + 8;
+          q_printf("\r\n%%<r> -- %s --%s</>\r\n", keywords[i].brief, &Spaces[blen]);
+        }
 
         q_printf("%s\r\n\r\n", keywords[i].help ? keywords[i].help : (keywords[i].brief ? keywords[i].brief : "FIXME:"));
         found++;

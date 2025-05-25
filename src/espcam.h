@@ -316,6 +316,8 @@ initialize_camera_first:
   return CMD_FAILED;
 }
 
+// TODO: "show camera resolution" -> display all possible resolutions supported and their nicknames (e.g. qxga, vga, etc)
+
 //"camera pinout PWDN RESET XCLK SDA SCL D7 D6 D5 D4 D3 D2 D1 D0 VSYNC HREF PCLK"
 static int cmd_cam_pinout(int argc, char **argv) {
 
