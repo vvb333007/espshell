@@ -33,7 +33,35 @@ Command processor:
 6. Upgrade command interpreter so it will recognize "@" symbol and supress echo until <Enter> is pressed
    to simulate DOS' "@echo off"
 
+GPIO:
+-----
 
+1. add event system: configure GPIO masks which, if detected, trigger an alias:
+
+    esp32#>if 0 1 !2   exec WaterTankOverflow
+    esp32#>if !0 !1 !2 exec WaterTankUnderflow
+    esp32#>if 2 exec Motor_Off
+    esp32#>if 4<2048 poll 1000 exec Motor_On
+
+    
+    if COND1 COND2 ... CONDn [poll INTERVAL] exec TEXT
+      COND := PIN_NUMBER | !PIN_NUMBER | PIN_NUMBER<VALUE | PIN_NUMBER>VALUE
+      INTERVAL := Polling interval, ms
+      checks if COND1 && COND2 .. && CONDn is true and executes TEXT (either a command or alias)
+      By default uses GPIO ANYEDGE interrupts to evaluate CONDn, but can be forced to use polling (in sketches 
+      with their own GPIO interrupt handlers, where ESPShell don't want to interfere with sketch logic)
+
+2. add "pereodic" command: esp32#> periodic INTERVAL_SEC exec TEXT
+
+3. add "toggle" keyword to "pin" command, to toggle output value betwen 1 and 0
+   "pin 2 toggle read toggle read"
+4. pin_save() on startup so subsequent pin_load() will be guaranteed to not load junk
+
+PWM:
+----
+
+1. Implement phase shift between adjacent channels using .hpoint: adjacent channels share the same timer so their frequency 
+   is the same, only DUTY and PHASE can be controlled
 
 Sequence generator:
 -------------------
