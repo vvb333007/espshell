@@ -45,6 +45,11 @@ a {
   color: #475de2;
 }
 
+ul ul {
+  list-style-type: circle;
+}
+
+
 .func {
   font-style: italic;
   font-weight: bold;

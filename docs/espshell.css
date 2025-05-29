@@ -13,6 +13,10 @@ td {
   padding-right: 1pc;
 }
 
+ul ul {
+  list-style-type: circle;
+}
+
 th {
   vertical-align: top;
   background-color: #d4ddac;
