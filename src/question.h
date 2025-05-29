@@ -130,7 +130,7 @@ static int help_command(int argc, char **argv) {
 
   int i = 0;
   int found = 0;
-  const char *prev = "*";
+  const char *prev = "*"; 
 
   // go through all matched commands (only name is matched) and print their
   // help lines. hidden commands are ignored

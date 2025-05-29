@@ -220,25 +220,33 @@ static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][IOMUX_NFUNC] = {
 }; //iomux function table
 
 // Long story short: as of Arduino Core 3.2.0, the uart & i2c ESP-IDF code has bug which 
-// was fixed quite ago but still not merged into Arduino Core libs.
+// was fixed quite ago but still not merged into Arduino Core libs: GPIOs that are reserved for UART are never revoked
 //
-// Run at startup to fetch RESERVED pins. Since RESERVED pins logic is broken on this version of ESP-IDF
+// Run at startup to fetch true RESERVED pins. Since RESERVED pins logic is broken on this version of ESP-IDF
 // we want to precache pin numbers. There will be FLASH SPI pins but not UART0 - as it gets initialized later
 //
+static void pin_save(int pin);
 static uint64_t Reserved = 0;
 
-static void __attribute__((constructor)) pin_get_reserved_pins() {
+static void __attribute__((constructor)) pin_cache_gpios() {
     for (unsigned char p = 0; p < SOC_GPIO_PIN_COUNT; p++) {
-      unsigned char reserved = esp_gpio_is_pin_reserved(p) ? 1 : 0;
-#if CONFIG_IDF_TARGET_ESP32          
+      if (pin_exist_silent(p)) {
+        unsigned char reserved = esp_gpio_is_pin_reserved(p) & 1;
+        // TODO: this is a hack
+#if CONFIG_IDF_TARGET_ESP32
         if (p > 33)
           reserved = 0;
-#endif
-      if (reserved)
-        Reserved |= 1ULL << p;
+#endif        
+        if (reserved)
+          Reserved |= 1ULL << p;
+
+        // Save all GPIO states so subsequent "pin X load" will load valid data, not all-zeros
+        pin_save(p);
+      }
     }
 }
 
+// TODO: display runtime-reserved flags also: waiting for new ESP-IDF
 static bool pin_is_reserved(unsigned char pin) {
   return Reserved & (1ULL << pin);
 }
@@ -463,7 +471,7 @@ static bool pin_not_exist_notice(unsigned char pin) {
 
   // Dump RESERVED pins.
   q_print("</>\r\n"
-          "% Used by SoC: <i> ");
+          "% Reserved (SPI FLASH, SPI RAM): <i> ");
   list_pins(0);
   q_print("</>\r\n% Available: <g>");
   list_pins(1);
@@ -918,6 +926,7 @@ static int cmd_pin(int argc, char **argv) {
 
   unsigned int count = 1; // Command loop count
 
+  // "pin" without arguments shows valid GPIO range
   if (argc < 2) {
     pin_not_exist_notice(99);
     return 0;
@@ -981,18 +990,20 @@ static int cmd_pin(int argc, char **argv) {
       if (!q_strcmp(argv[i], "out")) pinForceMode(pin, (flags |= OUTPUT_ONLY)); else
       // 9. "pin X open". Shortened "op"
       if (!q_strcmp(argv[i], "open")) pinForceMode(pin, (flags |= OPEN_DRAIN)); else
-      // 10. "pin X low | high" keyword. only applies to I/O pins, fails for input-only pins. Shortened "l" and "h"
-      if (!q_strcmp(argv[i], "low") || !q_strcmp(argv[i],"high")) {
+      // 10. "pin X low | high | toggle" keywords. 
+      //     only applies to I/O pins, fails for input-only pins. Shortened "l", "h" and "t"
+      if (!q_strcmp(argv[i], "low") || !q_strcmp(argv[i],"high") || !q_strcmp(argv[i],"toggle")) {
         if (pin_is_input_only_pin(pin)) {
-          q_printf("%% <e>Pin %u is **INPUT-ONLY**, can not be set \"%s</>\"\r\n", pin, argv[i]);
+          HELP(q_printf("%% <e>Pin %u is **INPUT-ONLY**</>, its OUTPUT can not be changed\r\n", pin));
           return i;
         }
-        // use pinForceMode/digitalForceWrite to not let the pin to be reconfigured (bypass PeriMan)
-        // pinForceMode is not needed because ForceWrite does it
-        if ((flags & OUTPUT_ONLY) == 0)
-       /*   pinForceMode(pin, (*/flags |= OUTPUT_ONLY/*))*/;
-          
-        digitalForceWrite(pin, argv[i][0] == 'l' ? LOW : HIGH);
+        
+        flags |= OUTPUT_ONLY;
+        
+        if (argv[i][0] == 't') // "toggle"
+          digitalForceWrite(pin, digitalForceRead(pin) ^ 1);
+        else
+          digitalForceWrite(pin, argv[i][0] == 'l' ? LOW : HIGH);
       } else
       // 11. "pin X read". Shortened "r"
       if (!q_strcmp(argv[i], "read")) q_printf("%% GPIO%d : logic %d\r\n", pin, digitalForceRead(pin)); else
@@ -1044,7 +1055,7 @@ static int cmd_pin(int argc, char **argv) {
       // Keyword was executed successfully. Proceed to the next keyword.
       i++;
     }       //big fat "while (i < argc)"
-    i = 1;  // prepare to start over again
+    i = 1;  // prepare to start over again from argv[1]
 
     // give a chance to cancel whole command
     // by anykey press, but only if it is a foreground process

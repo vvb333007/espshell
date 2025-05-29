@@ -38,10 +38,10 @@ GPIO:
 
 1. add event system: configure GPIO masks which, if detected, trigger an alias:
 
-    esp32#>if 0 1 !2   exec WaterTankOverflow
+    esp32#>if 0 1 !2   exec WaterTankOverflow              <-- 3 interrupt handlers (via isr service)
     esp32#>if !0 !1 !2 exec WaterTankUnderflow
     esp32#>if 2 exec Motor_Off
-    esp32#>if 4<2048 poll 1000 exec Motor_On
+    esp32#>if 4<2048 poll 1000 exec Motor_On               <-- 0 interrupt handlers, 1 global "poll" task (same as timeout() in *BSD)
 
     
     if COND1 COND2 ... CONDn [poll INTERVAL] exec TEXT
@@ -51,11 +51,12 @@ GPIO:
       By default uses GPIO ANYEDGE interrupts to evaluate CONDn, but can be forced to use polling (in sketches 
       with their own GPIO interrupt handlers, where ESPShell don't want to interfere with sketch logic)
 
-2. add "pereodic" command: esp32#> periodic INTERVAL_SEC exec TEXT
+2. add "every" command: esp32#> every INTERVAL_SEC exec TEXT
 
-3. add "toggle" keyword to "pin" command, to toggle output value betwen 1 and 0
-   "pin 2 toggle read toggle read"
-4. pin_save() on startup so subsequent pin_load() will be guaranteed to not load junk
+
+ done: 3. add "toggle" keyword to "pin" command, to toggle output value betwen 1 and 0  "pin 2 toggle read toggle read"
+ done: 4. pin_save() on startup so subsequent pin_load() will be guaranteed to not load junk
+
 
 PWM:
 ----
@@ -66,9 +67,9 @@ PWM:
 Sequence generator:
 -------------------
 
-1. add sequence capture (using RMT), captured sequence display and saving to a FS
+1. add sequence capture (using RMT), captured sequence display and saving to a FS. (IR remote capture & playback)
 
-2. make RMT's clock divisor be configurable
+  done: 2. make RMT's clock divisor be configurable
 
 3. add support for byte strings (currently only bitstrings are recognized)
 
@@ -85,3 +86,8 @@ File Manager:
 
 3. Port a single-user, single-threaded simple FTP server - to be able to upload a premade filesystem (i.e. files and directories)
 
+
+UART, I2C, SPI
+--------------
+
+1. Implement "show uart|i2c|spi NUM" : dislpay current interface settings (pins, speed, data width, parity/stopbits where applicable)

@@ -37,7 +37,7 @@ static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
     "",
     "Software resets the digital core",
     "",
-    "Deep sleep reset the digital core",
+    "Deep sleep resets the digital core",
     "SDIO module resets the digital core",
     "Main watch dog 0 resets digital core",
     "Main watch dog 1 resets digital core",
@@ -100,7 +100,6 @@ static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
 static int cmd_tty(int argc, char **argv) {
 
   unsigned char tty;
-
   // No arguments? Print currently used UART number
   if (argc < 2) {
     tty = console_here(-1);
@@ -240,7 +239,11 @@ static int cmd_colors(int argc, char **argv) {
 static NORETURN void must_not_happen(const char *message, const char *file, int line) {
 
   // Print location & cause of this MUST NOT HAPPEN event
-  q_printf("%% ESPShell internal error: \"<i>%s</>\" in file\r\n%% %s, line: %u\r\n%% ESPShell is stopped\r\n",message,file,line);
+  q_printf("%% ESPShell internal error: \"<i>%s</>\"\r\n"
+           "%% in %s:%u, ESPShell is stopped\r\n",
+           message,
+           file,  
+           line);
 
   // forcefully kill our parent task (the shell command processor) if we are running in a background
   if (is_background_task()) {
@@ -248,7 +251,8 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
     q_delay(100);
     vTaskDelete((TaskHandle_t)shell_task);
   }
-  // Kill our own task (shell command processor for foreground tasks)
+  // foreground: kill ESPShell task
+  // background: kill background command task, shell was killed before
   vTaskDelete(NULL);
   
   
