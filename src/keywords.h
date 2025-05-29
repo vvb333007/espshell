@@ -895,7 +895,7 @@ static const struct keywords_t keywords_main[] = {
     NULL },
 
   { "pin", cmd_pin, MANY_ARGS,
-    HELPK("% \"<b>pin</> <i>PIN_NUM</i> [<o>ARG1 | ARG2 | ... | ARGn]*</>\"\r\n"
+    HELPK("% \"<b>pin</> <i>PIN_NUM</> [<o>ARG1 | ARG2 | ... | ARGn]*</>\"\r\n"
           "%\r\n"
           "% Manipulate pin (GPIO) state, configuration, level, signal routing, etc\r\n"
           "% Accepts a list of keywords (or just 1 keyword): \r\n"
