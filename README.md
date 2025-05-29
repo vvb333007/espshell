@@ -1,5 +1,7 @@
-[Этот текст, но на русском, находится тут](https://github.com/vvb333007/espshell/blob/main/README.ru.md)
-[Лицензионное соглашение на русском, находится тут](https://github.com/vvb333007/espshell/blob/main/LICENSE.ru.md)
+
+Этот текст, но на русском, [находится тут](https://github.com/vvb333007/espshell/blob/main/README.ru.md)
+
+Лицензионное соглашение на русском, [находится тут](https://github.com/vvb333007/espshell/blob/main/LICENSE.ru.txt)
 
 # WHAT IS THIS
 
