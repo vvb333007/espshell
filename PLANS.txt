@@ -1,7 +1,12 @@
+Core:
+-----
+1. Remove Arduino Core dependency: be able to compile & work in plain ESP-IDF
+
 Command processor:
 ------------------
 
-1. add "alias" command which allows for multiline scripts to be referenced by single command:
+1. Command aliases:
+   Add "alias" command implements named scripts.
    Like:
     esp32#>alias pwm_on                          <--- create an empty alias with name "pwm_on"
     esp32#pwm_on>echo silent                     
@@ -18,19 +23,10 @@ Command processor:
         list                                 <--- list alias content
         delete [ LINE_NUMBER | all]          <--- delete last line or LINE_NUMBER or all lines
   
-2. Make command processor be able to expand $ values: $1 is argv[1] and $VarName is a sketch variable
+2. Make command processor be able to expand "$" values: $1 is argv[1] and $VarName is a sketch variable
     This is one of requirements for [1].
 
-3. "watch" command which watches signal change on pin (neg,pos,rising,falling,any) and calls an alias
-
-    watch PIN neg|pos|rising|falling|anyedge [SHELL_COMMAND | ALIAS]
-    when no action is provided (a shell command or an alias) then the event is displayed to the user
-
-4.  script(s?) storage in NVS
-
-5. "exec" command which loads and executes a script either from NVRAM or from a filesystem
-
-6. Upgrade command interpreter so it will recognize "@" symbol and supress echo until <Enter> is pressed
+  done: 3. Upgrade command interpreter so it will recognize "@" symbol and supress echo until <Enter> is pressed
    to simulate DOS' "@echo off"
 
 GPIO:
@@ -38,9 +34,12 @@ GPIO:
 
 1. add event system: configure GPIO masks which, if detected, trigger an alias:
 
-    esp32#>if 0 1 !2   exec WaterTankOverflow              <-- 3 interrupt handlers (via isr service)
-    esp32#>if !0 !1 !2 exec WaterTankUnderflow
+  Like interrupt trigger which checks pinx && piny && .. && pinz condition
+    esp32#>if 0 1 !2   exec WaterTankOverflow              <-- 3 interrupt handlers (via isr service), 0=HIGH, 1=HIGH 2=LOW
+    esp32#>if !0 !1 !2 exec WaterTankUnderflow             <-- 3 interrupt handlers (via isr service), 0=LOW, 1=LOW 2=LOW
     esp32#>if 2 exec Motor_Off
+
+  analogRead() conditional ()
     esp32#>if 4<2048 poll 1000 exec Motor_On               <-- 0 interrupt handlers, 1 global "poll" task (same as timeout() in *BSD)
 
     
@@ -90,4 +89,4 @@ File Manager:
 UART, I2C, SPI
 --------------
 
-1. Implement "show uart|i2c|spi NUM" : dislpay current interface settings (pins, speed, data width, parity/stopbits where applicable)
+1. Implement "show uart|i2c|spi [NUM]" : dislpay current interface settings (pins, speed, data width, parity/stopbits where applicable)
