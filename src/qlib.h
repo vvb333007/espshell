@@ -84,7 +84,8 @@ static bool Exit = false;            // True == close the shell and kill its Fre
 
 static bool ColorAuto = AUTO_COLOR;  // Autoenable coloring if terminal permits
 static bool Color = false;           // Coloring is enabled?
-static int  Echo = STARTUP_ECHO;     // Runtime echo flag: -1=silent,0=off,1=on
+static signed char  Echo = STARTUP_ECHO;     // Runtime echo flag: -1=silent,0=off,1=on
+static signed char  Echop = 0;
 
 // -- Coloring / ANSI sequences --
 // ESPShell messages can have **color tags** embedded into them like in example below:

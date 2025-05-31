@@ -751,7 +751,16 @@ TTYspecial(unsigned int c) {
       return redisplay();
   }
 
+  // If @ is the first symbol of the Line, we temporary switch Echo off (until <Enter>).
+  // This is to simulate "@echo off" DOS behaviour.
+  // enter_pressed() restores Echo from Echop
+  if (c == '@' && Line[0] == '\0') {
+    Echop = Echo;
+    Echo = 0;
+    return CSstay;
+  }
 
+  // TODO: does this ever happen? Do we handle CSeof correctly?
   if (c == 0 && Point == 0 && End == 0)
     return CSeof;
 
@@ -907,6 +916,12 @@ end_pressed() {
 static EL_STATUS
 enter_pressed() {
   Line[End] = '\0';
+
+  // Echo suppression was triggered?
+  if (Echop) {
+    Echo = Echop;
+    Echop = 0;
+  }
 
 #if WITH_COLOR
   // user has pressed <Enter>: set colors to default
