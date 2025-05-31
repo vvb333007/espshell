@@ -24,6 +24,7 @@
 static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
 
   // Restart Reason (or Reset Reason)
+
   const char *rr[] = {
     "<w>reason can not be determined",   "<g>board power-on",                   "<g>external (pin) reset",   "<g>reload command",
     "<e>exception and/or kernel panic",  "<e>interrupt watchdog",               "<e>task watchdog",          "<e>other watchdog",

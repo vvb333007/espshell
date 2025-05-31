@@ -424,13 +424,6 @@ bool espshell_exec_finished() {
 //
 static bool call_once = false;
 
-#if CMD_STATS
-// Command tree stats, available as convars ("var NHa"...)
-static unsigned short NHandlers = 0;  // Number of command handlers
-static unsigned short NCmds = 2;     // "?" and "exit" only counted once, and it is done here
-static unsigned short NTrees = 0;    // Number of command directories
-#endif
-
 static  void espshell_initonce() {
 
   if (!call_once) {
@@ -441,53 +434,12 @@ static  void espshell_initonce() {
     // There is a code which assumes sizeof(unsigned int) >= sizeof(void *) here and there (mostly in task.h)
     // We do these asserts in the beginning so we can safely convert between 32-bit types and make safe our, generally speaking unsafe code
     
-    static_assert(sizeof(int) == 4,"Unexpected int size");
-    static_assert(sizeof(short) == 2,"Unexpected short size");
-    static_assert(sizeof(char) == 1,"Unexpected char size");
-    static_assert(sizeof(float) == 4,"Unexpected float size");
-    static_assert(sizeof(void *) == 4,"Unexpected pointer size");
-    static_assert(sizeof(unsigned long long) == 8,"Unexpected long long size");
-
-    // Do some stats
-#if CMD_STATS
-    const struct keywords_t *k[] = { 
-      keywords_uart, 
-      keywords_i2c, 
-#if WITH_SPI      
-      keywords_spi, 
-#endif      
-      keywords_sequence, 
-#if WITH_FS      
-      keywords_files, 
-#endif      
-      keywords_main,
-#if WITH_ESPCAM      
-      keywords_espcam,
-#endif      
-      NULL 
-    }, *tree;
-
-    unsigned int j;
-    for (j = 0;(tree = k[NTrees]) != NULL ;NTrees++) {
-      void *prev = NULL;
-      while (tree[j].cmd != NULL) {
-        MUST_NOT_HAPPEN(ESPSHELL_MAX_CNLEN < strlen(tree[j].cmd));
-        // Try to count only unique command handlers. This count will be < than total amount of commands
-        // The counting procedure relies on that fact that the same command handler can appear at number of
-        // keywords but these keywords must be grouped together (e.g. all "show" keywords are grouped together)
-        if (tree[j].cb != prev) {
-          NHandlers++;
-          prev = (void *)tree[j].cb;
-        }
-        NCmds++;
-        j++;
-        
-      }
-    }
-    convar_add(NCmds);
-    convar_add(NTrees);
-    convar_add(NHandlers);
-#endif // CMD_STATS
+    static_assert(sizeof(int) == 4,"Unexpected basic type size");
+    static_assert(sizeof(short) == 2,"Unexpected basic type size");
+    static_assert(sizeof(char) == 1,"Unexpected basic type size");
+    static_assert(sizeof(float) == 4,"Unexpected basic type size");
+    static_assert(sizeof(void *) == 4,"Unexpected basic type size");
+    static_assert(sizeof(unsigned long long) == 8,"Unexpected basic type size");
 
     // add internal variables ()
     convar_add(ls_show_dir_size);  // enable/disable dir size counting for "ls" command

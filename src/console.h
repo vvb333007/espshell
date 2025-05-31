@@ -63,7 +63,7 @@ static INLINE bool console_isup() {
 }
 #endif  //SERIAL_IS_USB
 
-// Make ESPShell to use specified UART (or USB) for its IO. Default is uart0.
+// Make ESPShell to use specified UART ( or USB-CDC ) for its IO.
 // Code below reads: return current uart number if i < 0. If i is valid uart number or i is 99
 // then set current uart to that number and return the same number as well. If i is not a valid uart number then -1 is returned
 //
@@ -85,4 +85,3 @@ static bool anykey_pressed() {
                                  : false;
 }
 #endif // #if COMPILING_ESPSHELL
-

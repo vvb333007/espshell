@@ -486,7 +486,7 @@ static inline int atoi2(const char *p) {
 
 // Check if ascii string represents a floating point number
 // "0.5" and "-.5" are both valid inputs
-// "-." and "." are both valid input also, however subsequent call to q_atof() will return 0
+// TODO: "-." and "." are both valid input also, however subsequent call to q_atof() will return 0
 // The same behavior for isnum() was fixed (i.e. isnum() does not accept single "-" character as a valid number).
 //
 static bool isfloat(const char *p) {
@@ -505,19 +505,22 @@ static bool isfloat(const char *p) {
 // "to-lowercase" helper macro
 // Only works with ANSI charset, single-byte encodings
 //
-#define A2a(_A) (((_A) >= 'A' && (_A) <= 'Z') ? ((_A) | (1 << 5)) : (_A))
+
 
 // Check if given ascii string is a hex number
 // String may or may not start with "0x"
 // Strings "a" , "5a", "0x5" and "0x5Ac5" are valid input
-//
+
 static bool ishex(const char *p) {
   if (p && *p) {
     char c;
-    if (p[0] == '0' && p[1] == 'x')
+    if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X'))
       p += 2;
     while ((c = *p) != '\0') {
-      c = A2a(c);
+      
+      if (c >= 'A' && c <= 'Z')
+        c |= 1 << 5;
+
       if (c < '0' || (c > '9' && c < 'a') || c > 'f')
         break;
       p++;
@@ -563,12 +566,12 @@ static bool isoct(const char *p) {
   return false;
 }
 
-// 
+//
 static bool isbin(const char *p) {
 
   if (p && *p) {
 
-    if (p[0] == '0' && p[1] == 'b')
+    if (p[0] == '0' && (p[1] == 'b' || p[1] == 'B'))
       p += 2;
 
     while (*p == '0' || *p == '1')
@@ -585,12 +588,12 @@ static bool isbin(const char *p) {
 
 // Check if string can be converted to a number, trying all possible formats: 
 // floats, octal, binary or hexadecimal with leading 0x or without it, both signed and unsigned
-//
+
 static bool q_isnumeric(const char *p) {
   if (p && *p) {
     if (p[0] == '0') {
-      if (p[1] == 'x') return ishex(p);
-      if (p[1] == 'b') return isbin(p);
+      if (p[1] == 'x' || p[1] == 'X') return ishex(p + 2);
+      if (p[1] == 'b' || p[1] == 'B') return isbin(p + 2);
       if (p[1] == '.') return isfloat(p);
       return isoct(p);
     }
@@ -601,13 +604,13 @@ static bool q_isnumeric(const char *p) {
 
 //convert hex ascii byte.
 //strings "A", "5a" "0x5a" are all valid input
-//
+
 static unsigned char hex2uint8(const char *p) {
 
   unsigned char f = 0, l;  //first and last
 
   // Skip leading "0x" if any
-  if (p[0] == '0' && p[1] == 'x')
+  if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X'))
     p += 2;
 
   // Single character hex? (i.e "a", "A" or "0xC")
@@ -641,16 +644,20 @@ static unsigned int hex2uint32(const char *p) {
 
   unsigned int value = 0;
   unsigned int four = 0;
+  char c;
 
-  if (p[0] == '0' && p[1] == 'x')
+  if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X'))
     p += 2;
 
-  while (*p) {
-    if (*p >= '0' && *p <= '9') four = *p - '0'; else 
-    if (*p >= 'a' && *p <= 'f') four = *p - 'a' + 10; else
-    if (*p >= 'A' && *p <= 'F') four = *p - 'A' + 10; else return 0;
-    value <<= 4;
-    value |= four;
+  while ((c = *p) != '\0') {
+      
+    if (c >= 'A' && c <= 'Z')
+      c |= 1 << 5;
+
+    if (c >= '0' && c <= '9') four = c - '0'; else 
+    if (c >= 'a' && c <= 'f') four = c - 'a' + 10; else break;
+
+    value = (value << 4) | four;
     p++;
   }
   return value;
@@ -662,14 +669,8 @@ static unsigned int hex2uint32(const char *p) {
 //
 static unsigned int octal2uint32(const char *p) {
   unsigned int value = 0;
-  unsigned int three = 0;
-  while (*p) {
-    if (*p >= '0' && *p <= '7')
-      three = *p - '0';
-    else
-      return 0;
-    value <<= 3;
-    value |= three;
+  while (*p >= '0' && *p <= '7') {
+    value = (value << 3) | (*p - '0');
     p++;
   }
   return value;
@@ -684,14 +685,11 @@ static unsigned int binary2uint32(const char *p) {
   unsigned int value = 0;
   unsigned int one = 0;
 
-  if (p[0] == '0' && p[1] == 'b')
+  if (p[0] == '0' && (p[1] == 'b' || p[1] == 'B'))
     p += 2;
 
-  while (*p) {
-    if (*p == '0' || *p == '1') one = *p - '0';
-    else return 0;
-    value <<= 1;
-    value |= one;
+  while (*p == '0' || *p == '1') {
+    value = (value << 1) | (*p - '0');
     p++;
   }
   return value;
@@ -705,14 +703,15 @@ static unsigned int binary2uint32(const char *p) {
 #define DEF_BAD ((unsigned int)(-1))
 
 static unsigned int q_atol(const char *p, unsigned int def) {
-   // If condition is true -> continue to the right
-   // If condition is false, continue from a "?" down to the first ":"
-   return p && *p ? (p[0] == '0' ? (p[1] == 'x' ? (ishex(p) ? hex2uint32(p)
-                                                            : def) 
-                                                : (p[1] == 'b' ? (isbin(p) ? binary2uint32(p)
-                                                                           : def)
-                                                               : (isoct(p) ? octal2uint32(p)
-                                                                           : def)))
+   // 1. If condition is true -> continue to the right, else
+   // 2. If condition is false, continue from "?" down to the first ":"
+   // 3. Go to 1
+   return p && *p ? (p[0] == '0' ? (p[1] == 'x' || p[1] == 'X'  ? (ishex(p) ? hex2uint32(p)
+                                                                            : def) 
+                                                                : (p[1] == 'b' || p[1] == 'B' ? (isbin(p) ? binary2uint32(p)
+                                                                                                          : def)
+                                                                                              : (isoct(p) ? octal2uint32(p)
+                                                                                                          : def)))
                                  : (isnum(p) ? atol(p) 
                                              : def))
                   : def;
@@ -777,7 +776,7 @@ static inline const char *q_findchar(const char *str, char sym) {
 // Adopted from esp32-hal-uart.c Arduino Core.
 // Internal buffer is changed from static to stack because q_printf() can be called from different tasks
 // This function can be used in Out-of-memory situation however caller must not use strings larger than 128 bytes (after % expansion)
-//
+// TODO: if we have PSRMA: allocate permanent 5kb buffer to minimize calls to vsnprintf 
 static int __printfv(const char *format, va_list arg) {
 
   /*static */char buf[128 + 1]; //TODO: profile the shell to find out an optimal size. optimal == no calls to q_malloc
@@ -800,8 +799,10 @@ static int __printfv(const char *format, va_list arg) {
   // actual printf()
   vsnprintf(temp, len + 1, format, arg);
   ret = q_print(temp);
-  if (temp != buf)
+  if (temp != buf) {
+    // TODO: place a counter here to see how often it gets allocated
     q_free(temp);
+  }
   return ret;
 }
 
@@ -875,7 +876,6 @@ static int q_print(const char *str) {
 
 // print /Address : Value/ pairs, decoding the data according to data type
 // 1,2 and 4 bytes long data types are supported
-// TODO: signed/unsigned char is displayed as hex. this is wrong.
 //
 static void q_printtable(const unsigned char *p, unsigned int count, unsigned char length, bool isu, bool isf, bool isp) {
     if (p && count && length) {

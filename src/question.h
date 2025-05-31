@@ -21,55 +21,34 @@
 static const char *Hints[] = {
   "% Press <TAB> repeatedly to cycle cursor through command arguments.\r\n"
   "% This is faster than using arrows <-- -->",
-
   "% <HOME> and <END> keys are not working? Use Ctrl+A instead of <HOME> and\r\n"
   "% Ctrl+E instead of <END>. Read help page on keys used in ESPShell: \"? keys\"",
-
   "% Press <ESC> then type a number and press <ESC> again to enter symbol by\r\n"
   "% its code: <ESC>, 32, <ESC> sends \"space\" (code 32)",
-
   "% Pressing <ESC> and then <BACKSPACE> removes one word instead of single symbol",
-
   "% Use command \"colors off\" if your terminal does not support ANSI colors",
-
   "% Use command \"history off\" to disable history and remove history entries",
-
   "% Command \"uptime\" also shows the last reboot (crash) cause",
-
   "% Command \"suspend\" (or Ctrl+C) pauses sketch execution. Resume with \"resume\"",
-
   "% You can use Ctrl+Z as a hotkey for \"exit\" command",
-
   "% You can shorten command names and its arguments: \"suspend\" can be \"su\" or\r\n"
   "% even \"p 2 i o op\" instead of \"pin 2 in out open\"",
-
   "% To mount a filesystem on partition \"FancyName\" one can type \"mount F\".\r\n"
   "% Shortening also works for \"unmout\" arguments",
-
   "% Command \"unmount\" has alias \"umount\"",
-
   "% \"mkdir\" creates all missing directories in given path",
-
   "% \"touch\" creates all missing directories in given path before file creation",
-
   "% Use \"var ls_show_dir_size 0\" to disable dirs size counting by \"ls\" command:\r\n"
   "% filesystems with huge amount of files & dirs can slow things down",
-
   "% To use spaces in filenames, replace spaces with asterisk (*): \"mkdir A*Path\"",
-
   "% Main commands are available in every command subdirectory: one can execute\r\n"
   "% command \"pin\" while in UART configuration mode, without need to \"exit\"",
-
   "% You can send files over UARTs with filesystem's \"cat\" command",
-
   "% Press Ctrl+R to search through the commands history: start typing and press\r\n"
   "% <Enter> to find a matched command entered previously",
-
   "% Use \"^\" symbol when history searching (Ctrl+R) to emphasize that search\r\n"
   "% pattern is matched from the beginning of the string (i.e. regexp-like \"^\")",
-
   "% Press Ctrl+L to clear the screen and enable terminal colors",
-
   "% Adding an \"&\" at the end of any command makes that command run in a <u>background</>,\r\n"
   "% just like in Bash/Linux:  \"count 4 &\""
 };
@@ -257,8 +236,9 @@ static bool help_page_for_inputline(unsigned char *raw) {
 // displays a command usage details ("? some_command") or displays the list
 // of available commands ("?" with no arguments)
 //
-// Note that if question mark is not the first token in a command line (i.e. it is not a command)
+// Note that if question mark is not the first token in a command
 // then it is handled by editline's callback qm_pressed()
+
 //
 static int cmd_question(int argc, char **argv) {
 

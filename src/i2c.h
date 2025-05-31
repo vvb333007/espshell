@@ -99,8 +99,8 @@ static int cmd_i2c_down(int argc, char **argv) {
   return 0;
 }
 
-// "read ADDRESS COUNT"
-// read I2C device at address ADRESS, request COUNT bytes
+// "read
+// Read the I2C device at address ADRESS, request COUNT bytes
 //
 static int cmd_i2c_read(int argc, char **argv) {
 

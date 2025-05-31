@@ -31,6 +31,7 @@ static uint32_t __attribute__((const)) make_config(char bits, char parity, char 
 //
 // returns  when BREAK_KEY is pressed
 // TODO: refactor, make BREAK_KEY a convar
+//
 static void
 uart_tap(int remote) {
   /* Infinite loop. Interrupted with Ctrl+C code on the UART*/
@@ -150,7 +151,9 @@ static int cmd_uart_up(int argc, char **argv) {
   // Optional 'data bits' parameter. Non-numeric values have no effect.
   // Default value is 8
   if (argc > 4) {
+
     bits = q_atol(argv[4],bits);
+
     if (bits < 5 || bits > 8) {
       q_print("% <e>Data bits can be 5,6,7 or 8</>\r\n");
       return 4;
@@ -160,6 +163,7 @@ static int cmd_uart_up(int argc, char **argv) {
   // Optional Parity parameter
   // Default value is "No Parity"
   if (argc > 5) { // expected: "no" "odd" "even"
+
     if (argv[5][0] == 'e')
       parity = 3;
     else if (argv[5][0] == 'o')
@@ -189,10 +193,12 @@ static int cmd_uart_up(int argc, char **argv) {
 // shutdown uart interface
 //
 static int cmd_uart_down(UNUSED int argc, UNUSED char **argv) {
+
   if (uart_isup(Context)) {
     HELP(q_printf("%% Shutting down UART%u\r\n", Context));
     uartEnd(Context);
   }
+
   return 0;
 }
 
@@ -207,6 +213,7 @@ static int cmd_uart_read(UNUSED int argc, UNUSED char **argv) {
   if (uart_isup(u)) {
     if (ESP_OK == uart_get_buffered_data_len(u, &available)) {
       tmp = available;
+
       while (available--) {
         unsigned char c;
         // We use small number as a delay because we don't want read() to block
@@ -236,6 +243,7 @@ static int cmd_uart_write(int argc, char **argv) {
 
   if (argc < 2)
     return CMD_MISSING_ARG;
+
   if (uart_isup(u)) {
     if ((size = text2buf(argc, argv, 1, &out)) > 0)
       if ((size = uart_write_bytes(u, out, size)) > 0)
@@ -248,11 +256,14 @@ static int cmd_uart_write(int argc, char **argv) {
   return 0;
 }
 
-//"tap"
+
 // uart-to-console bridge
+// Bridges all user input to the uart and vice versa.
 //
 static int cmd_uart_tap(int argc, char **argv) {
+
   unsigned char u = Context;
+
   if (uart != u) {
     if (uart_isup(u)) {
       q_printf("%% Tapping to UART%d, CTRL+C to exit\r\n", u);

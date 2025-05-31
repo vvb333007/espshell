@@ -13,10 +13,10 @@
 #if COMPILING_ESPSHELL
 
 
-#define MEM_INC 64   // generic  buffer realloc increments
+#define MEM_INC 64   // generic  buffer increments
 #define MEM_INC2 16  // dont touch this
 
-#define SCREEN_INC 256  // "Screen" buffer realloc increments
+#define SCREEN_INC 256  // "Screen" buffer increments
 
 #define DISPOSE(p) q_free((char *)(p))
 #define NEW(T, c, Typ) ((T *)q_malloc((unsigned int)(sizeof(T) * (c)), Typ))
@@ -34,7 +34,7 @@
 
 
 //  Command status codes.
-typedef enum { CSdone,       // Line is ready to be processed, user pressed <Enter>
+typedef enum { CSdone,       // Line is ready to be processed, <Enter> pressed
                CSeof,        // Must not happen. 
                CSmove,       // Move cursor
                CSdispatch,   //
@@ -127,7 +127,7 @@ static const KEYMAP Map[] = {
 //currently unused
 #if 0  
   { CTL('\\'), ring_bell },
-  { CTL('@'), ring_bell },  // ?
+  { CTL('@'), ring_bell },
   { CTL('G'), ring_bell },
   { CTL('N'), ring_bell },
   { CTL('Q'), ring_bell },
@@ -137,15 +137,15 @@ static const KEYMAP Map[] = {
   { CTL('V'), ring_bell },
   { CTL('X'), ring_bell },
   { CTL('Y'), ring_bell },
-  { CTL(']'), ring_bell },  // ctrl+5 or ctrl+]
-  { CTL('^'), ring_bell },  // ctrl+6 or ctrl+/
-  { CTL('_'), ring_bell },  // ctrl+7
+  { CTL(']'), ring_bell }, // ctrl+5 or ctrl+]
+  { CTL('^'), ring_bell }, // ctrl+6 or ctrl+/
+  { CTL('_'), ring_bell }, // ctrl+7
 #endif
   { 0, NULL }
 };
 
 static const KEYMAP MetaMap[] = {
-  { CTL('H'), bk_kill_word },  // <ESC>, <BACKSPACE> - deletes a word (undocumented)
+  { CTL('H'), bk_kill_word }, // <ESC>, <BACKSPACE> - deletes a word (undocumented)
 #if 0  
   { DEL, ring_bell },
   { ' ', ring_bell },

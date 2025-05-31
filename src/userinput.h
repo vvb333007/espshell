@@ -19,15 +19,15 @@
 // (either background or foreground commands)
 
 
-
 // Structure representing a tokenized user input:
-// /argc/ and /argv/ are amount of tokens and pointers to tokens respectively. /argv/ array consist of pointers 
+// /argc/ and /argv/ are amount of tokens and pointers to tokens respectively. /argv/ array consist of pointers
 //                   pointing somewhere inside /userinput/
 // /userinput/ is the raw user input with zeros inserted at whitespace positions by tokenizer
 // /ref/ is the reference counter (to support background commands)
 // /gpp/ is the pointer to the command handler function which supposed to be called (unly for background commands)
 //
 // Structure deallocated by userinput_unref()
+
 typedef struct {
   int ref;          // reference counter. normally 1 but async commands can increase it
   int argc;         // number of tokens

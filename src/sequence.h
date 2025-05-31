@@ -523,7 +523,7 @@ static int cmd_seq_bits(int argc, char **argv) {
   return 0;
 }
 
-//TAG:levels
+//
 //
 // instead setting up an alphabet ("zero", "one") and a bit string,
 // the pattern can be set as simple sequence of levels.
@@ -588,9 +588,6 @@ static int cmd_seq_levels(int argc, char **argv) {
   return 0;
 }
 
-
-//TAG:show
-//
 // display the sequence content.
 // can be called either from 'sequence' command subderictory
 // or from the root:

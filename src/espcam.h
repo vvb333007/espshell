@@ -308,6 +308,7 @@ static int cmd_show_camera(int argc, char **argv) {
     q_print("% <e>Can not access camera sensor information</>\r\n");
     return CMD_FAILED;
   }
+
   return 2;
 
 initialize_camera_first:
@@ -322,6 +323,7 @@ initialize_camera_first:
 static int cmd_cam_pinout(int argc, char **argv) {
 
   if (argc < 18) {
+
     HELP(q_print( "% Syntax is:\r\n"
                   "% <b>camera pinout</> <o>PWDN RESET</> <i>XCLK</> <o>SDA SCL</> <g>D7 D6 D5 D4 D3 D2 D1 D0</> <i>VSYNC HREF PCLK</>\r\n"
                   "% or, if you prefer Y-names:\r\n"

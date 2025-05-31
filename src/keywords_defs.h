@@ -16,24 +16,23 @@
 // Shell command entry. There are arrays of these entries defined. Each array represents
 // a command **subtree** (or subdirectory). Root (main) command tree is called keywords_main[]
 struct keywords_t {
-  const char *cmd;                   // Command keyword or "*"
+  const char *cmd;               // Command keyword or "*"
 
 #define HELP_ONLY NULL,0             // Used for entries whose sole purpose is to carry help lines: so-called /full/  and /brief/
   int (*cb)(int argc, char **argv);  // Callback to call (one of cmd_xxx functions)
 
 #define MANY_ARGS -1                 
 #define NO_ARGS 0
-  signed char argc;                  // Number of arguments required (a NUMBER or /MANY_ARGS/ or /NO_ARGS/)
+  signed char argc;              // Number of arguments required (a NUMBER or /MANY_ARGS/ or /NO_ARGS/)
 
-#define HIDDEN_KEYWORD NULL, NULL  // /help/ and /brief/ initializer which is used to hide command from the commands list
-  const char *help;                // Help text displayed on "? command"
-  const char *brief;               // Brief text displayed on "?". NULL means "use help text, not brief"
-
- // unsigned char cnlen;             // cached strlen(cmd). 
+#define HIDDEN_KEYWORD NULL, NULL// /help/ and /brief/ initializer which is used to hide command from the commands list
+  const char *help;              // Help text displayed on "? command"
+  const char *brief;             // Brief text displayed on "?". NULL means "use help text, not brief"
 };
 
 // HELP(...) and HELPK(...) macros: arguments are evaluated only when compiled WITH_HELP, otherwise 
 // args evaluate to an empty code block (HELP) or to an empty string (HELPK)
+//
 #if WITH_HELP
 #  define HELP(...) __VA_ARGS__
 #  define HELPK(...) __VA_ARGS__
@@ -48,7 +47,7 @@ struct keywords_t {
                          "% \"? <i>keys</>\"    - Show information about terminal keys supported by ESPShell", \
                          "Commands list & help" }, \
                          { "help", cmd_question, MANY_ARGS, HIDDEN_KEYWORD }, //an alias for the "?" command.
-#else
+#else // Help system disabled
 #  define HELP(...) do { } while (0)
 #  define HELPK(...) ""
 #  define KEYWORDS_BEGIN

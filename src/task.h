@@ -17,7 +17,8 @@
 
 #if WITH_WRAP
 //
-// Intercept calls to FreeRTOS to get and maintain a list of started tasks.
+// Intercept calls to FreeRTOS to get and maintain a list of started tasks. 
+// The list is available as a convar "Tasks" and can be accessed via "var Tasks"
 //
 // It is a link-time interception and it is done by linker: calls to real functions gets replaced with calls to __wrap_ equivalents;
 // Original function is still available through __real_vTaskDelete (as an example)
@@ -206,19 +207,19 @@ static void espshell_async_task(void *arg) {
       // CMD_FAILED return code assumes that handler did display error message before returning CMD_FAILED
     }
     else if (ret > 0)
-      q_printf("\r\n%% <e>Invalid %u%s argument \"%s\"</>", NEE(ret), ret < aa->argc ? aa->argv[ret] : "FIXME:");
+      q_printf("\r\n%% <e>Invalid %u%s argument \"%s\"</>", NEE(ret), ret < aa->argc ? aa->argv[ret] : "BUG");
   }
   // its ok to unref null pointer
   userinput_unref(aa);
 
-  // Redraw ESPShell command line prompt (yes we need it, because ESPShell has already printed its prompt out once) 
+  // Redraw ESPShell command line prompt (yes we need it, because ESPShell has already printed its prompt out once)
   // TODO: causes output glitches, need to dig it deeper
   //userinput_redraw();
 
   vTaskDelete(NULL);
 }
 
-// Executes commands in a background (commands which names end with "&").
+// Executes commands in a background (commands which names end with &).
 // This one used by espshell_command() processor to execute &-commands 
 //
 static int exec_in_background(argcargv_t *aa_current) {
@@ -227,8 +228,8 @@ static int exec_in_background(argcargv_t *aa_current) {
 
   MUST_NOT_HAPPEN(aa_current == NULL);
 
-  //increase refcount on argcargv (tokenized user input) because it will be used by async task and
-  // we dont want this memory to be freed immediately after this command finishes
+  //increase refcount on argcargv because it will be used by async task and
+  // we want this memory remain allocated after this command
   userinput_ref(aa_current);
 
   // Start async task. Pin to the same core where espshell is executed

@@ -30,6 +30,7 @@
 // The head of the list is "var_head". 
 // Entries are created once and never deleted
 //
+
 struct convar {
   struct convar *next;     // next var in list
   const char *name;        // var name
@@ -48,7 +49,7 @@ struct convar {
   unsigned int counta;      //              --                                                 sizeof(array)/sizeof(array_element, i.e. nnumber of elements in the array)
 };
 
-// Composite variable value.
+// Composite variable value .
 // This is to perform "unsafe" C-style casts
 //
 typedef union composite_u {

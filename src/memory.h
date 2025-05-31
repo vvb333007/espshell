@@ -32,9 +32,9 @@ static int memory_display_content(unsigned char *address, unsigned int count, un
 
 // Implementation of "show memory address ARG1 ARG2 ... ARGn"
 // This one is called from cmd_show()
-// TODO: support int64_t and uint64_t
-// TODO: refactor with switch()
-// TODO: refactor ifs
+// TODO:support int64_t and uint64_t
+// TODO:refactor with switch()
+// TODO:refactor ifs
 
 static int cmd_show_memory_address(int argc, char **argv) {
 

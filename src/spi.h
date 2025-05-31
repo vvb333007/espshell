@@ -11,8 +11,7 @@
  */
 
 // -- SPI bus --
-// Not yet done
-//
+
 #if COMPILING_ESPSHELL
 #if WITH_SPI
 #include <esp32-hal-spi.h>
@@ -36,7 +35,7 @@ static int cmd_spi_if(int argc, char **argv) {
     return CMD_MISSING_ARG;
 
   #if 0
-  if ((spi = q_atol(argv[1], SOC_SPI_NUM)) >= SOC_SPI_NUM) {
+ if ((spi = q_atol(argv[1], SOC_SPI_NUM)) >= SOC_SPI_NUM) {
     HELP(q_printf("%% <e>Valid SPI interface numbers are 0..%d</>\r\n", SOC_SPI_NUM - 1));
     return 1;
   }
@@ -64,7 +63,7 @@ static int cmd_spi_clock(int argc, char **argv) { return 0; }
 static int cmd_spi_up(int argc, char **argv) { return 0; }
 static int cmd_spi_down(int argc, char **argv) { return 0; }
 static int cmd_spi_write(int argc, char **argv) { return 0; }
-#endif // is SPI supported by SoC?
+#endif // SPI supported? 
 #endif
 #endif
 

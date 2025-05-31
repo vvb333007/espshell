@@ -16,9 +16,11 @@
 EXTERN bool setCpuFrequencyMhz(uint32_t);
 
 #include <esp_rom_spiflash.h>
-#if 0
-// For Tensilica profiling 
-//
+
+// For Tensilica (ESP32, ESP32-S2, ESP32-S3) profiling only.
+// TODO: add RISCV (ESP32-C3, C6, C61) support
+
+#if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
 static inline __attribute__((always_inline)) uint32_t cpu_ticks() {
   uint32_t register ccount;
   asm ( "rsr.ccount %0;" : "=a"(ccount) /*Out*/ : /*In*/ : /* Clobber */);
