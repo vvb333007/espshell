@@ -15,11 +15,12 @@
 
 
 // unfortunately this one is not in header files
-EXTERN bool i2cIsInit(uint8_t i2c_num);
+extern bool i2cIsInit(uint8_t i2c_num);
 
-//TAG:iic
+
 //check if I2C has its driver installed
 // TODO: this is bad. need more low level call. esp32cams i2c is not detected as "up"
+//
 static inline bool i2c_isup(unsigned char iic) {
   return (iic >= SOC_I2C_NUM) ? false : i2cIsInit(iic);
 }

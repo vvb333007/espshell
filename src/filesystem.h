@@ -64,7 +64,7 @@ static void files_strip_trailing_slash(char *p) {
 }
 
 // is path == "/" ?
-static INLINE bool files_path_is_root(const char *path) {
+static inline bool files_path_is_root(const char *path) {
   return (path && (path[0] == '/' || path[0] == '\\') && (path[1] == '\0'));
 }
 
@@ -759,9 +759,13 @@ static int files_create_dirs(const char *path0, bool last_is_file) {
 
     // replace all path separators with spaces: this way we can use argify()
     // to split it to components.
+    // This is bad but.. Replace all spaces (yes spaces can present in one single argv since 0.99.9) with asteriks.
+    // Thankgs god we didn't process "*" yet
     for (i = 0; i < len; i++)
       if (path[i] == '/' || path[i] == '\\')
         path[i] = ' ';
+      else if (path[i] == ' ')
+        path[i] = '*';
 
     // argify and strip last component if it is a file
     if ((argc = argify((unsigned char *)path, (unsigned char ***)&argv)) > 0) {

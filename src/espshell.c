@@ -105,7 +105,6 @@
 #define INLINE inline __attribute__((always_inline))
 #define NORETURN __attribute__((noreturn))
 #define PRINTF_LIKE __attribute__((format(printf, 1, 2)))
-#define EXTERN extern //TODO: get rid of it, we don't need another macro
 
 #if AUTOSTART
 #  define STARTUP_HOOK __attribute__((constructor))
@@ -160,7 +159,7 @@ static bool pin_exist_silent(unsigned char pin);
 static bool pin_is_reserved(unsigned char pin);
 
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 3, 0)
-EXTERN bool esp_gpio_is_pin_reserved(unsigned int gpio);
+extern bool esp_gpio_is_pin_reserved(unsigned int gpio);
 #else
 static INLINE bool esp_gpio_is_pin_reserved(unsigned int gpio) {
   return esp_gpio_is_reserved(1ULL << gpio);
@@ -471,6 +470,7 @@ static void espshell_task(const void *arg) {
 
     // on multicore processors use another core: if Arduino uses Core1 then
     // espshell will be on core 0 and vice versa. 
+    // Code below assumes that there either 1 or 2 cores available
     shell_core = xPortGetCoreID();
     if (portNUM_PROCESSORS > 1)
       shell_core = shell_core ? 0 : 1;
@@ -487,7 +487,7 @@ static void espshell_task(const void *arg) {
     // read & execute commands until "exit ex" is entered
     while (!Exit) {
       espshell_command(readline(prompt));
-      task_yield();
+      task_yield(); // TODO: verify if we really need it. 
     }
     HELP(q_print(Bye));
 

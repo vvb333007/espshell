@@ -13,7 +13,7 @@
 #if COMPILING_ESPSHELL
 
 // not in .h files of ArduinoCore.
-EXTERN bool setCpuFrequencyMhz(uint32_t);
+extern bool setCpuFrequencyMhz(uint32_t);
 
 #include <esp_rom_spiflash.h>
 

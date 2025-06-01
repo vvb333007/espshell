@@ -92,7 +92,7 @@ TaskHandle_t __wrap_xTaskCreateStaticPinnedToCore( TaskFunction_t pxTaskCode,con
 
 #define CONSOLE_UP_POLL_DELAY 1000   // 1000ms. How often to check if Serial is up
 
-EXTERN TaskHandle_t loopTaskHandle;  // task handle of a task which calls Arduino's loop(). Defined somewhere in the ESP32 Arduino Core
+extern TaskHandle_t loopTaskHandle;  // task handle of a task which calls Arduino's loop(). Defined somewhere in the ESP32 Arduino Core
 static TaskHandle_t shell_task = 0;  // Main espshell task ID
 static int          shell_core = 0;  // CPU core number ESPShell is running on. For single core systems it is always 0
 

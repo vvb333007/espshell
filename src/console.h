@@ -58,7 +58,7 @@ static INLINE int console_read_bytes(void *buf, uint32_t len, TickType_t wait) {
 }
 
 // Is console device ( UART ) is up and running (can be used) ?
-static INLINE bool console_isup() {
+static inline bool console_isup() {
   return uart_isup(uart);
 }
 #endif  //SERIAL_IS_USB
@@ -67,7 +67,7 @@ static INLINE bool console_isup() {
 // Code below reads: return current uart number if i < 0. If i is valid uart number or i is 99
 // then set current uart to that number and return the same number as well. If i is not a valid uart number then -1 is returned
 //
-static INLINE int console_here(int i) {
+static int console_here(int i) {
   return i < 0 ? uart 
                : (i > UART_NUM_MAX ? (i == 99 ? (uart = i) 
                                               : -1) 

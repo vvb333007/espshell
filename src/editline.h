@@ -14,7 +14,7 @@
 
 
 #define MEM_INC 64   // generic  buffer increments
-#define MEM_INC2 16  // dont touch this
+#define MEM_INC2 16  // Dont touch this. Defines the size of preallocated argv (number of entries, not bytes!)
 
 #define SCREEN_INC 256  // "Screen" buffer increments
 
@@ -250,9 +250,8 @@ TTYget() {
     if (c) 
       return c;
 
-    // read 1 byte from user. we use timeout to enable Input processing if it was set
-    // mid console_read_bytes() call: i.e. Input polling happens every 500ms
-    // TODO: figure out something better instead of polling. May be use task notifications
+    // read 1 byte from user.
+    // if returned value is < 1, that means either "timeout" or "console down"
   } while (console_read_bytes(&c, 1, pdMS_TO_TICKS(500)) < 1);
 
 #if WITH_COLOR
@@ -770,6 +769,7 @@ TTYspecial(unsigned int c) {
 static unsigned char *
 editinput() {
   unsigned int c;
+  unsigned char nil[] = { '\0' };
 
   Repeat = NO_ARG;
   OldPoint = Point = Mark = End = 0;
@@ -781,7 +781,7 @@ editinput() {
 
       case CSeof: return NULL;
 
-      case CSsignal: return (unsigned char *)"";
+      case CSsignal: return nil;
 
       case CSmove: reposition(); break;
 
@@ -991,9 +991,16 @@ argify(unsigned char *line, unsigned char ***avp) {
   if (*c == '\n' || *c == '\0')
     return 0;
 
+  // Found a token. Find first whitespace after the token and place \0 there.
+  // Skip all subsequent spaces until first printable character
+  // Repeat
+  bool in_quote = false;
+
   for (ac = 0, p[ac++] = c; *c && *c != '\n';) {
-    if (isspace(*c)) {
+
+    if ((!in_quote && isspace(*c)) || (*c == '\"' && in_quote)) {
       *c++ = '\0';
+      in_quote = false;
       if (*c && *c != '\n') {
 
         if (ac + 1 == i) {
@@ -1014,6 +1021,11 @@ argify(unsigned char *line, unsigned char ***avp) {
         /*skip spaces */
         for (; *c && isspace(*c); c++)
           continue;
+
+        if (*c == '\"') {
+          in_quote = true;
+          c++;
+        }
 
         if (*c)
           p[ac++] = c;
