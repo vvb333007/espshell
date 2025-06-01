@@ -92,7 +92,7 @@ points.
 A mount point is a directory whose name starts with "/", 
 for example, "/wwwroot", where the actual filesystem is deployed.
 </p><p>
-NOTE: If you want to include spaces (" ") in your path, use an asterisk "*" 
+NOTE: If you want to include spaces (" ") in your path, use quotes OR use an asterisk "*" 
 instead of spaces. ESPShell will convert the asterisks to spaces in paths and 
 filenames. ESPShell does not support:        
 </p><p><ul><li>
@@ -502,15 +502,17 @@ This command cannot create directories directly in the root / directory - use
 the "mount" command to create or define new entries under /.
 </p><p>
 NOTE on paths with spaces:
-  If you need spaces in directory or file names, use an asterisk (*) instead of a space.
+  If you need spaces in directory or file names, use an asterisk (*) instead of a space, or you can enclose your path in double quotes <b>&quot;</b>Like This<b>&quot;</b>.
   ESPShell will automatically convert asterisks to spaces during path processing. 
 </p><p>
   Example:
 <pre>
   esp32#(/wwwroot/)>mkdir My*Documents
   % Directory created: "/wwwroot/My Documents/"
+  esp32#(/wwwroot/)>mkdir "Program Files"
+  % Directory created: "/wwwroot/Program Files/"
 </pre>
- Limitation: When creating nested directories with asterisks in the path (e.g., mkdir My*Folder/Sub*Dir), the conversion may not work as expected. This is a known issue.
+
 </p>
 
 <p><h3 id=touch><a href="#top">&#8686;</a>CREATE NEW OR UPDATE TIMESTAMPS ON EXISTING FILE(S) : "touch PATH1 PATH2 ... PATHn"</h3></p>
