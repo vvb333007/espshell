@@ -58,6 +58,7 @@
 - Inputs like `123randomgarbage` are now accepted: parsing stops at the first invalid character and uses the valid numeric prefix (`123` in this case).  
 - Improved behavior of the `?` command: it now displays section headers correctly when commands belong to multiple sections (e.g., `? c` lists both `count`, `cpu`, etc.).
 
+
 ### Other
 
 - Gradually improving the quality of English in ESPShell messages.
