@@ -1018,6 +1018,7 @@ static int text2buf(int argc, char **argv, int i /* START */, char **out) {
             case 'n':              p++;              c = '\n';              break;
             case 'r':              p++;              c = '\r';              break;
             case 't':              p++;              c = '\t';              break;
+            case '"':              p++;              c = '"';              break;
             //case 'e':              p++;              c = '\e';              break;  //interferes with \HEX numbers
             case 'v':              p++;              c = '\v';              break;
             //case 'b':              p++;              c = '\b';              break;  //interferes with \HEX numbers

@@ -12,6 +12,12 @@
 
 #if COMPILING_ESPSHELL
 
+// WARNING!!!  Hello, random software developer! In case you want to mess with this code - we have bad news for you:
+// WARNING!!!  Code below uses shared RW buffers alot, i.e. functions may change input buffers like paths, argvs etc.
+// WARNING!!!  Even worse: some buffers are declared static local variables and pointer to that buffer is returned, 
+//             so extra care should be taken.
+// WARNING!!!  If you see function like some function(char *), note that it is "char *", not "const char *" for a reason.
+
 //                                          -- File Manager --
 // Minimalistic file manager: supports FAT, LittleFS and SPIFFS file systems (WITH_SPIFFS,WITH_FAT,WITH_LITTLEFS and WITH_FS controls
 // which part of the filemanager code should be compiled in); aimed to be intuitive for Linux shell prompt users: mimics "ls","cat","mkdir" etc commands
@@ -26,7 +32,7 @@
 // Current working directory. Must start and end with "/". 
 static char *Cwd = NULL;  
 
-// espshell allows for simultaneous mounting up to MOUNTPOINTS_NUM partitions
+// espshell allows for simultaneous mounting up to MOUNTPOINTS_NUM partitions.
 // mountpoints[] holds information about mounted filesystems.
 //
 static struct {
@@ -34,7 +40,7 @@ static struct {
   char          label[16 + 1]; // partition label e.g. "ffat", "spiffs" or "littlefs"  TODO: use idf macros or sizeof(something) to get rid of "16+1"
   unsigned char type;          // partition subtype  (e.g. ESP_PARTITION_SUBTYPE_DATA_FAT)
 #if WITH_FAT
-  wl_handle_t   wl_handle;     // FAT wear-levelling library handle. Only for FAT filesystem on SPI flash
+  wl_handle_t   wl_handle;     // FAT wear-levelling library handle. Only for FAT filesystem on SPI flash (not used for SD cards)
 #endif
   void         *gpp;           // general purpose pointer. SD over SPI uses it to store sdmmc_card_t structure
   signed char   gpi;           // index of a SPI bus which must be deinitialized on "unmount"
@@ -68,6 +74,7 @@ static inline bool files_path_is_root(const char *path) {
   return (path && (path[0] == '/' || path[0] == '\\') && (path[1] == '\0'));
 }
 
+// Mock GNU getline
 // read complete lines (all bytes until \n symbol) from a text file.
 // \n is the line separator, \r and \n are discarded).
 //
@@ -131,7 +138,7 @@ static int files_getline(char **buf, unsigned int *size, FILE *fp) {
 }
 
 // convert time_t to char * "31-01-2024 10:40:07"
-// not reentrant
+// WARNING: not reentrant
 static char *files_time2text(time_t t) {
   static char buf[32];
   struct tm *info;
@@ -166,11 +173,13 @@ static const char *files_set_cwd(const char *cwd) {
           len--;
           // append "/" if not there
           if (Cwd[len] != '/' && cwd[len] != '\\')
-            strcat(Cwd, "/");
+            strcat(Cwd, "/"); // TDOO: Cwd[len] = '?' maybe?
         }
   }
 
-  // regenerate prompt, return CWD or "/" if there is no CWD
+  // Regenerate prompt, return CWD or "/" if there is no CWD
+  // No we can't use "<i>" and "</>" here to colorize path in the prompt: this prompt is displayed by TTYshow() which doesn't process cikir tags.
+  // So instead we inject ASCII color sequences directly to the prompt
   const char *tmp = Cwd ? (const char *)Cwd : "/";
   sprintf(prom, PROMPT_FILES, (Color ? tag2ansi('i') : ""), tmp, (Color ? tag2ansi('n') : ""));
   prompt = prom;
@@ -759,7 +768,7 @@ static int files_create_dirs(const char *path0, bool last_is_file) {
 
     // replace all path separators with spaces: this way we can use argify()
     // to split it to components.
-    // This is bad but.. Replace all spaces (yes spaces can present in one single argv since 0.99.9) with asteriks.
+    // This is bad but.. Replace all spaces (yes spaces can present in one single argv since 0.99.9) with asterisks.
     // Thankgs god we didn't process "*" yet
     for (i = 0; i < len; i++)
       if (path[i] == '/' || path[i] == '\\')
