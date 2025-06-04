@@ -12,6 +12,9 @@
 
 #if COMPILING_ESPSHELL
 
+// Unfortunately this code must be refactored to get rid of per-byte processing, like TTYshow.
+// Memory allocation/use strategy must be reviewed, may be use 1 big enough preallocated buffer (Screen)
+
 
 #define MEM_INC 64   // generic  buffer increments
 #define MEM_INC2 16  // Dont touch this. Defines the size of preallocated argv (number of entries, not bytes!)
@@ -58,22 +61,22 @@ static struct {
 
 static BARRIER(Input_mux);
 static const char *CRLF = "\r\n";
-static unsigned char *Line = NULL;  // Raw user input
+static unsigned char *Line = NULL;  // Raw user input TODO: make it preallocated 256 bytes buffer? Longer commands are very unlikely anyway
 static const char *Prompt = NULL;   // Current prompt to use
-static char *Screen = NULL;
+static char *Screen = NULL;         // Output buffer. TTYput, TTYshow etc all write to that buffer; it is displayed by TTYfluh()
+static unsigned int ScreenCount;
+static unsigned int ScreenSize;
 
-static int Repeat;
-static int End;
+static int Repeat;                  // TODO: get rid of it. 
+static int End;                     // Line[End] is the symbol at the end
 static int Mark;
 static int OldPoint;
-static int Point;
+static int Point;                   // Current cursor position(index) in Line[] 
 static int PushBack;
 static int Pushed;
 static const char *Input = "";  // "Artificial input queue". if non empty then symbols are
                                 // fed to TTYget as if it was user input. used by espshell_exec()
 static unsigned int Length;
-static unsigned int ScreenCount;
-static unsigned int ScreenSize;
 static bool History = true;
 
 static unsigned char *editinput();
@@ -81,25 +84,31 @@ static unsigned char *editinput();
 // brother of help_command() but accepts plaintext buffer (non-tokenized)
 static bool help_page_for_inputline(unsigned char *raw);
 
-static EL_STATUS ring_bell();
+
+static EL_STATUS enter_pressed_cr();
+static EL_STATUS enter_pressed_lf();
+static EL_STATUS tab_pressed();
+
 static EL_STATUS ctrlz_pressed();
 static EL_STATUS ctrlc_pressed();
-static EL_STATUS tab_pressed();
+
 static EL_STATUS home_pressed();
 static EL_STATUS end_pressed();
-static EL_STATUS kill_line();
-static EL_STATUS enter_pressed();
-static EL_STATUS left_pressed();
 static EL_STATUS del_pressed();
-
-static EL_STATUS right_pressed();
 static EL_STATUS backspace_pressed();
+
+
+static EL_STATUS left_pressed();
+static EL_STATUS right_pressed();
+
+static EL_STATUS ring_bell();
+static EL_STATUS kill_line();
 static EL_STATUS bk_kill_word();
 static EL_STATUS bk_word();
-
 static EL_STATUS h_next();
 static EL_STATUS h_prev();
 static EL_STATUS h_search();
+
 static EL_STATUS redisplay();
 static EL_STATUS clear_screen();
 static EL_STATUS meta();
@@ -114,8 +123,8 @@ static const KEYMAP Map[] = {
   { CTL('F'), right_pressed },      // Arrow right. Terminal compatibility
   { CTL('D'), del_pressed },        // <DEL>
   { CTL('H'), backspace_pressed },  // <BACKSPACE>
-  { CTL('J'), enter_pressed },      // <ENTER>
-  { CTL('M'), enter_pressed },      // <ENTER>
+  { CTL('J'), enter_pressed_lf },      // <ENTER>
+  { CTL('M'), enter_pressed_cr },      // <ENTER>
   { CTL('K'), kill_line },          // Erase from cursor till the end
   { CTL('L'), clear_screen },       // Clear (erase) the screen, keep use input
   { CTL('O'), h_prev },             // Previous history entry. Terminal compatibility
@@ -247,7 +256,7 @@ TTYget() {
     if (*Input)
       c = *Input++;
     barrier_unlock(Input_mux);
-    if (c) 
+    if (c)
       return c;
 
     // read 1 byte from user.
@@ -314,17 +323,17 @@ ring_bell() {
   return CSstay;
 }
 
-// Ctrl+Z hanlder: send "exit" commnd
+// Ctrl+Z hanlder: send "exit" commnd, disabled echo
 static EL_STATUS
 ctrlz_pressed() {
-  TTYqueue("exit\n");
+  TTYqueue("@exit\n");
   return CSstay;
 }
 
-// Ctrl+C handler: sends "suspend"
+// Ctrl+C handler: sends "suspend", disabled echo
 static EL_STATUS
 ctrlc_pressed() {
-  TTYqueue("suspend\n");
+  TTYqueue("@suspend\n");
   return CSstay;
 }
 
@@ -769,7 +778,7 @@ TTYspecial(unsigned int c) {
 static unsigned char *
 editinput() {
   unsigned int c;
-  unsigned char nil[] = { '\0' };
+  static unsigned char nil[] = { '\0' };
 
   Repeat = NO_ARG;
   OldPoint = Point = Mark = End = 0;
@@ -915,20 +924,34 @@ end_pressed() {
 
 static EL_STATUS
 enter_pressed() {
+
+  // Finalize user input
   Line[End] = '\0';
 
-  // Echo suppression was triggered?
+  // Temporary Echo suppression was in effect? Restore previous echo value (Echop)
   if (Echop) {
     Echo = Echop;
     Echop = 0;
   }
 
-#if WITH_COLOR
+//#if WITH_COLOR
   // user has pressed <Enter>: set colors to default
-  if (Color) TTYputs((const unsigned char *)"\033[0m");
-#endif
+  //if (Color) TTYputs((const unsigned char *)"\033[0m");
+//#endif
   return CSdone;
 }
+
+static EL_STATUS
+enter_pressed_cr() {
+  SeenCR = true;
+  return enter_pressed();
+}
+
+static EL_STATUS
+enter_pressed_lf() {
+    return SeenCR ? CSstay : enter_pressed();
+}
+
 
 static EL_STATUS
 bk_word() {
@@ -959,26 +982,29 @@ bk_kill_word() {
 }
 
 // Tokenize string p.
-// p must be malloc()'ed (NOT CONST!) as it gets modified!
+// /line/ must be malloc()'ed (NOT CONST!) as it gets modified!
 // Allocates array of pointers and fills it with pointers
 // to individual tokens. Whitespace is the token separator.
-// Original string p gets modified ('\0' are inserted)
+// Original string /line/ gets modified ('\0' are inserted)
 //
 // Usage:
 //
 // int argc;
-// char **argv;
-// argc = argify(p,&argv);
+// char **argv = NULL;
+//  char *line = strdup("this is a test line \"with quotes\"")
+// argc = argify(line,&argv);
+// ...
+// argc   -> 6
+// argv[] -> {"this","is","a","test","line", "with quotes"}
+// line   -> "this\0is\0a\0test\0line\0with quotes\0"
 // ...
 // if (argv)
 //   free(argv);
 static int
 argify(unsigned char *line, unsigned char ***avp) {
-  unsigned char *c;
-  unsigned char **p;
-  unsigned char **_new;
-  int ac;
-  int i;
+  
+  unsigned char *c, **p, **_new;
+  int ac, i;
 
   i = MEM_INC2;
   if ((*avp = p = NEW(unsigned char *, i, MEM_ARGIFY)) == NULL)
@@ -998,6 +1024,7 @@ argify(unsigned char *line, unsigned char ***avp) {
 
   for (ac = 0, p[ac++] = c; *c && *c != '\n';) {
 
+    // Quote processing step #2
     if ((!in_quote && isspace(*c)) || (*c == '\"' && in_quote)) {
       *c++ = '\0';
       in_quote = false;
@@ -1022,6 +1049,7 @@ argify(unsigned char *line, unsigned char ***avp) {
         for (; *c && isspace(*c); c++)
           continue;
 
+        // Quote processing step #1
         if (*c == '\"') {
           in_quote = true;
           c++;

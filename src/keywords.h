@@ -1029,7 +1029,7 @@ static const struct keywords_t keywords_main[] = {
           "% <i>VSYNC HREF PCLK</> - Standart CMOS camera signals"), NULL},
 
 #endif //WITH_ESPCAM
-  // TODO: split helplines between different entries
+  
   { "var", cmd_var, 2,
     HELPK("% \"<b>var</> <i>VARIABLE_NAME</> [<o>NEW_VALUE</>]</>\"\r\n"
           "%\r\n"

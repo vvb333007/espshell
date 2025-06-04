@@ -78,10 +78,17 @@ static int console_here(int i) {
 //
 // TODO: Change polling logic to a TaskNotify. This will significally increases delay_interruptible() accuracy
 //       Probably there should be a separate task doing this
+static bool SeenCR = false;     // This variable gets updated by 
 static bool anykey_pressed() {
 
-  unsigned char c;
-  return console_available() > 0 ? console_read_bytes(&c, 1, 0) >= 0
-                                 : false;
+  unsigned char c = 0;
+  if (console_available() > 0)
+    if (console_read_bytes(&c, 1, 0) >= 0)
+    // If user terminal is configured to send <CR>+<LF> then we silently discard <LF>
+      if (c == '\n')
+        return !SeenCR;
+  return false;
+
+    
 }
 #endif // #if COMPILING_ESPSHELL
