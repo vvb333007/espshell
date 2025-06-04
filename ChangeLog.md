@@ -1,4 +1,4 @@
-## Изменения с версии 0.99.8  
+## Изменения с версии 0.99.9  
 
 ### Документация
 
@@ -10,6 +10,7 @@
 
 ### Код
 
+- Конец строки (CR, LF или CR+LF) пользовательского терминала определяется автоматически  
 - Теперь оболочка поддерживает аргументы в кавычках — всё, что заключено в кавычки, рассматривается как один аргумент.  
 - В связи с этим добавлена новая escape-последовательность `\"` (экранированная кавычка), которая теперь корректно обрабатывается.  
 - Строка, начинающаяся с символа `@`, отключает эхо вывода. Нажатие `<Enter>` включает эхо обратно.  
@@ -31,7 +32,7 @@
 
 ---
 
-## Changes since 0.99.8
+## Changes since 0.99.9
 
 ### Documentation
 
@@ -43,6 +44,7 @@
 
 ### Code
 
+- The end-of-line sequence (CR, LF, or CR+LF) of the user terminal is detected automatically.  
 - The shell now supports quoted arguments — everything enclosed in quotes is treated as a single argument.  
 - As a result, a new escape sequence `\"` (escaped quote) has been introduced and is properly recognized.  
 - Lines starting with `@` disable shell echo; pressing `<Enter>` re-enables it.  

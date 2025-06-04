@@ -97,10 +97,9 @@ ESPShell is written in pure C. It’s developer-friendly and well-commented.
 
 Some areas are marked with **`TODO:`** in the source code. Additional information is available in:
 
-- `docs/PROBLEMS.txt`
 - `docs/PLANS.txt`
 
 The code is generally simple and linear. Non-obvious parts are well documented.  
 Please note that the author is not a native English speaker, so some in-code comments may contain minor language mistakes.
 
-[![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/x-radio/EEBoom/total?color=66FFFF)](https://github.com/vvb333007/espshell/releases/latest)
+[![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/x-radio/EEBoom/total?color=66FFFF)](https://github.com/vvb333007/espshell/)
