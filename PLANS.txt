@@ -90,3 +90,4 @@ UART, I2C, SPI
 --------------
 
 1. Implement "show uart|i2c|spi [NUM]" : dislpay current interface settings (pins, speed, data width, parity/stopbits where applicable)
+
