@@ -154,7 +154,7 @@ static int cmd_show_cpuid(int argc, char **argv) {
   const char *mfg; 
   switch ((g_rom_flashchip.device_id >> 16) & 0xff) {
     case 0x85:
-    case 0x5e: mfg =  "Puya Semiconductor(?)"; break;
+    case 0x5e: mfg =  "Generic"; break;
     case 0x84:
     case 0xc8: mfg =  "Giga Device"; break;
     case 0x68: mfg =  "Boya"; break;
@@ -209,6 +209,10 @@ static int cmd_cpu(int argc, char **argv) {
     return 1;
   }
 
+  // Do nothing if requested frequency is the same
+  if (freq == CPUFreq)
+    return 0;
+
   // ESP32 boards do support 240,160,120 and 80 Mhz. If XTAL is 40Mhz or more then we also support
   // XTAL,XTAL/2 and XTAL/4 frequencies. If XTAL frequency is lower than 40 Mhz then we only support XTAL and XTAL/2
   // additional frequencies
@@ -225,20 +229,27 @@ show_hint_and_exit:
       q_printf(" and %u", xtal / 4);
     q_print(" MHz\r\n");
 
-    return 0; // can't return 1 here because of goto.
+    return argc < 2 ? 0 : 1; // no args == success, 1 arg == invalid 1st arg
   }
 
-  if (!setCpuFrequencyMhz(freq))
-    q_print(Failed);
-
-  //reread what was actually set
+  // Set new frequency. Don't check the return code but re-read frequencies instead
+  // TODO: use on_frequency_change callbacks (there are some in Arduino Core or/and IDF)
+  setCpuFrequencyMhz(freq);
   cpu_read_frequencies();
+
+  if (CPUFreq == freq)
+    HELP(q_printf("%% CPU frequency set to %u MHz, APB is %u MHz\r\n",freq, APBFreq)); // informational messages are wrapped in HELP
+  else {
+    q_printf("%% CPU frequency was not updated (still %u MHz)\r\n", CPUFreq); // error messages are persistent
+    return CMD_FAILED;
+  }
 
   return 0;
 }
 
-//TAG:reload
 //"reload"
+// Performs software reload
+//
 static int NORETURN cmd_reload(UNUSED int argc, UNUSED char **argv) {
   esp_restart();
   /* NOT REACHED */
@@ -252,30 +263,51 @@ static int NORETURN cmd_reload(UNUSED int argc, UNUSED char **argv) {
 static int cmd_nap(int argc, char **argv) {
 
   static bool isen = false;
+  uint64_t multiplier = 1000000ULL; // Conversion multiplier (default value is "seconds")
 
   if (argc < 2) {
     // no args: light sleep until 3 positive edges received by uart (i.e. wake up is by pressing <Enter>)
+    // Both TeraTerm and Arduino Serial Monitor are capable of sending <Enter>
     esp_sleep_enable_uart_wakeup(uart);
     isen = true;
     uart_set_wakeup_threshold(uart, 3);  // 3 positive edges on RX pin to wake up ('spacebar' key two times or 'enter' once)
-  } else
-    // "nap SECONDS" command: sleep specified number of seconds. Wakeup by timer only.
-    if (argc < 3) {
-      unsigned long sleep;
-      if (isen) {
-        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_UART);  //disable wakeup by uart
-        isen = false;
-      }
-      if ((sleep = q_atol(argv[1], DEF_BAD)) == DEF_BAD) {
-        HELP(q_printf("%% <e>Sleep time in seconds expected, instead of \"%s\"</>\r\n", argv[1]));
-        return 1;
-      }
-      esp_sleep_enable_timer_wakeup(1000000UL * (unsigned long)sleep);
+  } else {
+    // "nap NUMBER [time_unit]":  "nap 10", "nap 10 seconds|minutes|hours"
+    uint64_t sleep;
+
+    // Disable "wakeup-by-uart" if it was enabled before
+    if (isen) {
+      esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_UART);  //disable wakeup by uart
+      isen = false;
     }
+
+    // Read sleep duration
+    if ((sleep = q_atol(argv[1], DEF_BAD)) == DEF_BAD) {
+      HELP(q_printf("%% <e>Sleep time expected, instead of \"%s\"</>\r\n", argv[1]));
+      return 1;
+    }
+
+    // if there is a time unit we change /multiplier/ accordingly
+    if (argc > 2) {
+      if (!q_strcmp(argv[2],"minutes"))
+        multiplier *= 60ULL;
+      else if (!q_strcmp(argv[2],"hours"))
+        multiplier *= 3600ULL;
+      else if (!q_strcmp(argv[2],"seconds"))
+        multiplier *= 1ULL;
+      else {
+        q_printf("%% Expected \"minutes\", \"seconds\" or \"hours\" instead of \"%s\"\r\n",argv[2]);
+        return CMD_FAILED;
+      }
+    }
+    VERBOSE(q_printf("%% Sleep duration is %llu\r\n",(unsigned long long)(multiplier * sleep)));
+    esp_sleep_enable_timer_wakeup(multiplier * sleep);
+  }
+  
   HELP(q_print("% Entering light sleep\r\n"));
   q_delay(100);  // give a chance to the printf above do its job
   esp_light_sleep_start();
-  HELP(q_print("%% Resuming\r\n"));
+  HELP(q_print("% Resuming\r\n"));
   return 0;
 }
 #endif // #if COMPILING_ESPSHELL
