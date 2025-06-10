@@ -580,7 +580,7 @@ Depending on a keyword used there may be 0, 1, 2 or more arguments:
 </p></td></tr>
 
 
-<tr><td><p>nap</p></td><td><p><b>nap</b> [<i>NUM</i>]</p> <p>Put CPU into <b>light sleep</b> mode.<br>
+<tr><td><p>nap</p></td><td><p><b>nap</b> [<i>NUM</i> [seconds | minutes | hours]]</p> <p>Put CPU into <b>light sleep</b> mode.<br>
              Without arguments: puts CPU into sleep until any UART activity:  
              CPU wakes up by UART (press any key to wake up). Wake up condition is 3 
              positive edges. It is recommended to use &lt;Enter&gt; as an abort key
@@ -591,9 +591,25 @@ Depending on a keyword used there may be 0, 1, 2 or more arguments:
 </pre>
 </p><p>                                  
 
-             With argument: puts CPU into light sleep for <i>NUM</i> seconds, CPU wakes up by timer only, there are
+             With argument: puts CPU into light sleep for <i>NUM</i> seconds, minutes or hours. CPU wakes up by timer only, there are
              no other ways to cancel the sleep
-</p></td></tr>
+</p>
+<p>
+Example: put CPU into light sleep for 10 minutes:
+<pre>
+	esp32#>nap 10 min
+</pre>
+Example: put CPU into light sleep for 100 seconds:
+<pre>
+	esp32#>nap 100
+</pre>
+	or
+<pre>
+	esp32#>nap 100 seconds
+</pre>
+NOTE: You can not set wake up time like that: "<b>10 hours 50 minutes</b>". Instead, use either "<b>11 hours</b>" or "<b>650 minutes</b>"
+</p>
+</td></tr>
 </table></p>
 <p><h2 id=copyrights><a href="#top">&#8686;</a>COPYRIGHTS</h2></p>
 <p><pre>
