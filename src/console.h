@@ -74,11 +74,24 @@ static int console_here(int i) {
                                    : (uart = i));
 }
 
+// This variable gets updated by enter_pressed_cr() : once we see "\r" from user SeenCR is set to /true/
+// This variable is used to detect extra <LF> symbol and ignore it: consider command "pin 0 delay 9999". If <Enter> sends
+// <CR>+<LF> then <CR> will start command execution in a background while <LF> immediately trigger anykey_pressed() causing
+// command "pin ..." to abort.
+//
+// There are 3 possibilities for user terminal:
+//
+// 1. Send <CR> :  this is what most terminals do
+// 2. Send <LF> : SeenCR is always /false/, <LF> is NOT ignored
+// 3. Send <CR> + <LF> : SeenCR is /true/, trailing <LF> is ignored
+//
+static bool SeenCR = false;     
+
 // Detects if ANY key is pressed in serial terminal, or any character was sent in Arduino IDE Serial Monitor.
 //
 // TODO: Change polling logic to a TaskNotify. This will significally increases delay_interruptible() accuracy
 //       Probably there should be a separate task doing this
-static bool SeenCR = false;     // This variable gets updated by 
+
 static bool anykey_pressed() {
 
   unsigned char c = 0;

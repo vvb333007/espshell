@@ -54,7 +54,7 @@ static MUTEX(pcnt_mux); // protects access to units[] array
 // Through the code every counter is referenced simply by its number. 
 //
 static volatile struct {
-  unsigned int overflow;    // incremented in ISR (counter overflow event, fires every 20000 pulses)
+  unsigned int overflow;    // incremented in an ISR (counter overflow event, fires every 20000 pulses)
   unsigned int count;       // Pulses counted                         (only valid for stopped counters) 
   uint64_t     interval;    // Measurement interval in microseconds   (precise value for stopped counters, approximate for running ones) 
 
