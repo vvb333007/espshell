@@ -660,15 +660,6 @@ static const struct keywords_t keywords_main[] = {
 
   KEYWORDS_BEGIN
 
-#if WITH_ALIAS
-  { "alias", cmd_alias_if, 1,
-    HELPK("% \"<b>alias</> <i>NAME</>\"\r\n"
-          "%\r\n"
-          "% Create command alias NAME and enter alias configuration mode\r\n"
-          "% Ex.: \"alias set\" - create & start editing alias NAME"),
-    "Command aliases" },
-#endif
-
   { "uptime", cmd_uptime, NO_ARGS,
     HELPK("% \"<b>uptime</>\"\r\n"
           "%\r\n"
@@ -723,15 +714,21 @@ static const struct keywords_t keywords_main[] = {
           "%\r\n"
           "% Restarts CPU, performs a software reboot"), "Restarts CPU" },
 
-  { "nap", cmd_nap, 1,
-    HELPK("% \"<b>nap</> <i>SEC</>\"\r\n"
-          "%\r\n"
-          "% Put the CPU into light sleep mode for SEC seconds."), "CPU sleep" },
-
   { "nap", cmd_nap, NO_ARGS,
     HELPK("% \"<b>nap</>\"\r\n"
           "%\r\n"
-          "% Put the CPU into light sleep mode, wakeup by console"), NULL },
+          "% Put the CPU into light sleep mode, wakeup by console"), "CPU sleep" },
+
+  { "nap", cmd_nap, 1,
+    HELPK("% \"<b>nap</> <i>TIME</> [<o>seconds|minutes|hours</>]\"\r\n"
+          "%\r\n"
+          "% Put the CPU into light sleep mode specified amount of time\r\n"
+          "% Examples:\r\n"
+          "%   <i>nap 10</>     - Sleep for 10 seconds\r\n"
+          "%   <i>nap 10 min</> - Sleep for 10 minutes\r\n"
+          "%   <i>nap 10 h</>   - Sleep for 10 hours"), NULL },
+
+  { "nap", cmd_nap, 2, HIDDEN_KEYWORD },
 
   // Interfaces (UART,I2C, RMT, FileSystem..)
   { "iic", cmd_i2c_if, 1,
@@ -749,6 +746,15 @@ static const struct keywords_t keywords_main[] = {
           "% Ex.: spi vspi - configure/use interface SPI3 (VSPI)"),
     HELPK("SPI commands") },
 #endif
+#if WITH_ALIAS
+  { "alias", cmd_alias_if, 1,
+    HELPK("% \"<b>alias</> <i>NAME</>\"\r\n"
+          "%\r\n"
+          "% Create command alias NAME and enter alias configuration mode\r\n"
+          "% Ex.: \"alias Switch_On\" - create & start editing alias \"Switch_On\"),
+    "Command aliases" },
+#endif
+
   { "uart", cmd_uart_if, 1,
     HELPK("% \"<b>uart</> <i>UART_NUM</>\"\r\n"
           "%\r\n"
