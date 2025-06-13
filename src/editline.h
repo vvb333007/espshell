@@ -326,14 +326,27 @@ ring_bell() {
 // Ctrl+Z hanlder: send "exit" commnd, disabled echo
 static EL_STATUS
 ctrlz_pressed() {
-  TTYqueue("@exit\n");
+  static char cmd[] = {'@','e','x','i','t','\n','\0'};
+  TTYflush();
+  Line[0] = '\0';
+  cmd[5] = SeenCR ? '\r' : '\n'; // <CR> spotted before? Use <CR> as line ending; Use <LF> otherwise
+  TTYqueue(cmd);
   return CSstay;
 }
 
 // Ctrl+C handler: sends "suspend", disabled echo
 static EL_STATUS
 ctrlc_pressed() {
-  TTYqueue("@suspend\n");
+
+  // This mess here is because of automatic line ending detection. 
+  // Injected commands like that one below must not change /SeenCR/ global variable
+  // so we have to manually construct proper line ending to this command: it must match user terminal line endings
+  //
+  static char cmd[] = {'@','s','u','s','p','e','n','d','\n','\0'};
+  TTYflush();
+  Line[0] = '\0';
+  cmd[8] = SeenCR ? '\r' : '\n'; // <CR> spotted before? Use <CR> as line ending; Use <LF> otherwise
+  TTYqueue(cmd);
   return CSstay;
 }
 
