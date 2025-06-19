@@ -45,8 +45,9 @@ GPIO:
     
     if COND1 COND2 ... CONDn [poll INTERVAL] exec TEXT
       COND := PIN_NUMBER | !PIN_NUMBER | PIN_NUMBER<VALUE | PIN_NUMBER>VALUE
+      COND := \PIN_NUMBER | /PIN_NUMBER (falling & rising)
       INTERVAL := Polling interval, ms
-      checks if COND1 && COND2 .. && CONDn is true and executes TEXT (either a command or alias)
+      checks if COND1 && COND2 .. && CONDn is true and executes TEXT (either a command or an alias)
       By default uses GPIO ANYEDGE interrupts to evaluate CONDn, but can be forced to use polling (in sketches 
       with their own GPIO interrupt handlers, where ESPShell don't want to interfere with sketch logic)
 
