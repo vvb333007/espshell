@@ -139,6 +139,9 @@ static int cmd_tty(int, char **);
 
 #if WITH_ALIAS
 static int cmd_alias_if(int, char **);
+static int cmd_alias_end(int, char **);
+static int cmd_alias_list(int, char **);
+static int cmd_alias_asterisk(int, char **);
 #endif
 
 // -- Shell Commands --
@@ -178,21 +181,20 @@ static const struct keywords_t keywords_alias[] = {
 
   { "delete", NULL,NO_ARGS, HIDDEN_KEYWORD },
 
-  { "list", NULL, NO_ARGS,
+  { "list", cmd_alias_list, NO_ARGS,
     HELPK("% \"<b>list</>\"\r\n" 
           "%\r\n"
           "% Display current alias content"),
     HELPK("Display content") },
 
-  { "end", cmd_exit, NO_ARGS,
+  { "end", cmd_alias_end, NO_ARGS,
     HELPK("% \"<b>end</>\r\n" 
           "%\r\n"
           "% Exit from the alias configuration modes.\r\n"),
     HELPK("Exit") },
 
-
   // Special entry. Matches any command just as MANY_ARGS matches any number of arguments
-  { "*", NULL, MANY_ARGS,
+  { "*", cmd_alias_asterisk, MANY_ARGS,
     HELPK("% \"<b>COMMAND ARG1 ARG2 ... ARGn</>\"\r\n" 
           "%\r\n"
           "% Any command with any number of arguments"),
@@ -736,6 +738,18 @@ static const struct keywords_t keywords_main[] = {
           "%\r\n"
           "% Enter I2C interface configuration mode (i2c0, i2c1, ...)\r\n"
           "% Ex.: iic 0 - configure/use interface I2C0"), "I2C commands" },
+   
+
+#if WITH_ALIAS
+  { "alias", cmd_alias_if, 1,
+    HELPK("% \"<b>alias</> <i>NAME</>\"\r\n"
+          "%\r\n"
+          "% Create command alias NAME and enter alias configuration mode\r\n"
+          "% Ex.: \"alias Switch_On\" - create  start editing alias \"Switch_On\""), 
+    HELPK("Command aliases") 
+  },
+#endif
+
 
 #if WITH_SPI
 #  warning "SPI submodule is barely functional and is under development now"
@@ -745,14 +759,6 @@ static const struct keywords_t keywords_main[] = {
           "% Enter SPI interface configuration mode \r\n"
           "% Ex.: spi vspi - configure/use interface SPI3 (VSPI)"),
     HELPK("SPI commands") },
-#endif
-#if WITH_ALIAS
-  { "alias", cmd_alias_if, 1,
-    HELPK("% \"<b>alias</> <i>NAME</>\"\r\n"
-          "%\r\n"
-          "% Create command alias NAME and enter alias configuration mode\r\n"
-          "% Ex.: \"alias Switch_On\" - create & start editing alias \"Switch_On\"),
-    "Command aliases" },
 #endif
 
   { "uart", cmd_uart_if, 1,

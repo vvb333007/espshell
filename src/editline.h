@@ -341,7 +341,7 @@ ctrlc_pressed() {
   // This mess here is because of automatic line ending detection. 
   // Injected commands like that one below must not change /SeenCR/ global variable
   // so we have to manually construct proper line ending to this command: it must match user terminal line endings
-  //
+  // TODO: use clear_lne()
   static char cmd[] = {'@','s','u','s','p','e','n','d','\n','\0'};
   TTYflush();
   Line[0] = '\0';

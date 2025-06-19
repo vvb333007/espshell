@@ -30,6 +30,8 @@
 #include <HardwareSerial.h> // Serial macro
 #include "espshell.h"       // SERIAL_IS_USB macro
 
+// SERIAL_IS_USB is autodetected from Arduino IDE settings: selecting "Hardware CDC On Boot" will 
+// set SERIAL_IS_USB to 1 (see espshell.h)
 #if SERIAL_IS_USB
 
 // Check if Serial is up and running.
@@ -52,17 +54,20 @@ extern "C" int console_available() {
 
 // Read user input, with a timeout.
 // Returns number of bytes read on success or <0 on error
-// TODO: make proper blocking read within timeout. Not just wait for the first byte and read what was in the FIFO
 //
 extern "C" int console_read_bytes(void *buf, uint32_t len, TickType_t wait) {
 
   int av;
 
+// TODO: Make proper blocking read within timeout. Not just wait for the first byte and read what was in the FIFO.
+// TODO: 
+// TODO: Should read() in a loop, until either timeout OR full /len/ bytes read. Every successful read() resets /wait/ to its
+//       initial value
+
   while((av = Serial.available()) <= 0 && (wait-- > 0))
-    //delay(1);
-    //yield();
     taskYIELD();
 
+  
   return (wait == 0) ? -1 : Serial.read((uint8_t *)buf, len);
 }
 #endif //COMPILING_ESPSHELL

@@ -13,13 +13,13 @@
 // -- Q-Lib: helpful routines: ascii to number conversions,platform abstraction, etc --
 //
 // 1. OS/Kernel lightweight abstraction layer (mutexes, time intervals, delays, etc. part of it is in task.h file as well )
-// 2. Memory manager (for leaks detection)
+// 2. Memory manager (for leaks detection, normally disabled)
 // 3. Bunch of number->string and string->number conversion functions
 // 4. Core functions like q_printf(), core variables etc
 //
 #if COMPILING_ESPSHELL
 
-// gcc-specific size-optimization attempt ignored
+// gcc-specific branch prediction optimization macros 
 #undef likely
 #undef unlikely
 #define unlikely(_X)     __builtin_expect(!!(_X), 0)
@@ -27,18 +27,27 @@
 
 // inlined version of millis() & delay() for better accuracy on small intervals
 // because of decreased overhead. q_millis vs millis shows 196 vs 286 CPU cycles
-#define q_millis() ((unsigned long )(esp_timer_get_time() / 1000ULL))
 #define q_micros() esp_timer_get_time()
+#define q_millis() ((unsigned long )(q_micros() / 1000ULL))
 #define q_delay(_Delay) vTaskDelay(_Delay / portTICK_PERIOD_MS);
+#define q_yield() vPortYield()
 
 
 //  -- Mutex manipulation --
-// declare, initialize, grab and release macros
-// These are simple wrappers which do not increase code size but allow for unified names and better portability
-//
+
+// Mutexes are initialized on first use (i.e. on first mutex_lock() call)
+// These are simple wrappers which **do not increase code size** but allow for unified names 
+// and better portability. This OS->ESPShell "glue" must be kept simple and, ideally, inlineable 
+// or defined as a macro
+
+// Declare a mutex with name /_Name/
 #define MUTEX(_Name) xSemaphoreHandle _Name = NULL;   // e.g. static MUTEX(argv_mux);
 
-// Grab a mutex. Blocks forever. Initializes mutex object on a first use
+// Grab a mutex
+// Blocks for 0xffffffff FreeRTOS ticks: assuming FreeRTOS frequency of 1 KHz, 1000 ticks per second, this yields
+// roughly 1200 hours. 
+// Initializes mutex object on a first use
+//
 #define mutex_lock(_Name) \
   do { \
     if (unlikely(_Name == NULL)) _Name = xSemaphoreCreateMutex(); \
@@ -61,18 +70,33 @@
     } \
   } while ( 0 )
 
-// -- Memory access barrier -- :  a critical section on ESP32
+// -- Memory access barrier -- 
+//
+// Barrier is a critical section on ESP32, aka "spinlock". It is used as a lightweight alternative to mutex
+// where small memory writes must be synchronized: example of "small memory access" is inserting a new element into array, 
+// or pointer manipulations. 
+// 
+// Code in barriers (i.e. the code between barrier_lock() / barrier_unlock()) must be kept small and linear.
+// Defenitely not call printf() or delay() while in the barrier, or watchdog will bark
+//
 #define BARRIER(_Name) portMUX_TYPE _Name = portMUX_INITIALIZER_UNLOCKED
 #define barrier_lock(_Name) portENTER_CRITICAL(&_Name)
 #define barrier_unlock(_Name) portEXIT_CRITICAL(&_Name)
 
 
-// PPA(Number) generates 2 arguments for a printf ("%u%s",PPA(Number)), adding an "s" where its needed
-// NEE(Number) are similar to the PPA above except it generates "st", "nd","rd" and "th" depending on /Number/
-// returns "st", "nd", "rd" ot "th" depending on number
+// PPA(Number) generates 2 arguments for a printf ("%u%s",PPA(Number)), adding an "s" where its needed:
+// printf("%u second%s", PPA(1))  --> "1 second"
+// printf("%u second%s", PPA(2))  --> "2 seconds"
 //
-static inline __attribute__((const)) const char *number_english_ending(unsigned int n) {
-  return n == 1 ? "st" : (n == 2 ? "nd" : (n == 3 ? "rd" : "th"));
+// NEE(Number) are similar to the PPA above except it generates "st", "nd",
+// "rd" and "th" depending on /Number/:
+// printf("You are %u%s on the queue", NEE(1))  --> "You are 1st on the queue"
+// printf("You are %u%s on the queue", NEE(2))  --> "You are 2nd on the queue"
+//
+static inline __attribute__((const)) const char *number_english_ending(unsigned int const n) {
+  const char *endings[] = { "th", "st", "nd", "rd" };
+  return n > 3 ? endings[0] : endings[n];
+
 }
 
 #define PPA(_X) _X, (_X) == 1 ? "" : "s"
@@ -87,7 +111,7 @@ static bool Color = false;           // Coloring is enabled?
 
 
 static signed char  Echo = STARTUP_ECHO;     // Runtime echo flag: -1=silent,0=off,1=on
-static signed char  Echop = 0;
+static signed char  Echop = 0;               // "Previous" state of the /Echo/. Used to temporary off echo by "@" symbol
 
 
 
@@ -96,8 +120,9 @@ static signed char  Echop = 0;
 //       "This <b>text is bold</><u><g>And this one green and underlined</>"
 //
 // The HTML-looking tags we use are single-letter tags: <b> <e> <i> ... 
-// Closing tag </> simply sets standart colors and text attributes (cancels action of all tags).
-// Tag actions are additive: <g><u> will set text color to green and then turns underline font option.
+// Closing tag </> simply sets standart colors and text attributes (cancels action of ALL previous tags)
+// Tag actions are additive: <g><u> will set text color to green and then turns underline font option; 
+// the </> tag afterwards will cancel both <g> and <u>
 //
 // Color tags are processed in q_print() (there are 1 direct use of color sequence in editline.h) and
 // either replaced with ANSI coloring sequences or they are simply gets stripped if coloring is turned off
@@ -117,11 +142,11 @@ static const char *ansi_tags['z' - 'a' + 1] = {
   //other definitions can be added here as well as long as they are in [a-z] range
 };
 
-// This is here to keep Arduino IDE's colorer happy
+// This strange looking comment line below is here to keep Arduino IDE's colorer happy
 /*"*/
 
 // Return an ANSI terminal sequence which corresponds to given tag.
-//
+// NOTE: tag </> is a synonym for <n>, i.e. a "normal" text attributes
 static __attribute__((const)) const char *tag2ansi(char tag) {
 
   return tag == '/' ? ansi_tags['n' - 'a'] + 1
@@ -130,8 +155,8 @@ static __attribute__((const)) const char *tag2ansi(char tag) {
 }
 
 
-// Memory type: a number from 0 to 15 to identify newly allocated memory block intended
-// usage. Newly allocated memory is assigned one of the types below. Command "sh mem" invokes
+// Memory type: a number from 0 to 15 to identify newly allocated memory block usage. 
+// Newly allocated memory is assigned one of the types below. Command "sh mem" invokes
 // q_memleaks() function to dump memory allocation information. Only works #if MEMTEST == 1
 
 enum {
@@ -146,8 +171,8 @@ enum {
   MEM_PATH,      // path (c-string)
   MEM_GETLINE,   // memory allocated by files_getline()
   MEM_SEQUENCE,  // sequence-related allocations
-  MEM_TASKID,    // Task remap entry
-  MEM_UNUSED12,
+  MEM_TASKID,    // Task remap entry TODO: remove
+  MEM_ALIAS,     // Aliases
   MEM_UNUSED13,
   MEM_UNUSED14,
   MEM_UNUSED15
@@ -163,9 +188,6 @@ bool __attribute__((const)) is_valid_address(const void *addr, unsigned int coun
   
   return  ((unsigned int)addr >= 0x20000000) && ((unsigned int)addr + count <= 0x80000000);
 }
-
-
-
 
 #if MEMTEST
 // If MEMTEST is non-zero then ESPShell provides its own versions of q_malloc, q_strdup, q_realloc and q_free
@@ -207,7 +229,7 @@ static const char *memtags[] = {
   "GETLINE",
   "SEQUENCE",
   "TASKID",
-  "UNUSED12",
+  "ALIAS",
   "UNUSED13",
   "UNUSED14",
   "UNUSED15"

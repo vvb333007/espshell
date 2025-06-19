@@ -180,9 +180,12 @@ static int espshell_command(char *p);
 // "Context": an user-defined value (a number) which is set by change_command_directory() when switching to new command subtree. 
 // This is how command "uart 1" passes its argument  (the number "1") to the subtree commands like "write" or "read". 
 // Used to store: sequence number, uart,i2c interface number, probably something else
+// TODO: make it to be an union of basic C-types
 static unsigned int Context = 0;
 
 // Currently used prompt
+// TODO: get rid of all these /static char prompt[]/ (defined in functions) by replacing them with one
+//       single buffer for everyone
 static const char * prompt = PROMPT; 
 
 // Common messages. 
@@ -327,8 +330,9 @@ one_more_try:
     // Go through the keywords array till the end
     while (key[i].cmd) {
 
-      // command name matches user input?
-      if (!q_strcmp(argv[0], key[i].cmd)) {
+      // Command name matches user input?
+      // NOTE: keyword "*" matches any user input. This one is used in alias.h, to implement alias editing
+      if (!q_strcmp(argv[0], key[i].cmd) || key[i].cmd[0] == '*') {
 
         // found a candidate
         found = true;
@@ -353,6 +357,7 @@ one_more_try:
 
             bad = fg ? key[i].cb(argc, argv) : exec_in_background(aa);
 
+            // TODO: following code lines are duplicated in exec_in_background() branch. Refactor it
             if (bad > 0)
               q_printf("%% <e>Invalid %u%s argument \"%s\" (\"? %s\" for help)</>\r\n",NEE(bad), bad < argc ? argv[bad] : "FIXME", argv[0]);
             else if (bad < 0) {
@@ -379,7 +384,7 @@ one_more_try:
         goto one_more_try;
       }
 
-      // If we get here, then we have problem:
+      // If we get here, then we have a problem:
       if (found)  // we had a name match but number of arguments was wrong
         q_printf("%% <e>\"%s\": wrong number of arguments</> (\"? %s\" for help)\r\n", argv[0], argv[0]);
       else        // no name match let alone arguments number
@@ -391,7 +396,7 @@ one_more_try:
       HELP(q_print("% <e>Type \"?\" to show the list of commands available</>\r\n"));
   }
 
-  // free memory associated wih user input
+  // free memory associated with the user input
   userinput_unref(aa);
   return bad;
 }

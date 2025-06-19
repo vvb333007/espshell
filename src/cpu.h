@@ -26,6 +26,12 @@ static inline __attribute__((always_inline)) uint32_t cpu_ticks() {
   asm ( "rsr.ccount %0;" : "=a"(ccount) /*Out*/ : /*In*/ : /* Clobber */);
   return ccount;
 }
+
+static inline __attribute__((always_inline)) void tie_test() {
+  __asm__ __volatile__ ( "ee.src.q.ld.ip    q4,  a3,  16, q2, q3" : /*Out*/ : /*In*/ : );
+}
+
+
 #endif
 
 // Read and save CPU,APB and XTAL frequency values. These are used by espshell to calculate some intervals
@@ -70,6 +76,8 @@ static int cmd_show_cpuid(int argc, char **argv) {
 
   esp_chip_info_t chip_info;
   const char *chipid = "ESP32-(Unknown)";
+
+  tie_test();
 
   esp_chip_info(&chip_info);
 
