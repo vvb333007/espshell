@@ -141,6 +141,7 @@ static int cmd_tty(int, char **);
 static int cmd_alias_if(int, char **);
 static int cmd_alias_end(int, char **);
 static int cmd_alias_list(int, char **);
+static int cmd_alias_delete(int, char **);
 static int cmd_alias_asterisk(int, char **);
 #endif
 
@@ -171,15 +172,19 @@ static const struct keywords_t keywords_alias[] = {
   KEYWORDS_BEGIN
 
   // These entries go first, to avoid matching against "*"
-  { "delete", NULL, 1,
-    HELPK("% \"<b>delete</> [all | LINE_NUMBER]\"\r\n" 
+  { "delete", cmd_alias_delete, 1,
+    HELPK("% \"<b>delete</> [all | LINE]\"\r\n" 
           "%\r\n"
           "% Delete lines from the alias: no arguments means \"delete the last line\"\r\n"
           "% \"delete all\" erases whole alias content\r\n"
-          "% LINE_NUMBER is a line number, which can be displayed by \"list\" command" ),
+          "% LINE is a line number, which can be displayed by \"list\" command" 
+          "% Examples:\r\n"
+          "% <i>delete</>     - Removes last entered command from the alias\r\n"
+          "% <i>delete all</> - Removes everything\r\n"
+          "% <i>delete 4</>   - Removes line #4"),
     HELPK("Delete lines") },
 
-  { "delete", NULL,NO_ARGS, HIDDEN_KEYWORD },
+  { "delete", cmd_alias_delete,NO_ARGS, HIDDEN_KEYWORD },
 
   { "list", cmd_alias_list, NO_ARGS,
     HELPK("% \"<b>list</>\"\r\n" 

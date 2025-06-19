@@ -13,7 +13,7 @@
 
 #if COMPILING_ESPSHELL
 
-#define MAX_ALIAS_LEN 31
+#define MAX_ALIAS_LEN 31 // Maximum strlen() of an alias name
 
 struct strings {
   struct strings *next;  // must be first field to be compatible with generic lists routines
@@ -26,10 +26,11 @@ static struct alias {
   char name[MAX_ALIAS_LEN]; // asciiz
   unsigned char ref;        // reference counter
   struct strings *lines;    // actual alias content
-} *Aliases = NULL;
+} *Aliases = NULL;          // aliases db
 
 static MUTEX(Alias_mux); // One big global lock for everything about aliases. To save memory.
 
+// Reference counter++
 static void alias_ref(struct alias *al) {
   if (al) {
     al->ref++;
@@ -37,6 +38,7 @@ static void alias_ref(struct alias *al) {
   }
 }
 
+// Add new string to the alias
 //
 static bool alias_add_line(struct strings **s, const char *line) {
   if (s && line && *line) {
@@ -215,10 +217,46 @@ static int cmd_alias_list(int argc, char **argv) {
   return 0;
 }
 
+static int cmd_alias_delete(int argc, char **argv) {
+  ALIAS(al);
+  int d = 0;
+  if (argc > 1) {
+    if (isnum(argv[1]))
+      d = q_atoi(argv[1],999);
+    else if (!q_strcmp(argv[1],"all"))
+      d = -1;
+    else
+      return 1;
+  }
+  alias_delete_line(&al->lines, d);
+  return 0;
+}
+
+
 static int cmd_alias_asterisk(int argc, char **argv) {
   ALIAS(al);
-  q_printf("%% Piu! : %s\r\n",al->name);
-  return 0;
+  int i;
+  // TODO: what if there were quoted arguments? quotes will be removed by tokenizer. 
+  //       Must restore quotes around arguments having spaces in it
+  size_t siz = strlen(argv[0]);
+  for (i = 1; i < argc; i++)
+    siz += (1 + strlen(argv[i]));
+  if (siz >= ESPSHELL_MAX_INPUT_LENGTH) {
+    q_print("% Command line too long\r\n");
+    return CMD_FAILED;
+  }
+  // TODO: Code below must be refactored to get rid of strcats. It is **too straightforward** and is very slow
+  char tmp[siz + 1];
+  strcpy(tmp,argv[0]);
+  for (i = 1; i < argc; i++) {
+    strcat(tmp, " ");
+    strcat(tmp, argv[i]);
+  }
+  if (alias_add_line(&al->lines,tmp))
+    return 0;
+
+  q_print("% Failed to add\r\n");
+  return CMD_FAILED;
 }
 
 #endif // #if COMPILING_ESPSHELL
