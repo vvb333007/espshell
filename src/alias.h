@@ -15,6 +15,12 @@
 
 #define MAX_ALIAS_LEN 31 // Maximum strlen() of an alias name
 
+#define ALIAS(_X) \
+  struct alias *_X = ((struct alias *)Context); \
+  MUST_NOT_HAPPEN(Context == 0)
+
+// Commands (asciiz strings) which are attached to an alias
+// are stored in the /strings/ structure 
 struct strings {
   struct strings *next;  // must be first field to be compatible with generic lists routines
   unsigned short len;    // strlen(/line/)
@@ -28,15 +34,11 @@ static struct alias {
   struct strings *lines;    // actual alias content
 } *Aliases = NULL;          // aliases db
 
-static MUTEX(Alias_mux); // One big global lock for everything about aliases. To save memory.
+#if NOT_YET
+// TODO: consider background commands manipulating aliases
+static MUTEX(Alias_mux); // One big global lock for everything about aliases.
+#endif
 
-// Reference counter++
-static void alias_ref(struct alias *al) {
-  if (al) {
-    al->ref++;
-    MUST_NOT_HAPPEN(al->ref == 0); // unsigned char overflow
-  }
-}
 
 // Add new string to the alias
 //
@@ -125,25 +127,7 @@ struct alias *alias_by_name(const char *name) {
   return al;
 }
 
-
-struct alias *alias_create_empty(const char *name) {
-  struct alias *al = alias_by_name(name);
-
-  if (al)
-    return al;
-
-  if ((al = (struct alias *)q_malloc(sizeof(struct alias), MEM_ALIAS)) != NULL) {
-    strlcpy(al->name, name, sizeof(al->name));
-    al->lines = NULL;
-    al->next = Aliases;
-    al->ref = 1;
-    Aliases = al;
-  }
-
-  return al;
-}
-
-void alias_unlink_and_free(struct alias *al) {
+static void alias_unlink_and_free(struct alias *al) {
   struct alias *prev;
   if (al) {
     for (prev = Aliases; prev; prev = prev->next)
@@ -160,6 +144,9 @@ void alias_unlink_and_free(struct alias *al) {
   }
 }
 
+// Reference counter--
+// When refcounter drops to zero, the alias gets removed
+//
 static void alias_unref(struct alias *al) {
   if (al) {
     MUST_NOT_HAPPEN(al->ref < 1);
@@ -168,48 +155,72 @@ static void alias_unref(struct alias *al) {
   }
 }
 
-
-//"alias NAME"
-// save context, switch command list, change the prompt
+// Reference counter++
 //
-static int cmd_alias_if(int argc, char **argv) {
+static void alias_ref(struct alias *al) {
+  if (al) {
+    al->ref++;
+    MUST_NOT_HAPPEN(al->ref == 0); // unsigned char overflow
+  }
+}
+
+// Create new, empty alias OR find existing one
+//
+struct alias *alias_create_or_find(const char *name) {
 
   struct alias *al;
 
-  if (argc < 2)
-    return CMD_MISSING_ARG;
+  // addref on existing alias
+  if ((al = alias_by_name(name)) == NULL)
+    if ((al = (struct alias *)q_malloc(sizeof(struct alias), MEM_ALIAS)) != NULL) {
+      strlcpy(al->name, name, sizeof(al->name));
+      al->lines = NULL;
+      al->next = Aliases;
+      al->ref = 1;
+      Aliases = al;
+    }
 
-  if (argc > 2) {
-    q_print("%% Either remove spaces from the name or use quotes\r\n");
-    return CMD_FAILED;
-  }
+  if (al)
+    alias_ref(al);
 
-  if (strlen(argv[1]) >= MAX_ALIAS_LEN) {
-    q_printf("%% Alias name must not be too long: maximum %u characters\r\n", MAX_ALIAS_LEN);
-    return CMD_FAILED;
-  }
-
-  al = alias_create_empty(argv[1]);
-  if (!al) {
-    q_print("% Failed to create an alias\r\n");
-    return CMD_FAILED;
-  }
-  change_command_directory((typeof(Context))al, keywords_alias, PROMPT_ALIAS, "alias editing");
-  return 0;
+  return al;
 }
 
-#define ALIAS(_X) struct alias *_X = ((struct alias *)Context); \
-                  MUST_NOT_HAPPEN(Context == 0)
 
+//"alias NAME"
+// Create/find an alias, set pointer to that alias as a Context, 
+// switch command list, change the prompt
+//
+static int cmd_alias_if(int argc, char **argv) {
+  struct alias *al;
+
+  if (argc > 1) {
+    if (argc < 3) {
+      if (strlen(argv[1]) < MAX_ALIAS_LEN) {
+        if ((al = alias_create_or_find(argv[1])) != NULL) {
+          // Use NULL as /text/ to supress standart banner: it is incorrect for /alias/ command directory
+          change_command_directory((typeof(Context))al, keywords_alias, PROMPT_ALIAS, NULL);
+          HELP(q_print("% Entering alias editing mode. \"end\" to return\r\n"));
+          return 0;
+        } else q_print("% Failed to create / find alias\r\n");
+      } else q_print("% Alias name must be short (max. " xstr(MAX_ALIAS_LEN) " characters)\r\n");
+    } else q_print("% Either remove spaces from the name or use quotes\r\n");
+  } else return CMD_MISSING_ARG;
+
+  return CMD_FAILED;
+}
+
+// "end" : replacement for "exit". Command "exit" can be used inside aliases, 
+// so instead we introduce "end" command
+//
 static int cmd_alias_end(int argc, char **argv) {
   ALIAS(al);
-  if (al->lines == NULL) {
-    VERBOSE(q_printf("%% Alias \"%s\" is empty, removing..\r\n",al->name));
-    alias_unlink_and_free(al);
-  }
+  alias_unref(al);
   return cmd_exit(argc,argv);
 }
 
+// "list"
+// "show alias [NAME]"
 static int cmd_alias_list(int argc, char **argv) {
   ALIAS(al);
   q_printf("%% Alias \"%s\":\r\n",al->name);
@@ -217,18 +228,14 @@ static int cmd_alias_list(int argc, char **argv) {
   return 0;
 }
 
+// Delete lines (commands) from alias:
+// Last line, specific line or all lines
+// "delete [all|NUMBER]"
+//
 static int cmd_alias_delete(int argc, char **argv) {
   ALIAS(al);
-  int d = 0;
-  if (argc > 1) {
-    if (isnum(argv[1]))
-      d = q_atoi(argv[1],999);
-    else if (!q_strcmp(argv[1],"all"))
-      d = -1;
-    else
-      return 1;
-  }
-  alias_delete_line(&al->lines, d);
+  alias_delete_line(&al->lines, argc > 1 ? q_atoi(argv[1],-1)
+                                         : 0);
   return 0;
 }
 

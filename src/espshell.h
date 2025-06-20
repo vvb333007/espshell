@@ -26,7 +26,7 @@
 
 // -- Compile-time ESPShell settings --
 //
-#define WITH_ALIAS 1
+#define WITH_ALIAS 1             // Alias support (command "alias")
 #define AUTOSTART 1              // Set to 0 for manual shell start via espshell_start().
 #define STACKSIZE (5 * 1024)     // Shell task stack size
 
