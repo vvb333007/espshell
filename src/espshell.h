@@ -20,13 +20,13 @@
 
 #ifndef espshell_h
 #define espshell_h
-
+//#define MEMTEST 1
 // Code version, dont change. 
 #define ESPSHELL_VERSION "0.99.9"
 
 // -- Compile-time ESPShell settings --
 //
-#define WITH_ALIAS 1             // Alias support (command "alias")
+//#define WITH_ALIAS 1             // Alias support (command "alias")
 #define AUTOSTART 1              // Set to 0 for manual shell start via espshell_start().
 #define STACKSIZE (5 * 1024)     // Shell task stack size
 

@@ -733,18 +733,21 @@ static int cmd_show_pin(int argc, char **argv) {
           } else
             q_print("% Input is disabled\r\n");
         }    
-    // ESP32S3 has its pin 18 and 19 drive capability of 3 but the meaning is 2 and vice-versa
+    // ESP32S3 has its pin 18 and 17 drive capability of 3 but the meaning is 2 and vice-versa
+    // WARNING: Official docs have a typo there: they mention GPIO18 and GPIO19 while actual IDF code
+    //          says GPIO17 and GPIO18.
     // TODO:Other versions probably have the same behaviour on some other pins. Check TechRefs
     
   #ifdef CONFIG_IDF_TARGET_ESP32S3
-        if (pin == 18 || pin == 19) {
+        if (pin == 18 || pin == 17) {
           if (drv == 2)
             drv = 3;
           else if (drv == 3) 
             drv = 2;
         }
   #endif
-        q_printf("%% Maximum drive current is %u mA\r\n", (unsigned int)(5 * (1 << drv)));
+        const unsigned char ma = 5 * (1 << drv); // milliampers (5, 10, 20 or 40 mA)
+        q_printf("%% Maximum drive current is <%c>%u</> mA\r\n", ma != 20 ? 'i' : 'b', ma);
     
 
         // enable INPUT if was not enabled before
@@ -1000,10 +1003,12 @@ static int cmd_pin(int argc, char **argv) {
         
         flags |= OUTPUT_ONLY;
         
-        if (argv[i][0] == 't') // "toggle"
-          digitalForceWrite(pin, digitalForceRead(pin) ^ 1);
-        else
-          digitalForceWrite(pin, argv[i][0] == 'l' ? LOW : HIGH);
+        switch (argv[i][0]) {
+          case 't': digitalForceWrite(pin, digitalForceRead(pin) ^ 1); break;
+          case 'h': digitalForceWrite(pin, HIGH); break;
+          case 'l': digitalForceWrite(pin, LOW); break;
+          default:  MUST_NOT_HAPPEN( true );
+        }
       } else
       // 11. "pin X read". Shortened "r"
       if (!q_strcmp(argv[i], "read")) q_printf("%% GPIO%d : logic %d\r\n", pin, digitalForceRead(pin)); else

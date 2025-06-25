@@ -172,12 +172,14 @@ static const struct keywords_t keywords_alias[] = {
   KEYWORDS_BEGIN
 
   // These entries go first, to avoid matching against "*"
+  // NOTE: there is one more "delete" command under "files" command directory, which differs in number of mandatory parameters
   { "delete", cmd_alias_delete, 1,
     HELPK("% \"<b>delete</> [all | LINE]\"\r\n" 
           "%\r\n"
-          "% Delete lines from the alias: no arguments means \"delete the last line\"\r\n"
-          "% \"delete all\" erases whole alias content\r\n"
-          "% LINE is a line number, which can be displayed by \"list\" command" 
+          "% Delete lines from the alias:\r\n"
+          "% 1. No arguments. Means \"delete the last line\"\r\n"
+          "% 2. One argument, keyword \"all\". Deletes all lines\r\n"
+          "% 3. LINE is a line number, (use \"list\" to see line numbers)\r\n" 
           "% Examples:\r\n"
           "% <i>delete</>     - Removes last entered command from the alias\r\n"
           "% <i>delete all</> - Removes everything\r\n"
@@ -192,11 +194,11 @@ static const struct keywords_t keywords_alias[] = {
           "% Display current alias content"),
     HELPK("Display content") },
 
-  { "end", cmd_alias_end, NO_ARGS,
-    HELPK("% \"<b>end</>\r\n" 
+  { "quit", cmd_alias_end, NO_ARGS,
+    HELPK("% \"<b>quit</>\r\n" 
           "%\r\n"
           "% Exit from the alias configuration modes.\r\n"),
-    HELPK("Exit") },
+    HELPK("Quit alias editor") },
 
   // Special entry. Matches any command just as MANY_ARGS matches any number of arguments
   { "*", cmd_alias_asterisk, MANY_ARGS,

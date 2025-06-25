@@ -28,13 +28,16 @@
 //
 // Structure deallocated by userinput_unref()
 
-typedef struct {
-  int ref;          // reference counter. normally 1 but async commands can increase it
-  int argc;         // number of tokens
+struct argcargv {
+  struct argcargv *next; // **logical** link: used by alias code to chain commands together. 
+  short ref;          // reference counter. normally 1 but async commands can increase it. alias commands also increase this
+  short argc;         // number of tokens after stripping "&" or alike
+  short argc0;        // raw number of tokens
   char **argv;      // tokenized input string (array of pointers to various locations withn userinput)
   char *userinput;  // original input string with '\0's inserted by tokenizer
-  int (*gpp)(int, char **);
-} argcargv_t;
+  int (*gpp)(int, char **); //callback that is associated with argv[0] command.
+};
+typedef struct argcargv argcargv_t;
 
 // Mutex to protect reference counters of argcargv_t structure.
 static MUTEX(argv_mux);
@@ -106,12 +109,13 @@ static argcargv_t *userinput_tokenize(char *userinput) {
 
       // use editline's argify() to extract tokens
       a->argv = NULL;
-      a->argc = argify((unsigned char *)userinput, (unsigned char ***)&(a->argv));
+      a->argc = a->argc0 = argify((unsigned char *)userinput, (unsigned char ***)&(a->argv));
       if (a->argc > 0) {
         // successfully tokenized: we have at least 1 token (or more)
         // Keep /userinput/ : we have to free() it after command finishes its execution
         a->userinput = userinput;
         a->ref = 1;
+        a->next = NULL;
         // Convert argv[0] (a command name) to lowercase to workaround some dumb terminals 
         q_tolower(a->argv[0]);
       } else {

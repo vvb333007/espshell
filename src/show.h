@@ -26,6 +26,9 @@ static const struct {
   const char     *key;
   const show_cb_t cb;
 } show_keywords[] = {
+  #if WITH_ALIAS
+  { "alias", cmd_show_alias },
+#endif  
   { "pwm", cmd_show_pwm },
   { "counters", cmd_show_counters },
   { "memory", cmd_show_memory },

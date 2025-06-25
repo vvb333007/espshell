@@ -89,9 +89,6 @@ static bool SeenCR = false;
 
 // Detects if ANY key is pressed in serial terminal, or any character was sent in Arduino IDE Serial Monitor.
 //
-// TODO: Change polling logic to a TaskNotify. This will significally increases delay_interruptible() accuracy
-//       Probably there should be a separate task doing this
-
 static bool anykey_pressed() {
 
   unsigned char c = 0;

@@ -239,6 +239,8 @@ static const char *VarOops = "<e>% Oops :-(\r\n"
 #include "editline.h"           // editline library
 #include "userinput.h"          // userinput tokenizer and reference counter
 
+static argcargv_t *AA = NULL;   // only valid for foreground commands; used to access to raw user input, mainly by alias code
+
 // 5. ESPShell core
 // .h files contain actual code, not just declarations: this way Arduino IDE will not attempt to compile them
 #include "convar.h"             // code for registering/accessing sketch variables
@@ -266,6 +268,7 @@ static const char *VarOops = "<e>% Oops :-(\r\n"
 #include "question.h"           // cmd_question(), context help handler and help pages
 
 
+
 // Parse & execute: main ESPShell user input processor. User input, an asciiz string is passed to this processor as is.
 // The main task, which reads user input and calls this function is in task.h
 //
@@ -279,15 +282,17 @@ static const char *VarOops = "<e>% Oops :-(\r\n"
 //         pointing to failed/problematic argument. espshell_command() relies on code returned by underlying command handler (callback function)
 //
 static int
-espshell_command(char *p) {
+espshell_command(char *p/*, argcargv_t *aa0 */) {
 
   char **argv = NULL;
   int argc, i, bad;
   bool found, fg;
 
-  // argc/argv container. Normally free()-ed before this function returns except for the cases, when background commands are executed:
-  // background command is then resposible for container deletion.
+  // argc/argv container. Normally free()-ed before this function returns except for the cases, 
+  // when background commands are executed: background command is then resposible for container deletion.
+  // another case is **aliases** : containers are managed by alias code
   argcargv_t *aa = NULL;
+        
 
   // got something to process?
   if (p && *p) {
@@ -302,12 +307,24 @@ espshell_command(char *p) {
       return -1;
     }
 
+    // /keywords/ is a pointer to one of /keywords_main/, /keywords_uart/ ... etc keyword tables.
+    // It points at main tree at startup and then can be switched. 
+    barrier_lock(keywords_mux);
+    const struct keywords_t *key = keywords;   
+    barrier_unlock(keywords_mux);
+
+
     // /fg/ is /true/ for foreground commands. it is /false/ for background commands.
     // TODO: char comparision is enough, q_strcmp is overkill
     if ((fg = q_strcmp(aa->argv[aa->argc - 1],"&")) == false) {
-      //q_print("% A background exec has been requested\r\n");
+#if WITH_ALIAS      
+      // An "&" symbol within alias editing mode should not be stripped or be translated for background exec
+      if (key == keywords_alias)
+        fg = true;
+      else 
+#endif      
       // strip last "&" argument
-      aa->argc--;
+        aa->argc--;
     }
 
     // from now on /p/ is can be freed by userinput_unref() only, as part of /aa/
@@ -315,12 +332,11 @@ espshell_command(char *p) {
     argc = aa->argc;
     argv = aa->argv;
 
+    // Global pointer to currently used argcargv_t structure: only used by FOREGROUND tasks, in alias editing mode. 
+    // Background tasks have this pointer through background arguments;
+    // If we are in alias editing mode we want to save entered commands, so we just addref AA and store pointer to it
+    AA = fg ? aa : NULL;
 
-    // /keywords/ is a pointer to one of /keywords_main/, /keywords_uart/ ... etc keyword tables.
-    // It points at main tree at startup and then can be switched. 
-    barrier_lock(keywords_mux);
-    const struct keywords_t *key = keywords;   
-    barrier_unlock(keywords_mux);
     found = false;
 
 one_more_try:
