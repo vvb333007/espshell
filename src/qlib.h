@@ -33,25 +33,41 @@
 #define q_yield() vPortYield()
 
 
-//  -- Mutex manipulation --
+// Check if condition ... is true and if it is - halt ESPShell
+// Wrapper for the must_not_happen() function below
+//
+static NORETURN void must_not_happen(const char *message, const char *file, int line);
 
-// Mutexes are initialized on first use (i.e. on first mutex_lock() call)
+#define MUST_NOT_HAPPEN( ... ) do { \
+  if ( __VA_ARGS__ ) \
+    must_not_happen(#__VA_ARGS__, __FILE__, __LINE__ ); \
+} while ( 0 )
+
+
+//  -- Mutex/Semaphore/RWLocks --
+
+// Mutexes and semaphores are initialized on first use (i.e. on first mutex_lock() call)
 // These are simple wrappers which **do not increase code size** but allow for unified names 
 // and better portability. This OS->ESPShell "glue" must be kept simple and, ideally, inlineable 
 // or defined as a macro
 
-// Declare a mutex with name /_Name/
-#define MUTEX(_Name) xSemaphoreHandle _Name = NULL;   // e.g. static MUTEX(argv_mux);
+#define mutex_t SemaphoreHandle_t
+#define sem_t SemaphoreHandle_t
+
+#define MUTEX_INIT NULL
+#define SEM_INIT NULL
 
 // Grab a mutex
-// Blocks for 0xffffffff FreeRTOS ticks: assuming FreeRTOS frequency of 1 KHz, 1000 ticks per second, this yields
-// roughly 1200 hours. 
-// Initializes mutex object on a first use
+// Blocks forever, initializes mutex object on a first use
 //
 #define mutex_lock(_Name) \
   do { \
-    if (unlikely(_Name == NULL)) _Name = xSemaphoreCreateMutex(); \
-    if (likely(_Name != NULL))    xSemaphoreTake(_Name, portMAX_DELAY); \
+    if (unlikely(_Name == NULL)) \
+      _Name = xSemaphoreCreateMutex(); \
+    if (likely(_Name != NULL))  \
+      while (xSemaphoreTake(_Name, portMAX_DELAY) == pdFALSE) { \
+      /* 1200 hours have passed. Repeat. */ \
+      } \
   } while( 0 )
 
 // Release
@@ -60,6 +76,28 @@
     if (likely(_Name != NULL)) \
       xSemaphoreGive(_Name); \
   } while( 0 )
+
+
+// Binary semaphore.
+// Similar to mutex, but **any** task can sem_unlock(), not just the task
+// which called had called sem_lock(): no ownership tracking. These are used in RW-locking
+// code
+//
+#define sem_lock(_Name) \
+  do { \
+    if (unlikely(_Name == NULL)) { \
+      _Name = xSemaphoreCreateBinary(); \
+      break; /* created locked */\
+    } \
+    if (likely(_Name != NULL)) \
+      while (xSemaphoreTake(_Name, portMAX_DELAY) == pdFALSE) { \
+      /* 1200 hours have passed. Repeat. */ \
+      } \
+  } while( 0 )
+
+// Release
+#define sem_unlock(_Name) mutex_unlock(_Name)
+
 
 // Just for completeness. unused in espshell
 #define mutex_destroy(_Name) \
@@ -70,18 +108,99 @@
     } \
   } while ( 0 )
 
+#define sem_destroy(_Name) mutex_destroy(_Name)
+
 // -- Memory access barrier -- 
 //
-// Barrier is a critical section on ESP32, aka "spinlock". It is used as a lightweight alternative to mutex
+// Barrier is a critical section on ESP32, aka "spinlock". It is used as a lightweight alternative to mutexes
 // where small memory writes must be synchronized: example of "small memory access" is inserting a new element into array, 
 // or pointer manipulations. 
 // 
 // Code in barriers (i.e. the code between barrier_lock() / barrier_unlock()) must be kept small and linear.
 // Defenitely not call printf() or delay() while in the barrier, or watchdog will bark
 //
-#define BARRIER(_Name) portMUX_TYPE _Name = portMUX_INITIALIZER_UNLOCKED
+
 #define barrier_lock(_Name) portENTER_CRITICAL(&_Name)
 #define barrier_unlock(_Name) portEXIT_CRITICAL(&_Name)
+#define barrier_t portMUX_TYPE
+#define BARRIER_INIT portMUX_INITIALIZER_UNLOCKED
+
+// -- Readers/Writer lock --
+// Many readers, 1 writer, reading-preferred, non-preemptive, simple RW locks
+//
+
+
+typedef struct {
+  barrier_t     csec; // critical section to protect /cnt/
+  int           cnt;  // -1=write_lock, 0=unlocked, >0 reader_lock
+  sem_t         sem;  // binary semaphore, acts like blocking object
+} rwlock_t;
+
+#define RWLOCK_INIT { BARRIER_INIT, 0, SEM_INIT} //initializer: rwlock_t a = RWLOCK_INIT;
+
+// Obtain exclusive ("Writer") access.
+// If there were readers or writers, this function will block on /rw->sem/
+// If there are 0 readers/writers, then we grab a binary semaphore /rw->sem/ and change /cnt/ to negative
+// value meaning "Write" lock has been acquired
+// If there are readers constantly holding readers lock then writer task will starve
+//
+void rw_lockw(rwlock_t *rw) {
+
+  // rw->writeq = 1;
+  sem_lock(rw->sem); // grab main sync object. If it is held by readers we simply block here
+  // rw->writeq = 0;
+
+  // At this point we are sure that there are no readers , no writers.
+  // Chances for a context switch are zero, simply because it is just happened
+  barrier_lock(rw->csec);
+  MUST_NOT_HAPPEN(rw->cnt != 0);
+  rw->cnt--; //  i.e. rw->cnt = -1
+  barrier_unlock(rw->csec);
+}
+
+void rw_unlockw(rwlock_t *rw) {
+  barrier_lock(rw->csec);
+  MUST_NOT_HAPPEN(rw->cnt >= 0);
+  rw->cnt++; //rw->cnt = 0;
+  barrier_unlock(rw->csec);
+  sem_unlock(rw->sem);
+}
+
+// Obtain reader lock.
+// Yield if theres writer lock obtained already
+//
+void rw_lockr(rwlock_t *rw) {
+  // Wait for WRITER unlock, yielding 
+  int cnt;
+  do {
+    barrier_lock(rw->csec);
+    if ((cnt = rw->cnt) >= 0 /* && !rw->writerq*/)
+      break;
+    barrier_unlock(rw->csec);
+    q_yield(); // Let WRITER task to do its job
+  } while( true );
+
+  // Increment READERS count
+  rw->cnt++;
+  barrier_unlock(rw->csec);
+
+  // First of readers acquires rw->sem, so subsequent rw_lockw() will block immediately
+  if (!cnt)
+    sem_lock(rw->sem);
+  
+}
+
+// Reader unlock
+//
+void rw_unlockr(rwlock_t *rw) {
+  int cnt;
+  barrier_lock(rw->csec);
+  cnt = --rw->cnt;
+  MUST_NOT_HAPPEN(cnt < 0);
+  barrier_unlock(rw->csec);
+  if (!cnt)
+    sem_unlock(rw->sem);
+}
 
 
 // PPA(Number) generates 2 arguments for a printf ("%u%s",PPA(Number)), adding an "s" where its needed:
@@ -242,7 +361,7 @@ static memlog_t *head = NULL;
 static unsigned int allocated = 0, internal = 0;
 
 // memory logger mutex to access memory records list
-static MUTEX(mem_mux);
+static mutex_t Mem_mux;
 
 // memory allocated with extra 2 bytes: those are memory buffer overrun
 // markers. we check these at every q_free()
@@ -262,12 +381,12 @@ static void *q_malloc(size_t size, int type) {
         ml->len = size;
         ml->type = type;
         
-        mutex_lock(mem_mux);
+        mutex_lock(Mem_mux);
         ml->li.next = (list_t *)head;
         head = ml;
         allocated += size;
         internal += sizeof(memlog_t) + 2;
-        mutex_unlock(mem_mux);
+        mutex_unlock(Mem_mux);
 
         // naive barrier. detects linear buffer overruns
         p[size + 0] = 0x55;
@@ -287,7 +406,7 @@ static void q_free(void *ptr) {
     memlog_t *ml, *prev = NULL;
     const unsigned char *p = (const unsigned char *)ptr;
     //memlog_lock();
-    mutex_lock(mem_mux);
+    mutex_lock(Mem_mux);
     for (ml = head; ml != NULL; ml = (memlog_t *)(ml->li.next)) {
       if (ml->ptr == p) {
         if (prev)
@@ -301,7 +420,7 @@ static void q_free(void *ptr) {
       prev = ml;
     }
     //memlog_unlock();
-    mutex_unlock(mem_mux);
+    mutex_unlock(Mem_mux);
     if (ml) {
       // check for memory buffer linear write overruns
       if (ml->ptr[ml->len + 0] != 0x55 || ml->ptr[ml->len + 1] != 0xaa)
@@ -320,41 +439,41 @@ static void q_free(void *ptr) {
 //
 static void *q_realloc(void *ptr, size_t new_size,UNUSED int type) {
 
-	char *nptr;
+  char *nptr;
   memlog_t *ml;
 
   // Trivial case #1
-	if (ptr == NULL)
-		return q_malloc(new_size,type);
+  if (ptr == NULL)
+    return q_malloc(new_size,type);
 
   // Be a good realloc(), accept size of 0
-	if (new_size == 0 && ptr != NULL) {
-		q_free(ptr);
-		return NULL;
-	}
+  if (new_size == 0 && ptr != NULL) {
+    q_free(ptr);
+    return NULL;
+  }
 
   // A memory pointer being reallocated must be on a list. If its no - then it simply means that memory 
   // user is trying to realloc() was not allocated through q_malloc() or may be it is a bad/corrupted pointer
-  mutex_lock(mem_mux);
+  mutex_lock(Mem_mux);
   for (ml = head; ml != NULL; ml = (memlog_t *)(ml->li.next))
     if (ml->ptr == (unsigned char *)ptr)
       break;
   
   if (!ml) {
-    mutex_unlock(mem_mux);
+    mutex_unlock(Mem_mux);
     q_printf("<w>ERROR: q_realloc() : trying to realloc pointer %p which is not on the list</>\r\n",ptr);
     return NULL;
   }
 
   // trivial case #2: requested size is the same as current size, so do nothing
   // TODO: should it be new_size <= ml->len ?
-	if (new_size == ml->len) {
-    mutex_unlock(mem_mux);
-		return ptr;
+  if (new_size == ml->len) {
+    mutex_unlock(Mem_mux);
+    return ptr;
   }
 
   // Allocate a memory buffer of a new size plus 2 bytes for a naive "buffer overrun" detector
-	if ((nptr = (char *)malloc(new_size + 2)) != NULL) {
+  if ((nptr = (char *)malloc(new_size + 2)) != NULL) {
 
     nptr[new_size + 0] = 0x55;
     nptr[new_size + 1] = 0xaa;
@@ -362,7 +481,7 @@ static void *q_realloc(void *ptr, size_t new_size,UNUSED int type) {
     // copy content to the new resized buffer and free() the old one. we can't use q_free() here because we want to keep
     // a memlog entry (which otherwise gets deleted)
     memcpy(nptr, ptr, (new_size < ml->len) ? new_size : ml->len);
-  	free(ptr);
+    free(ptr);
 
     // Update the memory entry (memlog_t) with new size and new pointer values
     ml->ptr = (unsigned char *)nptr;
@@ -372,8 +491,8 @@ static void *q_realloc(void *ptr, size_t new_size,UNUSED int type) {
   }
 
   //memlog_unlock();
-  mutex_unlock(mem_mux);
-	return nptr;
+  mutex_unlock(Mem_mux);
+  return nptr;
 }
 
 // last of the family: strdup()
@@ -452,15 +571,6 @@ static char *q_strdup256(const char *ptr, int type) {
   }
   return p;
 }
-
-// Check if condition ... is true and if it is - halt ESPShell
-// Wrapper for the must_not_happen() function below
-//
-#define MUST_NOT_HAPPEN( ... ) do { \
-  if ( __VA_ARGS__ ) \
-    must_not_happen(#__VA_ARGS__, __FILE__, __LINE__ ); \
-} while ( 0 )
-
 
 
 // Convert an asciiz (7bit per char) string to lowercase.

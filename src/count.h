@@ -43,7 +43,7 @@
 static int               pcnt_unit = PCNT_UNIT_0;        // First PCNT unit which is allowed to use by ESPShell, convar (accessible thru "var" command)
 static int               pcnt_counters = 0;              // Number of currently running counters.
 
-static MUTEX(pcnt_mux); // protects access to units[] array
+static mutex_t PCNT_mux; // protects access to units[] array
 
 // Hardware counters are described by /units/ array, whose elements are per-counter data;
 // units[0] is used for PCNT#0, unit[5] -> PCNT#5 and so on.
@@ -124,7 +124,7 @@ static void IRAM_ATTR count_pin_anyedge_interrupt(void *arg) {
 static int count_claim_unit() {
   pcnt_unit_t i;
 
-  mutex_lock(pcnt_mux);
+  mutex_lock(PCNT_mux);
   for (i = pcnt_unit; i < PCNT_UNIT_MAX; i++) {
     if (!units[i].in_use) {
 
@@ -141,31 +141,31 @@ static int count_claim_unit() {
       units[i].filter_enabled = 0;
       units[i].taskid = (unsigned int)taskid_self(); 
       pcnt_counters++;
-      mutex_unlock(pcnt_mux);
+      mutex_unlock(PCNT_mux);
       return (int)i;
     }
   }
   // Nothing found. 
-  mutex_unlock(pcnt_mux);
+  mutex_unlock(PCNT_mux);
   return -1;
 }
 
 // Mark PCNT unit as "Stopped"
 //
 static void count_release_unit(int unit) {
-  mutex_lock(pcnt_mux);
+  mutex_lock(PCNT_mux);
   if (unit < PCNT_UNIT_MAX && unit >= 0 && units[unit].in_use) {
     units[unit].in_use = 0;
     units[unit].taskid = 0; // don't display irrelevant TaskID's: suspend/resume/kill on this ID will likely crash whole system
     --pcnt_counters;
   }
-  mutex_unlock(pcnt_mux);
+  mutex_unlock(PCNT_mux);
 }
 
 // Configure & enable interrupts on the unit; installs ISR service and attaches "overflow interrupt" handler
 // 
 static void count_claim_interrupt(pcnt_unit_t unit) {
-  mutex_lock(pcnt_mux);
+  mutex_lock(PCNT_mux);
   pcnt_event_enable(unit, PCNT_EVT_H_LIM);
   pcnt_event_disable(unit, PCNT_EVT_ZERO); // or you will get extra interrupts (x2)
 
@@ -174,7 +174,7 @@ static void count_claim_interrupt(pcnt_unit_t unit) {
     pcnt_isr_service_install(0);
 
   pcnt_isr_handler_add(unit, pcnt_unit_interrupt, (void *)unit);
-  mutex_unlock(pcnt_mux);
+  mutex_unlock(PCNT_mux);
 }
 
 // Disables events and interrupts on given PCNT unit. If it was the last actiove unit, then global ISR handler
@@ -182,7 +182,7 @@ static void count_claim_interrupt(pcnt_unit_t unit) {
 // NOTE: Must be called **before** calling count_release_unit()
 //
 static void count_release_interrupt(pcnt_unit_t unit) {
-  mutex_lock(pcnt_mux);
+  mutex_lock(PCNT_mux);
 
   pcnt_event_disable(unit, PCNT_EVT_H_LIM);
 
@@ -192,7 +192,7 @@ static void count_release_interrupt(pcnt_unit_t unit) {
   // if there are no active counting units left - uninstall ISR service also
   if (pcnt_counters < 2)
     pcnt_isr_service_uninstall();
-  mutex_unlock(pcnt_mux);
+  mutex_unlock(PCNT_mux);
 }
 
 
@@ -254,7 +254,7 @@ static const char *count_state_name(int unit) {
 //
 static int count_clear_counter(int pin) {
   int unit;
-  mutex_lock(pcnt_mux);
+  mutex_lock(PCNT_mux);
   for (unit = pcnt_unit; unit < PCNT_UNIT_MAX; unit++) {
     if (units[unit].pin == pin && units[unit].been_used) {
 
@@ -277,7 +277,7 @@ static int count_clear_counter(int pin) {
       q_printf("%% Counter #%u (%s state) has been cleared\r\n", unit, count_state_name(unit));
     }
   }
-  mutex_unlock(pcnt_mux);
+  mutex_unlock(PCNT_mux);
   return 0;
 }
 
@@ -533,7 +533,7 @@ static int cmd_show_counters(UNUSED int argc, UNUSED char **argv) {
           "%PCNT|Pin|  Status |   TaskID   | Pulse count | Time, msec |Frequency |Filter,ns</>\r\n"
           "%----+---+---------+------------+-------------+------------+----------+---------\r\n");
 
-  mutex_lock(pcnt_mux);
+  mutex_lock(PCNT_mux);
   for (i = 0; i < PCNT_UNIT_MAX; i++) {
     cnt = count_read_counter(i,&freq,&interval);
     
@@ -553,7 +553,7 @@ static int cmd_show_counters(UNUSED int argc, UNUSED char **argv) {
   }
   else
     q_print("% All counters are stopped\r\n");
-  mutex_unlock(pcnt_mux);
+  mutex_unlock(PCNT_mux);
   return 0;
 }
 

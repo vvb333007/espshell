@@ -170,10 +170,7 @@ static INLINE bool esp_gpio_is_pin_reserved(unsigned int gpio) {
 
 static NORETURN void must_not_happen(const char *message, const char *file, int line);
 
-
 void STARTUP_HOOK espshell_start();
-static int espshell_command(char *p);
-
 
 // Globals & string constants
 //
@@ -240,6 +237,8 @@ static const char *VarOops = "<e>% Oops :-(\r\n"
 #include "userinput.h"          // userinput tokenizer and reference counter
 
 static argcargv_t *AA = NULL;   // only valid for foreground commands; used to access to raw user input, mainly by alias code
+static int espshell_command(char *p, argcargv_t *aa);
+
 
 // 5. ESPShell core
 // .h files contain actual code, not just declarations: this way Arduino IDE will not attempt to compile them
@@ -282,7 +281,7 @@ static argcargv_t *AA = NULL;   // only valid for foreground commands; used to a
 //         pointing to failed/problematic argument. espshell_command() relies on code returned by underlying command handler (callback function)
 //
 static int
-espshell_command(char *p/*, argcargv_t *aa0 */) {
+espshell_command(char *p, argcargv_t *aa) {
 
   char **argv = NULL;
   int argc, i, bad;
@@ -291,11 +290,14 @@ espshell_command(char *p/*, argcargv_t *aa0 */) {
   // argc/argv container. Normally free()-ed before this function returns except for the cases, 
   // when background commands are executed: background command is then resposible for container deletion.
   // another case is **aliases** : containers are managed by alias code
-  argcargv_t *aa = NULL;
-        
+
+  //argcargv_t *aa = NULL;
+  
 
   // got something to process?
   if (p && *p) {
+
+    MUST_NOT_HAPPEN(aa != NULL);
 
     //make a history entry, if history is enabled (default)
     if (History)
@@ -306,6 +308,9 @@ espshell_command(char *p/*, argcargv_t *aa0 */) {
       q_free(p);
       return -1;
     }
+  }
+
+  if (aa) {
 
     // /keywords/ is a pointer to one of /keywords_main/, /keywords_uart/ ... etc keyword tables.
     // It points at main tree at startup and then can be switched. 
@@ -333,7 +338,7 @@ espshell_command(char *p/*, argcargv_t *aa0 */) {
     argv = aa->argv;
 
     // Global pointer to currently used argcargv_t structure: only used by FOREGROUND tasks, in alias editing mode. 
-    // Background tasks have this pointer through background arguments;
+    // Background tasks have this pointer through background task arguments;
     // If we are in alias editing mode we want to save entered commands, so we just addref AA and store pointer to it
     AA = fg ? aa : NULL;
 
@@ -507,7 +512,7 @@ static void espshell_task(const void *arg) {
 
     // read & execute commands until "exit ex" is entered
     while (!Exit) {
-      espshell_command(readline(prompt));
+      espshell_command(readline(prompt), NULL);
       task_yield(); // TODO: verify if we really need it. 
     }
     HELP(q_print(Bye));

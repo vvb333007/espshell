@@ -59,7 +59,7 @@ static struct {
   unsigned char *Lines[HIST_SIZE];
 } H;
 
-static BARRIER(Input_mux);
+static barrier_t Input_mux = BARRIER_INIT;
 static const char *CRLF = "\r\n";
 static unsigned char *Line = NULL;  // Raw user input TODO: make it preallocated 256 bytes buffer? Longer commands are very unlikely anyway
 static const char *Prompt = NULL;   // Current prompt to use

@@ -120,6 +120,11 @@ static int cmd_seq_show(int argc, char **argv); // TODO: rename to cmd_show_sequ
 static int cmd_var(int, char **);
 static int cmd_var_show(int, char **);
 
+#if WITH_ALIAS
+// alias execution
+static int cmd_exec(int, char **);
+#endif
+
 // "show" commands
 static int cmd_show(int, char **);
 static int cmd_show_pin(int, char **);
@@ -139,7 +144,7 @@ static int cmd_tty(int, char **);
 
 #if WITH_ALIAS
 static int cmd_alias_if(int, char **);
-static int cmd_alias_end(int, char **);
+static int cmd_alias_quit(int, char **);
 static int cmd_alias_list(int, char **);
 static int cmd_alias_delete(int, char **);
 static int cmd_alias_asterisk(int, char **);
@@ -154,7 +159,7 @@ static int cmd_alias_asterisk(int, char **);
 //
 // There are number of keyword arrays: 
 //
-// keywords_alias    : don't use it
+// keywords_alias    : 
 // keywords_uart     : UART commands
 // keywords_i2c      : I2C commands
 // keywords_spi      : don't use it
@@ -194,14 +199,15 @@ static const struct keywords_t keywords_alias[] = {
           "% Display current alias content"),
     HELPK("Display content") },
 
-  { "quit", cmd_alias_end, NO_ARGS,
+  { "quit", cmd_alias_quit, NO_ARGS,
     HELPK("% \"<b>quit</>\r\n" 
           "%\r\n"
           "% Exit from the alias configuration modes.\r\n"),
     HELPK("Quit alias editor") },
 
   // Special entry. Matches any command just as MANY_ARGS matches any number of arguments
-  { "*", cmd_alias_asterisk, MANY_ARGS,
+  // The first "*" is what actually matches while "TEXT*" is just a hint for the user
+  { "*TEXT*", cmd_alias_asterisk, MANY_ARGS,
     HELPK("% \"<b>COMMAND ARG1 ARG2 ... ARGn</>\"\r\n" 
           "%\r\n"
           "% Any command with any number of arguments"),
@@ -1086,8 +1092,15 @@ static const struct keywords_t keywords_main[] = {
           "%\r\n"
           "% Examples:\r\n"
           "%   var - Display variables list\r\n"), NULL },
-
-
+#if WITH_ALIAS
+  { "exec", cmd_exec, MANY_ARGS,
+    HELPK("% \"<b>exec NAME [NAME NAME ... NAME ]</>\"\r\n"
+          "%\r\n"
+          "% Execute alias (or aliases if more than one NAME is provided)\r\n"
+          "%\r\n"
+          "% Examples:\r\n"
+          "%   <i>alias motor_on</> - Execute command list\r\n"), "Execute scripts" },
+#endif
   { "history", cmd_history, 1, HIDDEN_KEYWORD },
   { "history", cmd_history, NO_ARGS, HIDDEN_KEYWORD },
 #if WITH_COLOR
@@ -1192,7 +1205,7 @@ static const struct keywords_t keywords_espcam[] = {
 #endif // WITH_ESPCAM
 
 //current keywords list in use and a barrier to protect it.
-static BARRIER(keywords_mux);
+static barrier_t keywords_mux = BARRIER_INIT;
 static const struct keywords_t *keywords = keywords_main;
 
 

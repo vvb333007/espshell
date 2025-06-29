@@ -17,51 +17,40 @@
 
 #if COMPILING_ESPSHELL
 
-#define PERMANENT_ALIASES 1 // Never delete aliases, as we use direct pointers to /struct alias/. Keep it 1.
-#define MAX_ALIAS_LEN 31 // Maximum strlen()+1 of an alias name
-
 // Helper macro for handlers (cmd_... ) : get a pointer to currently edited alias
 #define ALIAS(_X) \
   struct alias *_X = ((struct alias *)Context); \
   MUST_NOT_HAPPEN(Context == 0)
 
+// Aliases DB: SL list
 static struct alias {
-  struct alias *next;       // must be first field to be compatible with generic lists routines
-  char name[MAX_ALIAS_LEN]; // asciiz
-  unsigned char ref;        // reference counter
+  struct alias *next;   // must be first field to be compatible with generic lists routines
+  rwlock_t      rw;
   argcargv_t *lines;    // actual alias content (a list of argcargv_t *)
-} *Aliases = NULL;          // aliases db
-
-#if 1
- // static MUTEX(Alias_mux);
-# define alias_lock() mutex_lock(Alias_mux)
-# define alias_unlock() mutex_unlock(Alias_mux)
-#else
-  static BARRIER(Alias_mux);
-# define alias_lock() barrier_lock(Alias_mux)
-# define alias_unlock() barrier_unlock(Alias_mux)
-#endif
+  char name[0];         // asciiz
+} *Aliases = NULL;
 
 
-// Add new string to the alias
-// String is already parsed by espshell_command() so we just store
-// pointer to argcargv_t and increase its reference counter
+// Add new "line" to the alias. By line we mean user input that was already processed to the form of argcargv_t
+// We just store pointer to argcargv_t and increase its reference counter. We use internal argcargv's /->next/ field
+// to link AA together
 //
 static bool alias_add_line(argcargv_t **s,  argcargv_t *aa) {
   if (s && aa) {
-      userinput_ref(aa);
-      aa->next = NULL;
-      // add to the end
-      if (*s == NULL)
-        *s = aa;
-      else for (argcargv_t *p = *s; p; p = p->next) {
+    userinput_ref(aa);
+    aa->next = NULL;
+    // add to the end
+    if (*s == NULL)
+      *s = aa;
+    else 
+      for (argcargv_t *p = *s; p; p = p->next) {
         if (p->next == NULL) {
           p->next = aa;
           break;
         }
       }
-      return true;
-    
+
+    return true;
   }
   return false;
 }
@@ -129,69 +118,27 @@ struct alias *alias_by_name(const char *name) {
   return al;
 }
 
-
-static void alias_unlink_and_free(struct alias *al) {
-#if PERMANENT_ALIASES
-  al->ref = 1;
-  //alias_delete_line(&al->lines,-1);
-#else  
-  struct alias *prev;
-  if (al) {
-    for (prev = Aliases; prev; prev = prev->next)
-      if (prev->next == al)
-        break;
-
-      if (prev)
-        prev->next = al->next;
-      else if (Aliases == al)
-        Aliases = al->next;
-
-      alias_delete_line(&al->lines,-1);
-      q_free(al);
-  }
-#endif // PERMANENT_ALIASES  
-}
-
-// Reference counter--
-// When refcounter drops to zero, the alias gets removed
-//
-static void alias_unref(struct alias *al) {
-  if (al) {
-    MUST_NOT_HAPPEN(al->ref < 1);
-    if (--al->ref < 1) {
-      
-      alias_unlink_and_free(al);
-    }
-  }
-}
-
-// Reference counter++
-//
-static void alias_ref(struct alias *al) {
-  if (al) {
-    al->ref++;
-    MUST_NOT_HAPPEN(al->ref == 0); // unsigned char overflow
-  }
-}
-
 // Create new, empty alias OR find existing one
 //
 struct alias *alias_create_or_find(const char *name) {
 
   struct alias *al;
 
+  if (!name)
+    return NULL;
+
   // addref on existing alias
-  if ((al = alias_by_name(name)) == NULL)
-    if ((al = (struct alias *)q_malloc(sizeof(struct alias), MEM_ALIAS)) != NULL) {
-      strlcpy(al->name, name, sizeof(al->name));
+  if ((al = alias_by_name(name)) == NULL) {
+    size_t siz = strlen(name);
+    if ((al = (struct alias *)q_malloc(sizeof(struct alias) + siz + 1, MEM_ALIAS)) != NULL) {
+      strlcpy(al->name, name, siz + 1);
       al->lines = NULL;
       al->next = Aliases;
-      al->ref = 1;
+      rwlock_t tmp = RWLOCK_INIT;
+      al->rw = tmp;
       Aliases = al;
     }
-
-  if (al)
-    alias_ref(al);
+  }
 
   return al;
 }
@@ -206,40 +153,28 @@ static int cmd_alias_if(int argc, char **argv) {
 
   if (argc > 1) {
     if (argc < 3) {
-      if (strlen(argv[1]) < MAX_ALIAS_LEN) {
+      
         if ((al = alias_create_or_find(argv[1])) != NULL) {
           // Use NULL as /text/ to supress standart banner: it is incorrect for /alias/ command directory
           change_command_directory((typeof(Context))al, keywords_alias, PROMPT_ALIAS, NULL);
           HELP(q_print("% Entering alias editing mode. \"quit\" to return\r\n"));
           return 0;
         } else q_print("% Failed to create / find alias\r\n");
-      } else q_print("% Alias name must be short (max. " xstr(MAX_ALIAS_LEN) " characters)\r\n");
+      
     } else q_print("% Either remove spaces from the name or use quotes\r\n");
   } else return CMD_MISSING_ARG;
 
   return CMD_FAILED;
 }
 
-// "quit" : replacement for "exit". there are at least 2 reasons to use "quit" instead of "exit":
-// 1. command "exit" can belong to alias
-// 2. we have to execute extra code (i.e. alias_unref()) before calling cmd_exit()
+// "quit" : replacement for "exit": command "exit" can belong to alias
 //
-static int cmd_alias_end(int argc, char **argv) {
-//  int n;
-  ALIAS(al); // "al" points to  "struct alias"
-  
-  // refcounter at this point is usually 2 but can be 1 if some background async process has
-  // executed alias_unref() on its own.
-//  n = al->ref;
-  alias_unref(al);
-
-#if 0
-  // if alias is still alive, check if it is empty. If it is -> unref it one more time, to trigger
-  // alias removal. 
-  if (n > 1)
-    if (al->lines == NULL)
-      alias_unref(al);
-#endif  
+static int cmd_alias_quit(int argc, char **argv) {
+  ALIAS(al);
+  if (!al->lines && al->rw.sem) {
+    sem_destroy(al->rw.sem);
+    al->rw.sem = SEM_INIT;
+}
   return cmd_exit(argc,argv);
 }
 
@@ -255,19 +190,23 @@ static int cmd_alias_list(int argc, char **argv) {
 static int cmd_show_alias(int argc, char **argv) {
 
   struct alias *al;
+  int i;
 
   if (argc < 3) {
     if (Aliases) {
       q_print("% List of defined aliases:\r\n");
-      for (al = Aliases; al ; al = al->next)
-        q_printf("%% \"%s\"%s\r\n",al->name,al->lines ? "" : ", empty");
+      for (i = 1, al = Aliases; al ; ++i, al = al->next)
+        q_printf("%% %d. \"%s\"%s\r\n",i,al->name,al->lines ? "" : ", empty");
     } else
-      q_print("% No aliases defined\r\n");
+      q_print("% No aliases defined. Use \"alias NAME\" to create one\r\n");
     return 0;
   } else {
     al = alias_by_name(argv[2]);
-    if (al)
+    if (al) {
+      rw_lockr(&al->rw);
       alias_show_lines(al->lines);
+      rw_unlockr(&al->rw);
+    }
     else
       q_printf("%% Unknown alias \"%s\" (\"show alias\" to list names)\r\n",argv[2]);
     return CMD_FAILED;
@@ -282,8 +221,10 @@ static int cmd_show_alias(int argc, char **argv) {
 //
 static int cmd_alias_delete(int argc, char **argv) {
   ALIAS(al);
+  rw_lockw(&al->rw);
   alias_delete_line(&al->lines, argc > 1 ? q_atoi(argv[1],-1)
                                          : 0);
+  rw_unlockw(&al->rw);                                         
   return 0;
 }
 
@@ -291,24 +232,58 @@ static int cmd_alias_delete(int argc, char **argv) {
 //
 static int cmd_alias_asterisk(int argc, char **argv) {
   ALIAS(al);
-  int i;
+  
 
   MUST_NOT_HAPPEN(argc < 1);
   MUST_NOT_HAPPEN(AA == NULL);
 
-  // NOTE: command "alias" itself is unavailable when in alias mode; allowing may result in 
+  // NOTE: command "alias" itself is unavailable when in alias mode; allowing so may result in 
   // completely undefined behaviour because lack of locking mechanism
   if (!q_strcmp(argv[0],"alias")) {
     q_print("% Command \"alias\" can not be part of an alias, sorry.\r\n");
     return CMD_FAILED;
   }
   
-  if (alias_add_line(&al->lines,AA))
+  rw_lockw(&al->rw);
+  bool res = alias_add_line(&al->lines,AA);
+  rw_unlockw(&al->rw);
+
+  if (res)
     return 0;
 
   q_print("% Failed to add (out of memory)\r\n");
   return CMD_FAILED;
 }
 
+static int alias_exec(struct alias *al) {
+    argcargv_t *p;
+    rw_lockr(&al->rw);
+    for (p = al->lines; p; p = p->next) {
+      userinput_ref(p);
+      espshell_command(NULL, p);
+      p->argc = p->argc0;        // restore argc. it may be changed by espshell_command()
+    }
+    rw_unlockr(&al->rw);
+    return 0;
+}
+
+// "exec ALIAS_NAME [ NAME2 NAME3 ... NAMEn]"
+// Main command directory
+//
+static int cmd_exec(int argc, char **argv) {
+
+  struct alias *al;
+
+  if (argc < 2)
+    return CMD_MISSING_ARG;
+
+  for (int i = 1; i < argc; i++)
+    if ((al = alias_by_name(argv[i])) != NULL)
+      alias_exec(al);
+    else
+      q_printf("%% No alias named \"%s\"\r\n",argv[i]);
+  
+  return 0;
+}
 #endif // #if COMPILING_ESPSHELL
 

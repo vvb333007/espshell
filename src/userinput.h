@@ -40,7 +40,7 @@ struct argcargv {
 typedef struct argcargv argcargv_t;
 
 // Mutex to protect reference counters of argcargv_t structure.
-static MUTEX(argv_mux);
+static mutex_t argv_mux = MUTEX_INIT;
 
 // Increase refcounter on argcargv structure. a == NULL is ok
 static void userinput_ref(argcargv_t *a) {
