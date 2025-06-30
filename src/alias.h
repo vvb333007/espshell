@@ -93,7 +93,9 @@ static int alias_delete_line(argcargv_t **s, int nline) {
   return del;
 }
 
-// barrier_lock() must be called prior to calling this
+// "show alias NAME"
+// "list"
+//
 static int alias_show_lines(argcargv_t *s) {
   int i = 0,j;
   for ( ; s; s = s->next) {
@@ -104,8 +106,8 @@ static int alias_show_lines(argcargv_t *s) {
     }
     q_print("\r\n");
   }
-  if (!i)
-    q_print("% Empty\r\n");
+  q_print("%% %s\r\n", i ? "--- END ---" : "Empty.");
+  
   return i;
 }
 
@@ -174,6 +176,7 @@ static int cmd_alias_quit(int argc, char **argv) {
   if (!al->lines && al->rw.sem) {
     sem_destroy(al->rw.sem);
     al->rw.sem = SEM_INIT;
+    VERBOSE(q_printf("%% Alias \"%s\" is empty, destroying semaphore\r\n",al->name));
 }
   return cmd_exit(argc,argv);
 }

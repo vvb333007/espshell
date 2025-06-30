@@ -26,15 +26,22 @@
 
 // -- Compile-time ESPShell settings --
 //
-//#define MEMTEST 1
+//#define MEMTEST 1              // Enable memory logger (extra output on "show memory")
 #define WITH_ALIAS 1             // Alias support (command "alias")
 
 #define AUTOSTART 1              // Set to 0 for manual shell start via espshell_start().
 #define STACKSIZE (5 * 1024)     // Shell task stack size
 
 #define WITH_HELP 1              // Set to 0 to save some program space by excluding help strings/functions
-#define WITH_HISTORY 1           // Enable command history (!! set to 0 when using MEMTEST !!)
-#define HIST_SIZE 20             // History buffer size (number of commands to remember)
+
+#if MEMTEST
+#  define WITH_HISTORY 0          // Disable history when hunting for memory leaks
+#  define HIST_SIZE 1             // Can't be zero :(
+#else
+#  define WITH_HISTORY 1           // Enable command history
+#  define HIST_SIZE 20             // History buffer size (number of commands to remember)
+#endif
+
 
 #define WITH_ESPCAM 1            // Include camera commands
 

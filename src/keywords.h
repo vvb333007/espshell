@@ -1097,12 +1097,17 @@ static const struct keywords_t keywords_main[] = {
     HELPK("% \"<b>exec NAME [NAME NAME ... NAME ]</>\"\r\n"
           "%\r\n"
           "% Execute alias (or aliases if more than one NAME is provided)\r\n"
+          "% Aliases are <u>list of commands</>; Use \"alias\" to create/edit one\r\n"
           "%\r\n"
           "% Examples:\r\n"
-          "%   <i>alias motor_on</> - Execute command list\r\n"), "Execute scripts" },
-#endif
+          "%   <i>exec motor_on</> - Execute command list named \"motor_on\"\r\n"), "Execute scripts" },
+#endif //ALIAS
+
+#if WITH_HISTORY
   { "history", cmd_history, 1, HIDDEN_KEYWORD },
   { "history", cmd_history, NO_ARGS, HIDDEN_KEYWORD },
+#endif  
+
 #if WITH_COLOR
   { "colors", cmd_colors, 1, HIDDEN_KEYWORD },
   { "colors", cmd_colors, NO_ARGS, HIDDEN_KEYWORD },

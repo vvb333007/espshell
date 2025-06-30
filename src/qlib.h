@@ -131,33 +131,40 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
 
 
 typedef struct {
-  barrier_t     csec; // critical section to protect /cnt/
-  int           cnt;  // -1=write_lock, 0=unlocked, >0 reader_lock
-  sem_t         sem;  // binary semaphore, acts like blocking object
+  barrier_t      csec; // critical section to protect /cnt/
+//flags  
+  unsigned short wreq:1; // WRITE lock requested
+  int            cnt;  // -1=write_lock, 0=unlocked, >0 reader_lock
+  sem_t          sem;  // binary semaphore, acts like blocking object
 } rwlock_t;
 
-#define RWLOCK_INIT { BARRIER_INIT, 0, SEM_INIT} //initializer: rwlock_t a = RWLOCK_INIT;
+#define RWLOCK_INIT { BARRIER_INIT, 0, 0, SEM_INIT} //initializer: rwlock_t a = RWLOCK_INIT;
 
 // Obtain exclusive ("Writer") access.
+//
 // If there were readers or writers, this function will block on /rw->sem/
 // If there are 0 readers/writers, then we grab a binary semaphore /rw->sem/ and change /cnt/ to negative
 // value meaning "Write" lock has been acquired
-// If there are readers constantly holding readers lock then writer task will starve
 //
 void rw_lockw(rwlock_t *rw) {
 
-  // rw->writeq = 1;
-  sem_lock(rw->sem); // grab main sync object. If it is held by readers we simply block here
-  // rw->writeq = 0;
-
-  // At this point we are sure that there are no readers , no writers.
-  // Chances for a context switch are zero, simply because it is just happened
+  // Set "Write Lock Request" flag before acquiring/rw->sem
   barrier_lock(rw->csec);
-  MUST_NOT_HAPPEN(rw->cnt != 0);
+  rw->wreq = 1;
+  barrier_lock(rw->csec);
+
+  sem_lock(rw->sem); // grab main sync object. If it is held by readers we simply block here
+
+  barrier_lock(rw->csec);
+  MUST_NOT_HAPPEN(rw->cnt != 0); // This one should trigger if we have bugs in out RWLock
   rw->cnt--; //  i.e. rw->cnt = -1
+  rw->wreq = 0;
   barrier_unlock(rw->csec);
 }
 
+// WRITE unlock
+// /cnt/ is expected to be -1 (Write Lock). If it isn't then we have bugs in out RW code
+//
 void rw_unlockw(rwlock_t *rw) {
   barrier_lock(rw->csec);
   MUST_NOT_HAPPEN(rw->cnt >= 0);
@@ -168,13 +175,17 @@ void rw_unlockw(rwlock_t *rw) {
 
 // Obtain reader lock.
 // Yield if theres writer lock obtained already
+// 
+// Dominant type of lock
 //
 void rw_lockr(rwlock_t *rw) {
+
   // Wait for WRITER unlock, yielding 
   int cnt;
   do {
     barrier_lock(rw->csec);
-    if ((cnt = rw->cnt) >= 0 /* && !rw->writerq*/)
+    //wait until there are no readers and no writers and no writelock request is queued
+    if ((cnt = rw->cnt) >= 0  && !rw->wreq)
       break;
     barrier_unlock(rw->csec);
     q_yield(); // Let WRITER task to do its job
