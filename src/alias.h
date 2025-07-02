@@ -106,7 +106,7 @@ static int alias_show_lines(argcargv_t *s) {
     }
     q_print("\r\n");
   }
-  q_print("%% %s\r\n", i ? "--- END ---" : "Empty.");
+  q_printf("%% %s\r\n", i ? "--- END ---" : "Empty.");
   
   return i;
 }
@@ -173,7 +173,7 @@ static int cmd_alias_if(int argc, char **argv) {
 //
 static int cmd_alias_quit(int argc, char **argv) {
   ALIAS(al);
-  if (!al->lines && al->rw.sem) {
+  if (!al->lines && (al->rw.sem != SEM_INIT)) {
     sem_destroy(al->rw.sem);
     al->rw.sem = SEM_INIT;
     VERBOSE(q_printf("%% Alias \"%s\" is empty, destroying semaphore\r\n",al->name));
@@ -182,7 +182,7 @@ static int cmd_alias_quit(int argc, char **argv) {
 }
 
 // "list"
-// "show alias [NAME]"
+//
 static int cmd_alias_list(int argc, char **argv) {
   ALIAS(al);
   q_printf("%% Alias \"%s\":\r\n",al->name);
@@ -190,6 +190,8 @@ static int cmd_alias_list(int argc, char **argv) {
   return 0;
 }
 
+// "show alias [NAME]"
+//
 static int cmd_show_alias(int argc, char **argv) {
 
   struct alias *al;

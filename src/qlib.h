@@ -133,7 +133,7 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
 typedef struct {
   barrier_t      csec; // critical section to protect /cnt/
 //flags  
-  unsigned short wreq:1; // WRITE lock requested
+  unsigned short wreq; // WRITE lock requested
   int            cnt;  // -1=write_lock, 0=unlocked, >0 reader_lock
   sem_t          sem;  // binary semaphore, acts like blocking object
 } rwlock_t;
@@ -151,7 +151,7 @@ void rw_lockw(rwlock_t *rw) {
   // Set "Write Lock Request" flag before acquiring/rw->sem
   barrier_lock(rw->csec);
   rw->wreq = 1;
-  barrier_lock(rw->csec);
+  barrier_unlock(rw->csec);
 
   sem_lock(rw->sem); // grab main sync object. If it is held by readers we simply block here
 
@@ -313,6 +313,7 @@ enum {
 // rights, only boundaries are checked.
 // sizeof(unsigned int) == sizeof(void *) is ensured in espshell.c static_asserts section
 // TODO: implement memory maps query (ESP32_Memory_Maps/maps.h)
+// TODO: use esp_ptr_... API to get properties of the memory region (byte/dword access etc)
 //
 bool __attribute__((const)) is_valid_address(const void *addr, unsigned int count) {
   
