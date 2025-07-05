@@ -46,6 +46,8 @@
 #include <errno.h>
 #include <time.h>
 #include <assert.h>
+#include <stdatomic.h>
+
 // Arduino
 #include <Arduino.h>
 // ESP-IDF
@@ -241,7 +243,9 @@ static int espshell_command(char *p, argcargv_t *aa);
 
 
 // 5. ESPShell core
-// .h files contain actual code, not just declarations: this way Arduino IDE will not attempt to compile them
+// Why? Historical reasons + prevent Arduino from compiling them.
+// Rearranging it in classic module.c/module.h way will add alot of code (interfaces, declarations, functions can't be static and so on)
+
 #include "convar.h"             // code for registering/accessing sketch variables
 #include "task.h"               // main shell task, async task helper, misc. task-related functions
 #include "keywords.h"           // all command trees
@@ -251,7 +255,7 @@ static int espshell_command(char *p, argcargv_t *aa);
 #include "pin.h"                // GPIO manipulation
 #include "count.h"              // Pulse counter / frequency meter
 #include "i2c.h"                // i2c generic interface
-#include "spi.h"                // spi generic interface
+#include "spi.h"                // spi generic interface. Not functional, unused
 #include "uart.h"               // uart generic interface
 #include "misc.h"               // misc command handlers
 #if WITH_ALIAS
@@ -276,6 +280,8 @@ static int espshell_command(char *p, argcargv_t *aa);
 // 3. Execute coresponding callback, may be in a newly created task cotext (for commands ending with "&", like "count&")
 //
 // asciiz /p/ - is the user input as returned by readline(). Must be writable memory!
+// /aa/       - must be NULL if /p/ is not NULL. Must be a valid pointer if /p/ is NULL
+//              This one is used to execute user input which was parsed already (see alias.h)
 //
 // returns 0 on success, -1 if number of arguments doesn't match (missing argument) or >0 - the index in argv[] array
 //         pointing to failed/problematic argument. espshell_command() relies on code returned by underlying command handler (callback function)
@@ -287,17 +293,13 @@ espshell_command(char *p, argcargv_t *aa) {
   int argc, i, bad;
   bool found, fg;
 
-  // argc/argv container. Normally free()-ed before this function returns except for the cases, 
-  // when background commands are executed: background command is then resposible for container deletion.
-  // another case is **aliases** : containers are managed by alias code
-
-  //argcargv_t *aa = NULL;
+  MUST_NOT_HAPPEN(((aa != NULL) && (p != NULL)) || ((aa == NULL) && (p == NULL)));
   
-
-  // got something to process?
+  // got ascii string to process?
+  // if we got only /aa/ but /p/ is NULL then we execute /aa/ and don't update history:
+  // this behaviour is needed for "exec ALIAS_NAME"
+  //
   if (p && *p) {
-
-    MUST_NOT_HAPPEN(aa != NULL);
 
     //make a history entry, if history is enabled (default)
     if (History)
@@ -309,14 +311,14 @@ espshell_command(char *p, argcargv_t *aa) {
       return -1;
     }
   }
-
+  
   if (aa) {
 
     // /keywords/ is a pointer to one of /keywords_main/, /keywords_uart/ ... etc keyword tables.
     // It points at main tree at startup and then can be switched. 
-    barrier_lock(keywords_mux);
+    //barrier_lock(keywords_mux);
     const struct keywords_t *key = keywords;   
-    barrier_unlock(keywords_mux);
+    //barrier_unlock(keywords_mux);
 
 
     // /fg/ is /true/ for foreground commands. it is /false/ for background commands.
@@ -324,12 +326,13 @@ espshell_command(char *p, argcargv_t *aa) {
     if ((fg = q_strcmp(aa->argv[aa->argc - 1],"&")) == false) {
 #if WITH_ALIAS      
       // An "&" symbol within alias editing mode should not be stripped or be translated for background exec
+      // TODO: BUG: an async "exec" may hit the condition below if user is still in alias configuration mode
       if (key == keywords_alias)
         fg = true;
       else 
 #endif      
-      // strip last "&" argument
-        aa->argc--;
+      // strip last "&" argument. It is restored upon completion of a background command (see aa->argc0)
+      aa->argc--;
     }
 
     // from now on /p/ is can be freed by userinput_unref() only, as part of /aa/
@@ -436,11 +439,11 @@ void espshell_exec(const char *p) {
 // check if last espshell_exec() call has completed its
 // execution
 bool espshell_exec_finished() {
-  bool ret;
-  barrier_lock(Input_mux);
-  ret = (*Input == '\0');
-  barrier_unlock(Input_mux);
-  return ret;
+  //bool ret;
+  //barrier_lock(Input_mux); // TODO: get rid of barriers if possible. Use _Atomics
+  //ret = (*Input == '\0');
+  //barrier_unlock(Input_mux);
+  return (*Input == '\0');
 }
 
 

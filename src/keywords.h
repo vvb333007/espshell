@@ -1210,8 +1210,9 @@ static const struct keywords_t keywords_espcam[] = {
 #endif // WITH_ESPCAM
 
 //current keywords list in use and a barrier to protect it.
-static barrier_t keywords_mux = BARRIER_INIT;
-static const struct keywords_t *keywords = keywords_main;
+// TODO: get rid of barriers if possible. Use _Atomics
+//static barrier_t keywords_mux = BARRIER_INIT;
+static _Atomic (const struct keywords_t *) keywords = keywords_main;
 
 
 // Called from cmd_uart_if(), cmd_i2c_if(),cmd_seq_if() and cmd_files_if and others to set a new command list (command directory); 
@@ -1224,14 +1225,14 @@ static const struct keywords_t *change_command_directory(
                                     const char *text) {           // User-defined text which will be displayed after entering new directory
   const struct keywords_t *old_dir;
 
-  barrier_lock(keywords_mux);
+//  barrier_lock(keywords_mux);
 
   Context = context;
   old_dir = keywords;
   keywords = dir;
   prompt = prom;
 
-  barrier_unlock(keywords_mux);
+//  barrier_unlock(keywords_mux);
 
   if (text) {
     HELP(q_printf("%% Entering %s mode. Ctrl+Z or \"exit\" to return\r\n"

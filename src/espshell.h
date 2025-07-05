@@ -15,51 +15,50 @@
  // 1) Inclusion of this file will enable CLI automatically
  // 2) No functions needs to be called in order to use the shell
  // 3) There are Compile-time Settings below to tweak ESP32Shell behaviour
- //    Using Compile-time Settings section below disable code which is not needed to 
+ //    Use Compile-time Settings section below to disable code which is not needed to 
  //    decrease the memory footprint
 
 #ifndef espshell_h
 #define espshell_h
 
-// Code version, dont change. 
-#define ESPSHELL_VERSION "0.99.9"
 
-// -- Compile-time ESPShell settings --
+// -- Compile-time settings BEGIN --
 //
-//#define MEMTEST 1              // Enable memory logger (extra output on "show memory")
-#define WITH_ALIAS 1             // Alias support (command "alias")
+
+
+#define ESPSHELL_VERSION "0.99.9" // Code version
+
+//#define MEMTEST 1              // Enable memory logger (extra output on "show memory"). For shell self-diagnostics
+#define WITH_ALIAS 1             // Set to 0 to disable alias support (commands "alias" and "exec")
 
 #define AUTOSTART 1              // Set to 0 for manual shell start via espshell_start().
 #define STACKSIZE (5 * 1024)     // Shell task stack size
 
 #define WITH_HELP 1              // Set to 0 to save some program space by excluding help strings/functions
 
-#if MEMTEST
-#  define WITH_HISTORY 0          // Disable history when hunting for memory leaks
-#  define HIST_SIZE 1             // Can't be zero :(
-#else
-#  define WITH_HISTORY 1           // Enable command history
-#  define HIST_SIZE 20             // History buffer size (number of commands to remember)
-#endif
+#define WITH_HISTORY 1           // Enable command history
+#define HIST_SIZE 20             // History buffer size (number of commands to remember)
 
+#define WITH_ESPCAM 1            // Include camera commands. Set to 0 if your board does not have camera
 
-#define WITH_ESPCAM 1            // Include camera commands
-
-#define WITH_VAR 1               // enable support for sketch variables
+#define WITH_VAR 1               // enable support for sketch variables (command "var")
 
 #define STARTUP_ECHO 1           // echo mode at espshell startup (-1=blackhole, 0=no echo or 1=echo)
-#define WITH_COLOR 1             // Enable terminal colors support 
+#define WITH_COLOR 1             // Enable terminal colors support. Set to 0 if your terminal doesn't support ANSI colors
 #define AUTO_COLOR 1             // Let ESPShell decide wheither to enable coloring or not. Command "color on|off|auto" is about that
 
-#define WITH_FS 1                // Filesystems (fat/spiffs/littlefs) support
+#define WITH_FS 1                // Filesystems (fat/spiffs/littlefs) support. Unlikely you need all of them
 #define MOUNTPOINTS_NUM 5        // Max number of simultaneously mounted filesystems
 #define WITH_SPIFFS 1            // support SPIF filesystem
 #define WITH_LITTLEFS 1          //   --    LittleFS
-#define WITH_FAT 1               //   --    FAT (enable it if you want to enable WITH_SD below )
+#define WITH_FAT 1               //   --    FAT
 #define WITH_SD 1                // Support FAT filesystem on SD/TF card over SPI
+
 #define DIR_RECURSION_DEPTH 127  // Max directory depth TODO: make a test with long "/a/a/a/.../a" path
 
 #define SEQUENCES_NUM 10         // Max number of sequences available for the command "sequence"
+
+// -- Compile-time settings END --
 
 #if ARDUINO_USB_CDC_ON_BOOT      // USB mode?
 #  define SERIAL_IS_USB 1        
@@ -68,6 +67,22 @@
 #  define SERIAL_IS_USB 0
 #  define STARTUP_PORT UART_NUM_0  // UART number, where shell will be deployed at startup. can be changed.
 #endif                            
+
+#if WITH_SD
+#  if !WITH_FAT
+#    undef WITH_FAT
+#    define WITH_FAT 1
+#    warning "FAT FS support is ENABLED, because of WITH_SD (== 1)"
+#  endif
+#endif
+
+#if MEMTEST
+#  undef WITH_HISTORY
+#  undef HIST_SIZE
+#  define WITH_HISTORY 0          // Disable history when hunting for memory leaks
+#  define HIST_SIZE 1             // Can't be zero :(
+#  warning "Shell command history is DISABLED because of MEMTEST (== 1)"  
+#endif
 
 // -- ESPShell public API --
 

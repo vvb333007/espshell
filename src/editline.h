@@ -59,7 +59,8 @@ static struct {
   unsigned char *Lines[HIST_SIZE];
 } H;
 
-static barrier_t Input_mux = BARRIER_INIT;
+// TODO: get rid of barriers if possible. Use _Atomics
+//static barrier_t Input_mux = BARRIER_INIT;
 static const char *CRLF = "\r\n";
 static unsigned char *Line = NULL;  // Raw user input TODO: make it preallocated 256 bytes buffer? Longer commands are very unlikely anyway
 static const char *Prompt = NULL;   // Current prompt to use
@@ -74,7 +75,7 @@ static int OldPoint;
 static int Point;                   // Current cursor position(index) in Line[] 
 static int PushBack;
 static int Pushed;
-static const char *Input = "";  // "Artificial input queue". if non empty then symbols are
+static _Atomic (const char *) Input = "";  // "Artificial input queue". if non empty then symbols are
                                 // fed to TTYget as if it was user input. used by espshell_exec()
 static unsigned int Length;
 static bool History = true;
@@ -179,9 +180,9 @@ static const KEYMAP MetaMap[] = {
 // "read" from this string first.
 static inline void
 TTYqueue(const char *input) {
-  barrier_lock(Input_mux);
+  //barrier_lock(Input_mux);
   Input = input;
-  barrier_unlock(Input_mux);
+  //barrier_unlock(Input_mux);
 }
 
 // Print buffered (by TTYputc/TTYputs) data. editline uses buffered IO
@@ -252,10 +253,10 @@ TTYget() {
 
   do {
     // read byte from a priority queue if any.
-    barrier_lock(Input_mux);
+    //barrier_lock(Input_mux);
     if (*Input)
       c = *Input++;
-    barrier_unlock(Input_mux);
+    //barrier_unlock(Input_mux);
     if (c)
       return c;
 

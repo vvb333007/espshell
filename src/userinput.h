@@ -47,6 +47,7 @@ static void userinput_ref(argcargv_t *a) {
   if (a) {
     mutex_lock(argv_mux);
     a->ref++;
+    //VERBOSE(q_printf("userinput_ref() : argcargv_t %p refcnt=%d\r\n",a, a->ref));
     mutex_unlock(argv_mux);
   }
 }
@@ -59,8 +60,10 @@ static void userinput_unref(argcargv_t *a) {
     mutex_lock(argv_mux);
     MUST_NOT_HAPPEN(a->ref < 1);
     a->ref--;
+    //VERBOSE(q_printf("userinput_unref() : argcargv_t %p refcnt=%d\r\n",a, a->ref));
       // ref dropped to zero: delete everything
     if (a->ref == 0) {
+      //VERBOSE(q_printf("userinput_unref() : killing %p\r\n",a));
       if (a->argv)
         q_free(a->argv);
       if (a->userinput)
@@ -116,8 +119,10 @@ static argcargv_t *userinput_tokenize(char *userinput) {
         a->userinput = userinput;
         a->ref = 1;
         a->next = NULL;
+        //VERBOSE(q_printf("userinput_tokenize() : created argcargv_t %p\r\n",a));
         // Convert argv[0] (a command name) to lowercase to workaround some dumb terminals 
-        q_tolower(a->argv[0]);
+//        q_tolower(a->argv[0]);
+
       } else {
         if (a->argv)
           q_free(a->argv);

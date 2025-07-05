@@ -126,19 +126,17 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
 #define BARRIER_INIT portMUX_INITIALIZER_UNLOCKED
 
 // -- Readers/Writer lock --
-// Many readers, 1 writer, reading-preferred, non-preemptive, simple RW locks
+// Many readers, 1 writer, reading-preferred, simple RW locks
 //
-
+#include <stdatomic.h>
 
 typedef struct {
-  barrier_t      csec; // critical section to protect /cnt/
-//flags  
-  unsigned short wreq; // WRITE lock requested
-  int            cnt;  // -1=write_lock, 0=unlocked, >0 reader_lock
-  sem_t          sem;  // binary semaphore, acts like blocking object
+  _Atomic uint32_t wreq; // Number of pending write requests
+  _Atomic int      cnt;  // <0 : write_lock, 0: unlocked, >0: reader_lock
+  sem_t            sem;  // binary semaphore, acts like blocking object
 } rwlock_t;
 
-#define RWLOCK_INIT { BARRIER_INIT, 0, 0, SEM_INIT} //initializer: rwlock_t a = RWLOCK_INIT;
+#define RWLOCK_INIT { 0, 0, SEM_INIT} //initializer: rwlock_t a = RWLOCK_INIT;
 
 // Obtain exclusive ("Writer") access.
 //
@@ -148,28 +146,26 @@ typedef struct {
 //
 void rw_lockw(rwlock_t *rw) {
 
-  // Set "Write Lock Request" flag before acquiring/rw->sem
-  barrier_lock(rw->csec);
-  rw->wreq = 1;
-  barrier_unlock(rw->csec);
-
+  // Set "Write Lock Request" flag before acquiring/rw->sem: this will stop new readers to queue
+  // while writer is blocking on /sem/
+  rw->wreq++;
+try_again:  
   sem_lock(rw->sem); // grab main sync object. If it is held by readers we simply block here
-
-  barrier_lock(rw->csec);
-  MUST_NOT_HAPPEN(rw->cnt != 0); // This one should trigger if we have bugs in out RWLock
+  if (rw->cnt != 0) {
+    // reader somehow sneaked in, spin & yield
+    sem_unlock(rw->sem);
+    q_yield();
+    goto try_again;
+  }
   rw->cnt--; //  i.e. rw->cnt = -1
-  rw->wreq = 0;
-  barrier_unlock(rw->csec);
+  rw->wreq--;
 }
 
 // WRITE unlock
 // /cnt/ is expected to be -1 (Write Lock). If it isn't then we have bugs in out RW code
 //
 void rw_unlockw(rwlock_t *rw) {
-  barrier_lock(rw->csec);
-  MUST_NOT_HAPPEN(rw->cnt >= 0);
-  rw->cnt++; //rw->cnt = 0;
-  barrier_unlock(rw->csec);
+  rw->cnt++; //same as rw->cnt = 0;
   sem_unlock(rw->sem);
 }
 
@@ -180,37 +176,34 @@ void rw_unlockw(rwlock_t *rw) {
 //
 void rw_lockr(rwlock_t *rw) {
 
-  // Wait for WRITER unlock, yielding 
   int cnt;
-  do {
-    barrier_lock(rw->csec);
-    //wait until there are no readers and no writers and no writelock request is queued
-    if ((cnt = rw->cnt) >= 0  && !rw->wreq)
-      break;
-    barrier_unlock(rw->csec);
-    q_yield(); // Let WRITER task to do its job
-  } while( true );
+
+  // Wait until there are no readers and no writers and no writelock request is queued
+  // Let "writer" task to do its job
+  //
+  while ((cnt = rw->cnt) < 0  || rw->wreq)
+    q_yield(); 
 
   // Increment READERS count
   rw->cnt++;
-  barrier_unlock(rw->csec);
 
   // First of readers acquires rw->sem, so subsequent rw_lockw() will block immediately
+  // If concurrent wr_lockw() obtains /sem/ just after rw->cnt++ then we simply block here,
+  // for a tiny amount of time while rw_lockw() goes through its "try_again:"
+  //
   if (!cnt)
     sem_lock(rw->sem);
-  
 }
 
 // Reader unlock
 //
 void rw_unlockr(rwlock_t *rw) {
-  int cnt;
-  barrier_lock(rw->csec);
-  cnt = --rw->cnt;
-  MUST_NOT_HAPPEN(cnt < 0);
-  barrier_unlock(rw->csec);
-  if (!cnt)
+  if (0 == --rw->cnt)
     sem_unlock(rw->sem);
+}
+
+void rw_dump(const rwlock_t *rw) {
+  q_printf("rwlock(%p) : CNT=%d, WREQ=%d\r\n", rw, rw->cnt, rw->wreq);
 }
 
 

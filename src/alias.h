@@ -25,9 +25,9 @@
 // Aliases DB: SL list
 static struct alias {
   struct alias *next;   // must be first field to be compatible with generic lists routines
-  rwlock_t      rw;
+  rwlock_t      rw;     // RW lock to protect /lines/ list
   argcargv_t *lines;    // actual alias content (a list of argcargv_t *)
-  char name[0];         // asciiz
+  char name[0];         // asciiz alias name
 } *Aliases = NULL;
 
 
@@ -261,12 +261,23 @@ static int cmd_alias_asterisk(int argc, char **argv) {
 }
 
 static int alias_exec(struct alias *al) {
+
     argcargv_t *p;
+    
     rw_lockr(&al->rw);
+    
     for (p = al->lines; p; p = p->next) {
       userinput_ref(p);
+      // TODO:
+      // Due to design limitations, espshell_command() manipulates argc values on live argcargv_t
+      // and this can lead to weird behaviour:
+      // 1. create an alias (lets name it "c" ) with a background command, e.g. "pin 2 toggle loop 80000 &"
+      // 2. type "exec c c c c"
+      // You will see that sometimes alias gets executed in foreground. This is a known bug and happens
+      // because of shared argcargv_t, where argc changes forth and back. Deeper problem is that espshell_command()
+      // alters arcargv_t while under ReadLock
+      // Solutions is to NOT MODIFY argc and do not strip "&": it will also require small changes to "pin loop" logic
       espshell_command(NULL, p);
-      p->argc = p->argc0;        // restore argc. it may be changed by espshell_command()
     }
     rw_unlockr(&al->rw);
     return 0;

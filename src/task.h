@@ -198,6 +198,8 @@ static void espshell_async_task(void *arg) {
   // by command processor (espshell_command()) according to first keyword (argv[0])
   if (aa && aa->gpp) {
     ret = (*(aa->gpp))(aa->argc, aa->argv);
+    aa->argc = aa->argc0; // espshell_command() strips last "&" so here we restore it. it is solely for "exec" command
+
     q_printf("\r\n%% Background command \"%s\" has %s\r\n", aa->argv[0], ret == 0 ? "finished" : "<e>failed</>");
     // do the same job espshell_command() does: interpret error codes returned by the handler. Keep in sync with espshell_command() code
     if (ret < 0) {
