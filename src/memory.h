@@ -13,9 +13,27 @@
 #if COMPILING_ESPSHELL
 
 // Display memory contens
-// Only use with readable memory otherwise it will crash (LoadProhibited exception)
 //
-static int memory_display_content(unsigned char *address, unsigned int count, unsigned char length, bool isu, bool isf, bool isp) {
+static int memory_display_content(unsigned char *address,  // starting address
+                                  unsigned int count,      // number of elements to display
+                                  unsigned char length,    // element size in bytes
+                                  bool isu,                // display as unsigned?
+                                  bool isf,                // display as floating point numbers?
+                                  bool isp) {              // display as pointers?
+
+  // Some memory regions on ESP32-family chips are not byte-accessible: instead these regions can only be read
+  // in chunks of 4 bytes; Check if requested memory region is byte-accessible and warn the user
+  // if memory can not be read. These memory regions can be read as signed/unsigned int, void * and float
+  // because all these types are 4 bytes long
+  //
+  if (length != sizeof(unsigned int))
+    if (!esp_ptr_byte_accessible(address) || !esp_ptr_byte_accessible(address + length * count)) {
+      //TODO: make safe function (buffered read) to read byte-by-byte . For now just warn the user
+      q_printf("%% A memory region within [%p..%p] is not byte-accessible\r\n"
+               "%% Try \"<i>show memory %x %u void *</>\" instead, to see a hexdump\r\n", address, address+length*count,address, count / 4 + 1);
+      return CMD_FAILED;
+    }
+  
 
   // dont print this header when using short form of q_printhex.
   if (length >= tbl_min_len)
@@ -90,15 +108,14 @@ static int cmd_show_memory_address(int argc, char **argv) {
     else
       isu = false;
   } else {
-    if (isp || isf)
+    if (isf /* || isp*/) // don't warn users on requests like "unsigned int *" : it is a pointer anyway
       q_print("% \"signed\" and \"unsigned\" keywords were ignored\r\n");
   }
-
-
+#endif  
 
   if (!is_valid_address(address, count * length)) {
-    HELP(q_print("% Bad address range. Must be  a hex number > 0x2000000 (e.g. 3fff0000)\r\n"));
-    return 2;
+    HELP(q_print("% Bad address range. Must be  a hex number > 0x2000000 (e.g. 0x3fff0000)\r\n"));
+    return 2; //argv[2] is bad
   }
 
   return memory_display_content(address,count,length,isu,isf,isp);

@@ -98,13 +98,30 @@ static int alias_delete_line(argcargv_t **s, int nline) {
 //
 static int alias_show_lines(argcargv_t *s) {
   int i = 0,j;
+  const char *pre = "";
   for ( ; s; s = s->next) {
-    q_printf("%% %u: %s", ++i, s->argv[0]);
+    q_printf("%% %u: %s%s", ++i, pre, s->argv[0]);
     for (j = 1; j < s->argc; j++) {
       q_print(" ");
       q_print(s->argv[j]);
     }
     q_print("\r\n");
+
+    // Indent commands inside subdirectories. Only one level. Indent restored on "exit" command
+    if (!q_strcmp(s->argv[0],"exit"))
+      pre = "";
+    else {
+      const char *subd[] = {"alias", "iic", "uart", "sequence", "files", "spi", NULL };
+      j = 0;
+      while(subd[j]) {
+        if (!q_strcmp(s->argv[0],subd[j]))
+          break;
+        j++;
+      }
+      if (subd[j] || // Any of command directories
+          (s->argc > 1 && !q_strcmp(s->argv[0],"camera") && (!q_strcmp(s->argv[1],"settings")))) // "camera settings" directory
+        pre = "  ";
+    }
   }
   q_printf("%% %s\r\n", i ? "--- END ---" : "Empty.");
   

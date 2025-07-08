@@ -1061,6 +1061,10 @@ static void q_printtable(const unsigned char *p, unsigned int count, unsigned ch
 //
 static short tbl_min_len = 16;
 
+//static q_printhex_word_access(const unsigned char *p, unsigned int len) {
+// TODO:
+//}
+
 static void q_printhex(const unsigned char *p, unsigned int len) {
 
   if (!p || !len)

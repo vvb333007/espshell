@@ -10,6 +10,11 @@
  * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
+ // HELLO DEAR RANDOM PROGRAMMER!
+ // ACTUAL SOURCES IS IN .H FILES
+ // 
+ // STARTUP FLOW: espshell_start()->starts espshell_task()->which implements REPL (via readline()/espshell_command())
+
 #define COMPILING_ESPSHELL 1  // dont touch this!
 
 // Limits 

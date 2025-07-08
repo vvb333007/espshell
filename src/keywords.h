@@ -207,11 +207,11 @@ static const struct keywords_t keywords_alias[] = {
 
   // Special entry. Matches any command just as MANY_ARGS matches any number of arguments
   // The first "*" is what actually matches while "TEXT*" is just a hint for the user
-  { "*TEXT*", cmd_alias_asterisk, MANY_ARGS,
+  { "* TEXT *", cmd_alias_asterisk, MANY_ARGS,
     HELPK("% \"<b>COMMAND ARG1 ARG2 ... ARGn</>\"\r\n" 
           "%\r\n"
           "% Any command with any number of arguments"),
-    HELPK("Enter commands one by one") },
+    HELPK("Add any command to the alias") },
 
   {
     NULL, NULL, 0, NULL, NULL
