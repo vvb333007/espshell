@@ -138,6 +138,17 @@ static argcargv_t *userinput_tokenize(char *userinput) {
   return a;
 }
 
+// Display aa as a string
+//
+void userinput_show(argcargv_t *aa) {
+  if (aa) {
+    for (int i = 0; i < aa->argc; i++) {
+      q_print(aa->argv[i]);
+      q_print(" ");
+    }
+  }
+}
+
 // Redisplay user input & prompt. 
 //
 void userinput_redraw() {

@@ -296,7 +296,7 @@ espshell_command(char *p, argcargv_t *aa) {
 
   char **argv = NULL;
   int argc, i = 0, bad = -1;
-  bool found, fg;
+  bool found = true, fg;
 
   MUST_NOT_HAPPEN(((aa != NULL) && (p != NULL)) || ((aa == NULL) && (p == NULL)));
   
@@ -358,12 +358,6 @@ espshell_command(char *p, argcargv_t *aa) {
     //       Solution: block event system if user is in alias editing mode
     AA = fg ? aa : NULL;
 
-    found = false;
-
-one_more_try:
-    i = 0;          // start from keyword #0
-    bad = -1;       // default error code ("missing argument")
-
     // When we pass aa directly, we can take advantige of reusing command handler pointer
     // if it was found before somehow. In particular, this happens on successive "exec" of the same alias:
     // first "exec" initializes gpp, subsequent execs reuse this pointer skipping search phase
@@ -371,9 +365,15 @@ one_more_try:
     //
     if (aa->gpp != NULL) {
       //VERBOSE(q_print("% Reusing GPP\r\n"));
-      found = true;
       goto skip_command_lookup;
     }
+
+    found = false;
+
+one_more_try:
+    i = 0;          // start from keyword #0
+    bad = -1;       // default error code ("missing argument")
+
     
     // Find a keywords[] entry for a given command (argv[0]) and execute it:
     //
@@ -419,22 +419,14 @@ skip_command_lookup:
             // 8. Execute
             bad = fg ? aa->gpp(argc, argv) : exec_in_background(aa);
 
-            // TODO: following code lines are duplicated in exec_in_background() branch. Refactor it
-            if (bad > 0)
-              q_printf("%% <e>Invalid %u%s argument \"%s\" (\"? %s\" for help)</>\r\n",
-                        NEE(bad), 
-                        bad < argc  ? argv[bad] 
-                                    : "<Empty>",
-                        argv[0]);
-            else if (bad < 0) {
-              if (bad == CMD_MISSING_ARG)
-                q_printf("%% <e>One or more arguments are missing. (\"? %s\" for help)</>\r\n", argv[0]);
-              // Keep silent on other error codes which are <0
-            }
+            if (bad != 0)
+              espshell_display_error(bad,argc,argv);
             else
               // 9. Success
               // Make sure keywords[i] is a valid pointer (change_command_directory() changes keywords list so keywords[i] might be invalid pointer)
               i = 0;
+
+
             break;
           }  // if callback is provided
         }    // if argc matched
@@ -455,12 +447,9 @@ skip_command_lookup:
       if (found)  // we had a name match but number of arguments was wrong
         q_printf("%% <e>\"%s\": wrong number of arguments</> (\"? %s\" for help)\r\n", argv[0], argv[0]);
       else        // no name match let alone arguments number
-        q_printf("%% <e>\"%s\": command not found</>\r\n", argv[0]);
+        q_printf("%% <e>\"%s\": command not found</>\r\n"
+                 "%% Type \"?\" to show the list of commands available\r\n", argv[0]);
     }
-
-    if (!found)
-      // Be helpful :)
-      HELP(q_print("% <e>Type \"?\" to show the list of commands available</>\r\n"));
   }
 
   // free memory associated with the user input

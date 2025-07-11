@@ -180,13 +180,32 @@ static INLINE bool espshell_started() {
   return shell_task != NULL;
 }
 
+// Moved to a function, because it is called both from asyn shell command and command processor
+//
+static void espshell_display_error(int ret, int argc, char **argv) {
+    
+  MUST_NOT_HAPPEN(argc < 1);
+  MUST_NOT_HAPPEN(ret >= argc);
+
+  if (ret > 0)
+    q_printf("%% <e>Invalid %u%s argument (\"%s\")</>\r\n", NEE(ret), ret < argc ? argv[ret] : "Empty");
+  else if (ret < 0) 
+    if (ret == CMD_MISSING_ARG)
+      q_printf("%% <e>Wrong number of arguments (%d). Help page: \"? %s\" </>\r\n",argc - 1, argv[0]);
+    // Keep silent on other error codes which are <0 :
+    // CMD_FAILED return code assumes that handler did display error message before returning CMD_FAILED
+}  
+
+
 // Helper task, which runs (cmd_...) handlers in a background.
 //
 // When user inputs, say, "pin 8 up high" command, the corresponding handler: cmd_pin()) is called directly 
 // by espshell_command() parser,  all execution happens in the loop() task context.
 //
+// Long story short:
+//
 // When user asks for a background execution of the command (by adding an "&" as the very argument to any command)
-// (e.g. "pin 8 up high &") then exec_in_background() is called instead. This handler starts a task 
+// (e.g. "pin 8 up high &") then exec_in_background() is called instead. It starts a task 
 // (espshell_async_task()) which executes "real" command handler stored in aa->gpp.
 //
 static void espshell_async_task(void *arg) {
@@ -194,22 +213,22 @@ static void espshell_async_task(void *arg) {
   argcargv_t *aa = (argcargv_t *)arg;
   int ret = -1;
 
-  // aa->gpp points to actual command handler (e.g. cmd_pin for commands "pin" and "pin&"); aa->gpp is set up
+  // aa->gpp points to actual command handler (e.g. cmd_pin for command "pin"); aa->gpp is set up
   // by command processor (espshell_command()) according to first keyword (argv[0])
-  if (aa && aa->gpp) {
-    ret = (*(aa->gpp))(aa->argc, aa->argv);
-    aa->argc = aa->argc0; // espshell_command() strips last "&" so here we restore it. it is solely for "exec" command
+  if (aa) {
 
-    q_printf("\r\n%% Background command \"%s\" has %s\r\n", aa->argv[0], ret == 0 ? "finished" : "<e>failed</>");
-    // do the same job espshell_command() does: interpret error codes returned by the handler. Keep in sync with espshell_command() code
-    if (ret < 0) {
-      if (ret == CMD_MISSING_ARG)
-        q_print("\r\n% <e>Wrong number of arguments</>");
-      // Keep silent on other error codes which are <0 :
-      // CMD_FAILED return code assumes that handler did display error message before returning CMD_FAILED
-    }
-    else if (ret > 0)
-      q_printf("\r\n%% <e>Invalid %u%s argument \"%s\"</>", NEE(ret), ret < aa->argc ? aa->argv[ret] : "BUG");
+    MUST_NOT_HAPPEN(aa->gpp == NULL);
+
+    ret = (*(aa->gpp))(aa->argc, aa->argv);
+    aa->argc = aa->argc0; // TODO: this is a workaround: espshell_command() strips last "&" so here we restore it. it is solely for "exec" command
+
+    q_print("\r\n% Finished: \"<i>");
+    userinput_show(aa);
+    q_print("\"</>, ");
+    q_print(ret == 0 ? "success\r\n" : "failed\r\n");
+    
+    if (ret != 0)
+      espshell_display_error(ret, aa->argc, aa->argv);
   }
   // its ok to unref null pointer
   userinput_unref(aa);
