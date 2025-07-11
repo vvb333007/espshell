@@ -29,8 +29,8 @@ static int memory_display_content(unsigned char *address,  // starting address
   if (length != sizeof(unsigned int))
     if (!esp_ptr_byte_accessible(address) || !esp_ptr_byte_accessible(address + length * count)) {
       //TODO: make safe function (buffered read) to read byte-by-byte . For now just warn the user
-      q_printf("%% A memory region within [%p..%p] is not byte-accessible\r\n"
-               "%% Try \"<i>show memory %x %u void *</>\" instead, to see a hexdump\r\n", address, address+length*count,address, count / 4 + 1);
+      q_printf("%% A memory region within [0x%p..0x%p] is not byte-accessible\r\n"
+               "%% Try \"<i>show memory 0x%p %u void *</>\" instead, to see a hexdump\r\n", address, address+length*count,address, count / 4 + 1);
       return CMD_FAILED;
     }
   
@@ -111,7 +111,6 @@ static int cmd_show_memory_address(int argc, char **argv) {
     if (isf /* || isp*/) // don't warn users on requests like "unsigned int *" : it is a pointer anyway
       q_print("% \"signed\" and \"unsigned\" keywords were ignored\r\n");
   }
-#endif  
 
   if (!is_valid_address(address, count * length)) {
     HELP(q_print("% Bad address range. Must be  a hex number > 0x2000000 (e.g. 0x3fff0000)\r\n"));
@@ -157,4 +156,5 @@ static int cmd_show_memory(int argc, char **argv) {
 }
 
 #endif //
+
 

@@ -265,6 +265,9 @@ static int cmd_alias_asterisk(int argc, char **argv) {
     q_print("% Command \"alias\" can not be part of an alias, sorry.\r\n");
     return CMD_FAILED;
   }
+
+  // Reset GPP. Right now it points to cmd_alias_asterisk()
+  AA->gpp = NULL;
   
   rw_lockw(&al->rw);
   bool res = alias_add_line(&al->lines,AA);

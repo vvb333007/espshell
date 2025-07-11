@@ -111,6 +111,9 @@ static argcargv_t *userinput_tokenize(char *userinput) {
     if ((a = (argcargv_t *)q_malloc(sizeof(argcargv_t), MEM_ARGCARGV)) != NULL) {
 
       // use editline's argify() to extract tokens
+      a->gpp = NULL; // this pointer can be reused to skip command lookup phase at certain conditions:
+                     // aliases, as lists of precompiled argcargv_t's can update ->gpp on a first alias execution
+                     // and use this value on subsequent calls to "exec alias"
       a->argv = NULL;
       a->argc = a->argc0 = argify((unsigned char *)userinput, (unsigned char ***)&(a->argv));
       if (a->argc > 0) {

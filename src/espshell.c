@@ -295,7 +295,7 @@ static int
 espshell_command(char *p, argcargv_t *aa) {
 
   char **argv = NULL;
-  int argc, i, bad;
+  int argc, i = 0, bad = -1;
   bool found, fg;
 
   MUST_NOT_HAPPEN(((aa != NULL) && (p != NULL)) || ((aa == NULL) && (p == NULL)));
@@ -319,19 +319,19 @@ espshell_command(char *p, argcargv_t *aa) {
   
   if (aa) {
 
-    // /keywords/ is a pointer to one of /keywords_main/, /keywords_uart/ ... etc keyword tables.
+    // /keywords/ is an _Atomic  pointer to one of /keywords_main/, /keywords_uart/ ... etc keyword tables.
     // It points at main tree at startup and then can be switched. 
-    //barrier_lock(keywords_mux);
     const struct keywords_t *key = keywords;   
-    //barrier_unlock(keywords_mux);
 
 
-    // /fg/ is /true/ for foreground commands. it is /false/ for background commands.
+    // /fg/ is /false/ if we have "&" keyword at the end
     // TODO: char comparision is enough, q_strcmp is overkill
+    // TODO: big changes : keep "&"" intact, fix handlers who don't expect trailing & (e.g. "pin ... loop")
     if ((fg = q_strcmp(aa->argv[aa->argc - 1],"&")) == false) {
 #if WITH_ALIAS      
       // An "&" symbol within alias editing mode should not be stripped or be translated for background exec
       // TODO: BUG: an async "exec" may hit the condition below if user is still in alias configuration mode
+      // TODO: Solution: stop event system when user is in alias editing mode
       if (key == keywords_alias)
         fg = true;
       else 
@@ -345,57 +345,95 @@ espshell_command(char *p, argcargv_t *aa) {
     argc = aa->argc;
     argv = aa->argv;
 
-    // Global pointer to currently used argcargv_t structure: only used by FOREGROUND tasks, in alias editing mode. 
-    // Background tasks have this pointer through background task arguments;
-    // If we are in alias editing mode we want to save entered commands, so we just addref AA and store pointer to it
+    // Global pointer to currently used argcargv_t structure: only used in alias editing mode, to have a 
+    // parsed copy of the command line. Background tasks have this pointer through background task arguments;
+    //
+    // This global pointer's sole purpose is to be a **source** of a current parsed command line, to add it into alias.
+    // It may turn NULL unexpectedly, so
+    // DON'T USE AA OUTSIDE ALIAS LOGIC: IT IS NOT THREAD SAFE
+    //
+    // TODO: BUG: AA can be trashed by exec'ing an alias in a background: foreground alias command will overwrite AA
+    //       Simultaneous editing of an alias (any) and executing (another alias, via event system) may cause undefined behaviour.
+    //       Must be fixed at design level
+    //       Solution: block event system if user is in alias editing mode
     AA = fg ? aa : NULL;
 
     found = false;
 
 one_more_try:
-    i = 0;
-    bad = -1;
+    i = 0;          // start from keyword #0
+    bad = -1;       // default error code ("missing argument")
 
-    // Go through the keywords array till the end
+    // When we pass aa directly, we can take advantige of reusing command handler pointer
+    // if it was found before somehow. In particular, this happens on successive "exec" of the same alias:
+    // first "exec" initializes gpp, subsequent execs reuse this pointer skipping search phase
+    // GPP is set to NULL when AA is created AND by cmd_alias_asteriks()
+    //
+    if (aa->gpp != NULL) {
+      //VERBOSE(q_print("% Reusing GPP\r\n"));
+      found = true;
+      goto skip_command_lookup;
+    }
+    
+    // Find a keywords[] entry for a given command (argv[0]) and execute it:
+    //
+    // 1. Go through the keywords array till the end
     while (key[i].cmd) {
 
-      // Command name matches user input?
+      // 2. Next keyword matches user input?
       // NOTE: keyword "*" matches any user input. This one is used in alias.h, to implement alias editing
       if (!q_strcmp(argv[0], key[i].cmd) || key[i].cmd[0] == '*') {
 
-        // found a candidate
+        // 3. We have found a candidate
         found = true;
 
-        // Match number of arguments. There are many commands whose names are identical but number of arguments is different.
+        // 4. Match number of arguments. There are many commands whose names are identical but number of arguments is different.
         // One special case is keywords with their /.argc/ set to -1: these are "any number of argument" commands. These should be positioned
         // carefully in keywords array to not shadow other entries which differs in number of arguments only
         if (((argc - 1) == key[i].argc) || (key[i].argc < 0)) {
 
-          // Execute the command by calling a callback. It is only executed when not NULL. There are entries with /cb/ set to NULL: those
-          // are for help text only, as they are processed by "?" command/keypress
+          // 5. Execute the command by calling a callback. It is only executed when not NULL. 
+          // There are entries with /cb/ set to NULL: those are for help text only, as they are processed 
+          // by "?" command/keypress
           //
-          // if nonzero value is returned then it is an index of the "failed" argument (value of 3 means argv[3] was bad (for values > 0))
-          // value of zero means successful execution, return code <0 means argument number was wrong (missing argument, extra arguments)
+          // if callback returns nonzero value then it is an index of the "failed" argument (value of 3 means argv[3] was bad 
+          // (for values > 0))
+          // value of zero means successful execution, return code <0 means error (see CMD_FAILED, CMD_MISSING_ARG)
+          //
           if (key[i].cb) {
 
             int l;
             MUST_NOT_HAPPEN((l = strlen(argv[0]) - 1) < 0);
 
-            // save command handler (exec_in_background() will need it)
+            // 6. save command handler (exec_in_background() and "exec alias" will need it)
+            // this address can be reused at certain conditions (see cmd_exec())
             aa->gpp = key[i].cb;
+            //VERBOSE(q_print("% Caching GPP handler\r\n"));
 
-            bad = fg ? key[i].cb(argc, argv) : exec_in_background(aa);
+skip_command_lookup:
+            // skipping to the label above assumes:
+            // /i/ is 0 (below there are checks for /key[i].../, so we have to set i in a such way that /key[i]/ is valid pointer, non-null command)
+            // /found/ is /true/
+            // /aa->gpp/ is not NULL
+
+            // 8. Execute
+            bad = fg ? aa->gpp(argc, argv) : exec_in_background(aa);
 
             // TODO: following code lines are duplicated in exec_in_background() branch. Refactor it
             if (bad > 0)
-              q_printf("%% <e>Invalid %u%s argument \"%s\" (\"? %s\" for help)</>\r\n",NEE(bad), bad < argc ? argv[bad] : "FIXME", argv[0]);
+              q_printf("%% <e>Invalid %u%s argument \"%s\" (\"? %s\" for help)</>\r\n",
+                        NEE(bad), 
+                        bad < argc  ? argv[bad] 
+                                    : "<Empty>",
+                        argv[0]);
             else if (bad < 0) {
               if (bad == CMD_MISSING_ARG)
                 q_printf("%% <e>One or more arguments are missing. (\"? %s\" for help)</>\r\n", argv[0]);
               // Keep silent on other error codes which are <0
             }
             else
-              // make sure keywords[i] is a valid pointer (change_command_directory() changes keywords list so keywords[i] might be invalid pointer)
+              // 9. Success
+              // Make sure keywords[i] is a valid pointer (change_command_directory() changes keywords list so keywords[i] might be invalid pointer)
               i = 0;
             break;
           }  // if callback is provided

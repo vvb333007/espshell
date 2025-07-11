@@ -202,9 +202,9 @@ void rw_unlockr(rwlock_t *rw) {
     sem_unlock(rw->sem);
 }
 
-void rw_dump(const rwlock_t *rw) {
-  q_printf("rwlock(%p) : CNT=%d, WREQ=%d\r\n", rw, rw->cnt, rw->wreq);
-}
+//void rw_dump(const rwlock_t *rw) {
+//  q_printf("rwlock(%p) : CNT=%d, WREQ=%d\r\n", rw, rw->cnt, rw->wreq);
+//}
 
 
 // PPA(Number) generates 2 arguments for a printf ("%u%s",PPA(Number)), adding an "s" where its needed:

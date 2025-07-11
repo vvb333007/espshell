@@ -11,7 +11,7 @@
  */
 
 // -- SPI bus --
-
+// TODO: not functional right now. Need an use-case
 #if COMPILING_ESPSHELL
 #if WITH_SPI
 #include <esp32-hal-spi.h>
