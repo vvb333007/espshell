@@ -220,16 +220,21 @@ static void espshell_async_task(void *arg) {
     MUST_NOT_HAPPEN(aa->gpp == NULL);
 
     ret = (*(aa->gpp))(aa->argc, aa->argv);
-    aa->argc = aa->argc0; // TODO: this is a workaround: espshell_command() strips last "&" so here we restore it. it is solely for "exec" command
+    // TODO: this is a workaround: espshell_command() strips last "&" so here we restore it. it is solely for "exec" command
+    // TODO: to be removed soon
+    aa->argc = aa->argc0; 
 
     q_print("\r\n% Finished: \"<i>");
-    userinput_show(aa);
+    userinput_show(aa); // display command name and arguments
     q_print("\"</>, ");
-    q_print(ret == 0 ? "success\r\n" : "failed\r\n");
     
-    if (ret != 0)
+    if (ret != 0) {
       espshell_display_error(ret, aa->argc, aa->argv);
+      q_print("failed\r\n");
+    } else
+      q_print("Ok!\r\n");
   }
+  
   // its ok to unref null pointer
   userinput_unref(aa);
 

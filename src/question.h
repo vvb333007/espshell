@@ -103,7 +103,7 @@ static const char Spaces[41] = {
 };
 
 // "? NAME"
-// display command NAME usage details (e.g. "? pin")
+// Displays a manual page for NAME (e.g. "? pin")
 //
 static int help_command(int argc, char **argv) {
 
@@ -111,12 +111,22 @@ static int help_command(int argc, char **argv) {
   int found = 0;
   const char *prev = "*"; 
 
+  MUST_NOT_HAPPEN(argc < 2);
+
   // go through all matched commands (only name is matched) and print their
   // help lines. hidden commands are ignored
   while (keywords[i].cmd) {
-    if (keywords[i].help || keywords[i].brief) {  //skip hidden commands
+    if (keywords[i].help || keywords[i].brief) {
       if (!q_strcmp(argv[1], keywords[i].cmd)) {
-        // print common header for the first entry
+
+        // Print common header for the first entry (in a group) only:
+        // 1. Help for commands, e.g. "? count" will be printed under 1 header (there are 3 commands "count", see keywords.h)
+        // 2. Ambiguity, like "? c" results in multiple commands match (i.e. count, cpu, camera), so multiple headers 
+        //    will be printed in such cases
+        //
+        // NOTE: commands having same name MUST be grouped together in keywords.h
+        //       moving "count" commands to different locations will result in 3 headers printed.
+        //
         if (q_strcmp(prev, keywords[i].cmd) && keywords[i].brief) {
 
           unsigned int spaces_idx = strlen(keywords[i].brief);
@@ -125,30 +135,36 @@ static int help_command(int argc, char **argv) {
           // calculate index to Spaces to get our padding string
           spaces_idx = (spaces_idx + 8 >= sizeof(Spaces) - 1) ? sizeof(Spaces) - 1 // index points to '\0', i.e. empty padding string
                                                               : spaces_idx + 8;    
-          // Print header. It is printed once for repeating (/found/ ==  1) commands
+          
           q_printf("\r\n%%<r> -- %s --%s</>\r\n", 
                     keywords[i].brief,    // Header text is derived from /.brief/
-                    &Spaces[spaces_idx]); // Padding with spaces, so our <r> tag will be visible
+                    &Spaces[spaces_idx]); // Padding with spaces, so our "<r>everse video" tag will be visible on the screen
         }
 
         // Print help page
         q_printf("%s\r\n\r\n",keywords[i].help ? keywords[i].help                        // use /.help/ if it is exists
                                                : (keywords[i].brief ? keywords[i].brief  // otherwise use /.brief/
-                                                                    : "Help page is missing. Please report it to the author"));
-        // Disable header printing for subsequent commands on the list
+        /* This one can not happen --------------> */               : "Help page is missing. Please report it to the author"));
+        
         found++;
       }
     }
     i++;
   }
-  // If we didn't find anything, return 1 (index of a failed argument)
-  return found ? 0 : 1;
+  
+  if (!found) {
+    q_printf("%% Sorry, no manual entry for \"%s\"\r\n"
+             "%% Type \"<i>?</>\" and press <Enter> to see what is available\r\n" ,argv[0]);
+    return CMD_FAILED;
+  }
+
+  return 0;
 }
 
 
 
 //"?"
-// Display commands list for currently used command directory. There are few "command directories": main one,
+// Display commands list for currently used command directory. There are few "command directories": main ,
 // uart, i2c, sequence, files, ...
 // Every command directory has its own set of commands, which is displayed by entering "?" and pressing <Enter>
 //
@@ -243,7 +259,7 @@ static bool help_page_for_inputline(unsigned char *raw) {
 static int cmd_question(int argc, char **argv) {
 
   return argc < 2 ? help_command_list(argc, argv)
-                  : (!strcmp(argv[1], "keys") ? help_keys(argc, argv)
+                  : (!strcmp(argv[1], "keys") ? help_keys(argc, argv)       // strcmp, not q_strcmp: we don't want false matches
                                               : help_command(argc, argv));
 }
 #endif  // WITH_HELP

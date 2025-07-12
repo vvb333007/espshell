@@ -907,6 +907,11 @@ static int cmd_pin_loop(int argc, char **argv,unsigned int pin, unsigned int *st
   // TODO: make "infinite" to be real infinity, not just big number
   *count = q_atol(argv[i], (unsigned int)(-1));
 
+  // TODO: should we remove this? Printing creates a huge delay on a first pass. We can detect the loop before starting
+  //       processing and show hint at that time. This delay can affect delay-sensetive "pin" commands
+  //
+  // TODO: should we make "loop" keyword be available for any command, like "&" symbol?
+  //       something like "@10" == "repeat 10 times",  "@" == "repeat infinitely" ?
   HELP(q_printf("%% Repeating whole command %u times%s\r\n", *count - 1,is_foreground_task() ? ", press <Enter> to abort" : ""));
 
   return 0;
@@ -922,7 +927,7 @@ static int cmd_pin(int argc, char **argv) {
 
   unsigned int  flags = 0, // Flags to set (i.e. OUTPUT ,INPUT, OPEN_DRAIN, PULL_UP, PULL_DOWN etc)
                 i = 2,     // Argument, we start our processing from (0 is the command itself, 1 is a pin number)
-                pin;       // Pin number, currently processed by the command
+                pin;       // Pin number, currently processed by the command (1 command can have multiple pin number statements)
 
   bool  informed = false,               // Did we inform user on how to interrupt this command?
         is_fore = is_foreground_task(); // Foreground or background task? 
@@ -935,7 +940,7 @@ static int cmd_pin(int argc, char **argv) {
     return 0;
   }
 
-  //first argument must be a decimal number: a GPIO number
+  //first argument must be a GPIO number
   if (!pin_exist((pin = q_atol(argv[1], DEF_BAD)))) 
     return 1;
 
