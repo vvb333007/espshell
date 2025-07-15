@@ -40,6 +40,7 @@ struct argcargv {
 typedef struct argcargv argcargv_t;
 
 // Mutex to protect reference counters of argcargv_t structure.
+// TODO: refactor to get rid of mutexes; make accesses lockless
 static mutex_t argv_mux = MUTEX_INIT;
 
 // Increase refcounter on argcargv structure. a == NULL is ok
@@ -150,7 +151,7 @@ void userinput_show(argcargv_t *aa) {
 }
 
 // Redisplay user input & prompt. 
-//
+// TODO: unused for now: causes glitches; have to dive deeper in editline lib
 void userinput_redraw() {
   redisplay(); 
   TTYflush();

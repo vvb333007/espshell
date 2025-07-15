@@ -11,29 +11,40 @@
  */
 
 // -- Command Aliases --
+//
 // A sequence of shell commands with assigned name to it called a "command alias", It is a shortcut to execute 
 // multiple commands by entering one new command.
 //
+// Aliases are created but never destroyed: user can remove alias content, but alias descriptor itself will live
+// forever. Reason for this is to keep pointers to aliases valid all the time. Other options (use sync objects, 
+// mutexes) is not viable - we want FAST access to aliases, we want a pointer to the alias, not its name, nor we want mess
+// with locking. Since alias' primary use is to be executed as part of "if" and "every" commands (interrupts!), its 
+// processing must have minimal overhead
+//
+// Once created, aliases can be executed either with command "exec" or, as a part of an event 
+// (see commands "if" and "every", ifcond.h)
 
 #if COMPILING_ESPSHELL
 
 // Helper macro for handlers (cmd_... ) : get a pointer to currently edited alias
+// Pointer resides in the /Context/
 #define ALIAS(_X) \
   struct alias *_X = ((struct alias *)Context); \
   MUST_NOT_HAPPEN(Context == 0)
 
-// Aliases DB: SL list
+// Aliases database (a list):
+//
 static struct alias {
-  struct alias *next;   // must be first field to be compatible with generic lists routines
-  rwlock_t      rw;     // RW lock to protect /lines/ list
-  argcargv_t *lines;    // actual alias content (a list of argcargv_t *)
-  char name[0];         // asciiz alias name
+  struct alias *next;    // must be first field to be compatible with generic lists routines
+  rwlock_t      rw;      // RW lock to protect /lines/ list
+  argcargv_t   *lines;   // actual alias content (a list of argcargv_t *)
+  char          name[0]; // asciiz alias name
 } *Aliases = NULL;
 
 
-// Add new "line" to the alias. By line we mean user input that was already processed to the form of argcargv_t
+// Add a new "line" to the alias. By line we mean user input that was already processed to the form of argcargv_t
 // We just store pointer to argcargv_t and increase its reference counter. We use internal argcargv's /->next/ field
-// to link AA together
+// to link argcargv_t structures together. 
 //
 static bool alias_add_line(argcargv_t **s,  argcargv_t *aa) {
   if (s && aa) {
@@ -55,9 +66,12 @@ static bool alias_add_line(argcargv_t **s,  argcargv_t *aa) {
   return false;
 }
 
-// lines in an alias are numbered from 1.
-// line number 0 means "last line"
-// line number -1 means "all lines"
+// Lines in an alias are numbered from 1 and up.
+// When deleting, 
+// line number 0 means "last line in the alias" 
+// line number -1 means "all lines in the alias"
+// TODO: change 0 and -1, because -1 looks more natural when deleting the last line
+//
 static int alias_delete_line(argcargv_t **s, int nline) {
 
   int del = 0; // number of strings deleted
@@ -69,7 +83,7 @@ static int alias_delete_line(argcargv_t **s, int nline) {
     while (curr) {
 
       if ( nline == i ||                    // exact line match, or
-          (!nline && curr->next == NULL) ||   // last line, or
+          (!nline && curr->next == NULL) || // last line, or
           nline < 0) {                      // every line
 
           // Unlink /curr/
@@ -95,12 +109,14 @@ static int alias_delete_line(argcargv_t **s, int nline) {
 
 // "show alias NAME"
 // "list"
-//
+// TODO: refactor to use userinput_show()
 static int alias_show_lines(argcargv_t *s) {
   int i = 0,j;
   const char *pre = "";
   for ( ; s; s = s->next) {
-    q_printf("%% %u: %s%s", ++i, pre, s->argv[0]);
+#pragma GCC diagnostic ignored "-Wformat"      
+    q_printf("%% % 3u: %s%s", ++i, pre, s->argv[0]);
+#pragma GCC diagnostic warning "-Wformat"      
     for (j = 1; j < s->argc; j++) {
       q_print(" ");
       q_print(s->argv[j]);
@@ -111,14 +127,13 @@ static int alias_show_lines(argcargv_t *s) {
     if (!q_strcmp(s->argv[0],"exit"))
       pre = "";
     else {
-      const char *subd[] = {"alias", "iic", "uart", "sequence", "files", "spi", NULL };
       j = 0;
-      while(subd[j]) {
-        if (!q_strcmp(s->argv[0],subd[j]))
+      while(Subdirs[j].name) {
+        if (!q_strcmp(s->argv[0],Subdirs[j].name))
           break;
         j++;
       }
-      if (subd[j] || // Any of command directories
+      if (Subdirs[j].name || // Any of command directories?
           (s->argc > 1 && !q_strcmp(s->argv[0],"camera") && (!q_strcmp(s->argv[1],"settings")))) // "camera settings" directory
         pre = "  ";
     }
@@ -317,7 +332,7 @@ static int cmd_exec(int argc, char **argv) {
     if ((al = alias_by_name(argv[i])) != NULL)
       alias_exec(al);
     else
-      q_printf("%% No alias named \"%s\"\r\n",argv[i]);
+      q_printf("%% \"%s\" : no such alias\r\n",argv[i]);
   
   return 0;
 }

@@ -236,7 +236,15 @@ static void __attribute__((constructor)) pin_cache_gpios() {
 #if CONFIG_IDF_TARGET_ESP32
         if (p > 33)
           reserved = 0;
-#endif        
+#endif
+        // On ESP32S3 with PSRAM pins 33..37 are usually used to access OPI PSRAM        
+        // However, at the time of pin_cache_gpios() these pins are not yet allocated, so we mark them manually.
+        // It works in most but not all cases. Anyway it is all JFYI only: you can use reserved pins as you wish
+        // TODO: add other targets
+#if CONFIG_IDF_TARGET_ESP32S3
+        if (p > 32 && p < 38)
+          reserved = 1;
+#endif
         if (reserved)
           Reserved |= 1ULL << p;
 
@@ -354,10 +362,10 @@ static bool pin_set_iomux_function(unsigned char pin, unsigned char function) {
     return false;
 
   // Special case for a non-existent function 0xff: reset pin, execute IDF's gpio_pad_select_gpio and return
+  // TODO: to be removed
   if (function == PIN_FUNC_PAD_SELECT_GPIO) {
     gpio_reset_pin(pin);
     gpio_pad_select_gpio(pin);
-    VERBOSE(q_print("GPIO pad reset, select_gpio\r\n"));
     return true;
   }
   
@@ -543,6 +551,14 @@ static void pin_save(int pin) {
   if (od) Pins[pin].flags |= OPEN_DRAIN;
 }  
 
+// Reset & set to GPIO_Matrix 
+// Invokes PeriMan to be in sync with ArduinoCore
+//
+static void pin_reset(int pin) {
+    pinMode(pin, 0); // Trigger Arduino Core to call deinit() and release GPIO
+    gpio_reset_pin(pin);
+    pin_set_iomux_function(pin, PIN_FUNC_GPIO);
+}
 // Load pin state from Pins[] array
 // Attempt is made to restore GPIO Matrix connections however it is not working as intended
 //
@@ -872,11 +888,16 @@ static int cmd_pin_matrix(int argc, char **argv,unsigned int pin, unsigned int *
     // advance to next keyword (skip [in|out] and SIGNAL_ID)
     *start += 2;
   } else {
-    VERBOSE(q_print("% matrix keyword but no signals: defaulting to SIG_GPIO_OUT_IDX\r\n"));
-    // TODO: disconnect IN signal by reconnecting it to special pin
-    //gpio_matrix_in(GPIO_MATRIX_CONST_ZERO_INPUT, Signals routed to pin, false);
+    // Disconnect IN signal by reconnecting them to a special pin (Const0)
+    // Run through all signals, checking if they are connected to the pin. If they are, reconnect them
+    for (i = 0; i < SIG_GPIO_OUT_IDX; i++)
+      if (gpio_ll_get_in_signal_connected_io(&GPIO, i) == pin)
+        gpio_matrix_in(GPIO_MATRIX_CONST_ZERO_INPUT, i, false);
+    
+    // Disconnect OUT signal, by attaching new "Simple GPIO Output" signal
     gpio_matrix_out(pin, SIG_GPIO_OUT_IDX, false, false);
   }
+  
 
   return 0;
 }
@@ -917,13 +938,13 @@ static int cmd_pin_loop(int argc, char **argv,unsigned int pin, unsigned int *st
   return 0;
 }
 
-
+#ifdef LEGACY_CMD_PIN
 // "pin NUM arg1 arg2 .. argn"
 //
 // Big fat "pin" command. Processes multiple arguments
 // TODO: do some sort of caching in case of a looped commands: we don't need all these q_atol() and q_atrcmp() for the second, third whatever pass
 //
-static int cmd_pin(int argc, char **argv) {
+static int cmd_pin2(int argc, char **argv) {
 
   unsigned int  flags = 0, // Flags to set (i.e. OUTPUT ,INPUT, OPEN_DRAIN, PULL_UP, PULL_DOWN etc)
                 i = 2,     // Argument, we start our processing from (0 is the command itself, 1 is a pin number)
@@ -1025,9 +1046,9 @@ static int cmd_pin(int argc, char **argv) {
           return ret;
       } else
       // 13. "pin X hold". Shortened "ho"
-      if (!q_strcmp(argv[i], "hold")) gpio_hold_en((gpio_num_t)pin); else
+      if (!q_strcmp(argv[i], "hold")) { gpio_hold_en((gpio_num_t)pin); gpio_deep_sleep_hold_en(); }  else
       // 14. "pin X release". Shortened "rel" (interferes with "read")
-      if (!q_strcmp(argv[i], "release")) gpio_hold_dis((gpio_num_t)pin); else
+      if (!q_strcmp(argv[i], "release")) { gpio_deep_sleep_hold_dis(); gpio_hold_dis((gpio_num_t)pin); }  else
       // 15. "pin X load". Shortened "loa" (interferes with "low")
       if (!q_strcmp(argv[i], "load")) pin_load(pin); else
       // 16. "pin X iomux [NUMBER | gpio]" . Shortened "io"
@@ -1077,92 +1098,219 @@ static int cmd_pin(int argc, char **argv) {
   } while (--count > 0);  // repeat if "loop X"
   return 0;
 }
+
+
+#else // New handler
+
+// "pin NUM arg1 arg2 .. argn"
+//
+// Big fat "pin" command. Processes multiple arguments
+// TODO: do some sort of caching in case of a looped commands: we don't need all these q_atol() and q_atrcmp() for the second, third whatever pass
+//
+
+static int cmd_pin2(int argc, char **argv) {
+
+// Shortcut to access individual characters in argv[i]
+// First character is guaraneed by userinput_tokenize() : tokens are at least 1 character long
+// Second character is guaranteed : if w have only 1 character then second character is '\0'
+#define X(_Index) argv[i][_Index]
+
+  unsigned int  flags = 0, // Flags to set (i.e. OUTPUT ,INPUT, OPEN_DRAIN, PULL_UP, PULL_DOWN etc)
+                i = 2,     // Argument, we start our processing from (0 is the command itself, 1 is a pin number)
+                pin;       // Pin number, currently processed by the command (one command can have multiple pin number statements)
+
+  bool  informed = false,               // Did we inform user on how to interrupt this command?
+        is_fore = is_foreground_task(); // Foreground or background task? 
+
+  unsigned int count = 1; // Command loop count: default value is "run once"
+
+  // "pin" without arguments shows a valid GPIO range
+  if (argc < 2) {
+    pin_not_exist_notice(99);
+    return 0;
+  }
+
+  //first argument must be a GPIO number
+  if (!pin_exist((pin = q_atol(argv[1], DEF_BAD)))) 
+    return 1;
+
+  // Repeat whole "pin" command /count/ times; /count/ can be set by the "loop" keyword
+  while (count-- > 0) {
+
+    // Run through "pin NUM arg1, arg2 ... argN" arguments, looking for keywords to execute.
+    // Abort if there were errors during next keywords processing. TODO: make "abort" be selectable
+    while (i < argc) {
+
+      int ret;
+      bool has3;  // do we have 3 letters of the keyword?
+      unsigned char level;  // used by "low", "high"
+
+      // X() is the currently processed argv element. X(I) means Ith character of currently processed argv;
+      // We want to be sure in just first 3 characters: a minimum which is enough to distinguish between
+      // all "pin" keywords
+      
+      has3 = (X(1) && X(2));
+
+      // Decode next keyword by looking at certain characters
+      switch (X(0)) {
+        // A pin number
+        case '0' ... '9': 
+                  if (!pin_exist_silent((pin = /*q_atol(argv[i], DEF_BAD)*/atoi2(argv[i]))))
+                    return i;
+                  break;
+        // aread
+        case 'a' : 
+                  q_printf("%% GPIO%d : analog %d\r\n", pin, analogRead(pin));
+                  break;
+        // down 
+        case 'd' : 
+                  if (X(1) == 'o') {
+                    pinForceMode(pin, (flags |= PULLDOWN));
+                  } else {
+        // delay TIME_MS (Creates *interruptible* delay for X milliseconds.)
+
+                    int duration;
+
+                    if ((i + 1) >= argc) {
+                      HELP(q_print("% <e>Delay value expected after keyword \"delay\"</>\r\n"));
+                      return i;
+                    }
+                    i++;
+
+                    duration = atoi(argv[i]);
+                    // Display a hint for the first time when delay is longer than 5 seconds.
+                    // Any key works instead of <Enter> but Enter works in Arduino Serial Monitor
+                    if (!informed && is_fore && (duration > TOO_LONG)) {
+                      informed = true;
+                      HELP(q_print("% <g>Hint: Press [Enter] to interrupt the command</>\r\n"));
+                    }
+                    // Was interrupted by a keypress or by the "kill" command? Abort whole command then.
+                    if (delay_interruptible(duration) != duration) {
+                      HELP(q_printf("%% Command \"%s\" has been interrupted\r\n", argv[0]));
+                      // TODO: return CMD_FAILED ?
+                      return 0;
+                    }
+                  }
+                  break;
+        // hold
+        case 'h' : 
+                  if (unlikely(X(1) == 'o')) {
+                    gpio_hold_en((gpio_num_t)pin);
+                    gpio_deep_sleep_hold_en();
+                  } else {
+        // high
+                    level = 1;
+    pin_set_level:
+                    if (pin_is_input_only_pin(pin)) {
+                      q_printf("%% <e>Pin %u is **INPUT-ONLY**, can not be set \"%s\"</>\r\n", pin, argv[i]);
+                      return i;
+                    }
+                    // use pinForceMode/digitalForceWrite to not let the pin to be reconfigured (bypass PeriMan)
+                    // pinForceMode is not needed because ForceWrite does it
+                    flags |= OUTPUT_ONLY;
+                    digitalForceWrite(pin, level);
+                  }
+                  break;
+        // in 
+        case 'i' :
+                  if (likely(X(1) != 'o')) {
+                    pinForceMode(pin, (flags |= INPUT));
+                  } else {
+        // iomux [FUNCTION | gpio]
+                    unsigned char function = 0; 
+
+                    // if we have extra arguments, then treat number as IO_MUX function, treat text as special case. 
+                    if ((i+1) < argc)
+                      function = q_atol(argv[++i],PIN_FUNC_PAD_SELECT_GPIO); 
+                    pin_set_iomux_function(pin, function);
+                  }
+                  break;
+        // loop
+        case 'l' : 
+                  if (has3 && X(2) == 'o') {
+                    if ((ret = cmd_pin_loop(argc,argv,pin,&i,&count)) != 0)
+                      return ret;
+                    argc -= 2; // Strip "loop COUNT" arguments. We read them only once and 
+                               // do not want to read same number on the next pass
+                  } else if (has3 && X(2) == 'a') {
+        // load
+                    pin_load(pin);
+                  } else {
+        // low
+                    level = 0;
+                    goto pin_set_level;
+                  }
+                  break;
+        // matrix [in|out NUMBER] | gpio                  
+        case 'm' : 
+                  if ((ret = cmd_pin_matrix(argc,argv,pin,&i)) != 0)
+                    return ret;
+                  break;
+        // out
+        case 'o' : 
+                  if (likely(X(1) != 'p'))
+                    flags |= OUTPUT_ONLY;
+                  else
+        // open
+                    flags |= OPEN_DRAIN;
+                  pinForceMode(pin, flags);
+                  break;
+
+        // pwm FREQ DUTY                  
+        case 'p' : 
+                  if ((ret = cmd_pin_pwm(argc,argv,pin,&i)) != 0)
+                    return ret;
+                  break;
+        // release
+        case 'r' : 
+                  if (has3 && X(2) == 'l') {
+                    gpio_deep_sleep_hold_dis();
+                    gpio_hold_dis((gpio_num_t)pin);
+                  } else if (has3 && X(2) == 's')
+        // reset
+                    pin_reset(pin);
+                  else
+        // read
+                    q_printf("%% GPIO%d : digital %d\r\n", pin, digitalForceRead(pin));
+                  break;
+
+        // seq NUMBER
+        case 's' :
+                  if (X(1) == 'e') {
+                    if ((ret = cmd_pin_sequence(argc,argv,pin,&i)) != 0)
+                      return ret;
+                  } else
+        // save
+                    pin_save(pin);
+                  break;
+        // toggle
+        case 't' :
+                  level = digitalForceRead(pin) ^ 1;
+                  goto pin_set_level;
+        // up
+        case 'u' : 
+                  pinForceMode(pin, (flags |= PULLUP));
+                  break;
+                  
+        // all other stuff which we don't understand
+        default: return i;
+      };
+      i++;  // next keyword
+    }       // big fat "while (i < argc)"
+
+    // Give a chance to cancel whole command if it is looped, before going for the next cycle
+    // Anykey press, but only if it is a foreground process: bg commands are killed by "kill"
+    if (is_fore)
+      if (anykey_pressed()) {
+        HELP(q_print("% Key pressed, aborting..\r\n"));
+        break;
+      }
+
+    // prepare to start over again from argv[1]      
+    i = 1;  
+  } // while (count-- > 0)
+  return 0;
+#undef X
+}
+#endif //legacy or new code
 #endif // #if COMPILING_ESPSHELL
-
-#if 0
-// TODO: refactor the above monster /if else/ statement in cmd_pin(),
-//       Template for cmd_pin() refactoring:
-  switch (argv[i][0]) {
-    case 'p' : // pwm FREQ DUTY
-              if ((ret = cmd_pin_pwm(argc,argv,pin,&i)) != 0)
-                return ret;
-              break;
-    case 'u' : // up
-              pinForceMode(pin, (flags |= PULLUP));
-              break;
-    case 'a' : // aread
-              break;
-    case 'm' : // matrix [in|out NUMBER]
-              break;
-
-    case 'd' : // down 
-              if (argv[i][1] == 'o') {
-                pinForceMode(pin, (flags |= PULLDOWN));
-              } else {
-              // delay TIME_MS
-
-              }
-              break;
-    case 's' : // seq NUMBER
-              if (argv[i][1] == 'e') {
-
-              } else
-              // save
-                pin_save(pin);
-
-              
-              break;
-    case 'i' :// in 
-              if (likely(argv[i][1] != 'o')) {
-                pinForceMode(pin, (flags |= INPUT));
-              } else {
-              // iomux [FUNCTION | gpio]
-              }
-              break;
-    case 'o' : // out
-              if (likely(argv[i][1] != 'p'))
-                pinForceMode(pin, (flags |= OUTPUT));
-              else
-              // open
-                pinForceMode(pin, (flags |= OPEN_DRAIN));
-              
-              
-              break;
-    case 'l' : // loop
-              if (argv[i][1] && argv[i][2] == 'o') {
-
-              } else if (argv[i][1] && argv[i][2] == 'a') {
-              // load
-                pin_load(pin);
-              } else {
-                // low
-                goto pin_set_level;
-              }
-              break;
-    case 'h' : // hold
-              if (unlikely(argv[i][1] == 'o')) {
-
-              } else {
-              // high (or low, via goto above)
-pin_set_level:
-                char level = (argv[i][0] == 'h' ? HIGH : LOW);  // gcc should fold this to /level = (argv[i][0] == 'h')/
-                if (pin_is_input_only_pin(pin)) {
-                  q_printf("%% <e>Pin %u is **INPUT-ONLY**, can not be set \"%s\"</>\r\n", pin, argv[i]);
-                  return i;
-                }
-                // use pinForceMode/digitalForceWrite to not let the pin to be reconfigured (bypass PeriMan)
-                // pinForceMode is not needed because ForceWrite does it
-                flags |= OUTPUT_ONLY;
-                digitalForceWrite(pin, level);
-              }
-              break;
-    case 'r' : // release
-              if (unlikely(argv[i][1] && argv[i][2] == 'l')) {
-
-              } else {
-                // read
-              }
-              break;
-  };
-#endif    
-

@@ -174,6 +174,12 @@ void rw_unlockw(rwlock_t *rw) {
 // 
 // Dominant type of lock
 //
+
+// probably a race condition,results in erroneous sem_lock(), but it is not critical,
+// just one reader will be blocked as if he is writer
+
+//#define ALT_VER // Alternative version to address possible race conditions
+
 void rw_lockr(rwlock_t *rw) {
 
   int cnt;
@@ -181,30 +187,46 @@ void rw_lockr(rwlock_t *rw) {
   // Wait until there are no readers and no writers and no writelock request is queued
   // Let "writer" task to do its job
   //
-  while ((cnt = rw->cnt) < 0  || rw->wreq)
+#ifdef ALT_VER
+  while (atomic_load_explicit(&rw->cnt, memory_order_acquire) < 0 ||
+         atomic_load_explicit(&rw->wreq, memory_order_acquire) > 0)
+#else
+  while ((cnt = rw->cnt) < 0  ||
+          rw->wreq)
+#endif
     q_yield(); 
 
-  // Increment READERS count
-  rw->cnt++;
+  // Atomically increment READERS count
+#if ALT_VER
+  cnt = atomic_fetch_add_explicit(&rw->cnt, 1, memory_order_acq_rel);
+#else
+  rw->cnt++; 
+#endif
 
   // First of readers acquires rw->sem, so subsequent rw_lockw() will block immediately
   // If concurrent wr_lockw() obtains /sem/ just after rw->cnt++ then we simply block here,
   // for a tiny amount of time while rw_lockw() goes through its "try_again:"
   //
   if (!cnt)
-    sem_lock(rw->sem);
+      sem_lock(rw->sem);
 }
 
 // Reader unlock
 //
 void rw_unlockr(rwlock_t *rw) {
+#if ALT_VER
+  if (atomic_fetch_sub(&rw->cnt, 1) == 1)
+#else
   if (0 == --rw->cnt)
+#endif
     sem_unlock(rw->sem);
 }
 
-//void rw_dump(const rwlock_t *rw) {
-//  q_printf("rwlock(%p) : CNT=%d, WREQ=%d\r\n", rw, rw->cnt, rw->wreq);
-//}
+
+
+void rw_dump(const rwlock_t *rw) {
+  q_printf("rwlock(0x%p) : cnt=%d, wreq=%lu\r\n", rw, rw->cnt, rw->wreq);
+}
 
 
 // PPA(Number) generates 2 arguments for a printf ("%u%s",PPA(Number)), adding an "s" where its needed:
@@ -597,7 +619,7 @@ static void q_tolower(char *p) {
 
 // Check if given ascii string represents a decimal number. Ex.: "12345", "-12"
 // "minus" sign is only accepted at the beginning (must be 1st symbol)
-//
+// Can be called with p = NULL, it is normal
 static bool isnum(const char *p) {
   if (p && *p) {
     if (*p == '-')
@@ -862,6 +884,33 @@ static inline int q_atoi(const char *p, int def) {
   return isnum(p) ? atoi(p) : def;
 }
 
+#if WITH_IFCOND
+// "1000" "seconds"
+// "49" "days"
+// "day" ""
+// "minute" ""
+
+
+static unsigned int q_rtime(const char *left, const char *right) {
+  unsigned int val = 1;
+  if (left && *left) {
+    if (isnum(left))
+      val = atol(left);
+    else
+      right = left;
+  
+    if (!q_strcmp(right,"millis")) val *= 1; else
+    if (!q_strcmp(right,"seconds")) val *= 1000; else
+    if (!q_strcmp(right,"minutes")) val *= 60*1000; else
+    if (!q_strcmp(right,"hours")) val *= 3600*1000; else
+    if (!q_strcmp(right,"days")) val *= 24*3600*1000; else return 0;
+
+    return val;
+  }
+  return 0;
+}
+#endif //WITH_IDCOND
+
 // Safe conversion to /float/ type. Returns /def/ if conversion can not be done
 //
 static inline float q_atof(const char *p, float def) {
@@ -885,8 +934,8 @@ static inline float q_atof(const char *p, float def) {
 // RATIONALE
 // ---------
 // It is implemented as byte-by-byte compare which is very efficient way to compare **short** strings
-// Longer strings are better to be compared as 32 bit chunks but this requires some calculation, string length measurement and so on
-// making this approach very slow for typical 2-4 letter strings
+// Longer strings are better to be compared as 32 bit chunks but this requires some calculation, string 
+// length measurement and so on making this approach very slow for typical 2-4 letter strings
 //
 static int IRAM_ATTR q_strcmp(const char *partial, const char *full) {
 

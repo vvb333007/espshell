@@ -131,7 +131,7 @@
 #define xstr(s) ystr(s)   
 #define ystr(s) #s
 
-#define BREAK_KEY 3
+#define BREAK_KEY 3    // Ctrl+C code
 
 // Special pin names.
 #define BAD_PIN    255 // Don't change! Non-existing pin number. 

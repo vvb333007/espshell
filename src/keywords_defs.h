@@ -61,6 +61,7 @@ struct keywords_t {
           "% Has no effect when executed in main command mode unless typed twice\r\n" \
           "% (i.e. \"exit exit\"): in this case ESPShell closes and stops its task"), \
     HELPK("Exit") }, \
+  /* Last entry must be all-zeros */\
   { \
     NULL, NULL, 0, NULL, NULL \
   }
@@ -74,6 +75,23 @@ struct keywords_t {
 #define CMD_SUCCESS      0    // unused. code uses "0" instead.
 #define CMD_MISSING_ARG -1
 #define CMD_FAILED      -2    // explanation is printed by handler, espshell_command() keeps silent
+
+// A macro to declare a keywords array:
+// KEYWORDS_DECL(keywords_main) {
+//  {} , {} ...
+// };
+//
+static void keywords_register(const struct keywords_t *key, const char *name);
+
+#define KEYWORDS_DECL(_Key) \
+  static const struct keywords_t keywords_ ## _Key [] =
+
+#define KEYWORDS_REG(_Key) \
+ /* Each keywords array has its own constructor which registers this particular array */ \
+  void __attribute__((constructor)) __init_kwd_ ## _Key () { \
+    keywords_register(keywords_ ## _Key, # _Key); \
+  } \
+
 
 #endif // #if COMPILING_ESPSHELL
 

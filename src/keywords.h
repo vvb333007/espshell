@@ -104,7 +104,8 @@ static int cmd_nap(int, char **);
 // pin-realated commands: pwm, pulse counter and pin
 static int cmd_pwm(int, char **);
 static int cmd_count(int, char **);
-static int cmd_pin(int, char **);
+//static int cmd_pin(int, char **);
+static int cmd_pin2(int, char **);
 
 // RMT sequences
 static int cmd_seq_if(int, char **);
@@ -172,7 +173,8 @@ static int cmd_alias_asterisk(int, char **);
 //
 
 #if WITH_ALIAS
-static const struct keywords_t keywords_alias[] = {
+
+KEYWORDS_DECL(alias) {
 
   KEYWORDS_BEGIN
 
@@ -217,13 +219,14 @@ static const struct keywords_t keywords_alias[] = {
     NULL, NULL, 0, NULL, NULL
   }
 };
+KEYWORDS_REG(alias)
 #endif //WITH_ALIAS
 
 
 // UART commands.
 // These are available after executing "uart 2" (or any other uart interface)
 //
-static const struct keywords_t keywords_uart[] = {
+KEYWORDS_DECL(uart) {
 
   KEYWORDS_BEGIN // defined in keywords_defs.h, contains common entries, like "exit" or "?"
 
@@ -286,10 +289,11 @@ static const struct keywords_t keywords_uart[] = {
   // contains common entries and a NULL entry at the end
   KEYWORDS_END
 };
+KEYWORDS_REG(uart);
 
 //I2C subderictory keywords
 //
-static const struct keywords_t keywords_i2c[] = {
+KEYWORDS_DECL(i2c) {
 
   KEYWORDS_BEGIN
 
@@ -336,11 +340,12 @@ static const struct keywords_t keywords_i2c[] = {
 
   KEYWORDS_END
 };
+KEYWORDS_REG(i2c)
 
 #if WITH_SPI
 //spi subderictory keywords list
 //
-static const struct keywords_t keywords_spi[] = {
+KEYWORDS_DECL(spi) {
 
   KEYWORDS_BEGIN
 
@@ -375,11 +380,12 @@ static const struct keywords_t keywords_spi[] = {
 
   KEYWORDS_END
 };
+KEYWORDS_REG(spi)
 #endif //WITH_SPI
 
 //'sequence' subderictory keywords list
 //
-static const struct keywords_t keywords_sequence[] = {
+KEYWORDS_DECL(sequence) {
 
   KEYWORDS_BEGIN
 
@@ -463,12 +469,13 @@ static const struct keywords_t keywords_sequence[] = {
 
   KEYWORDS_END
 };
+KEYWORDS_REG(sequence)
 
 #if WITH_FS
 // Filesystem commands. this commands subdirectory is enabled
 // with the "files" command /cmd_files_if()/
 //
-static const struct keywords_t keywords_files[] = {
+KEYWORDS_DECL(files) {
 
   KEYWORDS_BEGIN
 
@@ -665,20 +672,21 @@ static const struct keywords_t keywords_files[] = {
 
   KEYWORDS_END
 };
+KEYWORDS_REG(files)
 #endif  //WITH_FS
 
 // root directory commands
 // These commands are available immediately after espshell startup, they are also available inside of
 // of any other subderictory
 //
-static const struct keywords_t keywords_main[] = {
+KEYWORDS_DECL(main) {  
 
   KEYWORDS_BEGIN
 
   { "uptime", cmd_uptime, NO_ARGS,
     HELPK("% \"<b>uptime</>\"\r\n"
           "%\r\n"
-          "% Shows time passed since last boot; shows restart cause"), "System uptime" },
+          "% Shows time passed since the last boot; shows restart cause"), "System uptime" },
 
   // cpu FREQ
   { "cpu", cmd_cpu, 1,
@@ -751,6 +759,8 @@ static const struct keywords_t keywords_main[] = {
           "%\r\n"
           "% Enter I2C interface configuration mode (i2c0, i2c1, ...)\r\n"
           "% Ex.: iic 0 - configure/use interface I2C0"), "I2C commands" },
+  // alias for iic        
+  { "i2c", cmd_i2c_if, 1, HIDDEN_KEYWORD },
    
 
 #if WITH_ALIAS
@@ -895,17 +905,28 @@ static const struct keywords_t keywords_main[] = {
   // Switch espshell's input to another UART
   { "tty", cmd_tty, MANY_ARGS, HIDDEN_KEYWORD },
 
-  { "echo", cmd_echo, 1,
-    HELPK("% \"<b>echo</> [<i>on | off | silent</>]\"\r\n"
-          "%\r\n"
-          "% Echo user input on/off (default is on)\r\n"
-          "% Without arguments displays current echo state\r\n"), 
-    HELPK("Enable/Disable user input echo") },
-
   { "echo", cmd_echo, NO_ARGS, HIDDEN_KEYWORD },  //hidden command, displays echo status
 
+  { "echo", cmd_echo, MANY_ARGS,
+    HELPK("% \"<b>echo</> <i>on | off | silent</>\"\r\n"
+          "% \"<b>echo</> [<o>-n</>] TEXT\"\r\n"
+          "% \"<b>echo</>\"\r\n"
+          "%\r\n"
+          "% User input echo / output control (default is on)\r\n"
+          "% Executed without arguments displays current echo state.\r\n"
+          "% Can be used to display TEXT as well\r\n"
+          "% Examples:\r\n"
+          "%  <i>echo on</>               : enable user input echo\r\n"
+          "%  <i>echo off</>              : disable user input echo\r\n"
+          "%  <i>echo silent</>           : disable all espshell output\r\n"
+          "%  <i>echo Hello, World!</>    : display \"Hello, World!\\r\\n\"\r\n"
+          "%  <i>echo -n Hello, World!</> : display \"Hello, World!\""), 
+    HELPK("Enable/Disable user input echo") },
+
+  
+
   // 0 and 1 arg "pin" commands are declared first, because cmd_pin() has MANY_ARGS and will match any pin command otherwhise
-  { "pin", cmd_pin, NO_ARGS,
+  { "pin", cmd_pin2, NO_ARGS,
     HELPK("% \"<b>pin</>\"\r\n"
           "%\r\n"
           "% Display available/reserved pins, general GPIO information\r\n"
@@ -919,7 +940,7 @@ static const struct keywords_t keywords_main[] = {
           "% Ex.: \"pin 2\" - show GPIO2 information"), 
     NULL },
 
-  { "pin", cmd_pin, MANY_ARGS,
+  { "pin", cmd_pin2, MANY_ARGS,
     HELPK("% \"<b>pin</> <i>PIN_NUM</> [<o>ARG1 | ARG2 | ... | ARGn]*</>\"\r\n"
           "%\r\n"
           "% Manipulate pin (GPIO) state, configuration, level, signal routing, etc\r\n"
@@ -1115,6 +1136,7 @@ static const struct keywords_t keywords_main[] = {
 
   KEYWORDS_END
 };
+KEYWORDS_REG(main);
 
 #if WITH_ESPCAM
 // Commands for dealing with video camera (ai-thinker, m5stack, dfrobot etc or custom)
@@ -1123,7 +1145,7 @@ static const struct keywords_t keywords_main[] = {
 //
 // Handlers are implemented in espcam.h
 //
-static const struct keywords_t keywords_espcam[] = {
+KEYWORDS_DECL(espcam) {
 
   KEYWORDS_BEGIN
 
@@ -1207,6 +1229,7 @@ static const struct keywords_t keywords_espcam[] = {
 
   KEYWORDS_END
 };
+KEYWORDS_REG(espcam);
 #endif // WITH_ESPCAM
 
 //current keywords list in use and a barrier to protect it.
@@ -1259,5 +1282,29 @@ static int cmd_exit(int argc, char **argv) {
   }
   return 0;
 }
+
+static struct {
+  const struct keywords_t *key;
+  const char *name;
+} Subdirs[16] = { 0 };
+
+// Temporary
+static void keywords_register(const struct keywords_t *key, const char *name) {
+  static unsigned char idx = 0;
+  MUST_NOT_HAPPEN(idx > 14);
+  Subdirs[idx].key = key;
+  Subdirs[idx].name = name;
+  idx++;
+}
+
+#if 0
+static void keywords_show_subdirs() {
+  for (int idx = 0; idx < 15; idx++)
+    if (Subdirs[idx].name)
+      q_printf("\"%s\" : 0x%p\r\n",Subdirs[idx].name,Subdirs[idx].key);
+    else
+      break;
+}
+#endif
 #endif // #if COMPILING_ESPSHELL
 

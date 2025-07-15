@@ -130,7 +130,7 @@ static int cmd_tty(int argc, char **argv) {
   return 0;
 }
 
-//"echo on|off|silent"
+//"echo [[-n] on|off|silent|TEXT]"
 //
 // Enable/disable local echo. Normally enabled, it lets software
 // like TeraTerm and PuTTY to be used. Turning echo off supresses
@@ -139,21 +139,37 @@ static int cmd_tty(int argc, char **argv) {
 // Setting "echo silent" has effect of "echo off" + all command output
 // is supressed as well. commands are executed but do not output anything
 //
+// Displays TEXT : "echo <i>Hello</>, <u>World!</>", tags are allowed
+// Unless "-n" is used, adds CRLF automatically
+//
+// TODO: Recognize $VarName sequences
+//
 static int cmd_echo(int argc, char **argv) {
-
+  
+  
   if (argc < 2)
     q_printf("%% Echo is \"%s\"\r\n", Echo ? "on" : "off");  //if echo is silent we can't see it anyway so no bother printing
   else {
-#if 0    
+    int i = 1;
+    bool add_nl = true;
+    if (!q_strcmp(argv[1], "-n")) { 
+      add_nl = false;
+      i++;
+    }
     if (!q_strcmp(argv[1], "on"))     Echo = 1;  else 
     if (!q_strcmp(argv[1], "off"))    Echo = 0;  else 
-    if (!q_strcmp(argv[1], "silent")) Echo = -1; else return 1;
-#else
-    Echo = (argv[1][0] == 'o') ? (argv[1][1] == 'n' ? 1
-                                                    : 0) 
-                               : (argv[1][0] == 's' ? -1 
-                                                    : Echo);
-#endif    
+    if (!q_strcmp(argv[1], "silent")) Echo = -1; else {
+      // Display TEXT, go through argvs, add separators (" ")
+      // Mimic Linux "echo -n" behaviour
+     
+      while(i < argc) {
+        q_print(argv[i]);
+        if (++i < argc)
+          q_print(" ");
+      }
+      if (add_nl)
+        q_print(CRLF);
+    }
   }
   return 0;
 }
