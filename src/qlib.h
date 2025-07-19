@@ -19,6 +19,8 @@
 //
 #if COMPILING_ESPSHELL
 
+#include <stdatomic.h>
+
 // gcc-specific branch prediction optimization macros 
 #undef likely
 #undef unlikely
@@ -31,7 +33,7 @@
 #define q_millis() ((unsigned long )(q_micros() / 1000ULL))
 #define q_delay(_Delay) vTaskDelay(_Delay / portTICK_PERIOD_MS);
 #define q_yield() vPortYield()
-
+#define q_yield_from_isr() portYIELD_FROM_ISR()
 
 // Check if condition ... is true and if it is - halt ESPShell
 // Wrapper for the must_not_happen() function below
@@ -44,18 +46,18 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
 } while ( 0 )
 
 
-//  -- Mutex/Semaphore/RWLocks --
+//  -- Mutexes and Semaphores--
 
 // Mutexes and semaphores are initialized on first use (i.e. on first mutex_lock() call)
 // These are simple wrappers which **do not increase code size** but allow for unified names 
 // and better portability. This OS->ESPShell "glue" must be kept simple and, ideally, inlineable 
 // or defined as a macro
 
+// Mutex. Mutex is a semaphore on FreeRTOS
 #define mutex_t SemaphoreHandle_t
-#define sem_t SemaphoreHandle_t
 
+// Initializer: mutex_t mux = MUTEX_INIT
 #define MUTEX_INIT NULL
-#define SEM_INIT NULL
 
 // Grab a mutex
 // Blocks forever, initializes mutex object on a first use
@@ -78,6 +80,12 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
   } while( 0 )
 
 
+// Semaphore
+#define sem_t SemaphoreHandle_t
+
+// Semaphore initializer
+#define SEM_INIT NULL
+
 // Binary semaphore.
 // Similar to mutex, but **any** task can sem_unlock(), not just the task
 // which called had called sem_lock(): no ownership tracking. These are used in RW-locking
@@ -99,7 +107,7 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
 #define sem_unlock(_Name) mutex_unlock(_Name)
 
 
-// Just for completeness. unused in espshell
+// Destroy mutex
 #define mutex_destroy(_Name) \
   do { \
     if (likely(_Name != NULL)) { \
@@ -108,49 +116,63 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
     } \
   } while ( 0 )
 
-#define sem_destroy(_Name) mutex_destroy(_Name)
+// Destroy semaphore
+#define sem_destroy(_Name) \
+  mutex_destroy(_Name)
 
-// -- Memory access barrier -- 
+// -- Memory access barrier --
 //
-// Barrier is a critical section on ESP32, aka "spinlock". It is used as a lightweight alternative to mutexes
-// where small memory writes must be synchronized: example of "small memory access" is inserting a new element into array, 
-// or pointer manipulations. 
-// 
+// (AKA critical section AKA spinlock. we use "barrier" instead of "spinlock" to not 
+// confuse with FreeRTOS functions and types)
+//
 // Code in barriers (i.e. the code between barrier_lock() / barrier_unlock()) must be kept small and linear.
-// Defenitely not call printf() or delay() while in the barrier, or watchdog will bark
+// Defenitely not call printf() or delay() while in the barrier, or watchdog will bark (interruptas are disabled!)
 //
+#define barrier_t portMUX_TYPE
 
+// Initializer: barrier_t mux = BARRIER_INIT;
+#define BARRIER_INIT portMUX_INITIALIZER_UNLOCKED
+ 
+// Enter/Exit critical sections
 #define barrier_lock(_Name) portENTER_CRITICAL(&_Name)
 #define barrier_unlock(_Name) portEXIT_CRITICAL(&_Name)
-#define barrier_t portMUX_TYPE
-#define BARRIER_INIT portMUX_INITIALIZER_UNLOCKED
 
 // -- Readers/Writer lock --
-// Many readers, 1 writer, reading-preferred, simple RW locks
 //
-#include <stdatomic.h>
+// Implements classic "Many readers, One writer" scheme, write-preferring, simple RW locks
+// Queued write requests prevent new readers from acquiring the lock.
+// Queued writers are blocking on a semaphore if there are active readers;
+// Queued readers will spin if there are active writers
+//
+// RWLocks are used mostly with lists: one example is the alias.h where RWLocks are used 
+// to protect aliases list
 
+// RWLock type
 typedef struct {
   _Atomic uint32_t wreq; // Number of pending write requests
   _Atomic int      cnt;  // <0 : write_lock, 0: unlocked, >0: reader_lock
   sem_t            sem;  // binary semaphore, acts like blocking object
 } rwlock_t;
 
-#define RWLOCK_INIT { 0, 0, SEM_INIT} //initializer: rwlock_t a = RWLOCK_INIT;
+// initializer: rwlock_t a = RWLOCK_INIT;
+#define RWLOCK_INIT { 0, 0, SEM_INIT} 
 
 // Obtain exclusive ("Writer") access.
 //
-// If there were readers or writers, this function will block on /rw->sem/
-// If there are 0 readers/writers, then we grab a binary semaphore /rw->sem/ and change /cnt/ to negative
+// If there were readers or writers, this function will block on /rw->sem/ and signal that further read requests
+// must be postponed.
+// If there are no readers/writers, then we grab a binary semaphore /rw->sem/ and change /cnt/ to negative
 // value meaning "Write" lock has been acquired
 //
 void rw_lockw(rwlock_t *rw) {
 
-  // Set "Write Lock Request" flag before acquiring/rw->sem: this will stop new readers to queue
+  // Set "Write Lock Request" flag before acquiring /rw->sem/: this will stop new readers to queue
   // while writer is blocking on /sem/
   rw->wreq++;
 try_again:  
-  sem_lock(rw->sem); // grab main sync object. If it is held by readers we simply block here
+  // Grab main sync object. 
+  // If it is held by readers we simply block here
+  sem_lock(rw->sem); 
   if (rw->cnt != 0) {
     // reader somehow sneaked in, spin & yield
     sem_unlock(rw->sem);
@@ -174,11 +196,8 @@ void rw_unlockw(rwlock_t *rw) {
 // 
 // Dominant type of lock
 //
-
 // probably a race condition,results in erroneous sem_lock(), but it is not critical,
 // just one reader will be blocked as if he is writer
-
-//#define ALT_VER // Alternative version to address possible race conditions
 
 void rw_lockr(rwlock_t *rw) {
 
@@ -187,7 +206,7 @@ void rw_lockr(rwlock_t *rw) {
   // Wait until there are no readers and no writers and no writelock request is queued
   // Let "writer" task to do its job
   //
-#ifdef ALT_VER
+#ifdef ALT_RW_VER
   while (atomic_load_explicit(&rw->cnt, memory_order_acquire) < 0 ||
          atomic_load_explicit(&rw->wreq, memory_order_acquire) > 0)
 #else
@@ -197,7 +216,7 @@ void rw_lockr(rwlock_t *rw) {
     q_yield(); 
 
   // Atomically increment READERS count
-#if ALT_VER
+#ifdef ALT_RW_VER
   cnt = atomic_fetch_add_explicit(&rw->cnt, 1, memory_order_acq_rel);
 #else
   rw->cnt++; 
@@ -214,7 +233,7 @@ void rw_lockr(rwlock_t *rw) {
 // Reader unlock
 //
 void rw_unlockr(rwlock_t *rw) {
-#if ALT_VER
+#ifdef ALT_RW_VER
   if (atomic_fetch_sub(&rw->cnt, 1) == 1)
 #else
   if (0 == --rw->cnt)
@@ -222,12 +241,134 @@ void rw_unlockr(rwlock_t *rw) {
     sem_unlock(rw->sem);
 }
 
+//void rw_dump(const rwlock_t *rw) {
+//  q_printf("rwlock(0x%p) : cnt=%d, wreq=%lu\r\n", rw, rw->cnt, rw->wreq);
+//}
 
 
-void rw_dump(const rwlock_t *rw) {
-  q_printf("rwlock(0x%p) : cnt=%d, wreq=%lu\r\n", rw, rw->cnt, rw->wreq);
-}
+// -- Message Pipes --
+// A machinery to send messages from an ISR to a task.
+// Note that this code can not be used to send messages from task to task, only ISR->task is allowed
+// Messages are fixed in size (4 bytes, sizeof(void *)).
+//
+// Main idea around mpipes is to be able "to send" a pointer from an ISR to a task: e.g. GPIO ISR sends 
+// messages to some processing task.
+//
+// Depending on MPIPE_USES_MSGBUF macro, message pipes (mpipes) are implemented 
+// either via FreeRTOS Message Buffers or FreeRTOS Queues
+//
 
+#ifdef MPIPE_USES_MSGBUF
+
+// Message Pipe type.
+// e.g. "static mpipe_t comm = MPIPE_INIT"
+#  define mpipe_t MessageBufferHandle_t
+#  define MPIPE_INIT NULL
+
+// Create a new message pipe
+// returns pointer to a created mpipe
+// _NumElements : maximum number of pending messages in the mpipe
+//
+#  define mpipe_create(_NumElements) \
+    xMessageBufferCreate(_NumElements * sizeof(void *))
+
+// Delete mpipe
+// _Pipe : pointer to a mpipe or NULL
+//
+#  define mpipe_destroy(_Pipe) \
+    do { \
+      if (likely(_Pipe != MPIPE_INIT)) \
+        vMessageBufferDelete(_Pipe) \
+    } while(0)
+
+// Send an item (a pointer. we send pointers, not data)
+// _Data : a variable (not an expression!), containing data to be sent (4 bytes, void *, unsigned int, float ...
+// _Pipe : pointer to a mpipe or NULL
+// 
+// "void *value = 0x12345678; mpipe_send(ThePipe, value);"
+// 
+// Returns /false/ on failure
+//
+#  define mpipe_send(_Pipe, _Data) \
+    ({ \
+      BaseType_t ret; \
+      if (likely(_Pipe != MPIPE_INIT)) \
+        xMessageBufferSendFromISR(_Pipe, &_Data, sizeof(void *), &ret); \
+      else \
+        ret = pdFALSE; \
+      (ret == pdTRUE); /* returned value, true or false */\
+    })
+
+// Get an item out of a pipe
+// If pipe is empty then mpipe_recv() will block
+// _Pipe : pointer to a mpipe or NULL
+// Returns a message, 4 bytes, as a void*: "void *value = mpipe_recv(ThePipe);"
+//
+#  define mpipe_recv(_Pipe) \
+    ({ \
+      void *ptr; \
+      if (likely(_Pipe != MPIPE_INIT)) \
+        while (xMessageBufferReceive(_Pipe, &ptr, sizeof(void *), portMAX_DELAY) == 0) /* Nothing here */; \
+      else \
+        ptr = NULL; \
+      ptr; \
+    })
+
+#else // use queues as underlying API
+
+// Message Pipe type
+#  define mpipe_t QueueHandle_t
+#  define MPIPE_INIT NULL
+
+// Create a new message pipe
+// _NumElements : maximum number of elements (i.e. pointers) this mpipe can hold  before it 
+//                starts to drop new incoming messages
+//
+// Returns pointer to the newly created pipe
+//
+#  define mpipe_create(_NumElements) \
+    xQueueCreate(_NumElements, sizeof(void *))
+
+// Delete mpipe
+// _Pipe : pointer to a mpipe or NULL
+//
+#  define mpipe_destroy(_Pipe) \
+    do { \
+      if (likely(_Pipe != MPIPE_INIT)) \
+        vQueueDelete(_Pipe) \
+    } while(0)
+
+
+// Send a message (_Data must be variable: we are taking address of it)
+// _Pipe : pointer to a mpipe or NULL
+// _Data : a variable, usually - a pointer, but can be any 4 bytes simple type
+//
+// Returns /true/ if taskYIELD was requested
+//
+#  define mpipe_send(_Pipe, _Data) \
+    ({ \
+      BaseType_t ret; \
+      if (likely(_Pipe != MPIPE_INIT)) \
+        xQueueSendFromISR(_Pipe, &_Data, &ret); \
+      else \
+        ret = pdFALSE; \
+      (ret == pdTRUE); \
+    })
+
+// Get an item out of the message pipe
+// _Pipe : pointer to a mpipe or NULL
+// Returns an item (4 byte-long variable, usually a pointer)
+//
+#  define mpipe_recv(_Pipe) \
+    ({ \
+      void *ptr; \
+      if (likely(_Pipe != MPIPE_INIT)) \
+        while (xQueueReceive(_Pipe, &ptr, portMAX_DELAY) == pdFALSE) /* Nothing here */; \
+      else \
+        ptr = NULL; \
+      ptr; \
+    })
+#endif // MessageBuffers or Queues?
 
 // PPA(Number) generates 2 arguments for a printf ("%u%s",PPA(Number)), adding an "s" where its needed:
 // printf("%u second%s", PPA(1))  --> "1 second"
@@ -318,7 +459,7 @@ enum {
   MEM_SEQUENCE,  // sequence-related allocations
   MEM_TASKID,    // Task remap entry TODO: remove
   MEM_ALIAS,     // Aliases
-  MEM_UNUSED13,
+  MEM_IFCOND,
   MEM_UNUSED14,
   MEM_UNUSED15
   // NOTE: only values 0..15 are allowed, do not add more!
@@ -376,7 +517,7 @@ static const char *memtags[] = {
   "SEQUENCE",
   "TASKID",
   "ALIAS",
-  "UNUSED13",
+  "IFCOND",
   "UNUSED14",
   "UNUSED15"
 };

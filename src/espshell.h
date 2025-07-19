@@ -13,7 +13,7 @@
   // !! READ ME FIRST !!
  //
  // 1) Inclusion of this file will enable CLI automatically
- // 2) No functions needs to be called in order to use the shell
+ // 2) No functions need to be called in order to start & use the shell
  // 3) There are Compile-time Settings below to tweak ESP32Shell behaviour
  //    Use Compile-time Settings section below to disable code which is not needed to 
  //    decrease the memory footprint
@@ -24,8 +24,6 @@
 
 // -- Compile-time settings BEGIN --
 //
-
-
 #define ESPSHELL_VERSION "0.99.9" // Code version
 
 //#define MEMTEST 1              // Enable memory logger (extra output on "show memory"). For shell self-diagnostics
@@ -47,8 +45,8 @@
 #define WITH_COLOR 1             // Enable terminal colors support. Set to 0 if your terminal doesn't support ANSI colors
 #define AUTO_COLOR 1             // Let ESPShell decide wheither to enable coloring or not. Command "color on|off|auto" is about that
 
-#define WITH_FS 1                // Filesystems (fat/spiffs/littlefs) support. Unlikely you need all of them
-#define MOUNTPOINTS_NUM 5        // Max number of simultaneously mounted filesystems
+#define WITH_FS 1                // Filesystems (fat/spiffs/littlefs) support. Unlikely that you'll need all of them
+#define MOUNTPOINTS_NUM 5        // Max number of simultaneously mounted filesystems (must be >0)
 #define WITH_SPIFFS 1            // support SPIF filesystem
 #define WITH_LITTLEFS 1          //   --    LittleFS
 #define WITH_FAT 1               //   --    FAT
@@ -62,7 +60,7 @@
 
 #if ARDUINO_USB_CDC_ON_BOOT      // USB mode?
 #  define SERIAL_IS_USB 1        
-#  define STARTUP_PORT 99        // don't change this
+#  define STARTUP_PORT 99        // Don't change this: USB port is always number 99
 #else                             
 #  define SERIAL_IS_USB 0
 #  define STARTUP_PORT UART_NUM_0  // UART number, where shell will be deployed at startup. can be changed.
@@ -80,9 +78,13 @@
 #  undef WITH_HISTORY
 #  undef HIST_SIZE
 #  define WITH_HISTORY 0          // Disable history when hunting for memory leaks
-#  define HIST_SIZE 1             // Can't be zero :(
+#  define HIST_SIZE 1             // Must be >0
 #  warning "Shell command history is DISABLED because of MEMTEST (== 1)"  
 #endif
+
+#define ALT_PIN_VER       // experimental fast "pin" processor
+#define ALT_RW_VER        // experimental RWLock with atomic_exchange
+#define MPIPE_USES_MSGBUF // experimental MessagePipes using FreeRTOS MessageBuffers
 
 // -- ESPShell public API --
 
@@ -99,11 +101,11 @@ extern "C" {
 void espshell_start();
 #endif
 
-// 2) Execute an arbitrary shell command (\n are allowed for multiline, i.e. multiple commands at once).
-// This function injects its argument to espshell's input stream as if it was typed by user. 
-// It is an asyn call, returns immediately. Next call can be done only after espshell_exec_finished()
+// 2) Execute an arbitrary shell command (\n and \r are allowed for multiline, i.e. multiple commands at once).
+// This function injects its argument to espshell's input stream as if it was typed by the user. 
+// It is an async call, returns immediately. Next call can be done only after espshell_exec_finished() returns /true/
 //
-// @param p - A pointer to a valid asciiz string. String must remain a valid memory until espshell finishes its processing!
+// /p/ - A pointer to a valid asciiz string. String must remain a valid memory until espshell finishes its processing!
 //
 void espshell_exec(const char *p);
 
@@ -200,49 +202,51 @@ void pinForceMode(unsigned int pin, unsigned int flags);
 // 
 //    Example: register sketch variables in ESPShell
 //    ...
-//    int some_variable;
+//    int some_variable, a, b, c;
 //    const int *ptr = &some_variable;
 //    static float volatile another_variable;
 //    int arr[] = {1,2,3};
+//    int *arr2[] = {&a, &b, &c};
 //    void **bb = &ptr;
 //    ...
-//    convar_addp(ptr);
-//    convar_adda(arr);
-//    convar_add(some_variable);
-//    convar_add(another_variable);
-//    convar_addpp(bb);
+//    convar_addp(ptr);              // add a pointer
+//    convar_adda(arr);              // add an array
+//    convar_add(some_variable);     // add a simple type variable
+//    convar_add(another_variable);  // add a simple type variable
+//    convar_addpp(bb);              // add pointer to a pointer
+//    convar_addpp(arr2);            // add an array of pointers
 //
 //
 #if WITH_VAR
 extern float dummy_float;
-// TODO: use GCC's _Generic to make one single macro for all cases
-// Any non-pointer variable of simple (builtin) type (e.g. float, unsigned int, signed char, bool and so on)
+
+// Register a non-pointer variable of a simple (builtin) type (e.g. float, unsigned int, signed char, bool and so on)
 #  define convar_add( VAR ) do { \
           __typeof__(VAR) __x = ( __typeof__(VAR) )(-1); \
           bool is_signed = (__x < 0); /* HELLO! If you see this warning during compilation - just ignore it :) */ \
           espshell_varadd( #VAR, &VAR, sizeof(VAR),(__builtin_classify_type(VAR) == __builtin_classify_type(dummy_float)),0,!is_signed); \
 } while( 0 )
 
-// Pointer to a simple type
+// Register a pointer to a simple type (e.g. "int *var1" )
 #  define convar_addp( VAR ) do { \
           __typeof__(VAR[0]) __x = ( __typeof__(VAR[0]) )(-1); \
           bool is_signed = (__x < 0);   /* HELLO! If you see this warning during compilation - just ignore it :) */ \
           espshell_varaddp( #VAR, &VAR, sizeof(VAR[0]), (__builtin_classify_type(VAR[0]) == __builtin_classify_type(dummy_float)),0,!is_signed); \
 } while ( 0 )
 
-// Array of elements of a simple type
+// Register an array of elements of a simple type (e.g. "int array[100]")
 #  define convar_adda( VAR ) do { \
           __typeof__(VAR[0]) __x = ( __typeof__(VAR[0]) )(-1); \
           bool is_signed = (__x < 0);   /* HELLO! If you see this warning during compilation - just ignore it :) */ \
           espshell_varadda( #VAR, &VAR, sizeof(VAR[0]), sizeof(VAR) / sizeof(VAR[0]), (__builtin_classify_type(VAR[0]) == __builtin_classify_type(dummy_float)), 0,!is_signed); \
 } while ( 0 )
 
-// Pointer to a pointer
+// Register a variable which is pointer to a pointer (e.g.  void **)
 #  define convar_addpp( VAR ) do { \
           espshell_varaddp( #VAR, &VAR, sizeof(void *), 0, 1, 1); \
 } while ( 0 )
 
-// Array of pointers
+// Register an array of pointers
 #  define convar_addap( VAR ) do { \
           espshell_varadda( #VAR, &VAR, sizeof(VAR[0]), sizeof(VAR) / sizeof(VAR[0]), 0, 1, 1); \
 } while ( 0 )

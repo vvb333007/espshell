@@ -1288,13 +1288,31 @@ static struct {
   const char *name;
 } Subdirs[16] = { 0 };
 
-// Temporary
+// Temporary.
+// Will be rewritten
 static void keywords_register(const struct keywords_t *key, const char *name) {
   static unsigned char idx = 0;
   MUST_NOT_HAPPEN(idx > 14);
   Subdirs[idx].key = key;
   Subdirs[idx].name = name;
   idx++;
+}
+
+// Check, if given name can be a command directory
+// TODO: rename keywords_espcam to keywords_camera: 
+//       this will result in all camera commands treated as a subdir
+//
+static bool is_command_directory(const char *p) {
+  if (p && *p) {
+    int idx = 0;
+
+    while(Subdirs[idx].name) {
+      if (!q_strcmp(p, Subdirs[idx].name))
+        return true;
+      idx++;
+    }
+  }
+  return false;
 }
 
 #if 0

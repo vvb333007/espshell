@@ -123,26 +123,21 @@ static int alias_show_lines(argcargv_t *s) {
     }
     q_print("\r\n");
 
-    // Indent commands inside subdirectories. Only one level. Indent restored on "exit" command
+    // Indent commands inside subdirectories. Only one level. Indent is restored on "exit" command
     if (!q_strcmp(s->argv[0],"exit"))
       pre = "";
-    else {
-      j = 0;
-      while(Subdirs[j].name) {
-        if (!q_strcmp(s->argv[0],Subdirs[j].name))
-          break;
-        j++;
-      }
-      if (Subdirs[j].name || // Any of command directories?
-          (s->argc > 1 && !q_strcmp(s->argv[0],"camera") && (!q_strcmp(s->argv[1],"settings")))) // "camera settings" directory
+    else if (is_command_directory(s->argv[0]))
         pre = "  ";
-    }
+
   }
   q_printf("%% %s\r\n", i ? "--- END ---" : "Empty.");
   
   return i;
 }
 
+// Find an alias descriptor by alias name
+//
+//
 struct alias *alias_by_name(const char *name) {
   struct alias *al = Aliases;
   if (name && *name)
@@ -161,7 +156,6 @@ struct alias *alias_create_or_find(const char *name) {
   if (!name)
     return NULL;
 
-  // addref on existing alias
   if ((al = alias_by_name(name)) == NULL) {
     size_t siz = strlen(name);
     if ((al = (struct alias *)q_malloc(sizeof(struct alias) + siz + 1, MEM_ALIAS)) != NULL) {
@@ -218,7 +212,9 @@ static int cmd_alias_quit(int argc, char **argv) {
 static int cmd_alias_list(int argc, char **argv) {
   ALIAS(al);
   q_printf("%% Alias \"%s\":\r\n",al->name);
+  rw_lockr(&al->rw);
   alias_show_lines(al->lines);
+  rw_unlockr(&al->rw);
   return 0;
 }
 
@@ -294,7 +290,10 @@ static int cmd_alias_asterisk(int argc, char **argv) {
   q_print("% Failed to add (out of memory)\r\n");
   return CMD_FAILED;
 }
-
+// Execute an alias: lock it for reading, go  through stored argcargv_t lists
+// and send them to the command processor. We do increment line's refcount before calling espshell_command()
+// because espshell_command() decrements it
+//
 static int alias_exec(struct alias *al) {
 
     argcargv_t *p;
@@ -311,7 +310,7 @@ static int alias_exec(struct alias *al) {
       // You will see that sometimes alias gets executed in foreground. This is a known bug and happens
       // because of shared argcargv_t, where argc changes forth and back. Deeper problem is that espshell_command()
       // alters arcargv_t while under ReadLock
-      // Solutions is to NOT MODIFY argc and do not strip "&": it will also require small changes to "pin loop" logic
+      // Solution is to NOT MODIFY argc and do not strip "&": it will also require small changes to "pin loop" logic
       espshell_command(NULL, p);
     }
     rw_unlockr(&al->rw);

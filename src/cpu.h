@@ -12,27 +12,44 @@
 
 #if COMPILING_ESPSHELL
 
+#include <esp_rom_spiflash.h>
+#include <soc/rtc.h>
+
+// Really old ESP-IDF / ArduinoCore may be missing these frequency values on particular targets.
+#if !defined(APB_CLK_FREQ) || !defined(MODEM_REQUIRED_MIN_APB_CLK_FREQ)
+#  error "Please update ESP-IDF and/or Arduino Core libraries to a newer version"
+#endif
+
 // not in .h files of ArduinoCore.
 extern bool setCpuFrequencyMhz(uint32_t);
 
-#include <esp_rom_spiflash.h>
+// TODO: make cpu_ticks() to accept an address where result is stored
+//       if *address == 0, then CCOUNT is stored otherwise, if *address != 0
+//       then *address = CCOUNT - *address
 
-// For Tensilica (ESP32, ESP32-S2, ESP32-S3) profiling only.
-// TODO: add RISCV (ESP32-C3, C6, C61) support
-
-#if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
+#if __XTENSA__
 static inline __attribute__((always_inline)) uint32_t cpu_ticks() {
-  uint32_t register ccount;
+  uint32_t ccount;
   asm ( "rsr.ccount %0;" : "=a"(ccount) /*Out*/ : /*In*/ : /* Clobber */);
   return ccount;
 }
-
-//static inline __attribute__((always_inline)) void tie_test() {
-//  __asm__ __volatile__ ( "ee.src.q.ld.ip    q4,  a3,  16, q2, q3" : /*Out*/ : /*In*/ : );
-//}
-
-
+#else // RISCV
+static inline __attribute__((always_inline)) uint32_t cpu_ticks() {
+  uint32_t ccount;
+  asm ( "csrr %0, mcycle" : "=r"(ccount) /*Out*/ : /*In*/ : /* Clobber */);
+  return ccount;
+}
 #endif
+
+// Check if APB frequency is optimal or can be raised
+// ESP32 and ESP32-S2 lower their APB frequency if CPU frequency goes below 80 MHz
+// RISCV ESP CPUs have APB freq of 40 or 32 MHz, while modem min required frequency is 80MHz
+//
+#define apb_freq_max() (MODEM_REQUIRED_MIN_APB_CLK_FREQ / 1000000)
+#define apb_freq_is_optimal() (APBFreq >= (APB_CLK_FREQ / 1000000))
+#define apb_freq_can_be_raised() (APBFreq < apb_freq_max())
+
+
 
 // Read and save CPU,APB and XTAL frequency values. These are used by espshell to calculate some intervals
 // and PWM duty cycle resolution.
@@ -42,15 +59,16 @@ static inline __attribute__((always_inline)) uint32_t cpu_ticks() {
 //
 // Changing the CPU frequency via shell command "cpu FREQ" will save new values automatically
 //
-#include <soc/rtc.h>
 
 // Globals
-static unsigned short CPUFreq  = 240,
+static unsigned short CPUFreq  = 240,  // Default values (or "expected values")
                       APBFreq  = 80, 
                       XTALFreq = 40;
 
-// called at startup, before main()
-// called every time the cpu frequency gets changed (via "cpu" command)
+// Read vital information (XTAL, CPU and APB frequencies) and store it in global variables
+// Called at startup, before main()
+// Called every time the cpu frequency gets changed via the "cpu" command
+// Called every time user issues "show cpu" command
 //
 static void __attribute__((constructor)) cpu_read_frequencies() {
 
@@ -60,18 +78,19 @@ static void __attribute__((constructor)) cpu_read_frequencies() {
   XTALFreq = rtc_clk_xtal_freq_get();
   CPUFreq = conf.freq_mhz;
 #if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2
+  // ESP32 and ESP32-S2 lower their APB frequency if CPU frequency goes below 80MHz
   APBFreq = (conf.freq_mhz >= 80) ? 80 : conf.source_freq_mhz/conf.div;
 #else
+  // Other Espressif's SoCs have fixed APB frequency
   APBFreq = APB_CLK_FREQ / 1000000;
 #endif
 }
 
 //"show cpuid"
 //
-// Display CPU ID information, frequencies and
-// chip temperature
-//
-// TODO: keep in sync with latest ArduinoCore
+// Display CPU ID information, frequencies, chip temperature, flash chip information
+// and a couple of other things.
+// Must be kept in sync with latest ArduinoCore
 static int cmd_show_cpuid(int argc, char **argv) {
 
   esp_chip_info_t chip_info;
@@ -126,7 +145,9 @@ static int cmd_show_cpuid(int argc, char **argv) {
   cpu_read_frequencies();
 
   q_print("% <u>Hardware:</>\r\n");
-  q_printf("%% CPU ID: %s, (%u core%s), Chip revision: %d.%d\r\n%% CPU frequency is %uMhz, Crystal: %uMhz, APB bus %uMhz\r\n%% Chip temperature: %.1f deg. Celsius\r\n",
+  q_printf("%% CPU ID: %s, (%u core%s), Chip revision: %d.%d\r\n"
+           "%% CPU frequency is %uMhz, Crystal: %uMhz, APB bus %uMhz\r\n"
+           "%% Chip temperature: %.1f deg. Celsius\r\n",
            chipid,
            PPA(chip_info.cores),
            (chip_info.revision >> 8) & 0xf,
@@ -135,6 +156,13 @@ static int cmd_show_cpuid(int argc, char **argv) {
            XTALFreq,
            APBFreq,
            temperatureRead());
+
+  if (!apb_freq_is_optimal()) {
+    q_printf("%% <i>APB frequency is not optimal</i>");
+    if (apb_freq_can_be_raised())
+      q_printf(" : it can be raised up to %u MHz\r\n", apb_freq_max() / 1000000);
+  }
+
   q_print("% SoC features: ");
 
   if (chip_info.features & CHIP_FEATURE_EMB_FLASH)
@@ -148,19 +176,25 @@ static int cmd_show_cpuid(int argc, char **argv) {
   if (chip_info.features & CHIP_FEATURE_IEEE802154)
     q_print("IEEE 802.15.4, ");
   if (chip_info.features & CHIP_FEATURE_EMB_PSRAM)
-    q_print("embedded PSRAM");
+    q_print("embedded PSRAM, ");
 
   unsigned long psram;
+  // "external SPIRAM\r\n" below belongs to the "SoC features"
   if ((psram = heap_caps_get_total_size(MALLOC_CAP_SPIRAM)) > 0)
-    q_printf("\r\n%% PSRAM (SPIRAM) size: %lu (%lu MB)",psram,  psram / (1024 * 1024));
+    q_printf("external PSRAM\r\n%% PSRAM (SPIRAM) size: %lu (%lu MB)",psram,  psram / (1024 * 1024));
   
   //
   // global variable g_rom_flashchip is defined in linker file.
   // TODO: may be use bootloader_read_flash_id() ?
-  const char *mfg; 
-  switch ((g_rom_flashchip.device_id >> 16) & 0xff) {
-    case 0x85:
-    case 0x5e: mfg =  "Generic"; break;
+  const char *mfg, *type; 
+
+  uint8_t  manufacturer = (g_rom_flashchip.device_id >> 16) & 0xff;
+  uint16_t id = g_rom_flashchip.device_id & 0xffff;
+  uint32_t capacity = 1UL << (g_rom_flashchip.device_id & 0xFF);
+
+  switch ( manufacturer ) {
+    case 0x85: mfg =  "Puya"; break;           // May be Puya.
+    case 0x5e: mfg =  "XTX Technology"; break; // May be XTX Technology.
     case 0x84:
     case 0xc8: mfg =  "Giga Device"; break;
     case 0x68: mfg =  "Boya"; break;
@@ -168,18 +202,26 @@ static int cmd_show_cpuid(int argc, char **argv) {
     case 0xc2: mfg =  "MACRONIX"; break;
     case 0xcd: mfg =  "TH"; break;
     case 0xef: mfg =  "Winbond"; break;
-    default:   mfg =  "see JEDEC JPL106 list:";
+    default:   mfg =  "see JEDEC JPL106 list";
   };
+  
+  // TODO: check carefully what these bits really mean. Sometimes it is just "SPI RAM", some manufacturers also
+  //       encode SPI bus type (Normal, Dual, Quad) but this field is not standartized
+  //
+  if (id & 0x2000) type = "Quad SPI"; else
+  if (id & 0x4000) type = "Dual SPI"; else
+                   type = "Unknown";
 
   q_printf( "\r\n%%\r\n%% <u>Flash chip (SPI Flash):</>\r\n"
-            "%% Chip ID: 0x%04X, manufacturer ID: %02X (%s)\r\n"
+            "%% Chip ID: 0x%04X (%s), manufacturer ID: %02X (%s)\r\n"
             "%% Size <i>%lu</> bytes (%lu MB)\r\n"
             "%% Block size is <i>%lu</>, sector size is %lu and page size is %lu)",
-            (unsigned int)(g_rom_flashchip.device_id & 0xffff),
-            (unsigned int)((g_rom_flashchip.device_id >> 16) & 0xff),
+            id,
+            type,
+            manufacturer,
             mfg,
-            1UL << (g_rom_flashchip.device_id & 0xFF),
-            (1UL << (g_rom_flashchip.device_id & 0xFF)) >> 20, // divide by 1024*1024
+            capacity,
+            capacity >> 20, // divide by 1024*1024
             g_rom_flashchip.block_size,
             g_rom_flashchip.sector_size,
             g_rom_flashchip.page_size);
