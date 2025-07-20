@@ -154,7 +154,7 @@ static int help_command(int argc, char **argv) {
   
   if (!found) {
     q_printf("%% Sorry, no manual entry for \"%s\"\r\n"
-             "%% Type \"<i>?</>\" and press <Enter> to see what is available\r\n" ,argv[0]);
+             "%% Type \"<i>?</>\" and press <Enter> to see what is available\r\n" ,argv[1]);
     return CMD_FAILED;
   }
 

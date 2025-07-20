@@ -167,9 +167,8 @@ void userinput_redraw() {
 // and put it to /aa->gpp/
 //
 // Returns 0 on success
-//         CMD_FAILED on "no such command"
+//         CMD_NOT_FOUND on "no such command"
 //         CMD_MISSING_ARG on "wrong number of arguments"
-//         >0 to point on failed argument
 //
 static int userinput_find_handler(argcargv_t *aa) {
 
@@ -236,7 +235,7 @@ one_more_try: // we get here if we wasn't able to find any suitable handler in a
     return CMD_MISSING_ARG;
 
   // no name match let alone arguments number
-  return CMD_FAILED;
+  return CMD_NOT_FOUND;
 }
 
 #endif //#if COMPILING_ESPSHELL
