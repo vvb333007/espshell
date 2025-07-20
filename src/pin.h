@@ -330,9 +330,9 @@ static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
       for (int i = 0; i < IOMUX_NFUNC; i++) {
         const char *pre = (i == fun_sel) ? "<r>" : "";    // gcc must fold two comparisions into one
         const char *post = (i == fun_sel) ? "*</>" : " ";
-#pragma GCC diagnostic ignored "-Wformat"          
+        WD()
         q_printf("|%s % 9s%s", pre, iomux_funame(pin, i), post);
-#pragma GCC diagnostic warning "-Wformat"                
+        WE()
       }
       q_print(CRLF);
     }

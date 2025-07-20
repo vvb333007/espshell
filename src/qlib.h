@@ -12,7 +12,9 @@
 
 // -- Q-Lib: helpful routines: ascii to number conversions,platform abstraction, etc --
 //
-// 1. OS/Kernel lightweight abstraction layer (mutexes, time intervals, delays, etc. part of it is in task.h file as well )
+// 1. OS/Kernel lightweight abstraction layer (mutexes, message pipes, time intervals, delays, etc.
+//    Part of it is in task.h file as well
+//
 // 2. Memory manager (for leaks detection, normally disabled)
 // 3. Bunch of number->string and string->number conversion functions
 // 4. Core functions like q_printf(), core variables etc
@@ -22,45 +24,52 @@
 #include <stdatomic.h>
 
 // gcc-specific branch prediction optimization macros 
-#undef likely
-#undef unlikely
 #define unlikely(_X)     __builtin_expect(!!(_X), 0)
 #define likely(_X)     __builtin_expect(!!(_X), 1)
 
-// inlined version of millis() & delay() for better accuracy on small intervals
-// because of decreased overhead. q_millis vs millis shows 196 vs 286 CPU cycles
-#define q_micros() esp_timer_get_time()
-#define q_millis() ((unsigned long )(q_micros() / 1000ULL))
-#define q_delay(_Delay) vTaskDelay(_Delay / portTICK_PERIOD_MS);
-#define q_yield() vPortYield()
-#define q_yield_from_isr() portYIELD_FROM_ISR()
-
 // Check if condition ... is true and if it is - halt ESPShell
-// Wrapper for the must_not_happen() function below
+// A wrapper for the must_not_happen() function
 //
 static NORETURN void must_not_happen(const char *message, const char *file, int line);
 
-#define MUST_NOT_HAPPEN( ... ) do { \
-  if ( __VA_ARGS__ ) \
-    must_not_happen(#__VA_ARGS__, __FILE__, __LINE__ ); \
-} while ( 0 )
+#define MUST_NOT_HAPPEN( ... ) \
+  { \
+    if ( unlikely(__VA_ARGS__) ) \
+      must_not_happen(#__VA_ARGS__, __FILE__, __LINE__ ); \
+  }
+
+// OS glue: timers & delays
+// ------------------------
+// inlined version of millis() & delay() for better accuracy on small intervals
+// (because of decreased overhead). q_millis vs millis shows 196 vs 286 CPU cycles on ESP32
+#define q_micros() esp_timer_get_time()
+#define q_millis() ((unsigned long )(q_micros() / 1000ULL))
+#define q_delay(_Delay) vTaskDelay(_Delay / portTICK_PERIOD_MS);
+
+// OS glue: context switch requests
+// --------------------------------
+#define q_yield() vPortYield()
+#define q_yield_from_isr() portYIELD_FROM_ISR()
 
 
+// OS glue : sync objects (mutexes, binary semaphores, critical sections and rwlocks)
+// ----------------------------------------------------------------------------------
 //  -- Mutexes and Semaphores--
 
-// Mutexes and semaphores are initialized on first use (i.e. on first mutex_lock() call)
+// Mutexes and semaphores are initialized on first use (i.e. on first mutex_lock() / sem_lock() call)
 // These are simple wrappers which **do not increase code size** but allow for unified names 
 // and better portability. This OS->ESPShell "glue" must be kept simple and, ideally, inlineable 
 // or defined as a macro
 
-// Mutex. Mutex is a semaphore on FreeRTOS
+// Mutex type. Mutex is a semaphore on FreeRTOS
 #define mutex_t SemaphoreHandle_t
 
-// Initializer: mutex_t mux = MUTEX_INIT
+// Initializer: "mutex_t mux = MUTEX_INIT;"
 #define MUTEX_INIT NULL
 
-// Grab a mutex
-// Blocks forever, initializes mutex object on a first use
+// Acquire mutex
+// Blocks forever, initializes mutex object on a first use. portMAX_DELAY is 0xffffffff, 
+// which is roughly 1200 hours given a 1000Hz tickrate
 //
 #define mutex_lock(_Name) \
   do { \
@@ -72,7 +81,7 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
       } \
   } while( 0 )
 
-// Release
+// Release mutex
 #define mutex_unlock(_Name) \
   do { \
     if (likely(_Name != NULL)) \
@@ -88,7 +97,7 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
 
 // Binary semaphore.
 // Similar to mutex, but **any** task can sem_unlock(), not just the task
-// which called had called sem_lock(): no ownership tracking. These are used in RW-locking
+// which called sem_lock(): no ownership tracking. These are used in RW-locking
 // code
 //
 #define sem_lock(_Name) \
@@ -104,7 +113,8 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
   } while( 0 )
 
 // Release
-#define sem_unlock(_Name) mutex_unlock(_Name)
+#define sem_unlock(_Name) \
+  mutex_unlock(_Name)
 
 
 // Destroy mutex
@@ -125,9 +135,10 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
 // (AKA critical section AKA spinlock. we use "barrier" instead of "spinlock" to not 
 // confuse with FreeRTOS functions and types)
 //
-// Code in barriers (i.e. the code between barrier_lock() / barrier_unlock()) must be kept small and linear.
-// Defenitely not call printf() or delay() while in the barrier, or watchdog will bark (interruptas are disabled!)
+// Code behind the barrier (i.e. the code between barrier_lock() / barrier_unlock()) must be kept small and linear.
+// Defenitely not call q_printf() or q_delay() while in the barrier, or watchdog will bark (interruptas are disabled!)
 //
+// Barrier lock is the only way to guarantee exclusive access both from tasks and interrupts on a multicore system
 #define barrier_t portMUX_TYPE
 
 // Initializer: barrier_t mux = BARRIER_INIT;
@@ -140,12 +151,13 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
 // -- Readers/Writer lock --
 //
 // Implements classic "Many readers, One writer" scheme, write-preferring, simple RW locks
-// Queued write requests prevent new readers from acquiring the lock.
+// Queued write requests prevent new readers from acquiring the lock
 // Queued writers are blocking on a semaphore if there are active readers;
 // Queued readers will spin if there are active writers
 //
 // RWLocks are used mostly with lists: one example is the alias.h where RWLocks are used 
-// to protect aliases list
+// to protect aliases list, another is ifcond.c, where we have array of lists, which is traversed from within an ISR
+// 
 
 // RWLock type
 typedef struct {
@@ -166,20 +178,21 @@ typedef struct {
 //
 void rw_lockw(rwlock_t *rw) {
 
-  // Set "Write Lock Request" flag before acquiring /rw->sem/: this will stop new readers to queue
-  // while writer is blocking on /sem/
+  // Set "Write Lock Request" flag before acquiring /rw->sem/: this will stop new readers to obtain the reader lock
   rw->wreq++;
 try_again:  
   // Grab main sync object. 
-  // If it is held by readers we simply block here
+  // If it is held by readers or other writer then we simply block here
   sem_lock(rw->sem); 
+
+  // Ok, we just acquired the semaphore; lets check if a
+  // reader somehow sneaked in during the process: if it happened, then we retry whole procedure
   if (rw->cnt != 0) {
-    // reader somehow sneaked in, spin & yield
     sem_unlock(rw->sem);
     q_yield();
     goto try_again;
   }
-  rw->cnt--; //  i.e. rw->cnt = -1
+  rw->cnt--; //  i.e. rw->cnt = -1, "active writer"
   rw->wreq--;
 }
 
@@ -369,6 +382,8 @@ void rw_unlockr(rwlock_t *rw) {
       ptr; \
     })
 #endif // MessageBuffers or Queues?
+
+/// OS Glue End;
 
 // PPA(Number) generates 2 arguments for a printf ("%u%s",PPA(Number)), adding an "s" where its needed:
 // printf("%u second%s", PPA(1))  --> "1 second"
@@ -700,9 +715,9 @@ static void q_memleaks(const char *text) {
           "%--------+--------------+---------+-----------</>\r\n");
 
   for (memlog_t *ml = head; ml; ml = (memlog_t *)(ml->li.next)) {
-#pragma GCC diagnostic ignored "-Wformat"
+    WD()
     q_printf("%%  % 5u | % 12s | % 7u | %p \r\n",++count,memtags[ml->type],ml->len,ml->ptr);
-#pragma GCC diagnostic warning "-Wformat"
+    WE()
     counters[ml->type]++;
   }
 

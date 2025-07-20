@@ -41,7 +41,7 @@ static int cmd_i2c_if(int argc, char **argv) {
   }
 
   sprintf(prom, PROMPT_I2C, iic);
-  change_command_directory(iic, keywords_i2c, prom, "I2C configuration");
+  change_command_directory(iic, keywords_iic, prom, "I2C configuration");
   return 0;
 }
 

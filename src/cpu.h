@@ -160,7 +160,8 @@ static int cmd_show_cpuid(int argc, char **argv) {
   if (!apb_freq_is_optimal()) {
     q_printf("%% <i>APB frequency is not optimal</i>");
     if (apb_freq_can_be_raised())
-      q_printf(" : it can be raised up to %u MHz\r\n", apb_freq_max() / 1000000);
+      q_printf(" : it can be raised up to %u MHz", apb_freq_max() / 1000000);
+    q_print(CRLF);
   }
 
   q_print("% SoC features: ");

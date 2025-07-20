@@ -93,10 +93,12 @@ static bool anykey_pressed() {
 
   unsigned char c = 0;
   if (console_available() > 0)
-    if (console_read_bytes(&c, 1, 0) >= 0)
+    if (console_read_bytes(&c, 1, 0) >= 0) {
     // If user terminal is configured to send <CR>+<LF> then we silently discard <LF>
       if (c == '\n')
         return !SeenCR;
+      return true;
+    }
   return false;
 
     

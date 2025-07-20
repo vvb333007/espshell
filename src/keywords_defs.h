@@ -75,6 +75,7 @@ struct keywords_t {
 #define CMD_SUCCESS      0    // unused. code uses "0" instead.
 #define CMD_MISSING_ARG -1
 #define CMD_FAILED      -2    // explanation is printed by handler, espshell_command() keeps silent
+#define CMD_NOT_FOUND   -3    // no such command at all
 
 // A macro to declare a keywords array:
 // KEYWORDS_DECL(keywords_main) {

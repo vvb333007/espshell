@@ -162,7 +162,7 @@ static int cmd_alias_asterisk(int, char **);
 //
 // keywords_alias    : 
 // keywords_uart     : UART commands
-// keywords_i2c      : I2C commands
+// keywords_iic      : I2C commands
 // keywords_spi      : don't use it
 // keywords_sequence : Pulse generator commands
 // keywords_files    : Filesystem commands
@@ -293,7 +293,7 @@ KEYWORDS_REG(uart);
 
 //I2C subderictory keywords
 //
-KEYWORDS_DECL(i2c) {
+KEYWORDS_DECL(iic) {
 
   KEYWORDS_BEGIN
 
@@ -301,7 +301,7 @@ KEYWORDS_DECL(i2c) {
     HELPK("% \"<b>up</> <i>SDA SCL CLOCK</>\"\r\n"
           "%\r\n"
           "% Initialize I2C interface X, use pins SDA/SCL, clock rate CLOCK\r\n"
-          "% Ex.: up 21 22 100000 - enable i2c at pins sda=21, scl=22, 100kHz clock"),
+          "% Ex.: <i>up 21 22 100000</> - enable i2c at pins sda=21, scl=22, 100kHz clock"),
     HELPK("Initialize interface (pins and speed)") },
 
   { "clock", cmd_i2c_clock, 1,
@@ -340,7 +340,7 @@ KEYWORDS_DECL(i2c) {
 
   KEYWORDS_END
 };
-KEYWORDS_REG(i2c)
+KEYWORDS_REG(iic)
 
 #if WITH_SPI
 //spi subderictory keywords list
@@ -453,11 +453,11 @@ KEYWORDS_DECL(sequence) {
           "% Enables/disables an output signal modulation with frequency FREQ\r\n"
           "% Optional parameters are: DUTY (from 0 to 1) and LEVEL (either high or low)\r\n"
           "%\r\n"
-          "% Ex.: <b>modulation 100</>         - modulate all 1s with 100Hz, 50% duty cycle\r\n"
-          "% Ex.: <b>modulation 100 0.3 low</> - modulate all 0s with 100Hz, 30% duty cycle\r\n"
+          "% Ex.: <b>modulation 38000</>         - modulate all 1s with 38kHz, 50% duty cycle\r\n"
+          "% Ex.: <b>modulation 38000 0.3 low</> - modulate all 0s with 38kHz, 30% duty cycle\r\n"
           "% Ex.: <b>modulation 0</>           - disable modulation\r\n"),
     HELPK("Enable/disable modulation") },
-
+  //TODO: "modulation off"
   { "modulation", cmd_seq_modulation, 2, HIDDEN_KEYWORD },
   { "modulation", cmd_seq_modulation, 1, HIDDEN_KEYWORD },
 

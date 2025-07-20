@@ -30,11 +30,13 @@
 
 struct argcargv {
   struct argcargv *next; // **logical** link: used by alias code to chain commands together. 
-  short ref;          // reference counter. normally 1 but async commands can increase it. alias commands also increase this
-  short argc;         // number of tokens after stripping "&" or alike
-  short argc0;        // raw number of tokens
-  char **argv;      // tokenized input string (array of pointers to various locations withn userinput)
-  char *userinput;  // original input string with '\0's inserted by tokenizer
+  short ref;             // reference counter. normally 1 but async commands can increase it. alias commands also increase this
+  short argc;            // number of tokens after stripping "&" or alike
+  uint8_t has_amp:1;     // command has "&" at the end?
+  uint8_t bg_exec:1;     // enforce background execution despite of "&" symbol
+  uint8_t reserved6:6;   // other flags, currently unused
+  char **argv;           // tokenized input string (array of pointers to various locations withn /userinput/)
+  char *userinput;       // original input string with '\0's inserted by tokenizer
   int (*gpp)(int, char **); //callback that is associated with argv[0] command.
 };
 typedef struct argcargv argcargv_t;
@@ -116,13 +118,15 @@ static argcargv_t *userinput_tokenize(char *userinput) {
                      // aliases, as lists of precompiled argcargv_t's can update ->gpp on a first alias execution
                      // and use this value on subsequent calls to "exec alias"
       a->argv = NULL;
-      a->argc = a->argc0 = argify((unsigned char *)userinput, (unsigned char ***)&(a->argv));
+      a->argc = argify((unsigned char *)userinput, (unsigned char ***)&(a->argv));
       if (a->argc > 0) {
         // successfully tokenized: we have at least 1 token (or more)
         // Keep /userinput/ : we have to free() it after command finishes its execution
         a->userinput = userinput;
         a->ref = 1;
         a->next = NULL;
+        a->has_amp = 0;
+        a->bg_exec = 0;
         //VERBOSE(q_printf("userinput_tokenize() : created argcargv_t %p\r\n",a));
         // Convert argv[0] (a command name) to lowercase to workaround some dumb terminals 
 //        q_tolower(a->argv[0]);
@@ -147,6 +151,8 @@ void userinput_show(argcargv_t *aa) {
       q_print(aa->argv[i]);
       q_print(" ");
     }
+    if (aa->has_amp)
+      q_print("&");
   }
 }
 
@@ -156,6 +162,83 @@ void userinput_redraw() {
   redisplay(); 
   TTYflush();
 }
+
+// Find corresponding command handler (cmd_..) for given argv[0]
+// and put it to /aa->gpp/
+//
+// Returns 0 on success
+//         CMD_FAILED on "no such command"
+//         CMD_MISSING_ARG on "wrong number of arguments"
+//         >0 to point on failed argument
+//
+static int userinput_find_handler(argcargv_t *aa) {
+
+  char **argv = NULL;
+  int argc, i;
+  bool found = false; // a candidate found (name match)
+
+  // /keywords/ is an _Atomic  pointer to one of /keywords_main/, /keywords_uart/ ... etc keyword tables.
+  // It points at main tree at startup and then can be switched. 
+  const struct keywords_t *key = keywords;   
+
+  MUST_NOT_HAPPEN(aa == NULL);
+
+  // Handy shortcuts. GCC is smart enough to eliminate these.
+  argc = aa->argc;
+  argv = aa->argv;
+
+one_more_try: // we get here if we wasn't able to find any suitable handler in a command subdirectory
+
+  i = 0;                  // start from keyword #0
+  
+  // Find a keywords[] entry for a given command (argv[0])
+  //
+  // 1. Go through the keywords array till the end
+  while (key[i].cmd) {
+
+    // 2. Next keyword matches user input?
+    // NOTE: A keyword that starts from "*" matches any user input. 
+    //       This one is used in alias.h, to implement alias editing
+    if (!q_strcmp(argv[0], key[i].cmd) || key[i].cmd[0] == '*') {
+
+      // 3. We have found a candidate (name match)
+      found = true;
+
+      // 4. Match number of arguments. There are many commands whose names are identical but number of arguments is different.
+      // One special case is keywords with their /.argc/ set to -1: these are "any number of argument" commands. These should be positioned
+      // carefully in keywords array to not shadow other entries which differs in number of arguments only
+      if (((argc - 1) == key[i].argc) || (key[i].argc < 0)) {
+
+        // 5. We found the callback. It is only used when not NULL!
+        // There are entries with /cb/ set to NULL: those are for help text only, as they are processed 
+        // by "?" command/keypress
+        if (key[i].cb) {
+          
+          aa->gpp = key[i].cb;
+          //VERBOSE(q_print("% Caching GPP handler\r\n"));
+          return 0;
+
+        }  // if callback is provided
+      }    // if argc matched
+    }      // if name matched
+    i++;   // process next entry in keywords[]
+  }        // until all keywords[] are processed
+
+  // Reached the end of the list and didn't find any exact match?
+  // Lets try to search in /keywords_main/ (if we are currently in a subdirectory)
+  if (key != keywords_main) {
+    key = keywords_main;
+    goto one_more_try;
+  }
+
+  // If we get here, then we have a problem:
+  if (found)  // we had a name match but number of arguments was wrong
+    return CMD_MISSING_ARG;
+
+  // no name match let alone arguments number
+  return CMD_FAILED;
+}
+
 #endif //#if COMPILING_ESPSHELL
 
 

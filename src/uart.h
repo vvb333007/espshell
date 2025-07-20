@@ -53,7 +53,7 @@ uart_tap(int remote) {
       if (buf[0] == BREAK_KEY)
         return;
       uart_write_bytes(remote, buf, av);
-      task_yield();
+      q_yield();
     }
 
     // 2. read all the data from remote uart and echo it to the user
@@ -72,7 +72,7 @@ uart_tap(int remote) {
 
       uart_read_bytes(remote, buf, av, portMAX_DELAY);
       console_write_bytes(buf, av);
-      task_yield();
+      q_yield();
     }
   } while ( true );
 }

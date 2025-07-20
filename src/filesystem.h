@@ -720,18 +720,19 @@ static int files_cat_text(const char *path, unsigned int line, unsigned int coun
       if (line <= cline) {
         count--;
         if (device == (unsigned char)(-1)) {
-          if (numbers)
-#pragma GCC diagnostic ignored "-Wformat"
+          if (numbers) {
+            WD()
             q_printf("% 4u: ", cline);
-#pragma GCC diagnostic warning "-Wformat"
+            WE()
+          }
           q_print(p);
           q_print(CRLF);
         } else {
           char tmp[16];
           if (numbers) {
-#pragma GCC diagnostic ignored "-Wformat"
+            WD()
             sprintf(tmp, "% 4u: ", cline);
-#pragma GCC diagnostic warning "-Wformat"
+            WE()
             uart_write_bytes(device, tmp, strlen(tmp));
           }
           uart_write_bytes(device, p, r);
@@ -856,7 +857,7 @@ static bool files_copy(const char *src, const char *dst) {
                 if (rd == (wr = write(d, buf, rd))) {
                   // TODO: update_copy_progress()
                   // TODO: ctrlc_pressed()
-                  task_yield();  //make WDT happy
+                  q_yield();  //make WDT happy
                   continue;
                 }
               // errors during copy :(
@@ -1403,7 +1404,7 @@ finalize_mount:
 // "mount"
 // Without arguments display currently mounted filesystems and partition table
 //
-#pragma GCC diagnostic ignored "-Wformat"
+WD()
 static int cmd_files_mount0(int argc, char **argv) {
 
   int usable = 0, i;
@@ -1472,7 +1473,7 @@ static int cmd_files_mount0(int argc, char **argv) {
     esp_partition_iterator_release(it);
   return 0;
 }
-#pragma GCC diagnostic warning "-Wformat"
+WE()
 
 // "show mount"
 // "show mount PATH"
@@ -1651,9 +1652,9 @@ static int cmd_files_ls(int argc, char **argv) {
           q_print("%-- USED --        *  Mounted on\r\n");
           found = true;
         }
-#pragma GCC diagnostic ignored "-Wformat"
+        WD()
         q_printf("%% <b>% 9u</>       MP  [<i>%s</>]\r\n", files_space_used(i), mountpoints[i].mp);
-#pragma GCC diagnostic warning "-Wformat"
+        WE()
       }
     if (!found)
       q_printf("%% <i>Root (\"%s\") directory is empty</>: no fileystems mounted\r\n%% Use command \"mount\" to list & mount available partitions\r\n", path);
@@ -1694,15 +1695,15 @@ static int cmd_files_ls(int argc, char **argv) {
             unsigned int dir_size = ls_show_dir_size ? files_size(path0) : 0;
             total_d++;
             total_fsize += dir_size;
-#pragma GCC diagnostic ignored "-Wformat"
+            WD()
             q_printf("%% % 9u  %s  DIR [<i>%s</>]\r\n", dir_size, files_time2text(st.st_mtime), ent->d_name);
-#pragma GCC diagnostic warning "-Wformat"
+            WE()
           } else {
             total_f++;
             total_fsize += st.st_size;
-#pragma GCC diagnostic ignored "-Wformat"
+            WD()
             q_printf("%% % 9u  %s      <g>%s</>\r\n", (unsigned int)st.st_size, files_time2text(st.st_mtime), ent->d_name);
-#pragma GCC diagnostic warning "-Wformat"
+            WE()
           }
         } else
           q_printf("<e>stat() : failed %d, name %s</>\r\n", errno, path0);

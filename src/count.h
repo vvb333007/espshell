@@ -538,13 +538,13 @@ static int cmd_show_counters(UNUSED int argc, UNUSED char **argv) {
     cnt = count_read_counter(i,&freq,&interval);
     
 // wish we can have #pragma in #define ..
-#pragma GCC diagnostic ignored "-Wformat"
+    WD()
     q_printf("%%  %d |% 3u| %s | 0x%08x | <g>% 11u</> | % 10u | % 8u | ", i, units[i].pin, count_state_name(i), units[i].taskid, cnt, (unsigned int )(interval / 1000ULL), freq); // TODO: bad typecast
     if (units[i].filter_enabled)
       q_printf(" <i>%u</>\r\n", units[i].filter_value);
     else
       q_print("-off-\r\n");
-#pragma GCC diagnostic warning "-Wformat"
+    WE()
   }
 
   if (pcnt_counters) {

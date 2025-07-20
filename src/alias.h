@@ -114,9 +114,9 @@ static int alias_show_lines(argcargv_t *s) {
   int i = 0,j;
   const char *pre = "";
   for ( ; s; s = s->next) {
-#pragma GCC diagnostic ignored "-Wformat"      
+    WD()
     q_printf("%% % 3u: %s%s", ++i, pre, s->argv[0]);
-#pragma GCC diagnostic warning "-Wformat"      
+    WE()
     for (j = 1; j < s->argc; j++) {
       q_print(" ");
       q_print(s->argv[j]);
@@ -124,6 +124,9 @@ static int alias_show_lines(argcargv_t *s) {
     q_print("\r\n");
 
     // Indent commands inside subdirectories. Only one level. Indent is restored on "exit" command
+    // TODO:
+    // "camera settings" is not indented because is_command_directory() only pays attention to the first element (i.e. "camera")
+    // Plus to that, keywords are named "keywords_espcam", not "keywords_camera"
     if (!q_strcmp(s->argv[0],"exit"))
       pre = "";
     else if (is_command_directory(s->argv[0]))
@@ -290,6 +293,14 @@ static int cmd_alias_asterisk(int argc, char **argv) {
   q_print("% Failed to add (out of memory)\r\n");
   return CMD_FAILED;
 }
+
+// Execute alias as if it was with "&" symbol at the end 
+// 1. Start ourself as a task
+// 2. Execute as in alias_exec
+static int alias_exec_in_background(struct alias *al) {
+  
+  return CMD_FAILED;
+}
 // Execute an alias: lock it for reading, go  through stored argcargv_t lists
 // and send them to the command processor. We do increment line's refcount before calling espshell_command()
 // because espshell_command() decrements it
@@ -301,17 +312,9 @@ static int alias_exec(struct alias *al) {
     rw_lockr(&al->rw);
     
     for (p = al->lines; p; p = p->next) {
-      userinput_ref(p);
-      // TODO:
-      // Due to design limitations, espshell_command() manipulates argc values on live argcargv_t
-      // and this can lead to weird behaviour:
-      // 1. create an alias (lets name it "c" ) with a background command, e.g. "pin 2 toggle loop 80000 &"
-      // 2. type "exec c c c c"
-      // You will see that sometimes alias gets executed in foreground. This is a known bug and happens
-      // because of shared argcargv_t, where argc changes forth and back. Deeper problem is that espshell_command()
-      // alters arcargv_t while under ReadLock
-      // Solution is to NOT MODIFY argc and do not strip "&": it will also require small changes to "pin loop" logic
-      espshell_command(NULL, p);
+      userinput_ref(p);          // espshell_command() does unref()
+      p->bg_exec = 0;            // command processor decides if it is background or foreground command
+      espshell_command(NULL, p); // execute
     }
     rw_unlockr(&al->rw);
     return 0;

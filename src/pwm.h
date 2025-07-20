@@ -258,10 +258,9 @@ static int cmd_show_pwm(UNUSED int argc, UNUSED char **argv) {
           channel = bus->channel;
           duty = ledcRead(pin);
           percent = (unsigned)(((float)duty / (float)duty_max) * 100.0f);
-          
-#pragma GCC diagnostic ignored "-Wformat"                
+          WD()
           q_printf("%%   % 2lu  |  % 8lu |  % 6lu |    % 5u | %s%u\r\n",pin, freq, duty, percent, hw, channel);
-#pragma GCC diagnostic warning "-Wformat"                  
+          WE()
         }
       }
     }

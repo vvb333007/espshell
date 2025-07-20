@@ -15,83 +15,6 @@
 //
 #if COMPILING_ESPSHELL
 
-#if WITH_WRAP
-//
-// Intercept calls to FreeRTOS to get and maintain a list of started tasks. 
-// The list is available as a convar "Tasks" and can be accessed via "var Tasks"
-//
-// It is a link-time interception and it is done by linker: calls to real functions gets replaced with calls to __wrap_ equivalents;
-// Original function is still available through __real_vTaskDelete (as an example)
-//
-// In order to work, LD_FLAGS must be set to -Wl,--wrap=vTaskDelete -Wl,--wrap=xTaskCreatePinnedToCore -Wl,--wrap=xTaskCreateStaticPinnedToCore
-// Unfortunately, as of Arduino IDE v2.3.4 there is no way to pass these linker flags: instead, one had to modify "ld_flags" file in the shipped
-// (precompiled) ESP-IDF
-//
-#warning "Don't forget to add -Wl,--wrap=vTaskDelete -Wl,--wrap=xTaskCreatePinnedToCore -Wl,--wrap=xTaskCreateStaticPinnedToCore to your ld_flags file!!!"
-static TaskHandle_t Tasks[20] = { 0 };
-
-// Declare task creation / deletion functions as **possibly** unresolved external.
-// Declare wrappers & "real" functions.
-// Linker will replace all calls to vTaskDelete with __wrap_vTaskDelete(), which does statistics and pass control to the "real" vTaskDelete()
-//
-extern void vTaskDelete(TaskHandle_t h);
-extern BaseType_t xTaskCreatePinnedToCore( TaskFunction_t pxTaskCode,const char * const pcName,const configSTACK_DEPTH_TYPE usStackDepth,void * const pvParameters,UBaseType_t uxPriority,TaskHandle_t * const pvCreatedTask,const BaseType_t xCoreID );
-extern TaskHandle_t xTaskCreateStaticPinnedToCore( TaskFunction_t pxTaskCode,const char * const pcName,const uint32_t ulStackDepth,void * const pvParameters,UBaseType_t uxPriority,StackType_t * const pxStackBuffer,StaticTask_t * const pxTaskBuffer,const BaseType_t xCoreID );
-extern void __real_vTaskDelete(TaskHandle_t h);
-extern BaseType_t __real_xTaskCreatePinnedToCore( TaskFunction_t pxTaskCode,const char * const pcName,const configSTACK_DEPTH_TYPE usStackDepth,void * const pvParameters,UBaseType_t uxPriority,TaskHandle_t * const pvCreatedTask,const BaseType_t xCoreID );
-extern TaskHandle_t __real_xTaskCreateStaticPinnedToCore( TaskFunction_t pxTaskCode,const char * const pcName,const uint32_t ulStackDepth,void * const pvParameters,UBaseType_t uxPriority,StackType_t * const pxStackBuffer,StaticTask_t * const pxTaskBuffer,const BaseType_t xCoreID );
-
-// Remember unique task ID
-static int taskid_store(TaskHandle_t h) {
-  for (int i = 0; i < sizeof(Tasks)/sizeof(Tasks[0]); i++)
-    if (Tasks[i] == h || !Tasks[i]) {
-      Tasks[i] = h;
-      return i;
-    }
-  return -1;
-}
-
-// Forget task ID
-static void taskid_forget(TaskHandle_t h) {
-  for (int i = 0; i < sizeof(Tasks)/sizeof(Tasks[0]); i++)
-    if (Tasks[i] == h) {
-      Tasks[i] = 0;
-      break;
-    }
-}
-
-
-// Sumple proxy wrappers to maintain currently running tasks list
-// The list is accessible via "var Tasks"
-//
-void __wrap_vTaskDelete(TaskHandle_t h) {
-  taskid_forget(h);
-  __real_vTaskDelete(h);
-}
-
-BaseType_t __wrap_xTaskCreatePinnedToCore( TaskFunction_t pxTaskCode,const char * const pcName,const configSTACK_DEPTH_TYPE usStackDepth,void * const pvParameters,UBaseType_t uxPriority,TaskHandle_t * const pvCreatedTask,const BaseType_t xCoreID ) {
-
-  TaskHandle_t tmp, *h;
-  BaseType_t ret;
-
-  if ((h = pvCreatedTask) == NULL)
-    h = &tmp;
-
-  ret = __real_xTaskCreatePinnedToCore(pxTaskCode,pcName,usStackDepth,pvParameters,uxPriority,h,xCoreID );
-  taskid_store(*h);
-  return ret;
-}
-
-TaskHandle_t __wrap_xTaskCreateStaticPinnedToCore( TaskFunction_t pxTaskCode,const char * const pcName,const uint32_t ulStackDepth,void * const pvParameters,UBaseType_t uxPriority,StackType_t * const pxStackBuffer,StaticTask_t * const pxTaskBuffer,const BaseType_t xCoreID ) {
-  TaskHandle_t ret = __real_xTaskCreateStaticPinnedToCore(pxTaskCode,pcName,ulStackDepth,pvParameters,uxPriority,pxStackBuffer,pxTaskBuffer,xCoreID );
-  if (ret)
-    taskid_store(ret);
-  return ret;
-}
-#endif //WITH_WRAP
-
-#define CONSOLE_UP_POLL_DELAY 1000   // 1000ms. How often to check if Serial is up
-
 extern TaskHandle_t loopTaskHandle;  // task handle of a task which calls Arduino's loop(). Defined somewhere in the ESP32 Arduino Core
 static TaskHandle_t shell_task = 0;  // Main espshell task ID
 static int          shell_core = 0;  // CPU core number ESPShell is running on. For single core systems it is always 0
@@ -106,6 +29,15 @@ static int          shell_core = 0;  // CPU core number ESPShell is running on. 
 // current task id
 #define taskid_self() xTaskGetCurrentTaskHandle()
 
+#define task_new(func, arg) \
+  ({ \
+    TaskHandle_t handle; \
+    if (pdPASS != xTaskCreatePinnedToCore((TaskFunction_t)func, "Async", STACKSIZE, arg, tskIDLE_PRIORITY, &handle, shell_core)) \
+      handle = 0; \
+    handle; \
+  })
+   
+
 // Task signalling wrappers. qlib is used in a few different projects so I try to keep it easily convertible to other API
 // (POSIX for example). 
 
@@ -119,11 +51,6 @@ static int          shell_core = 0;  // CPU core number ESPShell is running on. 
     BaseType_t ignored; \
     xTaskNotifyFromISR((TaskHandle_t)(_Handle), _Signal, eSetValueWithOverwrite, &ignored); \
   } while (0)
-
-// Yeld to another task
-// TODO: test the shell with taskYIELD() as better alternative to q_delay(1)
-#define task_yield() q_delay(1)
-
 
 // Block until any signal is received but not longer than /timeout/ milliseconds. Value of 0xffffffff (DELAY_INFINITE) means "infinite timeout":
 // function will block until it receives ANY signal; the signal value is returned in /*sig/, pointer can be NULL;
@@ -189,11 +116,16 @@ static void espshell_display_error(int ret, int argc, char **argv) {
 
   if (ret > 0)
     q_printf("%% <e>Invalid %u%s argument (\"%s\")</>\r\n", NEE(ret), ret < argc ? argv[ret] : "Empty");
-  else if (ret < 0) 
+  else if (ret < 0) {
     if (ret == CMD_MISSING_ARG)
       q_printf("%% <e>Wrong number of arguments (%d). Help page: \"? %s\" </>\r\n",argc - 1, argv[0]);
+    else if (ret == CMD_NOT_FOUND)
+      q_printf("%% <e>\"%s\": command not found</>\r\n"
+               "%% Type \"?\" to show the list of commands available\r\n", argv[0]);
+
     // Keep silent on other error codes which are <0 :
     // CMD_FAILED return code assumes that handler did display error message before returning CMD_FAILED
+  }
 }  
 
 
@@ -220,9 +152,6 @@ static void espshell_async_task(void *arg) {
     MUST_NOT_HAPPEN(aa->gpp == NULL);
 
     ret = (*(aa->gpp))(aa->argc, aa->argv);
-    // TODO: this is a workaround: espshell_command() strips last "&" so here we restore it. it is solely for "exec" command
-    // TODO: to be removed soon
-    aa->argc = aa->argc0; 
 
     q_print("\r\n% Finished: \"<i>");
     userinput_show(aa); // display command name and arguments
@@ -246,7 +175,7 @@ static void espshell_async_task(void *arg) {
 }
 
 // Executes commands in a background (commands which names end with &).
-// This one used by espshell_command() processor to execute &-commands 
+// Alias/Events code also uses this.
 //
 static int exec_in_background(argcargv_t *aa_current) {
 
@@ -259,7 +188,8 @@ static int exec_in_background(argcargv_t *aa_current) {
   userinput_ref(aa_current);
 
   // Start async task. Pin to the same core where espshell is executed
-  if (pdPASS != xTaskCreatePinnedToCore((TaskFunction_t)espshell_async_task, "Async", STACKSIZE, aa_current, tskIDLE_PRIORITY, &ignored, shell_core)) {
+  //if (pdPASS != xTaskCreatePinnedToCore((TaskFunction_t)espshell_async_task, "Async", STACKSIZE, aa_current, tskIDLE_PRIORITY, &ignored, shell_core)) {
+  if ((ignored = task_new(espshell_async_task, aa_current)) == NULL) {
     q_print("% <e>Can not start a new task. Resources low? Adjust STACKSIZE macro in \"espshell.h\"</>\r\n");
     userinput_unref(aa_current);
   } else
@@ -328,7 +258,7 @@ static int cmd_kill(int argc, char **argv) {
     // SIGNAL_KILL is never sent to a task. Instead, task is deleted.
     if (sig == SIGNAL_KILL) {
       vTaskSuspend((TaskHandle_t)taskid);
-      task_yield();
+      q_delay(1);
       vTaskDelete((TaskHandle_t)taskid);
       HELP(q_printf("%% Killed: \"0x%x\". Resources are not freed!\r\n", taskid));
     } else

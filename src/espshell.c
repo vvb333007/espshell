@@ -17,7 +17,8 @@
 
 #define COMPILING_ESPSHELL 1  // dont touch this!
 
-// Limits 
+// Limits
+#define CONSOLE_UP_POLL_DELAY 1000     // 1000ms. How often to check if Serial is up
 #define PWM_MAX_FREQUENCY 10000000     // Max frequency for PWM, 10Mhz. Must be below XTAL clock and well below APB frequency. 
 #define MAX_PROMPT_LEN 16              // Prompt length ( except for PROMPT_FILES), max length of a prompt
 #define MAX_PATH 256                   // max filesystem path len
@@ -131,6 +132,9 @@
 #define xstr(s) ystr(s)   
 #define ystr(s) #s
 
+#define xPRAGMA(string) _Pragma(#string)
+#define PRAGMA(string) xPRAGMA(string)
+
 #define BREAK_KEY 3    // Ctrl+C code
 
 // Special pin names.
@@ -140,6 +144,11 @@
 
 // enable -Wformat warnings. Turned off by Arduino IDE by default.
 #pragma GCC diagnostic warning "-Wformat"  
+
+#define WE() PRAGMA(GCC diagnostic warning "-Wformat")
+#define WD() PRAGMA(GCC diagnostic ignored "-Wformat")
+
+
 
 // -- Miscellaneous forwards. These can not be resolved by rearranging of "#include"'s :-/
 
@@ -241,6 +250,7 @@ static const char *VarOops = "<e>% Oops :-(\r\n"
 
 // 4. Really old (but refactored) version of editline. Probably from 80's. Works well, rock solid :)
 #include "editline.h"           // editline library
+#include "keywords.h"           // all command trees
 #include "userinput.h"          // userinput tokenizer and reference counter
 
 static argcargv_t *AA = NULL;   // only valid for foreground commands; used to access to raw user input, mainly by alias code
@@ -253,7 +263,7 @@ static int espshell_command(char *p, argcargv_t *aa);
 
 #include "convar.h"             // code for registering/accessing sketch variables
 #include "task.h"               // main shell task, async task helper, misc. task-related functions
-#include "keywords.h"           // all command trees
+
 #include "sequence.h"           // RMT component (sequencer)   
 #include "cpu.h"                // cpu-related command handlers  
 #include "pwm.h"                // PWM component
@@ -293,10 +303,9 @@ static int espshell_command(char *p, argcargv_t *aa);
 //
 static int
 espshell_command(char *p, argcargv_t *aa) {
-
-  char **argv = NULL;
-  int argc, i = 0, bad = -1;
-  bool found = true, fg;
+  
+  int bad = CMD_FAILED;
+  bool fg = true;
 
   MUST_NOT_HAPPEN(((aa != NULL) && (p != NULL)) || ((aa == NULL) && (p == NULL)));
   
@@ -304,11 +313,14 @@ espshell_command(char *p, argcargv_t *aa) {
   // if we got only /aa/ but /p/ is NULL then we execute /aa/ and don't update history:
   // this behaviour is needed for "exec ALIAS_NAME"
   //
-  if (p && *p) {
+  if (p) {
 
     //make a history entry, if history is enabled (default)
-    if (History)
-      history_add_entry(userinput_strip(p));
+    if (History) {
+      userinput_strip(p);
+      if (*p)
+        history_add_entry(p);
+    }
 
     // tokenize user input
     if ((aa = userinput_tokenize(p)) == NULL) {
@@ -316,141 +328,47 @@ espshell_command(char *p, argcargv_t *aa) {
       return -1;
     }
   }
+
+  // Find a handler if not found yet
+  if (!aa->gpp) 
+    if ((bad = userinput_find_handler(aa)) != 0)
+      goto unref_and_exit; // command not found?
   
-  if (aa) {
-
-    // /keywords/ is an _Atomic  pointer to one of /keywords_main/, /keywords_uart/ ... etc keyword tables.
-    // It points at main tree at startup and then can be switched. 
-    const struct keywords_t *key = keywords;   
-
-
-    // /fg/ is /false/ if we have "&" keyword at the end
-    // TODO: char comparision is enough, q_strcmp is overkill
-    // TODO: big changes : keep "&"" intact, fix handlers who don't expect trailing & (e.g. "pin ... loop")
-    if ((fg = q_strcmp(aa->argv[aa->argc - 1],"&")) == false) {
+  // Foreground or background?
+  // /fg/ is /false/ if we have "&" keyword at the end of a command
+  if (aa->argv[aa->argc - 1][0] == '&') {
+    fg = false;
 #if WITH_ALIAS      
-      // An "&" symbol within alias editing mode should not be stripped or be translated for background exec
-      // TODO: BUG: an async "exec" may hit the condition below if user is still in alias configuration mode
-      // TODO: Solution: stop event system when user is in alias editing mode
-      if (key == keywords_alias)
-        fg = true;
-      else 
+    // An "&" symbol within alias editing mode should not be stripped or be translated for background exec
+    // TODO: BUG: an async "exec" may hit the condition below if user is still in alias configuration mode
+    // TODO: Solution: stop event system when user is in alias editing mode
+    if (keywords == keywords_alias)
+      fg = true;
+    else 
 #endif      
-      // strip last "&" argument. It is restored upon completion of a background command (see aa->argc0)
+    {
+      // strip last "&" argument and store it in the AA flag
+      aa->has_amp = 1;
       aa->argc--;
     }
-
-    // from now on /p/ is can be freed by userinput_unref() only, as part of /aa/
-    // Handy shortcuts. GCC is smart enough to eliminate these.
-    argc = aa->argc;
-    argv = aa->argv;
-
-    // Global pointer to currently used argcargv_t structure: only used in alias editing mode, to have a 
-    // parsed copy of the command line. Background tasks have this pointer through background task arguments;
-    //
-    // This global pointer's sole purpose is to be a **source** of a current parsed command line, to add it into alias.
-    // It may turn NULL unexpectedly, so
-    // DON'T USE AA OUTSIDE ALIAS LOGIC: IT IS NOT THREAD SAFE
-    //
-    // TODO: BUG: AA can be trashed by exec'ing an alias in a background: foreground alias command will overwrite AA
-    //       Simultaneous editing of an alias (any) and executing (another alias, via event system) may cause undefined behaviour.
-    //       Must be fixed at design level
-    //       Solution: block event system if user is in alias editing mode
-    AA = fg ? aa : NULL;
-
-    // When we pass aa directly, we can take advantige of reusing command handler pointer
-    // if it was found before somehow. In particular, this happens on successive "exec" of the same alias:
-    // first "exec" initializes gpp, subsequent execs reuse this pointer skipping search phase
-    // GPP is set to NULL when AA is created AND by cmd_alias_asteriks()
-    //
-    if (aa->gpp != NULL) {
-      //VERBOSE(q_print("% Reusing GPP\r\n"));
-      goto skip_command_lookup;
-    }
-
-    found = false;
-
-one_more_try:
-    i = 0;          // start from keyword #0
-    bad = -1;       // default error code ("missing argument")
-
-    
-    // Find a keywords[] entry for a given command (argv[0]) and execute it:
-    //
-    // 1. Go through the keywords array till the end
-    while (key[i].cmd) {
-
-      // 2. Next keyword matches user input?
-      // NOTE: keyword "*" matches any user input. This one is used in alias.h, to implement alias editing
-      if (!q_strcmp(argv[0], key[i].cmd) || key[i].cmd[0] == '*') {
-
-        // 3. We have found a candidate
-        found = true;
-
-        // 4. Match number of arguments. There are many commands whose names are identical but number of arguments is different.
-        // One special case is keywords with their /.argc/ set to -1: these are "any number of argument" commands. These should be positioned
-        // carefully in keywords array to not shadow other entries which differs in number of arguments only
-        if (((argc - 1) == key[i].argc) || (key[i].argc < 0)) {
-
-          // 5. Execute the command by calling a callback. It is only executed when not NULL. 
-          // There are entries with /cb/ set to NULL: those are for help text only, as they are processed 
-          // by "?" command/keypress
-          //
-          // if callback returns nonzero value then it is an index of the "failed" argument (value of 3 means argv[3] was bad 
-          // (for values > 0))
-          // value of zero means successful execution, return code <0 means error (see CMD_FAILED, CMD_MISSING_ARG)
-          //
-          if (key[i].cb) {
-
-            int l;
-            MUST_NOT_HAPPEN((l = strlen(argv[0]) - 1) < 0);
-
-            // 6. save command handler (exec_in_background() and "exec alias" will need it)
-            // this address can be reused at certain conditions (see cmd_exec())
-            aa->gpp = key[i].cb;
-            //VERBOSE(q_print("% Caching GPP handler\r\n"));
-
-skip_command_lookup:
-            // skipping to the label above assumes:
-            // /i/ is 0 (below there are checks for /key[i].../, so we have to set i in a such way that /key[i]/ is valid pointer, non-null command)
-            // /found/ is /true/
-            // /aa->gpp/ is not NULL
-
-            // 8. Execute
-            bad = fg ? aa->gpp(argc, argv) : exec_in_background(aa);
-
-            if (bad != 0)
-              espshell_display_error(bad,argc,argv);
-            else
-              // 9. Success
-              // Make sure keywords[i] is a valid pointer (change_command_directory() changes keywords list so keywords[i] might be invalid pointer)
-              i = 0;
-
-
-            break;
-          }  // if callback is provided
-        }    // if argc matched
-      }      // if name matched
-      i++;   // process next entry in keywords[]
-    }        // until all keywords[] are processed
-
-    // Reached the end of the list and didn't find any exact match?
-    if (!key[i].cmd) {
-
-      // Lets try to search in /keywords_main/ (if we are currently in a subdirectory)
-      if (key != keywords_main) {
-        key = keywords_main;
-        goto one_more_try;
-      }
-
-      // If we get here, then we have a problem:
-      if (found)  // we had a name match but number of arguments was wrong
-        q_printf("%% <e>\"%s\": wrong number of arguments</> (\"? %s\" for help)\r\n", argv[0], argv[0]);
-      else        // no name match let alone arguments number
-        q_printf("%% <e>\"%s\": command not found</>\r\n"
-                 "%% Type \"?\" to show the list of commands available\r\n", argv[0]);
-    }
   }
+
+  // "&" symbol or implicit bg_exec?
+  if (aa->has_amp || aa->bg_exec)
+    fg = false;
+
+  if (fg) {
+    AA = aa;
+    bad = aa->gpp(aa->argc, aa->argv);
+  } else {
+    AA = NULL;
+    bad = exec_in_background(aa);
+  }
+
+unref_and_exit:
+
+    if (bad != 0)
+      espshell_display_error(bad,aa->argc,aa->argv);
 
   // free memory associated with the user input
   userinput_unref(aa);
@@ -535,7 +453,8 @@ static void espshell_task(const void *arg) {
     shell_core = xPortGetCoreID();
     if (portNUM_PROCESSORS > 1)
       shell_core = shell_core ? 0 : 1;
-    if (pdPASS != xTaskCreatePinnedToCore((TaskFunction_t)espshell_task, NULL, STACKSIZE, NULL, tskIDLE_PRIORITY, &shell_task, shell_core))
+    
+    if ((shell_task = task_new(espshell_task, NULL)) == NULL)
       q_print("% ESPShell failed to start its task\r\n");
   } else {
 
@@ -548,7 +467,7 @@ static void espshell_task(const void *arg) {
     // read & execute commands until "exit ex" is entered
     while (!Exit) {
       espshell_command(readline(prompt), NULL);
-      task_yield(); // TODO: verify if we really need it. 
+      q_yield(); // TODO: verify if we really need it. 
     }
     HELP(q_print(Bye));
 

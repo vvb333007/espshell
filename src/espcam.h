@@ -203,11 +203,11 @@ static int cmd_show_camera(int argc, char **argv) {
   if (!q_strcmp(argv[2],"models")) {
     q_print("% Known camera models:\r\n");
     int i;
-#pragma GCC diagnostic ignored "-Wformat"              
+    WD()
     for (i = 0; Campins[i].model ;i++)
       q_printf("%% % 2u. <i>% 15s</> : %s\r\n",i + 1,Campins[i].model, Campins[i].comment);
     q_printf("%% % 2u. <i>% 15s</> : %s\r\n",i + 1,Custom.model, Custom.comment);
-#pragma GCC diagnostic warning "-Wformat"          
+    WE()
     HELP(q_print( "%\r\n"
                   "% Use model names from the list above for \"<b>camera up</>\" and \"<b>show camera pinout</>\"\r\n"
                   "% Configure custom pinout with \"<b>camera pinout</>\", apply with \"<b>camera up custom</>\"\r\n"));
