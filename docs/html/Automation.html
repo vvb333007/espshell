@@ -74,9 +74,13 @@ These commands do not appear in the general command list (shown with "?" or "hel
 </p></td></tr>
 
 <tr><td>
-<b><p>echo</b>&nbsp;[<b>on</b>|<b>off</b>|<b>silent</b>]</p></td><td>
+<p><b>echo</b>&nbsp;[<b>on</b>|<b>off</b>|<b>silent</b>]<br />
+<b>echo</b>&nbsp;[-n]&nbsp;<i>TEXT</i><br />
+</p>
+</td><td>
 <p>
   Enables or disables shell output and user input echo.
+  Displays an arbitrary TEXT
 </p>
 <p>
   By default, everything typed by the user is <i>echoed back</i> by ESPShell.  
@@ -110,6 +114,25 @@ These commands do not appear in the general command list (shown with "?" or "hel
   This mode is useful when you don't want ESPShell to interfere with the sketch's output.  
   The sketch retains full control over the serial interface, while ESPShell remains silent.
 </p>
+
+<p>
+  <b>echo [-n] <i>TEXT</i></b> : Displays TEXT. TEXT can be a single word or a sentence:
+<pre>
+  esp32#>echo Hello, World!
+</pre>
+  displays "Hello, World message". Using optional "<b>-n</b>" keyword disables automatic newline addition, so cursor will stay
+on the same line. Escape sequences are not allowed, but <i>color tags</i> are: &lt;i&gt;, &lt;/&gt;, &lt;u&gt; etc:
+</p>
+<p>
+Example: print hello world in green and red
+<pre>
+  esp32#>echo &lt;g&gt;Hello, &lt;w&gt;World&lt;/&gt;!
+  <b><font color=green>Hello</font>, <font color=red>World</font>!</b>
+  esp32#>
+</pre>
+Main use of this command is to be used in <a href="Aliases.html">aliases</a> to display execution progress
+</p>
+
 </td></tr>
 
 <tr><td>
