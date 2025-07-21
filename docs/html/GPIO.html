@@ -674,7 +674,7 @@ The "<b>pin</b>" command is an <i>interpreter</i>; it does not <i>compile</i> it
 <p>
 You can run a simple experiment: connect pins 2 and 4 with a jumper wire and execute the shell commands "<b>pin 2 low high loop infinite &</b>" and "<b>count 4</b>".  
 The first command toggles pin 2 between high and low in a background loop, while the second command counts the pulses received on pin 4.  
-On a classic ESP32 running at 240 MHz, this experiment shows a pulse rate of approximately 80 kHz.  
+On a classic ESP32 running at 240 MHz, this experiment shows a pulse rate of approximately 260 kHz.  
 However, adding just a 1-millisecond delay significantly reduces the execution speed:  
 the command "<b>pin 2 low high delay 1 loop infinite &</b>" results in a signal of only about 500 Hz.
 </p>
