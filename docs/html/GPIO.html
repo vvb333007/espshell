@@ -675,18 +675,13 @@ The "<b>pin</b>" command is an <i>interpreter</i>; it does not <i>compile</i> it
 You can run a simple experiment: connect pins 2 and 4 with a jumper wire and execute the shell commands "<b>pin 2 low high loop infinite &</b>" and "<b>count 4</b>".  
 The first command toggles pin 2 between high and low in a background loop, while the second command counts the pulses received on pin 4.  
 On a classic ESP32 running at 240 MHz, this experiment shows a pulse rate of approximately 260 kHz.  
-However, adding just a 1-millisecond delay significantly reduces the execution speed:  
-the command "<b>pin 2 low high delay 1 loop infinite &</b>" results in a signal of only about 500 Hz.
-</p>
-<p>
-Another factor that can affect the performance of the "<b>pin</b>" command is keyword length.  
-ESPShell executes commands slightly faster if the arguments are <i>shortened</i>.  
-For example, "<b>pin 2 l h loo inf &</b>" will run a bit faster than "<b>pin 2 low high loop infinite &</b>".
+However, adding just a 0-millisecond delay significantly reduces the execution speed:  
+the command "<b>pin 2 low high delay 0 loop infinite &</b>" results in a signal of only about 80 kHz.
 </p>
 <p>
 One more important detail: commands like "<b>pin 2 low high loop inf &</b>" can only be stopped using the "<b><a href="Kill_Suspend_And_Resume.html">kill -9</a></b>" command.  
 This is because such commands do not contain any <b>delays</b>, and delays are the only points where the "<b>kill</b>" command (without "<b>-9</b>") can gracefully interrupt a task.  
-To allow graceful termination, you can either add a 1 ms delay (which, as shown above, greatly reduces performance) or use "<b>kill -9</b>" to forcefully terminate the task.
+To allow graceful termination, you can either add a 0 ms delay (which, as shown above, greatly reduces performance) or use "<b>kill -9</b>" to forcefully terminate the task.
 </p>
 
 <p id="examples"><h2><a href="#top">&#8686;</a>EXAMPLES</h2></p>
