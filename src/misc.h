@@ -264,9 +264,9 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
 
   // forcefully kill our parent task (the shell command processor) if we are running in a background
   if (is_background_task()) {
-    vTaskSuspend((TaskHandle_t)shell_task);
+    vTaskSuspend((task_t)shell_task);
     q_delay(100);
-    vTaskDelete((TaskHandle_t)shell_task);
+    vTaskDelete((task_t)shell_task);
   }
   // foreground: kill ESPShell task
   // background: kill background command task, shell was killed before

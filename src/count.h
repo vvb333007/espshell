@@ -77,7 +77,7 @@ static volatile struct {
 // Argument of count_pin_anyedge_interrupt(). When interrupt fires, the abovementioned function uses this argument
 // to send an event to a calling task.
 struct trigger_arg {
-  TaskHandle_t taskid;  // counter's task id
+  task_t taskid;  // counter's task id
   unsigned int pin;     // pin that has generated the interrupt
 };
 

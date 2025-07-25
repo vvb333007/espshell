@@ -58,6 +58,8 @@ static void userinput_ref(argcargv_t *a) {
 // Decrease refcounter
 // When refcounter hits zero the whole argcargv gets freed
 // a == NULL is ok
+// TODO: do not q_free(), but instead return to the pool of "free" entries
+//       where userinput_tokenize() can reuse them
 static void userinput_unref(argcargv_t *a) {
   if (a) {
     mutex_lock(argv_mux);
@@ -172,8 +174,7 @@ void userinput_redraw() {
 //
 static int userinput_find_handler(argcargv_t *aa) {
 
-  char **argv = NULL;
-  int argc, i;
+  int i;
   bool found = false; // a candidate found (name match)
 
   // /keywords/ is an _Atomic  pointer to one of /keywords_main/, /keywords_uart/ ... etc keyword tables.
@@ -181,10 +182,6 @@ static int userinput_find_handler(argcargv_t *aa) {
   const struct keywords_t *key = keywords;   
 
   MUST_NOT_HAPPEN(aa == NULL);
-
-  // Handy shortcuts. GCC is smart enough to eliminate these.
-  argc = aa->argc;
-  argv = aa->argv;
 
 one_more_try: // we get here if we wasn't able to find any suitable handler in a command subdirectory
 
@@ -198,7 +195,7 @@ one_more_try: // we get here if we wasn't able to find any suitable handler in a
     // 2. Next keyword matches user input?
     // NOTE: A keyword that starts from "*" matches any user input. 
     //       This one is used in alias.h, to implement alias editing
-    if (!q_strcmp(argv[0], key[i].cmd) || key[i].cmd[0] == '*') {
+    if (!q_strcmp(aa->argv[0], key[i].cmd) || key[i].cmd[0] == '*') {
 
       // 3. We have found a candidate (name match)
       found = true;
@@ -206,7 +203,7 @@ one_more_try: // we get here if we wasn't able to find any suitable handler in a
       // 4. Match number of arguments. There are many commands whose names are identical but number of arguments is different.
       // One special case is keywords with their /.argc/ set to -1: these are "any number of argument" commands. These should be positioned
       // carefully in keywords array to not shadow other entries which differs in number of arguments only
-      if (((argc - 1) == key[i].argc) || (key[i].argc < 0)) {
+      if (((aa->argc - 1) == key[i].argc) || (key[i].argc < 0)) {
 
         // 5. We found the callback. It is only used when not NULL!
         // There are entries with /cb/ set to NULL: those are for help text only, as they are processed 
@@ -214,7 +211,6 @@ one_more_try: // we get here if we wasn't able to find any suitable handler in a
         if (key[i].cb) {
           
           aa->gpp = key[i].cb;
-          //VERBOSE(q_print("% Caching GPP handler\r\n"));
           return 0;
 
         }  // if callback is provided
@@ -231,11 +227,10 @@ one_more_try: // we get here if we wasn't able to find any suitable handler in a
   }
 
   // If we get here, then we have a problem:
-  if (found)  // we had a name match but number of arguments was wrong
-    return CMD_MISSING_ARG;
-
-  // no name match let alone arguments number
-  return CMD_NOT_FOUND;
+  // 1. we had a name match but number of arguments was wrong
+  // 2. no name match let alone arguments number
+  return found ? CMD_MISSING_ARG
+               : CMD_NOT_FOUND;
 }
 
 #endif //#if COMPILING_ESPSHELL

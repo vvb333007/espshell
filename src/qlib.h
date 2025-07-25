@@ -24,6 +24,8 @@
 #include <stdatomic.h>
 
 // gcc-specific branch prediction optimization macros 
+#undef likely
+#undef unlikely
 #define unlikely(_X)     __builtin_expect(!!(_X), 0)
 #define likely(_X)     __builtin_expect(!!(_X), 1)
 

@@ -294,30 +294,40 @@ static int cmd_alias_asterisk(int argc, char **argv) {
   return CMD_FAILED;
 }
 
-// Execute alias as if it was with "&" symbol at the end 
-// 1. Start ourself as a task
-// 2. Execute as in alias_exec
-static int alias_exec_in_background(struct alias *al) {
-  
-  return CMD_FAILED;
-}
 // Execute an alias: lock it for reading, go  through stored argcargv_t lists
 // and send them to the command processor. We do increment line's refcount before calling espshell_command()
 // because espshell_command() decrements it
 //
 static int alias_exec(struct alias *al) {
 
-    argcargv_t *p;
+  int ret = 0;
+  argcargv_t *p;
     
-    rw_lockr(&al->rw);
+  rw_lockr(&al->rw);
     
-    for (p = al->lines; p; p = p->next) {
-      userinput_ref(p);          // espshell_command() does unref()
-      p->bg_exec = 0;            // command processor decides if it is background or foreground command
-      espshell_command(NULL, p); // execute
+  for (p = al->lines; p; p = p->next) {
+    userinput_ref(p);                   // espshell_command() does unref()
+    p->bg_exec = 0;                     // TODO: remove. command processor decides if it is background or foreground command
+    if (espshell_command(NULL, p) != 0) {// execute
+      ret = CMD_FAILED; // if there were errors during execution, signal it as generic error:
+                        // no point in returning real code as it makes sence only for a particular argcargv, not for command "exec"
+      HELP(q_printf("%% Alias \"%s\" execution was interrupted because of errors\r\n",al->name));
+      break;
     }
-    rw_unlockr(&al->rw);
-    return 0;
+  }
+  rw_unlockr(&al->rw);
+  return ret;
+}
+
+// The task which executes aliases in a background
+static void alias_helper_task(void *arg) {
+   alias_exec((struct alias *)arg);
+   task_finished();
+}
+
+// Execute alias as if it was with "&" symbol at the end 
+static UNUSED int alias_exec_in_background(struct alias *al) {
+  return task_new(alias_helper_task, al) == NULL ? CMD_FAILED : 0;
 }
 
 // "exec ALIAS_NAME [ NAME2 NAME3 ... NAMEn]"

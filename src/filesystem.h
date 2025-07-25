@@ -417,7 +417,7 @@ static unsigned int files_space_total(int i) {
       BYTE pdrv = 0; 
 
       if (files_mountpoint_is_sdspi(i)) {
-#warning "Developer reminder #1"
+//#warning "Developer reminder #1"
 
 #if 0 // Not yet in Arduino Core.
         vfs_fat_sd_ctx_t *ctx = get_vfs_fat_get_sd_ctx((sdmmc_card_t *)mountpoints[i].gpp);
@@ -465,7 +465,7 @@ static unsigned int files_space_free(int i) {
       BYTE pdrv = 0;
 
       if (files_mountpoint_is_sdspi(i)) {
-#warning "Developer reminder #2"
+//#warning "Developer reminder #2"
 #if 0 // Not yet in Arduino Core.
         vfs_fat_sd_ctx_t *ctx = get_vfs_fat_get_sd_ctx((sdmmc_card_t *)mountpoints[i].gpp);
         MUST_NOT_HAPPEN(ctx == NULL);

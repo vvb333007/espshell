@@ -285,16 +285,109 @@ static int espshell_command(char *p, argcargv_t *aa);
 #include "show.h"               // "show KEYWORD [ARG1 ARG2 ... ARGn]" command
 #include "question.h"           // cmd_question(), context help handler and help pages
 
+// Moved to a function, because it is called both from asyn shell command and command processor
+//
+static void espshell_display_error(int ret, int argc, char **argv) {
+    
+  MUST_NOT_HAPPEN(argc < 1);
+  MUST_NOT_HAPPEN(ret >= argc);
+
+  if (ret > 0)
+    q_printf("%% <e>Invalid %u%s argument (\"%s\")</>\r\n", NEE(ret), ret < argc ? argv[ret] : "Empty");
+  else if (ret < 0) {
+    if (ret == CMD_MISSING_ARG)
+      q_printf("%% <e>Wrong number of arguments (%d). Help page: \"? %s\" </>\r\n",argc - 1, argv[0]);
+    else if (ret == CMD_NOT_FOUND)
+      q_printf("%% <e>\"%s\": command not found</>\r\n"
+               "%% Type \"?\" to show the list of commands available\r\n", argv[0]);
+
+    // Keep silent on other error codes which are <0 :
+    // CMD_FAILED return code assumes that handler did display error message before returning CMD_FAILED
+  }
+}  
 
 
-// Parse & execute: main ESPShell user input processor. User input, an asciiz string is passed to this processor as is.
+// Helper task, which runs (cmd_...) handlers in a background.
+// When user inputs, say, "pin 8 up high" command, the corresponding handler: cmd_pin()) is called directly 
+// by espshell_command() parser,  all execution happens in the loop() task context.
+//
+// Long story short:
+//
+// When user asks for a background execution of the command (by adding an "&" as the very argument to any command)
+// (e.g. "pin 8 up high &") then exec_in_background() is called instead. It starts a task 
+// (espshell_async_task()) which executes "real" command handler stored in aa->gpp.
+//
+static void espshell_async_task(void *arg) {
+
+  argcargv_t *aa = (argcargv_t *)arg;
+  int ret = -1;
+
+  // aa->gpp points to actual command handler (e.g. cmd_pin for command "pin"); aa->gpp is set up
+  // by command processor (espshell_command()) according to first keyword (argv[0])
+  if (aa) {
+
+    MUST_NOT_HAPPEN(aa->gpp == NULL);
+
+    ret = (*(aa->gpp))(aa->argc, aa->argv);
+
+    q_print("\r\n% Finished: \"<i>");
+    userinput_show(aa); // display command name and arguments
+    q_print("\"</>, ");
+    
+    if (ret != 0) {
+      espshell_display_error(ret, aa->argc, aa->argv);
+      q_print("failed\r\n");
+    } else
+      q_print("Ok!\r\n");
+  }
+  
+  // its ok to unref null pointer
+  userinput_unref(aa);
+
+  // Redraw ESPShell command line prompt (yes we need it, because ESPShell has already printed its prompt out once)
+  // TODO: causes output glitches, need to dig it deeper
+  //userinput_redraw();
+
+  vTaskDelete(NULL);
+}
+
+// Executes commands in a background (commands which names end with &).
+// Alias/Events code also uses this.
+//
+static int exec_in_background(argcargv_t *aa_current) {
+
+  task_t ignored;
+
+  MUST_NOT_HAPPEN(aa_current == NULL);
+
+  //increase refcount on argcargv because it will be used by async task and
+  // we want this memory remain allocated after this command
+  userinput_ref(aa_current);
+
+  // Start async task. Pin to the same core where espshell is executed
+  
+  if ((ignored = task_new(espshell_async_task, aa_current)) == NULL) {
+    q_print("% <e>Can not start a new task. Resources low? Adjust STACKSIZE macro in \"espshell.h\"</>\r\n");
+    userinput_unref(aa_current);
+  } else
+    //Hint user on how to stop bg command
+    // TODO: use task_t and %p instead of %x
+    q_printf("%% Background task started\r\n%% Copy/paste \"kill 0x%x\" to abort\r\n", (unsigned int)ignored);
+
+  return 0;
+}
+
+
+// Parse & execute: main ESPShell user input processor. 
 // The main task, which reads user input and calls this function is in task.h
+// User input, an asciiz string is passed to this processor as is; pre-parsed argcargv_t can be passed as the second argument
+// but then first argument must be NULL
 //
 // 1. Split user input /p/ into tokens. Token #0 is a command, other tokens are command arguments.
 // 2. Find an appropriate entry in keywords[] array (command name and number of arguments must match)
-// 3. Execute coresponding callback, may be in a newly created task cotext (for commands ending with "&", like "count&")
+// 3. Execute coresponding callback, may be in a newly created task cotext (for commands ending with "&")
 //
-// asciiz /p/ - is the user input as returned by readline(). Must be writable memory!
+// /p/        - is the user input as returned by readline(). Must be writable memory!
 // /aa/       - must be NULL if /p/ is not NULL. Must be a valid pointer if /p/ is NULL
 //              This one is used to execute user input which was parsed already (see alias.h)
 //
@@ -313,8 +406,8 @@ espshell_command(char *p, argcargv_t *aa) {
   // if we got only /aa/ but /p/ is NULL then we execute /aa/ and don't update history:
   // this behaviour is needed for "exec ALIAS_NAME"
   //
+  // if we got only /p/ and /aa/ is NULL then /aa/ is created from /p/
   if (p) {
-
     //make a history entry, if history is enabled (default)
     if (History) {
       userinput_strip(p);
@@ -336,12 +429,12 @@ espshell_command(char *p, argcargv_t *aa) {
   
   // Foreground or background?
   // /fg/ is /false/ if we have "&" keyword at the end of a command
+  // TODO: accept &10 or &7 to set the task priority
   if (aa->argv[aa->argc - 1][0] == '&') {
     fg = false;
 #if WITH_ALIAS      
     // An "&" symbol within alias editing mode should not be stripped or be translated for background exec
-    // TODO: BUG: an async "exec" may hit the condition below if user is still in alias configuration mode
-    // TODO: Solution: stop event system when user is in alias editing mode
+    // TODO: stop the event system when user is in alias editing mode or it will cause assortment of hard-to-find bugs
     if (keywords == keywords_alias)
       fg = true;
     else 
@@ -354,24 +447,33 @@ espshell_command(char *p, argcargv_t *aa) {
   }
 
   // "&" symbol or implicit bg_exec?
+  // TODO: bg_exec seems to be bad idea and needs to be removed
   if (aa->has_amp || aa->bg_exec)
     fg = false;
 
   if (fg) {
-    AA = aa;
+    AA = aa; // Temporary store pointer to the current aa: it is used exclusively when in alias editing mode
+             // NOTE: don't use this pointer for anything except alias editing, it is volatile!
+
+    // call command handler directly
     bad = aa->gpp(aa->argc, aa->argv);
   } else {
     AA = NULL;
+    // create a task and call the handler from that task context
     bad = exec_in_background(aa);
   }
 
 unref_and_exit:
-
+  // Decrease aa's reference counter, display error code if any and exit
+  // Normally, refcounter is 1, so aa is removed as part of unref(). However, aliases have their refcounter > 1 so
+  // aa's of the alias are kept intact
+  //
     if (bad != 0)
       espshell_display_error(bad,aa->argc,aa->argv);
 
-  // free memory associated with the user input
+  // decrease reference counter
   userinput_unref(aa);
+
   return bad;
 }
 
@@ -389,10 +491,6 @@ void espshell_exec(const char *p) {
 // check if last espshell_exec() call has completed its
 // execution
 bool espshell_exec_finished() {
-  //bool ret;
-  //barrier_lock(Input_mux); // TODO: get rid of barriers if possible. Use _Atomics
-  //ret = (*Input == '\0');
-  //barrier_unlock(Input_mux);
   return (*Input == '\0');
 }
 
@@ -430,13 +528,12 @@ static  void espshell_initonce() {
     convar_add(cam_ledc_chan);  // Avoiding interference: LEDC channels used by ESPCAM for generating XCLK
     convar_add(cam_ledc_timer);    // Avoiding interference: ESP32 TIMER used by ESPCAM
 #endif
-#if WITH_WRAP
-    convar_addap(Tasks);
-#endif    
     // init subsystems
     seq_init();
   }
 }
+
+
 
 // ESPShell main task. Reads and processes user input by calling espshell_command(), the command processor
 // Only one shell task can be started at the time!
