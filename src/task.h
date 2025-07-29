@@ -11,7 +11,7 @@
  */
 
 // -- Tasks --
-// Think wrapper for FreeRTOS' task functions
+// Thin wrapper for FreeRTOS' task functions, command handlers related to tasks
 //
 
 #if COMPILING_ESPSHELL
@@ -30,16 +30,21 @@ static vsa_t       *task_list = 0; // vsa to hold active tasks list
 #define SIGNAL_KILL 2  // Force task deletion. This value can be sent but can't be received
 #define SIGNAL_HUP  3  // "Reinitialize/Re-read configuration" (Unused, for future extensions)
 
-#define taskid_remember(value) \
-    vsa_find_slot(&task_list, NULL, value, true);
-
-#define taskid_forget(value) \
-  { \
-    vsa_t *_vsa; \
-    int slot = 0; \
-    if ((_vsa = vsa_find_slot(&task_list, &slot, value, false)) != NULL) \
-      _vsa->values[slot] = 0; \
-  }
+// Remember & Forget task IDs
+#if CONFIG_FREERTOS_USE_TRACE_FACILITY
+#  define taskid_remember(value) {}
+#  define taskid_forget(value) {}
+#else
+#  warning "Limited task module functionality"
+#  define taskid_remember(value) vsa_find_slot(&task_list, NULL, value, true)
+#  define taskid_forget(value) \
+     { \
+       vsa_t *_vsa; \
+       int slot = 0; \
+       if ((_vsa = vsa_find_slot(&task_list, &slot, value, false)) != NULL) \
+         _vsa->values[slot] = 0; \
+     }
+#endif // !CONFIG_FREERTOS_USE_TRACE_FACILITY
 
 // current task id
 #define taskid_self() \
@@ -55,7 +60,9 @@ static vsa_t       *task_list = 0; // vsa to hold active tasks list
     handle; \
   })
 
-// Must be called by a task to finish its execution
+// Must be called by a task to finish its execution:
+// FreeRTOS can not handle "return" from the task function. Instead, vTaskDelete must be called
+//
 #define task_finished() \
   { \
     taskid_forget(taskid_self()); \

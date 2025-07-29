@@ -924,16 +924,18 @@ static int cmd_pin_loop(int argc, char **argv,unsigned int pin, unsigned int *st
     return i + 1;
   }
   // read loop count.
-  // if loop count is not a number (e.g. it is a keyword "infinite") then loop count is set to 2^32-1
-  // TODO: make "infinite" to be real infinity, not just big number
-  *count = q_atol(argv[i], (unsigned int)(-1));
+  // if loop count is not a number (e.g. it is a keyword "infinite") then loop count is set to 0, which means "infinity"
+  *count = q_atol(argv[i], 0);
 
   // TODO: should we remove this? Printing creates a huge delay on a first pass. We can detect the loop before starting
   //       processing and show hint at that time. This delay can affect delay-sensetive "pin" commands
   //
   // TODO: should we make "loop" keyword be available for any command, like "&" symbol?
   //       something like "@10" == "repeat 10 times",  "@" == "repeat infinitely" ?
-  HELP(q_printf("%% Repeating whole command %u times%s\r\n", *count - 1,is_foreground_task() ? ", press <Enter> to abort" : ""));
+  if (*count)
+    HELP(q_printf("%% Repeating whole command %u more times%s\r\n", *count - 1,is_foreground_task() ? ", press <Enter> to abort" : ""));
+  else
+    HELP(q_printf("%% Repeating whole command infinitely%s\r\n", is_foreground_task() ? ", press <Enter> to abort" : ""));
 
   return 0;
 }
@@ -953,7 +955,8 @@ static int cmd_pin2(int argc, char **argv) {
   bool  informed = false,               // Did we inform user on how to interrupt this command?
         is_fore = is_foreground_task(); // Foreground or background task? 
 
-  unsigned int count = 1; // Command loop count
+  unsigned int count = 1; // Command loop count. Default is 1. Value can be changed by the "loop" keyword
+                          // Setting count to 0 results in infinite count
 
   // "pin" without arguments shows valid GPIO range
   if (argc < 2) {
@@ -1073,6 +1076,7 @@ static int cmd_pin2(int argc, char **argv) {
           return ret;
         // Strip "loop COUNT" arguments. We read them only once and do not want to read same number on the next pass
         argc -= 2;
+        //q_printf("\r\n%% Loop count set %u\r\n",count);
       } else
       //A keyword which is a decimal number. When we see a number we use it as a pin number
       //for subsequent keywords. Must be a valid GPIO number.
@@ -1095,7 +1099,13 @@ static int cmd_pin2(int argc, char **argv) {
         HELP(q_print("% Key pressed, aborting..\r\n"));
         break;
       }
-  } while (--count > 0);  // repeat if "loop X"
+    // Only decrement and check count value if it is not zero.
+    // Value of zero means "infinity" so while() loop must be infinite as well
+    if (count)
+      if (--count == 0)
+        break;
+    
+  } while ( true );  
   return 0;
 }
 
@@ -1135,7 +1145,7 @@ static int cmd_pin2(int argc, char **argv) {
     return 1;
 
   // Repeat whole "pin" command /count/ times; /count/ can be set by the "loop" keyword
-  while (count-- > 0) {
+  while ( true ) {
 
     // Run through "pin NUM arg1, arg2 ... argN" arguments, looking for keywords to execute.
     // Abort if there were errors during next keywords processing. TODO: make "abort" be selectable
@@ -1306,9 +1316,15 @@ static int cmd_pin2(int argc, char **argv) {
         break;
       }
 
+    // Only decrement and check count value if it is not zero.
+    // Value of zero means "infinity" so while() loop must be infinite as well
+    if (count)
+      if (--count == 0)
+        break;
+
     // prepare to start over again from argv[1]      
-    i = 1;  
-  } // while (count-- > 0)
+    i = 1;
+  } // while ( true )
   return 0;
 #undef X
 }
