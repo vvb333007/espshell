@@ -234,7 +234,7 @@ void rw_lockr(rwlock_t *rw) {
 #ifdef ALT_RW_VER
   cnt = atomic_fetch_add_explicit(&rw->cnt, 1, memory_order_acq_rel);
 #else
-  rw->cnt++; 
+  cnt = rw->cnt++; 
 #endif
 
   // First of readers acquires rw->sem, so subsequent rw_lockw() will block immediately
@@ -302,7 +302,7 @@ void rw_unlockr(rwlock_t *rw) {
 // 
 // "void *value = 0x12345678; mpipe_send(ThePipe, value);"
 // 
-// Returns /false/ on failure
+// Returns /true/ if CPU yield should be done to rechedule higher priority task
 //
 #  define mpipe_send(_Pipe, _Data) \
     ({ \
@@ -354,7 +354,7 @@ void rw_unlockr(rwlock_t *rw) {
     } while(0)
 
 
-// Send a message (_Data must be variable: we are taking address of it)
+// Send a message (_Data must be a variable: we are taking address of it)
 // _Pipe : pointer to a mpipe or NULL
 // _Data : a variable, usually - a pointer, but can be any 4 bytes simple type
 //
@@ -474,7 +474,7 @@ enum {
   MEM_PATH,      // path (c-string)
   MEM_GETLINE,   // memory allocated by files_getline()
   MEM_SEQUENCE,  // sequence-related allocations
-  MEM_TASKID,    // Task remap entry TODO: remove
+  MEM_TASKID,    // Task remap entry
   MEM_ALIAS,     // Aliases
   MEM_IFCOND,
   MEM_UNUSED14,
@@ -1447,6 +1447,102 @@ static unsigned int delay_interruptible(unsigned int duration) {
   // Success! Return exactly requested time, not the real one. Don't change this behaviour or if you do examine all calls to delay_interruptible()
   return duration0;
 }
+
+
+// Variable Sized Array
+// Consist of blocks 256 bytes in size, linked into list.
+// Currently is used only by task.h to keep track of running tasks (tasks, started by espshell only)
+//
+#define VSASIZE 256
+
+// What is stored in slots? task_t is a pointer, so this code can be reused 
+typedef void *  vsaval_t; 
+
+// Dynamic array type
+typedef struct vsa_s {
+  struct vsa_s *next;
+  vsaval_t      values[0];
+} vsa_t;
+
+
+// Find/create VSA and Index by /value/
+//
+vsa_t *vsa_find_slot(vsa_t **vsa0, int *slot0, vsaval_t value, bool create) {
+
+  vsa_t *vsa, *tmp = 0, *nil_vsa = 0;
+  int nil_idx, dummy_slot = 0;
+
+  if (!vsa0)
+    return NULL;
+
+  if (!slot0)
+    slot0 = &dummy_slot;
+
+  vsa = *vsa0;
+  while (vsa) {
+    // Search chunks starting from *slot0
+    for (int i = *slot0; i < VSASIZE/sizeof(vsaval_t); i++) {
+      if (vsa->values[i] == value) {
+        *slot0 = i;
+        return vsa;
+      }
+      if (vsa->values[i] == 0 && nil_vsa == NULL) {
+        nil_vsa = vsa;
+        nil_idx = i;
+      }
+    }
+    tmp = vsa;
+    vsa = vsa->next;
+    // only first vsa is searched starting from provided *slot0. 
+    *slot0 = 0;
+  }
+
+  if (create) {
+
+    // Did we see nil slot before? If yes - use it
+    // If now - then allocate a new chunk. It is possible to miss nil element when search is done with 
+    // non-zero starting index
+    if (nil_vsa) {
+      nil_vsa->values[nil_idx] = value;
+      *slot0 = nil_idx;
+      return nil_vsa;
+    }
+
+    // Allocate new chunk
+    vsa_t *n = (vsa_t *)q_malloc(sizeof(vsa_t ) + VSASIZE, MEM_);
+    if (!n)
+      return NULL;
+
+    // Insert new chunk to the list
+    n->next = 0;
+    memset(n->values, 0, VSASIZE);
+    n->values[0] = value;
+    if (tmp)
+      tmp->next = n;
+    else
+      *vsa0 = n;
+    *slot0 = 0;
+    return n;
+  }
+
+  return NULL;
+}
+
+#if 0
+void vsa_dump(vsa_t *vsa) {
+
+  if (vsa) {
+    while (vsa) {
+      printf("\r\nVSA chunk:\r\n");
+      for (int i = 0; i < VSASIZE/sizeof(vsaval_t); i++)
+        printf("%x, ",vsa->values[i]);
+      vsa = vsa->next;
+    }
+  } else
+    printf("VSA@%p is empty\r\n",vsa);
+}
+#endif
+
 
 #endif //#if COMPILING_ESPSHELL
 

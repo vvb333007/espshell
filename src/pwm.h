@@ -240,7 +240,7 @@ static int cmd_show_pwm(UNUSED int argc, UNUSED char **argv) {
           "% ------+-----------+---------+----------+-------------\r\n");
 
   // Go through all existing pins and try to fetch PWM parameters using ArduinoCore API
-  for (int pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++)
+  for (int pin = 0; pin < NUM_PINS; pin++)
     if (pin_exist_silent(pin)) {
 
       uint32_t freq,       // PWM frequency as read "from the pin"

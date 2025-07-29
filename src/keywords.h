@@ -94,6 +94,7 @@ static int cmd_echo(int, char **);
 
 // system
 static int cmd_suspend(int, char **);
+static int cmd_priority(int, char **);
 static int cmd_resume(int, char **);
 static int cmd_kill(int, char **argv);
 static int cmd_cpu(int, char **);
@@ -710,6 +711,16 @@ KEYWORDS_DECL(main) {
           "%\r\n"
           "% Suspend an arbitrary FreeRTOS task"), NULL },
 
+  { "priority", cmd_priority, 1,
+    HELPK("% \"<b>priority <i>NUM <o>[TASK_ID]</>\"\r\n"
+          "%\r\n"
+          "% Set task priority. \r\n"
+          "% If TASK_ID is omitted, then priority of a current task is adjusted\r\n"
+          "% Ex.: priority 10           - sets priority of the caller to 10\r\n"
+          "% Ex.: priority 10 0x4565243 - sets priority of the task 0x4565243"), "Adjust task priority" },
+
+  { "priority", cmd_priority, 2, HIDDEN_KEYWORD },
+
   { "resume", cmd_resume, NO_ARGS,
     HELPK("% \"<b>resume</>\"\r\n"
           "%\r\n"
@@ -819,6 +830,12 @@ KEYWORDS_DECL(main) {
           "% Displays an IO_MUX function currently assigned for every pin"),"Display system information"},
 
   // Entries below are only for the /full/ help line (/brief/ line is copied from the first "show" entry 
+  { "show", HELP_ONLY,
+    HELPK("% \"<b>show <i>tasks</>\"\r\n"
+          "%\r\n"
+          "% Display Task ID's for tasks started by ESPShell\r\n"
+          "% These IDs can be arguments to \"kill\", \"suspend\" and other commands"),NULL},
+
   { "show", HELP_ONLY,
     HELPK("% \"<b>show <i>cpuid</>\"\r\n"
           "%\r\n"

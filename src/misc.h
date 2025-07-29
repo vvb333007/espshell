@@ -270,7 +270,7 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
   }
   // foreground: kill ESPShell task
   // background: kill background command task, shell was killed before
-  vTaskDelete(NULL);
+  task_finished();
   
   
   // UNREACHABLE CODE:

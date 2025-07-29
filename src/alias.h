@@ -264,25 +264,49 @@ static int cmd_alias_delete(int argc, char **argv) {
   return 0;
 }
 
-// This one gets called whenever user issues commands in alias mode
+// This one gets called whenever user issues commands in alias mode:
+// each of such commands is stored into alias /lines/ list
+// The only commands which are not stored, but processed instead are "list", "quit", "delete"
 //
 static int cmd_alias_asterisk(int argc, char **argv) {
+
+  // Fetch pointer to the alias we are editing
   ALIAS(al);
-  
 
   MUST_NOT_HAPPEN(argc < 1);
-  MUST_NOT_HAPPEN(AA == NULL);
+  MUST_NOT_HAPPEN(AA == NULL); // Set by espshell_command()
 
-  // NOTE: command "alias" itself is unavailable when in alias mode; allowing so may result in 
-  // completely undefined behaviour because lack of locking mechanism
+  // NOTE: The "alias" command is unavailable while in alias mode. 
+  // Allowing it could result in completely undefined behavior due to the lack of a locking mechanism.
+
   if (!q_strcmp(argv[0],"alias")) {
     q_print("% Command \"alias\" can not be part of an alias, sorry.\r\n");
     return CMD_FAILED;
   }
 
-  // Reset GPP. Right now it points to cmd_alias_asterisk()
+  // Reset GPP: Right now it points to cmd_alias_asterisk()
+  // AA global variable is created and maintained by espshell_command(); its only use is to temporary hold currently
+  // processing argcargv_t.
+  // This pointer *must not* be used outside of this (alias editing) scope
   AA->gpp = NULL;
-  
+
+  // Precache the command handler. Precaching will save time on first time alias is executed. Once alias was 
+  // executed it remembers associated command handler to skip handler search process for subsequent execs (aliases usually
+  // executed more than once)
+  //
+  // If handler can't be found - that means command has typos in it OR it was a command from a 
+  // subdirectory: we don't track directories. In such cases command handler is not precached and will be found on
+  // a first alias use
+  //
+  // TODO: refactor, probably a racecond. Add a parameter to userinput_find_handler() 
+  //       to specify search directories
+  const struct keywords_t *tmp = keywords;
+  keywords = keywords_main;
+  userinput_find_handler(AA);
+  keywords = tmp;
+
+  //q_printf("\r\nPrecached handler %p\r\n",AA->gpp);
+
   rw_lockw(&al->rw);
   bool res = alias_add_line(&al->lines,AA);
   rw_unlockw(&al->rw);
@@ -290,7 +314,7 @@ static int cmd_alias_asterisk(int argc, char **argv) {
   if (res)
     return 0;
 
-  q_print("% Failed to add (out of memory)\r\n");
+  q_print("% Failed to save command (out of memory?)\r\n");
   return CMD_FAILED;
 }
 
@@ -327,7 +351,7 @@ static void alias_helper_task(void *arg) {
 
 // Execute alias as if it was with "&" symbol at the end 
 static UNUSED int alias_exec_in_background(struct alias *al) {
-  return task_new(alias_helper_task, al) == NULL ? CMD_FAILED : 0;
+  return task_new(alias_helper_task, al, al->name) == NULL ? CMD_FAILED : 0;
 }
 
 // "exec ALIAS_NAME [ NAME2 NAME3 ... NAMEn]"

@@ -211,6 +211,7 @@ one_more_try: // we get here if we wasn't able to find any suitable handler in a
         if (key[i].cb) {
           
           aa->gpp = key[i].cb;
+          //q_printf("\r\nFound %s -> %p\r\n",aa->argv[0],aa->gpp);
           return 0;
 
         }  // if callback is provided

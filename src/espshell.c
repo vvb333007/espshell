@@ -141,6 +141,8 @@
 #define BAD_PIN    255 // Don't change! Non-existing pin number. 
 #define UNUSED_PIN  -1 // Don't change! A constant which is used to initialize ESP-IDF structures field, a pin number, when 
                        // we want to tell ESP-IDF that we don't need / don't use this structure field. (see count.h)
+// Number of pins available: 0..NUM_PINS-1
+#define NUM_PINS SOC_GPIO_PIN_COUNT
 
 // enable -Wformat warnings. Turned off by Arduino IDE by default.
 #pragma GCC diagnostic warning "-Wformat"  
@@ -348,11 +350,10 @@ static void espshell_async_task(void *arg) {
   // TODO: causes output glitches, need to dig it deeper
   //userinput_redraw();
 
-  vTaskDelete(NULL);
+  task_finished();
 }
 
 // Executes commands in a background (commands which names end with &).
-// Alias/Events code also uses this.
 //
 static int exec_in_background(argcargv_t *aa_current) {
 
@@ -366,13 +367,13 @@ static int exec_in_background(argcargv_t *aa_current) {
 
   // Start async task. Pin to the same core where espshell is executed
   
-  if ((ignored = task_new(espshell_async_task, aa_current)) == NULL) {
+// TODO: make_task_name_from_aa()
+  if ((ignored = task_new(espshell_async_task, aa_current, aa_current->argv[0])) == NULL) {
     q_print("% <e>Can not start a new task. Resources low? Adjust STACKSIZE macro in \"espshell.h\"</>\r\n");
     userinput_unref(aa_current);
   } else
     //Hint user on how to stop bg command
-    // TODO: use task_t and %p instead of %x
-    q_printf("%% Background task started\r\n%% Copy/paste \"kill 0x%x\" to abort\r\n", (unsigned int)ignored);
+    q_printf("%% Background task started\r\n%% Copy/paste \"<i>kill %p</>\" to abort\r\n", ignored);
 
   return 0;
 }
@@ -447,7 +448,7 @@ espshell_command(char *p, argcargv_t *aa) {
   }
 
   // "&" symbol or implicit bg_exec?
-  // TODO: bg_exec seems to be bad idea and needs to be removed
+  // TODO: bg_exec seems to be a bad idea and needs to be removed
   if (aa->has_amp || aa->bg_exec)
     fg = false;
 
@@ -551,13 +552,18 @@ static void espshell_task(const void *arg) {
     if (portNUM_PROCESSORS > 1)
       shell_core = shell_core ? 0 : 1;
     
-    if ((shell_task = task_new(espshell_task, NULL)) == NULL)
+    if ((shell_task = task_new(espshell_task, NULL, "ESPShell")) == NULL)
       q_print("% ESPShell failed to start its task\r\n");
   } else {
 
     // wait until user code calls Serial.begin()
     while (!console_isup())
       q_delay(CONSOLE_UP_POLL_DELAY);
+
+    // Now we can be sure that "loopTaskHandle" (see Arduino Core) is not NULL
+    // Add loop() task to our list of tasks. This code could be called more than once but
+    // it is ok to taskid_remember() the same number - it gets overwritten
+    taskid_remember(loopTaskHandle);
 
     HELP(q_print(WelcomeBanner));
 
@@ -570,7 +576,8 @@ static void espshell_task(const void *arg) {
 
     // Make espshell restart possible
     Exit = false;
-    vTaskDelete((shell_task = NULL));
+    shell_task = NULL;
+    task_finished();
   }
 }
 

@@ -22,7 +22,7 @@
 extern task_t loopTaskHandle;  // task handle of a task which calls Arduino's loop(). Defined somewhere in the ESP32 Arduino Core
 static task_t shell_task = 0;  // Main espshell task ID
 static int          shell_core = 0;  // CPU core number ESPShell is running on. For single core systems it is always 0
-
+static vsa_t       *task_list = 0; // vsa to hold active tasks list
 // Signals for use in task_signal(), task_signal_from_isr() and task_wait_for_signal() functions
 //
 #define SIGNAL_TERM 0  // Request to terminate. (Must be zero, DO NOT CHANGE its default value)
@@ -30,21 +30,37 @@ static int          shell_core = 0;  // CPU core number ESPShell is running on. 
 #define SIGNAL_KILL 2  // Force task deletion. This value can be sent but can't be received
 #define SIGNAL_HUP  3  // "Reinitialize/Re-read configuration" (Unused, for future extensions)
 
+#define taskid_remember(value) \
+    vsa_find_slot(&task_list, NULL, value, true);
+
+#define taskid_forget(value) \
+  { \
+    vsa_t *_vsa; \
+    int slot = 0; \
+    if ((_vsa = vsa_find_slot(&task_list, &slot, value, false)) != NULL) \
+      _vsa->values[slot] = 0; \
+  }
 
 // current task id
 #define taskid_self() \
   xTaskGetCurrentTaskHandle()
 
-#define task_new(func, arg) \
+// Start a new thread on the same core espshell is running, remember the task_id
+// TODO: add "_Core" parameter?
+#define task_new(_Func, _Arg, _Name) \
   ({ \
-    task_t handle; \
-    if (pdPASS != xTaskCreatePinnedToCore((TaskFunction_t)func, "Async", STACKSIZE, arg, tskIDLE_PRIORITY, &handle, shell_core)) \
-      handle = 0; \
+    task_t handle = NULL; \
+    if (pdPASS == xTaskCreatePinnedToCore((TaskFunction_t)_Func, _Name, STACKSIZE, _Arg, tskIDLE_PRIORITY, &handle, shell_core)) \
+      taskid_remember(handle); \
     handle; \
   })
 
+// Must be called by a task to finish its execution
 #define task_finished() \
-  vTaskDelete(NULL)
+  { \
+    taskid_forget(taskid_self()); \
+    vTaskDelete(NULL); \
+  }
 
 // Task signalling wrappers. qlib is used in a few different projects so I try to keep it easily convertible to other API
 // (POSIX for example). 
@@ -130,7 +146,88 @@ static INLINE bool espshell_started() {
   return shell_task != NULL;
 }
 
+// Older ESP-IDF has trace facility off, so we have to use an ugly workaround (using VSAs, taskid_remember())
+// Better approach is to stick to trace utility API, which somehow become available in latest Arduino Core and ESP-IDF
+// I missed the moment, so instead of using idf version we use idf config:
+//
+#if CONFIG_FREERTOS_USE_TRACE_FACILITY
 
+// FreeRTOS task state names (eTaskState)
+static const char *task_state_name[] = { 
+  "Running",
+  "Ready",
+  "Waiting",
+  "Suspended",
+  "Deleted",
+  "Invalid"
+};
+
+//"show tasks"
+// Shows task ID espshell is aware of
+// Use FreeRTOS Trace Utility to access list of kernel tasks
+// Totally ignore task ids from locally managed VSA
+//
+static int cmd_show_tasks(int argc, char **argv) {
+  int j = 0,nt;
+
+  if ((nt = uxTaskGetNumberOfTasks()) > 0) {
+
+    //TODO: allocate on heap, stack is limited
+    TaskStatus_t tasks[nt]; 
+    memset(tasks,0,sizeof(TaskStatus_t) * nt);
+
+    // Fetch all tasks states & other information.
+    // Creates a lag, because disables scheduling completely during information gathering
+    uxTaskGetSystemState( tasks, nt, NULL);
+
+    q_print("%<r>  # |  Task  ID  |        Name      | Prio |   State   </>\r\n"
+            "%----+------------+------------------+------+-----------\r\n");
+
+    for (j = 0; j < nt; j++) {
+      // just in case. you never know when they decide to update their eStatus enum
+      if (tasks[j].eCurrentState > 5)
+        tasks[j].eCurrentState = 5;
+
+      q_printf("%% %3u| %p | %16s |  %2u  | %s\r\n",
+        j + 1,
+        tasks[j].xHandle,
+        tasks[j].pcTaskName,
+        tasks[j].uxCurrentPriority,
+        task_state_name[tasks[j].eCurrentState]);
+    }
+  }
+  q_printf("%%----+------------+------------------+------+-----------\r\n"
+           "%% Total: %u tasks\r\n",j);
+  return 0;
+}
+#else //!CONFIG_FREERTOS_USE_TRACE_FACILITY
+//
+//"show tasks"
+// Shows task ID espshell is aware of (loopTask + all task ids recorded via taskid_remember())
+// No system tasks will be displayed (i.e. IDLE0, ipc0, Tmr Svc, etc)
+//
+static int cmd_show_tasks(int argc, char **argv) {
+  int j = 0;
+
+  // Source task ID's from locally maintained variable-sized array of task IDs
+  vsa_t *v = task_list;
+  MUST_NOT_HAPPEN(task_list == NULL); // there must be at least 1 task, espshell task
+
+  q_print("% Running tasks (user tasks):\r\n");
+
+  q_print("%<r>  # |  Task  ID  |        Name      | Prio |   State   </>\r\n"
+          "%----+------------+------------------+------+-----------\r\n");
+  while(v) {
+    for (int i = 0; i < VSASIZE/sizeof(vsaval_t); i++)
+      if (v->values[i])
+          q_printf("%% %3u| %p | %16s |  %2u  | %s\r\n",++j,v->values[i], "N/A", 0, 0);
+    v = v->next;
+  }
+  q_printf("%%----+------------+------------------+------+-----------\r\n"
+           "%% Total: %u tasks\r\n",j);
+  return 0;
+}
+#endif
 
 //"suspend"
 // suspends main Arduino task (i.e loop())
@@ -158,7 +255,10 @@ static int cmd_resume(int argc, char **argv) {
   task_t sus = loopTaskHandle;
   if (argc > 1) {
     taskid = hex2uint32(argv[1]);
-    if (taskid_good(taskid)) sus = (task_t )taskid; else return 1;
+    if (taskid_good(taskid))
+      sus = (task_t )taskid;
+    else
+      return 1;
   }
   vTaskResume(sus);
   return 0;
@@ -176,6 +276,7 @@ static int cmd_kill(int argc, char **argv) {
 
   if (argv[i][0] == '-') { // an option, task id follows
     q_tolower(argv[i]);
+    // TODO: refactor to 1..2 char comparisions, drop q_strcmp()
     if (!q_strcmp(argv[i],"-term") || !q_strcmp(argv[i],"-15")) sig = SIGNAL_TERM; else
     if (!q_strcmp(argv[i],"-hup") ||  !q_strcmp(argv[i],"-1")) sig = SIGNAL_HUP; else
     if (!q_strcmp(argv[i],"-kill") || !q_strcmp(argv[i],"-9"))  sig = SIGNAL_KILL; else return 1;
@@ -191,7 +292,8 @@ static int cmd_kill(int argc, char **argv) {
       vTaskSuspend((task_t )taskid);
       q_delay(1);
       vTaskDelete((task_t )taskid);
-      HELP(q_printf("%% Killed: \"0x%x\". Resources are not freed!\r\n", taskid));
+      taskid_forget((task_t )taskid);
+      HELP(q_printf("%% Killed: \"0x%x\"\r\n", taskid));
     } else
       // -term, -hup and other signals are sent directly to the task
       task_signal(taskid, sig);
@@ -199,6 +301,38 @@ static int cmd_kill(int argc, char **argv) {
     return i;
   return 0;
 }
+
+// Set task priority (0..24)
+// "prio (0..24) [TASK_ID]"
+// Can be used in aliases to raise priority during exec (in this case use "prio NUM", 
+// as task id is not yet known and cant be provided to the command)
+// 
+static int cmd_priority(int argc, char **argv) {
+
+  task_t taskid;
+  unsigned char prio;
+
+  if (argc < 2)
+    return CMD_MISSING_ARG;
+  
+  if ((prio = q_atoi(argv[1],configMAX_PRIORITIES)) >= configMAX_PRIORITIES) {
+    HELP(q_printf("%% Out of range. Range is [0..%u] (0 is the lowest priority)\r\n", configMAX_PRIORITIES - 1));
+    return 1;
+  }
+
+  static_assert(sizeof(task_t) == sizeof(uint32_t),"Unexpected basic type size");
+
+  if (argc > 2) {
+    if (!taskid_good((uint32_t )(taskid = (task_t )hex2uint32(argv[2]))))
+      return 2;
+  } else 
+    taskid = NULL; // self
+
+  vTaskPrioritySet(taskid, (UBaseType_t )prio);
+
+  return 0;
+}
+
 
 #endif // COMPILING_ESPSHELL
 

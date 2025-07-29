@@ -33,7 +33,7 @@ static struct {
   uint16_t fun_sel;  // IO_MUX function selector
   int bus_type;      // PeriMan bus type. (see ArdionoCore *periman*.c)
 
-} Pins[SOC_GPIO_PIN_COUNT];
+} Pins[NUM_PINS];
 
 
 // IO_MUX function code --> human readable text mapping
@@ -65,7 +65,7 @@ static struct {
 // Array entries consist of names of functions available.
 // Non-existent pins are those with all zeros {0,0,0,0,0}
 //
-static const char *io_mux_func_name[SOC_GPIO_PIN_COUNT][IOMUX_NFUNC] = {
+static const char *io_mux_func_name[NUM_PINS][IOMUX_NFUNC] = {
 
 #ifdef CONFIG_IDF_TARGET_ESP32
 
@@ -229,7 +229,7 @@ static void pin_save(int pin);
 static uint64_t Reserved = 0;
 
 static void __attribute__((constructor)) pin_cache_gpios() {
-    for (unsigned char p = 0; p < SOC_GPIO_PIN_COUNT; p++) {
+    for (unsigned char p = 0; p < NUM_PINS; p++) {
       if (pin_exist_silent(p)) {
         unsigned char reserved = esp_gpio_is_pin_reserved(p) & 1;
         // TODO: this is a hack
@@ -273,7 +273,7 @@ static const char *iomux_funame(unsigned char pin, unsigned char func) {
     return "CONST_0";
 
   return  func < IOMUX_NFUNC && 
-          pin < SOC_GPIO_PIN_COUNT && 
+          pin < NUM_PINS && 
           io_mux_func_name[pin][func] ? ( io_mux_func_name[pin][func][0] >= '0' && 
                                           io_mux_func_name[pin][func][0] <= '9' ? (strcpy(&gpio[4], io_mux_func_name[pin][func]), gpio) 
                                                                                 : io_mux_func_name[pin][func])
@@ -303,7 +303,7 @@ static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
   q_print(CRLF);
 
   // run through all the pins
-  for (pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++) {
+  for (pin = 0; pin < NUM_PINS; pin++) {
     
     if (pin_exist_silent(pin)) {
       // add "!" before pin number for RESERVED pins. 
@@ -453,7 +453,7 @@ static bool pin_not_exist_notice(unsigned char pin) {
   // dump pin numbers. if /invert/==0 then RESERVED pins are dumped. if /invert/ == 1 then UNUSED pins are printed
   void list_pins(unsigned char invert) {
     unsigned char p, res = 0;
-    for (p = 0; p < SOC_GPIO_PIN_COUNT; p++) {
+    for (p = 0; p < NUM_PINS; p++) {
         if (pin_exist_silent(p) && (pin_is_reserved(p) ^ invert)) {
           q_printf("%u ", p);
           res++;
@@ -466,14 +466,14 @@ static bool pin_not_exist_notice(unsigned char pin) {
   }
 
   
-  if (pin >= SOC_GPIO_PIN_COUNT)
-    q_printf("%% Valid pin numbers are from <i>0</> to <i>%u</>, please note that\r\n%% ", SOC_GPIO_PIN_COUNT - 1);
+  if (pin >= NUM_PINS)
+    q_printf("%% Valid pin numbers are from <i>0</> to <i>%u</>, please note that\r\n%% ", NUM_PINS - 1);
   else
     q_print("% Unfortunately ");
   q_printf("following pins do not exist: <i>  ");
   
   // TODO: IMPERFECTION: workaround the case where all pins are valid in the mask
-  for (pin = 0; pin < SOC_GPIO_PIN_COUNT; pin++)
+  for (pin = 0; pin < NUM_PINS; pin++)
     if ((SOC_GPIO_VALID_GPIO_MASK & ((uint64_t)1 << pin)) == 0)
       q_printf("%u  ", pin);
 
@@ -503,15 +503,15 @@ static bool pin_not_exist_notice(unsigned char pin) {
 static inline bool pin_exist(unsigned char pin) {
   return (pin == GPIO_MATRIX_CONST_ONE_INPUT || 
           pin == GPIO_MATRIX_CONST_ZERO_INPUT ||
-        ((pin < SOC_GPIO_PIN_COUNT) && (((uint64_t)1 << pin) & SOC_GPIO_VALID_GPIO_MASK)))  ? true
-                                                                                            : pin_not_exist_notice(pin);
+        ((pin < NUM_PINS) && (((uint64_t)1 << pin) & SOC_GPIO_VALID_GPIO_MASK)))  ? true
+                                                                                  : pin_not_exist_notice(pin);
 }
 
 // Same as above but does not print anything to terminal
 static inline bool pin_exist_silent(unsigned char pin) {
   return  pin == GPIO_MATRIX_CONST_ONE_INPUT || 
           pin == GPIO_MATRIX_CONST_ZERO_INPUT ||
-        ((pin < SOC_GPIO_PIN_COUNT) && (((uint64_t)1 << pin) & SOC_GPIO_VALID_GPIO_MASK));
+        ((pin < NUM_PINS) && (((uint64_t)1 << pin) & SOC_GPIO_VALID_GPIO_MASK));
 }
 
 
