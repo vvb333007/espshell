@@ -11,15 +11,52 @@
 
 <p>
   <ul>
+    <li><a href="#show">Process information display : "show tasks"</a></li>  
     <li><a href="#process">Process Control</a></li>
     <li><a href="#suspend">Suspend, Resume and Kill</a></li>
+    <li><a href="#prio">Task priorities, changing</a></li>
   </ul>
 </p>
 
-<p id="process"><h2>PROCESS CONTROL</h2></p>
+<p id="show"><h2><a href="#top">&#8686;</a>PROCESS INFORMATION DISPLAY</h2></p>
 
 <p>
-Process control is implemented through three commands: <b>suspend</b>, <b>resume</b>, and <b>kill</b>. By "processes," 
+As in other cases, task information is available using the "<b>show</b>" command:
+<table>
+  <tr><th>Command</th><th>Description and examples</th></tr>
+  <tr>
+    <td><b>show tasks</b></td>
+    <td>
+      <p>Displays a list of running tasks, including their ID, priority, name, and state:
+<pre>
+esp32#><b>show ta</b>
+%  # |  Task  ID  |        Name      | Prio |   State
+%----+------------+------------------+------+-----------
+%   1| 0x3fca300c |         ESPShell |   5  | Running
+%   2| 0x3fca7264 |            IDLE0 |   0  | Ready
+%   3| 0x3fca5f64 |              pin |   0  | Ready
+%   4| 0x3fca783c |            IDLE1 |   0  | Ready
+%   5| 0x3fcaace8 |         loopTask |   1  | Waiting
+%   6| 0x3fca85f4 |          Tmr Svc |   1  | Waiting
+%   7| 0x3fca1790 |             ipc1 |  24  | Suspended
+%   8| 0x3fca11f8 |             ipc0 |  24  | Suspended
+%   9| 0x3fca5484 |        esp_timer |  22  | Suspended
+%----+------------+------------------+------+-----------
+% Total: 9 tasks
+esp32#>
+</pre>
+
+      </p>
+    </td>
+  </tr>
+</table>      
+
+</p>
+
+<p id="process"><h2><a href="#top">&#8686;</a>PROCESS CONTROL</h2></p>
+
+<p>
+Process control is implemented through three commands: <b>suspend</b>, <b>resume</b>, <b>kill</b> and <b>priority</b>. By "processes," 
 we mean FreeRTOS tasks. For example, the main Arduino <i>loop()</i> runs as a dedicated FreeRTOS task named "loop" -
 so "<i>loop()</i>" is a process.
 </p>
@@ -34,9 +71,29 @@ the TASK_ID parameter in the command. That is, to suspend the sketch, instead of
 <p>
 Okay, but where can we get these task IDs?
 </p>
-
 <p>
-It's simple: every ESPShell command that is run as a background process displays its TASK_ID. 
+For example, you can use the <b>show tasks</b> command:
+<pre>
+esp32#>show tasks
+%  # |  Task  ID  |        Name      | Prio |   State
+%----+------------+------------------+------+-----------
+%   1| 0x3fca783c |            IDLE1 |   0  | Ready
+%   2| 0x3fca7264 |            IDLE0 |   0  | Ready
+%   3| 0x3fca300c |         ESPShell |   0  | Running
+%   4| 0x3fca5f64 |              pin |   0  | Ready
+%   5| 0x3fcaace8 |         loopTask |   1  | Waiting
+%   6| 0x3fca1790 |             ipc1 |  24  | Suspended
+%   7| 0x3fca11f8 |             ipc0 |  24  | Suspended
+%   8| 0x3fca5484 |        esp_timer |  22  | Suspended
+%   9| 0x3fca85f4 |          Tmr Svc |   1  | Waiting
+%----+------------+------------------+------+-----------
+% Total: 9 tasks
+esp32#>
+</pre>
+
+</p>
+<p>
+Also, every ESPShell command that is run as a background process displays its TASK_ID. 
 Let's say we execute the command "pin 2 delay 1000" in the background:
 <pre>
 esp32#>pin 2 delay 1000 &
@@ -52,7 +109,7 @@ a convenient "kill" command that can be copied and executed: "kill 0x3ffb91dc".
 Another source of TASK_IDs is the "<b><a href="Pulse_Counter.html#show">show counters</a></b>" command.
 </p>
 
-<p id="suspend"><h2>SUSPEND, RESUME AND KILL</h2></p>
+<p id="suspend"><h2><a href="#top">&#8686;</a>SUSPEND, RESUME AND KILL</h2></p>
 
 <table>
   <tr><th>Command</th><th>Description and examples</th></tr>
@@ -148,6 +205,49 @@ Linux counterpart, ESPShell does not release any memory or resources allocated b
     </td>
   </tr>
 </table>
+<p id="prio"><h2><a href="#top">&#8686;</a>PROCESS PRIORITY, CHANGING PRIORITY</h2></p>
 
+<p>Tasks managed by FreeRTOS are scheduled according to their assigned <i>priorities</i>. A priority value can range from 0 to 24 — the higher the number, the higher the priority.
+</p><p>
+System-level inter-core communication tasks — <b>ipc0</b> and <b>ipc1</b> — run with the highest priority. Bluetooth and Wi-Fi components operate with high priority, while so-called idle tasks — <b>IDLE0</b> and <b>IDLE1</b> — have the lowest.
+</p><p>
+By default, ESPShell starts with priority 0, which corresponds to the priority of system idle tasks. All auxiliary tasks created by the shell are also launched with the same priority. Tasks started by the shell (e.g., background commands) inherit this priority.
+</p><p>
+The priority can be changed using the "<b>priority</b> NUM [<i>TASK_ID</i>]" command. If the second parameter (task ID) is omitted, the new priority is applied to the shell itself. If provided, the specified task’s priority will be updated instead.
+</p>
+<p>
+Example: check the current priority of the shell and change it to 5.
+<pre>
+esp32#><b>sh ta</b>
+%  # |  Task  ID  |        Name      | Prio |   State
+%----+------------+------------------+------+-----------
+%   1| 0x3fca5f64 |              pin |   0  | Ready
+%   2| 0x3fca7264 |            IDLE0 |   0  | Ready
+%   3| 0x3fca300c |         <b>ESPShell</b> |   <b>0</b>  | Running
+%   4| 0x3fca783c |            IDLE1 |   0  | Ready
+%   5| 0x3fcaace8 |         loopTask |   1  | Waiting
+%   6| 0x3fca11f8 |             ipc0 |  24  | Suspended
+%   7| 0x3fca5484 |        esp_timer |  22  | Suspended
+%   8| 0x3fca85f4 |          Tmr Svc |   1  | Waiting
+%   9| 0x3fca1790 |             ipc1 |  24  | Suspended
+%----+------------+------------------+------+-----------
+% Total: 9 tasks
+esp32#><b>prio 5</b>
+esp32#>sh ta
+%  # |  Task  ID  |        Name      | Prio |   State
+%----+------------+------------------+------+-----------
+%   1| 0x3fca300c |         <b>ESPShell</b> |   <b>5</b>  | Running
+%   2| 0x3fca7264 |            IDLE0 |   0  | Ready
+%   3| 0x3fca783c |            IDLE1 |   0  | Ready
+%   4| 0x3fca5f64 |              pin |   0  | Ready
+%   5| 0x3fcaace8 |         loopTask |   1  | Waiting
+%   6| 0x3fca5484 |        esp_timer |  22  | Suspended
+%   7| 0x3fca85f4 |          Tmr Svc |   1  | Waiting
+...
+</pre>
+<b>Note on task priorities:</b> 
+The shell command <b>pin 2 low high loop inf</b> generates a 150 kHz square wave when running with IDLE priority. However, when its priority is raised to 2, the frequency increases to 560 kHz.
+This happens because the <b>pin</b> command never yields the CPU, preventing lower-priority system tasks from executing.
+</p>
 </body>
 </html>

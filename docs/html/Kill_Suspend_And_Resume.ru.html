@@ -2,22 +2,59 @@
 <html lang="ru">
 <head>
   <link rel="stylesheet" href="espshell.css">
-  <title>ESPShell : Управление процессами : kill, suspend и resume</title>
+  <title>ESPShell : Управление процессами : kill, suspend, resume и priority</title>
 </head>
 <body>
 <p align=center><a href="index.ru.html"><img src="i/espshell_logo.jpg" alt="ESPShell для Arduino :: Содержание" width="70%" height="70%" /></a></p>
 <h3 align=center><a href="Kill_Suspend_And_Resume.ru.html">[ На русском ]</a>&nbsp;&harr;&nbsp;<a href="Kill_Suspend_And_Resume.html">[ English ]</a></h3>
 <p>
   <ul>
+    <li><a href="#show">Просмотр информации о процессах</a></li>
     <li><a href="#process">Управление процессами</a></li>
     <li><a href="#suspend">Приостановка, возобновление и завершение</a></li>
+    <li><a href="#prio">Приоритеты задач, установка приоритета</a></li>
   </ul>
 </p>
 
-<p id="process"><h2>УПРАВЛЕНИЕ ПРОЦЕССАМИ</h2></p>
+<p id="show"><h2><a href="#top">&#8686;</a>ПРОСМОТР ИНФОРМАЦИИ О ПРОЦЕССАХ</h2></p>
 
 <p>
-Управление процессами реализовано с помощью трёх команд: <b>suspend</b>, <b>resume</b> и <b>kill</b>. Под процессами
+Как и в других случаях, информация о задачах доступна с помощью команды "<b>show</b>":
+<table>
+  <tr><th>Команда</th><th>Описание и примеры</th></tr>
+  <tr>
+    <td><b>show tasks</b></td>
+    <td>
+      <p>Выводит список запущенных процессов, их ID, приоритет, имя и состояние:
+<pre>
+esp32#><b>show ta</b>
+%  # |  Task  ID  |        Name      | Prio |   State
+%----+------------+------------------+------+-----------
+%   1| 0x3fca300c |         ESPShell |   5  | Running
+%   2| 0x3fca7264 |            IDLE0 |   0  | Ready
+%   3| 0x3fca5f64 |              pin |   0  | Ready
+%   4| 0x3fca783c |            IDLE1 |   0  | Ready
+%   5| 0x3fcaace8 |         loopTask |   1  | Waiting
+%   6| 0x3fca85f4 |          Tmr Svc |   1  | Waiting
+%   7| 0x3fca1790 |             ipc1 |  24  | Suspended
+%   8| 0x3fca11f8 |             ipc0 |  24  | Suspended
+%   9| 0x3fca5484 |        esp_timer |  22  | Suspended
+%----+------------+------------------+------+-----------
+% Total: 9 tasks
+esp32#>
+</pre>
+
+      </p>
+    </td>
+  </tr>
+</table>      
+
+</p>
+
+<p id="process"><h2><a href="#top">&#8686;</a>УПРАВЛЕНИЕ ПРОЦЕССАМИ</h2></p>
+
+<p>
+Управление процессами реализовано с помощью четырех команд: <b>suspend</b>, <b>resume</b>, <b>priority</b> и <b>kill</b>. Под процессами
 имеются в виду задачи FreeRTOS: например, основная функция Arduino <i>loop()</i> обрабатывается отдельной задачей FreeRTOS с именем "loop",
 то есть "<i>loop()</i>"  - это процесс.
 </p>
@@ -34,7 +71,28 @@
 </p>
 
 <p>
-Всё просто: каждая команда ESPShell, которая запускается как процесс, всегда выводит свой TASK_ID. Допустим, мы запускаем команду "pin 2 delay 1000" в фоновом режиме:
+Например, можно воспользоваться командой "<b>show tasks</b>":
+<pre>
+esp32#>show tasks
+%  # |  Task  ID  |        Name      | Prio |   State
+%----+------------+------------------+------+-----------
+%   1| 0x3fca783c |            IDLE1 |   0  | Ready
+%   2| 0x3fca7264 |            IDLE0 |   0  | Ready
+%   3| 0x3fca300c |         ESPShell |   0  | Running
+%   4| 0x3fca5f64 |              pin |   0  | Ready
+%   5| 0x3fcaace8 |         loopTask |   1  | Waiting
+%   6| 0x3fca1790 |             ipc1 |  24  | Suspended
+%   7| 0x3fca11f8 |             ipc0 |  24  | Suspended
+%   8| 0x3fca5484 |        esp_timer |  22  | Suspended
+%   9| 0x3fca85f4 |          Tmr Svc |   1  | Waiting
+%----+------------+------------------+------+-----------
+% Total: 9 tasks
+esp32#>
+</pre>
+</p>
+
+<p>Так же,
+ каждая команда ESPShell, которая запускается как процесс, всегда выводит свой TASK_ID. Допустим, мы запускаем команду "<b>pin 2 delay 1000</b>" в фоновом режиме:
 <pre>
 esp32#>pin 2 delay 1000 &
 % Background task started
@@ -48,7 +106,7 @@ esp32#>
 Другим источником TASK_ID является команда "<b><a href="Pulse_Counter.ru.html#show">show counters</a></b>"
 </p>
 
-<p id="suspend"><h2>ПРИОСТАНОВКА, ВОЗОБНОВЛЕНИЕ И ЗАВЕРШЕНИЕ</h2></p>
+<p id="suspend"><h2><a href="#top">&#8686;</a>ПРИОСТАНОВКА, ВОЗОБНОВЛЕНИЕ И ЗАВЕРШЕНИЕ</h2></p>
 
 <table>
   <tr><th>Команда</th><th>Описание и примеры</th></tr>
@@ -137,5 +195,56 @@ esp32#>
   </tr>
 
 </table>
+
+<p id="prio"><h2><a href="#top">&#8686;</a>ПРИОРИТЕТЫ ПРОЦЕССОВ, УСТАНОВКА ПРИОРИТЕТА</h2></p>
+
+<p>
+В ESP32 процессами (задачами) управляет модифицированная FreeRTOS, которая является одним из компонентов ESP-IDF.
+</p>
+<p>
+Задачи, находящиеся под управлением FreeRTOS, получают управление в соответствии с присвоенными им <i>приоритетами</i>. Приоритет может принимать значение от 0 до 24: чем больше число, тем выше приоритет.
+</p><p>
+С максимальным приоритетом запускаются системные задачи межпроцессорного взаимодействия — <b>ipc0</b> и <b>ipc1</b>. Высокий приоритет присвоен компонентам Bluetooth и Wi-Fi. Минимальный приоритет имеют так называемые idle-процессы: <b>IDLE0</b> и <b>IDLE1</b>.
+</p><p>
+По умолчанию ESPShell запускается с приоритетом 0, что соответствует уровню системных idle-процессов. Все вспомогательные задачи, создаваемые шеллом, также запускаются с этим приоритетом. Приоритет задач, инициируемых шеллом (например, фоновых команд), наследуется от него.
+</p><p>
+Приоритет можно изменить с помощью команды <b>priority NUM [TASK_ID]</b>. Если второй параметр (ID задачи) опущен, новое значение устанавливается для самого шелла. Если указан — приоритет будет изменён у соответствующей задачи.
+</p>
+
+<p>
+Пример: посмотреть, какой приоритет установлен у шелла, поменять его на 5
+<pre>
+esp32#><b>sh ta</b>
+%  # |  Task  ID  |        Name      | Prio |   State
+%----+------------+------------------+------+-----------
+%   1| 0x3fca5f64 |              pin |   0  | Ready
+%   2| 0x3fca7264 |            IDLE0 |   0  | Ready
+%   3| 0x3fca300c |         <b>ESPShell</b> |   <b>0</b>  | Running
+%   4| 0x3fca783c |            IDLE1 |   0  | Ready
+%   5| 0x3fcaace8 |         loopTask |   1  | Waiting
+%   6| 0x3fca11f8 |             ipc0 |  24  | Suspended
+%   7| 0x3fca5484 |        esp_timer |  22  | Suspended
+%   8| 0x3fca85f4 |          Tmr Svc |   1  | Waiting
+%   9| 0x3fca1790 |             ipc1 |  24  | Suspended
+%----+------------+------------------+------+-----------
+% Total: 9 tasks
+esp32#><b>prio 5</b>
+esp32#>sh ta
+%  # |  Task  ID  |        Name      | Prio |   State
+%----+------------+------------------+------+-----------
+%   1| 0x3fca300c |         <b>ESPShell</b> |   <b>5</b>  | Running
+%   2| 0x3fca7264 |            IDLE0 |   0  | Ready
+%   3| 0x3fca783c |            IDLE1 |   0  | Ready
+%   4| 0x3fca5f64 |              pin |   0  | Ready
+%   5| 0x3fcaace8 |         loopTask |   1  | Waiting
+%   6| 0x3fca5484 |        esp_timer |  22  | Suspended
+%   7| 0x3fca85f4 |          Tmr Svc |   1  | Waiting
+</pre>
+</p>
+<p>
+<b>Примечание о приоритетах задач:</b><br>
+Команда шелла <b>pin 2 low high loop inf</b> генерирует прямоугольный сигнал с частотой 150 кГц при запуске с приоритетом IDLE. Однако при повышении приоритета до 2 частота увеличивается до 560 кГц.
+Это происходит потому, что команда <b>pin</b> никогда не уступает управление процессору, не позволяя задачам с более низким приоритетом выполняться.
+</p>
 </body>
 </html>

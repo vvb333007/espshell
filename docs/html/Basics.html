@@ -535,6 +535,7 @@ Depending on a keyword used there may be 0, 1, 2 or more arguments:
 <li><b><a href="Filesystems.html#show">show mount</a></b></li>
 <li><b><a href="CPU.html#meminfo">show memory</a></b></li>
 <li><b><a href="Camera.html#show">show camera</a></b></li>
+<li><b><a href="Kill_Suspend_And_Resume.html#show">show tasks</a></b></li>
 </ul>
 </p>
 </td></tr>
@@ -544,9 +545,11 @@ Depending on a keyword used there may be 0, 1, 2 or more arguments:
 
 <tr><td><p><a href="Kill_Suspend_And_Resume.html">suspend</a><br>
 <a href="Kill_Suspend_And_Resume.html">resume</a><br>
-<a href="Kill_Suspend_And_Resume.html">kill</a></p></td><td><p><b>kill</b> [-9 | -15] <i>TASK_ID</i><br><b>suspend</b> [<i>TASK_ID</i>]<br><b>resume</b> [<i>TASK_ID</i>]</p> <p>Process control commands: kill, suspend or resume a task.<br> These 3 
+<a href="Kill_Suspend_And_Resume.html">kill</a><br>
+<a href="Kill_Suspend_And_Resume.html">priority</a>
+</p></td><td><p><b>kill</b> [-9 | -15] <i>TASK_ID</i><br><b>suspend</b> [<i>TASK_ID</i>]<br><b>resume</b> [<i>TASK_ID</i>]<br><b>priority</b> NUM [<i>TASK_ID</i>]</p> <p>Process control commands: kill, suspend, resume and priority.<br> These 4 
            commands are described in details <a href="Kill_Suspend_And_Resume.html">here</a> and are used
-           according to their names: to suspend/resume or terminate a process 
+           according to their names: to suspend/resume or terminate a process or to change process' priority
           (a FreeRTOS task or a background ESPShell command) 
 </p></td></tr>
 
@@ -597,15 +600,15 @@ Depending on a keyword used there may be 0, 1, 2 or more arguments:
 <p>
 Example: put CPU into light sleep for 10 minutes:
 <pre>
-	esp32#>nap 10 min
+  esp32#>nap 10 min
 </pre>
 Example: put CPU into light sleep for 100 seconds:
 <pre>
-	esp32#>nap 100
+  esp32#>nap 100
 </pre>
-	or
+  or
 <pre>
-	esp32#>nap 100 seconds
+  esp32#>nap 100 seconds
 </pre>
 NOTE: You can not set wake up time like that: "<b>10 hours 50 minutes</b>". Instead, use either "<b>11 hours</b>" or "<b>650 minutes</b>"
 </p>

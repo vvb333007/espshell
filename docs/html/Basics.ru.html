@@ -547,13 +547,15 @@ ESPShell старается быть информативным и имеет в
 <li><b><a href="Filesystems.ru.html#show">show mount</a></b></li>
 <li><b><a href="CPU.ru.html#meminfo">show memory</a></b></li>
 <li><b><a href="Camera.ru.html#show">show camera</a></b></li>
+<li><b><a href="Kill_Suspend_And_Resume.ru.html#show">show tasks</a></b></li>
 </ul>
 </p>
 </td></tr>
 
 <tr><td><p><a href="Kill_Suspend_And_Resume.ru.html">suspend</a><br>
 <a href="Kill_Suspend_And_Resume.ru.html">resume</a><br>
-<a href="Kill_Suspend_And_Resume.ru.html">kill</a></p></td><td><p><b>kill</b> [-9 | -15] <i>TASK_ID</i><br><b>suspend</b> [<i>TASK_ID</i>]<br><b>resume</b> [<i>TASK_ID</i>]</p> <p>Команды управления процессами: завершить, приостановить или возобновить задачу.<br> Эти 3 
+<a href="Kill_Suspend_And_Resume.ru.html">priority</a><br>
+<a href="Kill_Suspend_And_Resume.ru.html">kill</a></p></td><td><p><b>kill</b> [-9 | -15] <i>TASK_ID</i><br><b>suspend</b> [<i>TASK_ID</i>]<br><b>resume</b> [<i>TASK_ID</i>]</p> <p>Команды управления процессами: завершить, приостановить, возобновить задачу или изменить приоритет задачи.<br> Эти 4 
            команды описаны подробно <a href="Kill_Suspend_And_Resume.ru.html">здесь</a> и используются
            согласно названиям: для приостановки/возобновления или завершения процесса 
           (задача FreeRTOS или фоновая команда ESPShell)
@@ -595,7 +597,7 @@ ESPShell старается быть информативным и имеет в
 </p><p>                                  
 
              С аргументом: переводит процессор в легкий сон на <i>NUM</i> секунд, минут или часов. Процессор просыпается только по 
-		таймеру, других способов отмены сна нет.
+    таймеру, других способов отмены сна нет.
 </p>
 <p>
 Пример: Отправить процессор в сон на 100 секунд:
