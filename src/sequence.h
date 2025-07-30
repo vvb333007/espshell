@@ -594,7 +594,7 @@ static int cmd_seq_levels(int argc, char **argv) {
 // esp32-seq#> show
 // esp32#> show seq 0
 //
-static int cmd_seq_show(int argc, char **argv) {
+static int cmd_show_sequence(int argc, char **argv) {
 
   unsigned int seq;
 

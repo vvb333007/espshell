@@ -34,7 +34,8 @@ struct argcargv {
   short argc;            // number of tokens after stripping "&" or alike
   uint8_t has_amp:1;     // command has "&" at the end?
   uint8_t bg_exec:1;     // enforce background execution despite of "&" symbol
-  uint8_t reserved6:6;   // other flags, currently unused
+  uint8_t has_prio:1;
+  uint8_t prio:5;        // task priority
   char **argv;           // tokenized input string (array of pointers to various locations withn /userinput/)
   char *userinput;       // original input string with '\0's inserted by tokenizer
   int (*gpp)(int, char **); //callback that is associated with argv[0] command.

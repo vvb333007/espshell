@@ -946,7 +946,7 @@ static int cmd_pin_loop(int argc, char **argv,unsigned int pin, unsigned int *st
 // Big fat "pin" command. Processes multiple arguments
 // TODO: do some sort of caching in case of a looped commands: we don't need all these q_atol() and q_atrcmp() for the second, third whatever pass
 //
-static int cmd_pin2(int argc, char **argv) {
+static int cmd_pin(int argc, char **argv) {
 
   unsigned int  flags = 0, // Flags to set (i.e. OUTPUT ,INPUT, OPEN_DRAIN, PULL_UP, PULL_DOWN etc)
                 i = 2,     // Argument, we start our processing from (0 is the command itself, 1 is a pin number)
@@ -1118,7 +1118,7 @@ static int cmd_pin2(int argc, char **argv) {
 // TODO: do some sort of caching in case of a looped commands: we don't need all these q_atol() and q_atrcmp() for the second, third whatever pass
 //
 
-static int cmd_pin2(int argc, char **argv) {
+static int cmd_pin(int argc, char **argv) {
 
 // Shortcut to access individual characters in argv[i]
 // First character is guaraneed by userinput_tokenize() : tokens are at least 1 character long
@@ -1236,7 +1236,7 @@ static int cmd_pin2(int argc, char **argv) {
                   }
                   break;
         // loop
-        case 'l' : 
+        case 'l' : //TODO: rearrange "loop" and "low", "low" must be first, as more frequent 
                   if (has3 && X(2) == 'o') {
                     if ((ret = cmd_pin_loop(argc,argv,pin,&i,&count)) != 0)
                       return ret;

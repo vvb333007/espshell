@@ -14,14 +14,18 @@
 
 #if COMPILING_ESPSHELL
 
-typedef int (*show_cb_t)(int, char **); 
-
+// Displays ESPShell version.
+// This string is guaranteed to have the same format so it can be used for atomatic queries
+//
 static int cmd_show_version(UNUSED int argc, UNUSED char **argv) {
   q_print("% ESPShell version " ESPSHELL_VERSION "\r\n");
   return 0;
 }
 
-// calltable for "show KEYWORD ..." 
+typedef int (*show_cb_t)(int, char **); 
+
+// Calltable for "show KEYWORD ..." 
+// Prototypes are in keywords.h, at the very beginning
 static const struct {
   const char     *key;
   const show_cb_t cb;
@@ -38,7 +42,7 @@ static const struct {
 #if WITH_FS  
   { "mount", cmd_show_mount },
 #endif    
-  { "sequence", cmd_seq_show },
+  { "sequence", cmd_show_sequence },
 #if WITH_ESPCAM
   { "camera", cmd_show_camera },
 #endif
@@ -48,7 +52,8 @@ static const struct {
 };
 
 //"show KEYWORD ARG1 ARG2 .. ARGn"
-// it is in a separate file because it is going to be big
+// Select corresponding callback from the array above and execute it
+// Callback functions are command handlers and are implemented all over the library;
 //
 static int cmd_show(int argc, char **argv) {
 

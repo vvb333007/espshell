@@ -12,17 +12,23 @@
 
 // -- Tasks --
 // Thin wrapper for FreeRTOS' task functions, command handlers related to tasks
+// Main purpose is to move all FreeRTOS specific code into one or two files while rest of the code
+// will use its own functions or/and defines
 //
+// Overhead, usually associated with wrappers is minimal or zero
 
 #if COMPILING_ESPSHELL
 
 #define task_t     TaskHandle_t
 #define taskfunc_t TaskFunction_t
 
-extern task_t loopTaskHandle;  // task handle of a task which calls Arduino's loop(). Defined somewhere in the ESP32 Arduino Core
-static task_t shell_task = 0;  // Main espshell task ID
-static int          shell_core = 0;  // CPU core number ESPShell is running on. For single core systems it is always 0
-static vsa_t       *task_list = 0; // vsa to hold active tasks list
+extern task_t  loopTaskHandle; // task handle of a task which calls Arduino's loop(). Defined somewhere in the ESP32 Arduino Core
+static task_t  shell_task = 0; // Main espshell task ID
+static uint8_t shell_prio = 0; // Default priority is IDLE. Inherited by spawned tasks
+static uint8_t shell_core = 0; // CPU core number ESPShell is running on. For single core systems it is always 0
+                               // Tasks, that are created by ESPShell are pinned to the "shell_core" core
+                               // TODO: make it a convar; add ability to set NO_AFFINITY value
+
 // Signals for use in task_signal(), task_signal_from_isr() and task_wait_for_signal() functions
 //
 #define SIGNAL_TERM 0  // Request to terminate. (Must be zero, DO NOT CHANGE its default value)
@@ -30,13 +36,16 @@ static vsa_t       *task_list = 0; // vsa to hold active tasks list
 #define SIGNAL_KILL 2  // Force task deletion. This value can be sent but can't be received
 #define SIGNAL_HUP  3  // "Reinitialize/Re-read configuration" (Unused, for future extensions)
 
-// Remember & Forget task IDs
-#if CONFIG_FREERTOS_USE_TRACE_FACILITY
-#  define taskid_remember(value) {}
-#  define taskid_forget(value) {}
-#else
-#  warning "Limited task module functionality"
-#  define taskid_remember(value) vsa_find_slot(&task_list, NULL, value, true)
+// Remember & Forget task IDs. We only need these if we are running
+// on old Arduino Core version, where TraceUtility is disabled
+//
+#if CONFIG_FREERTOS_USE_TRACE_FACILITY  // Proper version:
+#  define taskid_remember(value) {}     //  do nothing
+#  define taskid_forget(value) {}       //  do nothing
+#else                                   // Workaround:
+static vsa_t *task_list = 0;            //  vsa to hold active tasks list
+#  warning "TraceUtility is disabled in ESP-IDF: Limited task module functionality"
+#  define taskid_remember(value) vsa_find_slot(&task_list, NULL, value, true) // "add new or overwrite existing value in the array"
 #  define taskid_forget(value) \
      { \
        vsa_t *_vsa; \
@@ -46,16 +55,26 @@ static vsa_t       *task_list = 0; // vsa to hold active tasks list
      }
 #endif // !CONFIG_FREERTOS_USE_TRACE_FACILITY
 
-// current task id
+// Get current task id
 #define taskid_self() \
   xTaskGetCurrentTaskHandle()
 
-// Start a new thread on the same core espshell is running, remember the task_id
+// Get task priority
+#define task_get_priority(_TaskID) \
+  ((unsigned int)uxTaskPriorityGet(_TaskID))
+
+// Set task priority
+#define task_set_priority(_TaskID, _Prio) \
+  vTaskPrioritySet(_TaskID, _Prio)
+
+
+// Start a new thread on the same core espshell is running, remember the task_id.
+// With trace facility enabled, this and other macros here have zero overhead comparing to plain FreeRTOS API
 // TODO: add "_Core" parameter?
 #define task_new(_Func, _Arg, _Name) \
   ({ \
     task_t handle = NULL; \
-    if (pdPASS == xTaskCreatePinnedToCore((TaskFunction_t)_Func, _Name, STACKSIZE, _Arg, tskIDLE_PRIORITY, &handle, shell_core)) \
+    if (pdPASS == xTaskCreatePinnedToCore((TaskFunction_t)_Func, _Name, STACKSIZE, _Arg, shell_prio, &handle, shell_core)) \
       taskid_remember(handle); \
     handle; \
   })
@@ -153,13 +172,28 @@ static INLINE bool espshell_started() {
   return shell_task != NULL;
 }
 
-// Older ESP-IDF has trace facility off, so we have to use an ugly workaround (using VSAs, taskid_remember())
-// Better approach is to stick to trace utility API, which somehow become available in latest Arduino Core and ESP-IDF
-// I missed the moment, so instead of using idf version we use idf config:
+// Older versions of  ESP-IDF had FreeRTOS Trace Facility disabled, so we had to use an ugly workaround 
+// (see taskid_remember(), taskid_forget())
+// 
+// Workaround is ok, but has it disadvantages:
+//   1. system tasks become invisible to ESPShell (Tmr Svc, ipc0, ipc1, IDLE0, IDLE1, esp_timer)
+//   2. "show tasks" will not display anything except task ID. Even names will be inaccessible.
 //
+// Better approach is to stick to trace utility API, which somehow became available in latest Arduino Core's ESP-IDF.
+// ESP-IDF that is used in Arduino Core is lagging well behind the main branch, so when I checked it last year, 
+// Arduino Core of that time had Trace Facility disabled (to reenable it one have to recompile esp-idf libs which 
+// may be tricky)
+//
+// I missed the moment when Espressif had added Trace Utility support, so instead of "#if esp_idf_version < x.x.x" 
+// we use macro CONFIG_FREERTOS_USE_TRACE_FACILITY from the IDF config
+//
+
+// Proper version:
 #if CONFIG_FREERTOS_USE_TRACE_FACILITY
 
 // FreeRTOS task state names (eTaskState)
+// These are fetched as part of TaskState_t structure in cmd_show_tasks()
+//
 static const char *task_state_name[] = { 
   "Running",
   "Ready",
@@ -332,10 +366,15 @@ static int cmd_priority(int argc, char **argv) {
   if (argc > 2) {
     if (!taskid_good((uint32_t )(taskid = (task_t )hex2uint32(argv[2]))))
       return 2;
-  } else 
+  } else
     taskid = NULL; // self
+  
+  // Save priority value if it was for ESPShell main task: new tasks will inherit this priority
+  // Double check: shell task id can be passed as an argument, causing taskid != NULL
+  if (!taskid && is_foreground_task())
+    shell_prio = prio;
 
-  vTaskPrioritySet(taskid, (UBaseType_t )prio);
+  task_set_priority(taskid, (UBaseType_t )prio);
 
   return 0;
 }

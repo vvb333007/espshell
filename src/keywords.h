@@ -105,8 +105,7 @@ static int cmd_nap(int, char **);
 // pin-realated commands: pwm, pulse counter and pin
 static int cmd_pwm(int, char **);
 static int cmd_count(int, char **);
-//static int cmd_pin(int, char **);
-static int cmd_pin2(int, char **);
+static int cmd_pin(int, char **);
 
 // RMT sequences
 static int cmd_seq_if(int, char **);
@@ -116,7 +115,6 @@ static int cmd_seq_zeroone(int argc, char **argv);
 static int cmd_seq_tick(int argc, char **argv);
 static int cmd_seq_bits(int argc, char **argv);
 static int cmd_seq_levels(int argc, char **argv);
-static int cmd_seq_show(int argc, char **argv); // TODO: rename to cmd_show_sequence
 
 // sketch variables
 static int cmd_var(int, char **);
@@ -130,7 +128,7 @@ static int cmd_exec(int, char **);
 // "show" commands
 static int cmd_show(int, char **);
 static int cmd_show_pin(int, char **);
-
+static int cmd_show_sequence(int argc, char **argv);
 // common entries
 static int cmd_exit(int, char **);
 #if WITH_HELP
@@ -462,10 +460,10 @@ KEYWORDS_DECL(sequence) {
   { "modulation", cmd_seq_modulation, 2, HIDDEN_KEYWORD },
   { "modulation", cmd_seq_modulation, 1, HIDDEN_KEYWORD },
 
-  { "show", cmd_seq_show, NO_ARGS,
+  { "show", cmd_show_sequence, NO_ARGS,
     HELPK("% \"<b>show</>\"\r\n"
           "%\r\n"
-          "% Display <u>this</> sequence; Alias for \"show sequence NUM\""), HELPK("Show sequence") },
+          "% Display <u>this</> sequence; Also \"show sequence NUM\""), HELPK("Show sequence") },
 
 
   KEYWORDS_END
@@ -943,7 +941,7 @@ KEYWORDS_DECL(main) {
   
 
   // 0 and 1 arg "pin" commands are declared first, because cmd_pin() has MANY_ARGS and will match any pin command otherwhise
-  { "pin", cmd_pin2, NO_ARGS,
+  { "pin", cmd_pin, NO_ARGS,
     HELPK("% \"<b>pin</>\"\r\n"
           "%\r\n"
           "% Display available/reserved pins, general GPIO information\r\n"
@@ -957,7 +955,7 @@ KEYWORDS_DECL(main) {
           "% Ex.: \"pin 2\" - show GPIO2 information"), 
     NULL },
 
-  { "pin", cmd_pin2, MANY_ARGS,
+  { "pin", cmd_pin, MANY_ARGS,
     HELPK("% \"<b>pin</> <i>PIN_NUM</> [<o>ARG1 | ARG2 | ... | ARGn]*</>\"\r\n"
           "%\r\n"
           "% Manipulate pin (GPIO) state, configuration, level, signal routing, etc\r\n"
