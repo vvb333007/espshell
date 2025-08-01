@@ -377,12 +377,20 @@ This behaviour could be changed by using an &amp; symbol:
  Adding &quot;&amp;&quot; as <b>very last argument</b> to any command instructs ESPShell to execute this particular 
  command as separate task, in parallel to other processes. This behaviour
  is well known to Linux users, where <b>&amp;</b> is used to run commands in background.
-</p><p>
+</p>
+<p>
  This option (background execution) is especially useful with commands "pin" and 
  "count" which may take long time to finish. Every running background command 
  allocates around 5000 bytes of stack memory which is freed after execution
-</p><p>
- Any background command can be stopped by using command <a href="Kill_Suspend_And_Resume.html">kill</a></p>
+</p>
+<p>
+Symbol <b>&amp</b> can also be used to set a background task <i><a href="Kill_Suspend_And_Resume.html#prio">priority</a></i>,
+like this: <b>&10</b> - sets task priority to 10.
+</p>
+
+<p>
+ Any background command can be stopped by using command <a href="Kill_Suspend_And_Resume.html">kill</a>
+</p>
 
 <p>
 <h2 id=cmds><a href="#top">&#8686;</a>ESPSHELL BUILT-IN COMMANDS</h2>
