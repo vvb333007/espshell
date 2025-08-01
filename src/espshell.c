@@ -372,6 +372,11 @@ static int exec_in_background(argcargv_t *aa_current) {
     q_print("% <e>Can not start a new task. Resources low? Adjust STACKSIZE macro in \"espshell.h\"</>\r\n");
     userinput_unref(aa_current);
   } else
+
+    // Update task priority if requested    
+    if (aa_current->has_prio)
+      task_set_priority(ignored, aa_current->prio);
+
     //Hint user on how to stop bg command
     q_printf("%% Background task started\r\n%% Copy/paste \"<i>kill %p</>\" to abort\r\n", ignored);
 
@@ -407,7 +412,7 @@ espshell_command(char *p, argcargv_t *aa) {
   // if we got only /aa/ but /p/ is NULL then we execute /aa/ and don't update history:
   // this behaviour is needed for "exec ALIAS_NAME"
   //
-  // if we got only /p/ and /aa/ is NULL then /aa/ is created from /p/
+  // if we got only /p/ and /aa/ is NULL then /aa/ is created from /p/:
   if (p) {
     //make a history entry, if history is enabled (default)
     if (History) {
@@ -430,7 +435,8 @@ espshell_command(char *p, argcargv_t *aa) {
   
   // Foreground or background?
   // /fg/ is /false/ if we have "&" keyword at the end of a command
-  // TODO: accept &10 or &7 to set the task priority
+  // This code is executed once per each AA. Subsequent executions of the same AA (via alias exec)
+  // will skip this
   if (aa->argv[aa->argc - 1][0] == '&') {
     fg = false;
 #if WITH_ALIAS      
@@ -441,15 +447,24 @@ espshell_command(char *p, argcargv_t *aa) {
     else 
 #endif      
     {
-      // strip last "&" argument and store it in the AA flag
+      // Strip last "&" argument and store it in the AA flag.
+      // Accept priority value if extended &-syntax was used: ("&10" - set priority to 10)
+      //
+      if (aa->argv[aa->argc - 1][1]) {
+        aa->has_prio = 1;
+        aa->prio = q_atoi(&(aa->argv[aa->argc - 1][1]), TASK_MAX_PRIO + 1);
+        if (aa->prio >= TASK_MAX_PRIO + 1) {
+          q_print("% Unrecognized priority value, priority will be inherited\r\n");
+          aa->has_prio = 0;
+        }
+      }
       aa->has_amp = 1;
       aa->argc--;
     }
-  }
+  } // if "&"
 
-  // "&" symbol or implicit bg_exec?
-  // TODO: bg_exec seems to be a bad idea and needs to be removed
-  if (aa->has_amp || aa->bg_exec)
+
+  if (aa->has_amp)
     fg = false;
 
   if (fg) {
@@ -509,16 +524,20 @@ static  void espshell_initonce() {
     // These asserts are mostly for var.h module since it *assumes* that sizeof(int) is 4 and so on
     // (as it should be on a 32bit cpu)
     // There is a code which assumes sizeof(unsigned int) >= sizeof(void *) here and there (mostly in task.h)
-    // We do these asserts in the beginning so we can safely convert between 32-bit types and make safe our, generally speaking unsafe code
+    // We do these asserts in the beginning so we can safely convert between 32-bit types and make safe our, 
+    // generally speaking unsafe code
+    //
+    // Shell often converts between pointers and integer types
     
+    static_assert(sizeof(unsigned long long) == 8,"Unexpected basic type size");
     static_assert(sizeof(int) == 4,"Unexpected basic type size");
-    static_assert(sizeof(short) == 2,"Unexpected basic type size");
-    static_assert(sizeof(char) == 1,"Unexpected basic type size");
     static_assert(sizeof(float) == 4,"Unexpected basic type size");
     static_assert(sizeof(void *) == 4,"Unexpected basic type size");
-    static_assert(sizeof(unsigned long long) == 8,"Unexpected basic type size");
+    static_assert(sizeof(short) == 2,"Unexpected basic type size");
+    static_assert(sizeof(char) == 1,"Unexpected basic type size");
+    static_assert(sizeof(task_t) == sizeof(uint32_t),"Unexpected basic type size");
 
-    // add internal variables ()
+    // Add internal shell variables
     convar_add(ls_show_dir_size);  // enable/disable dir size counting for "ls" command
     convar_add(pcnt_unit);         // PCNT unit which is used by "count" command
     convar_add(bypass_qm);         // enable/disable "?" as a context help hotkey
@@ -538,6 +557,7 @@ static  void espshell_initonce() {
 
 // ESPShell main task. Reads and processes user input by calling espshell_command(), the command processor
 // Only one shell task can be started at the time!
+// This task is visible in "show tasks" list as "ESPShell".
 //
 static void espshell_task(const void *arg) {
 
@@ -567,10 +587,13 @@ static void espshell_task(const void *arg) {
 
     HELP(q_print(WelcomeBanner));
 
-    // read & execute commands until "exit ex" is entered
+    // The main REPL : read & execute commands until "exit ex" is entered
+    // TODO: if readline() return NULL or an empty string it may be caused
+    //       by UART/USB link going down. In such case we are risking to be in a spinning loop
+    //       blocking other tasks.
     while (!Exit) {
       espshell_command(readline(prompt), NULL);
-      q_yield(); // TODO: verify if we really need it. 
+      q_yield(); 
     }
     HELP(q_print(Bye));
 
@@ -581,6 +604,11 @@ static void espshell_task(const void *arg) {
   }
 }
 
+// Check if ESPShell's task is already started
+//
+static INLINE bool espshell_started() {
+  return shell_task != NULL;
+}
 
 
 // Start ESPShell
@@ -592,9 +620,8 @@ static void espshell_task(const void *arg) {
 void STARTUP_HOOK espshell_start() {
 
   espshell_initonce();
-  if (espshell_started()) {
+  if (espshell_started())
     HELP(q_print("% ESPShell is started already, exiting\r\n"));
-  }
   else
-    espshell_task((const void *)1); // defined in task.h
+    espshell_task((const void *)1);
 }

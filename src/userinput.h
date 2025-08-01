@@ -128,11 +128,10 @@ static argcargv_t *userinput_tokenize(char *userinput) {
         a->userinput = userinput;
         a->ref = 1;
         a->next = NULL;
-        a->has_amp = 0;
-        a->bg_exec = 0;
-        //VERBOSE(q_printf("userinput_tokenize() : created argcargv_t %p\r\n",a));
-        // Convert argv[0] (a command name) to lowercase to workaround some dumb terminals 
-//        q_tolower(a->argv[0]);
+        a->has_amp  = 0;
+        a->has_prio = 0;
+        a->prio = 0;
+        a->bg_exec  = 0;
 
       } else {
         if (a->argv)
@@ -154,8 +153,13 @@ void userinput_show(argcargv_t *aa) {
       q_print(aa->argv[i]);
       q_print(" ");
     }
-    if (aa->has_amp)
-      q_print("&");
+    
+    if (aa->has_amp) {
+      if (aa->has_prio)
+        q_printf("&%u",aa->prio);
+      else
+        q_print("&");
+    }
   }
 }
 
