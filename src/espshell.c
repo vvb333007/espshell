@@ -276,12 +276,13 @@ static int espshell_command(char *p, argcargv_t *aa);
 #include "uart.h"               // uart generic interface
 #include "misc.h"               // misc command handlers
 #if WITH_ALIAS
-#include "alias.h"
+#  include "alias.h"
+#  include "ifcond.h"
 #endif
-
 #include "filesystem.h"         // file manager
 #include "memory.h"             // memory component
 #include "espcam.h"             // Camera support
+
 
 // 6. These two must be included last as they are supposed to call functions from every other module
 #include "show.h"               // "show KEYWORD [ARG1 ARG2 ... ARGn]" command
@@ -404,7 +405,6 @@ static int
 espshell_command(char *p, argcargv_t *aa) {
   
   int bad = CMD_FAILED;
-  bool fg = true;
 
   MUST_NOT_HAPPEN(((aa != NULL) && (p != NULL)) || ((aa == NULL) && (p == NULL)));
   
@@ -412,7 +412,8 @@ espshell_command(char *p, argcargv_t *aa) {
   // if we got only /aa/ but /p/ is NULL then we execute /aa/ and don't update history:
   // this behaviour is needed for "exec ALIAS_NAME"
   //
-  // if we got only /p/ and /aa/ is NULL then /aa/ is created from /p/:
+  // if we got only /p/ and /aa/ is NULL then /aa/ is created from /p/, and history is updated:
+
   if (p) {
     //make a history entry, if history is enabled (default)
     if (History) {
@@ -434,17 +435,11 @@ espshell_command(char *p, argcargv_t *aa) {
       goto unref_and_exit; // command not found?
   
   // Foreground or background?
-  // /fg/ is /false/ if we have "&" keyword at the end of a command
-  // This code is executed once per each AA. Subsequent executions of the same AA (via alias exec)
-  // will skip this
+  // If aa is executed for the first time it may have "&XX" at the end. Strip it and set appropriate flags in aa.
   if (aa->argv[aa->argc - 1][0] == '&') {
-    fg = false;
 #if WITH_ALIAS      
     // An "&" symbol within alias editing mode should not be stripped or be translated for background exec
-    // TODO: stop the event system when user is in alias editing mode or it will cause assortment of hard-to-find bugs
-    if (keywords == keywords_alias)
-      fg = true;
-    else 
+    if (keywords != keywords_alias)
 #endif      
     {
       // Strip last "&" argument and store it in the AA flag.
@@ -454,7 +449,7 @@ espshell_command(char *p, argcargv_t *aa) {
         aa->has_prio = 1;
         aa->prio = q_atoi(&(aa->argv[aa->argc - 1][1]), TASK_MAX_PRIO + 1);
         if (aa->prio >= TASK_MAX_PRIO + 1) {
-          q_print("% Unrecognized priority value, priority will be inherited\r\n");
+          HELP(q_print("% Unrecognized priority value, priority will be inherited\r\n"));
           aa->has_prio = 0;
         }
       }
@@ -463,38 +458,36 @@ espshell_command(char *p, argcargv_t *aa) {
     }
   } // if "&"
 
-
-  if (aa->has_amp)
-    fg = false;
-
-  if (fg) {
+  // Execute a background command
+  if (aa->has_amp) {
+    AA = NULL;
+    // create a task and call the handler from that task context
+    bad = exec_in_background(aa);
+  } else {
+  // Execute a foreground command
     AA = aa; // Temporary store pointer to the current aa: it is used exclusively when in alias editing mode
              // NOTE: don't use this pointer for anything except alias editing, it is volatile!
 
     // call command handler directly
     bad = aa->gpp(aa->argc, aa->argv);
-  } else {
-    AA = NULL;
-    // create a task and call the handler from that task context
-    bad = exec_in_background(aa);
   }
 
 unref_and_exit:
+  // Display errors if any
+  if (bad != 0)
+    espshell_display_error(bad,aa->argc,aa->argv);
+
   // Decrease aa's reference counter, display error code if any and exit
   // Normally, refcounter is 1, so aa is removed as part of unref(). However, aliases have their refcounter > 1 so
   // aa's of the alias are kept intact
   //
-    if (bad != 0)
-      espshell_display_error(bad,aa->argc,aa->argv);
-
-  // decrease reference counter
   userinput_unref(aa);
 
   return bad;
 }
 
 
-// Execute an arbitrary shell command (\n are allowed for multiline).
+// Execute an arbitrary shell command (\n is allowed for multiline).
 // Call returns immediately, but /p/ must remain valid memory until actual command finishes its execution.
 //
 // One can use espshell_exec_finished() to check when it is a time for another espshell_exec()

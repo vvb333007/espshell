@@ -123,6 +123,9 @@ static int cmd_var_show(int, char **);
 #if WITH_ALIAS
 // alias execution
 static int cmd_exec(int, char **);
+// ifconds
+static int cmd_if(int, char **);
+static int cmd_show_ifs(int, char **);
 #endif
 
 // "show" commands
@@ -732,12 +735,16 @@ KEYWORDS_DECL(main) {
   { "kill", cmd_kill, 2,
     HELPK("% \"<b>kill <o>[-term|-kill|-9|-15] <i>TASK_ID</>\"\r\n"
           "%\r\n"
-          "% Send a signal to an arbitrary task\r\n"
-          "% If <i>-9</> (or <i>-kill</>) option is used then task is deleted (unsafe)\r\n"
-          "% No options, <i>-term</> or <i>-15</>: ask a task to finish (safe)\r\n"
-          "% Examples:\r\n"
-          "% kill 0x3fff0000      Terminates tasks in a safe way (using task notifications)\r\n"
-          "% kill -9 0x3fff0000 - Terminates tasks forcefully (task deletion)"),"Kill tasks" },
+          "% Send <i>TERMinate</i> signal to an arbitrary task OR kill the task\r\n"
+          "% If <i>-9</> (or <i>-kill</>, <i>-k</>) option is used then task is deleted (unsafe):\r\n"
+          "% use this options for tasks which can not be stopped otherwise.\r\n"
+          "%\r\n"
+          "% No options, <i>-term</>, <i>-t</> or <i>-15</>: ask a task to finish (safe):\r\n"
+          "% this is the default and preferred way to stop a task.\r\n"
+          "%\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>kill 0x3fff0000</>    -Terminates tasks in a safe way (using task notifications)\r\n"
+          "%   <i>kill -9 0x3fff0000</> -Terminates tasks forcefully (task deletion)"),"Kill tasks" },
 
   { "kill", cmd_kill, 1, HIDDEN_KEYWORD },
 
@@ -749,13 +756,13 @@ KEYWORDS_DECL(main) {
   { "nap", cmd_nap, NO_ARGS,
     HELPK("% \"<b>nap</>\"\r\n"
           "%\r\n"
-          "% Put the CPU into light sleep mode, wakeup by console"), "CPU sleep" },
+          "% Put the CPU into light sleep mode, wakeup by console activity"), "CPU sleep" },
 
   { "nap", cmd_nap, 1,
     HELPK("% \"<b>nap</> <i>TIME</> [<o>seconds|minutes|hours</>]\"\r\n"
           "%\r\n"
           "% Put the CPU into light sleep mode specified amount of time\r\n"
-          "% Examples:\r\n"
+          "% <u>Examples:</>\r\n"
           "%   <i>nap 10</>     - Sleep for 10 seconds\r\n"
           "%   <i>nap 10 min</> - Sleep for 10 minutes\r\n"
           "%   <i>nap 10 h</>   - Sleep for 10 hours"), NULL },
@@ -767,7 +774,9 @@ KEYWORDS_DECL(main) {
     HELPK("% \"<b>iic</> <i>I2C_NUM</>\"\r\n"
           "%\r\n"
           "% Enter I2C interface configuration mode (i2c0, i2c1, ...)\r\n"
-          "% Ex.: iic 0 - configure/use interface I2C0"), "I2C commands" },
+          "% I2C_NUM is a number [0..1] of I2C bus to configure\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>iic 0</>     - Enter I2C mode, use I2C bus#0"), "I2C commands" },
   // alias for iic        
   { "i2c", cmd_i2c_if, 1, HIDDEN_KEYWORD },
    
@@ -776,8 +785,11 @@ KEYWORDS_DECL(main) {
   { "alias", cmd_alias_if, 1,
     HELPK("% \"<b>alias</> <i>NAME</>\"\r\n"
           "%\r\n"
-          "% Create command alias NAME and enter alias configuration mode\r\n"
-          "% Ex.: \"alias Switch_On\" - create  start editing alias \"Switch_On\""), 
+          "% Create a named command alias and enter alias configuration mode\r\n"
+          "% Every command you type in alias editing mode is simply recorded to that alias.\r\n"
+          "% To exit alias editing mode use command \"quit\"\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>alias Motor_On</> - Create alias \"Motor_On\""), 
     HELPK("Command aliases") 
   },
 #endif
@@ -797,15 +809,18 @@ KEYWORDS_DECL(main) {
     HELPK("% \"<b>uart</> <i>UART_NUM</>\"\r\n"
           "%\r\n"
           "% Enter UART interface configuration mode (uart0, uart1 and uart2)\r\n"
-          "% Ex.: uart 1 - configure/use interface UART 1"),
-    "UART commands" },
+          "% <u>Examples:</>\r\n"
+          "%   <i>uart 0</>     - Enter UART mode, use uart0"), "UART commands" },
+    
 
   { "sequence", cmd_seq_if, 1,
     HELPK("% \"<b>sequence</> <i>NUM</>\"\r\n"
           "%\r\n"
-          "% Create/configure a sequence\r\n"
-          "% Ex.: sequence 0 - configure Sequence0"),
-    "Sequence configuration" },
+          "% Create/configure a pulse sequence\r\n"
+          "% NUM is the sequence number, there are " xstr(SEQUENCES_NUM) "available\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>sequence 5</>     - Enter sequence editing mode (Seq#5)"), "Pulse sequence configuration" },
+    
 
 #if WITH_FS
   { "files", cmd_files_if, NO_ARGS,
@@ -1129,13 +1144,76 @@ KEYWORDS_DECL(main) {
           "% Examples:\r\n"
           "%   var - Display variables list\r\n"), NULL },
 #if WITH_ALIAS
+  { "if", cmd_if, MANY_ARGS,
+    HELPK("% \"<b>if <i>rising|falling</> PIN [<o>low|high PIN</>]* [<o>max-exec NUM</>] [<o>rate-limit NUM</>] <i>exec</> ALIAS</>\"\r\n"
+          "%\r\n"
+          "% Catch GPIO rising or falling interrupt\r\n"
+          "% Additional <u>level conditions</> can be provided (see examples)\r\n"
+          "%\r\n"
+          "%   <i>max-exec</> NUM   : execute this condition not more than NUM times\r\n"
+          "%   <i>rate-limit</> NUM : minimum time (millis) betwen two consequtive executions\r\n"
+          "%   <i>exec</> ALIAS     : alias to exec\r\n"
+          "%\r\n"
+          "% <u>Examples</>\r\n"
+          "% Execute alias \"Comm\" if GPIO#5 is \"falling\"\r\n"
+          "%\r\n"
+          "%   <i>if falling 5 exec Comm</>\r\n"
+          "%\r\n"
+          "% Execute alias \"Comm\" if GPIO#5 is \"rising\" and GPIO#6 is \"low\" and GPIO#10 is \"high,\"\r\n"
+          "% but not more than 1 time per second, and not more than 5 times in total:\r\n"
+          "%\r\n"
+          "%   <i>if rising 5 low 6 high 10 max-exec 5 rate-limit 1000 exec Comm</>"
+          "%\r\n"
+          "% NOTE: if alias does not exist - it is created automatically (empty)"
+          ), "Conditional GPIO events" },
+
+  { "if", cmd_if, MANY_ARGS,
+    HELPK("% \"<b>if <i>low|high</> PIN [<o>low|high PIN</>]* [<o>max-exec NUM</>] [<o>poll NUM</>] <i>exec</> ALIAS</>\"\r\n"
+          "%\r\n"
+          "% Create a condition which is checked periodically (polling)\r\n"
+          "% No interrupts involved, max rate is limited by poll interval\r\n"
+          "%   <i>max-exec</>   : execute this condition not more than NUM times\r\n"
+          "%   <i>poll</>       : poll interval, milliseconds (default: 1000 ms)\r\n"
+          "%   <i>exec</>       : alias to exec\r\n"
+          "%\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>if low 5 poll 10000 exec Comm</> : if GPIO5 is low (check every 10 sec)\r\n"
+          "%   <i>if low 5 high 10 high 11 exec Comm</> : if GPIO5 is low and GPIO10,11 are high\r\n"
+          "%   <i>if low 5 max-exec 5 poll 1 exec Comm</> : .. five times max,"), NULL },
+
+  { "if", cmd_if, 3,
+    HELPK("% \"<b>if delete [<o>gpio</>] NUM\"\r\n"
+          "% \"<b>if delete all\"\r\n"
+          "%\r\n"
+          "% Delete \"if\" condition: by its ID, by GPIO number or just all of them\r\n"
+          "% (NOTE: Use \"show ifs\" to list all conditions and see their ID)\r\n"
+          "%\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <b>if delete <i>6</>        : delete condition #6\r\n"
+          "%   <b>if delete <i>all</>      : delete all conditions (all, means ALL)\r\n"
+          "%   <b>if delete <i>gpio 7</>   : delete rising/falling conditions assigned to GPIO 7"), NULL },
+
+  { "if", cmd_if, 3,
+    HELPK("% \"<b>if clear [<o>gpio</>] NUM\"\r\n"
+          "% \"<b>if clear all\"\r\n"
+          "%\r\n"
+          "% Clear counters : (hits count & timestamp) for given \"if\" condition by\r\n"
+          "% its ID, by a GPIO number or just all of them\r\n"
+          "% Use \"<i>show ifs</>\" to list all conditions and see their ID)\r\n"
+          "% Use \"<i>if clear</>\" to reset conditions with \"max-exec\" attribute\r\n"
+          "%\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>if clear 6</>        : Clear condition #6\r\n"
+          "%   <i>if clear all</>      : Clear all conditions (all, means ALL)\r\n"
+          "%   <i>if clear gpio 7</>   : Clear rising/falling conditions assigned to GPIO 7"), NULL },
+
   { "exec", cmd_exec, MANY_ARGS,
     HELPK("% \"<b>exec NAME [NAME NAME ... NAME ]</>\"\r\n"
           "%\r\n"
           "% Execute alias (or aliases if more than one NAME is provided)\r\n"
           "% Aliases are <u>list of commands</>; Use \"alias\" to create/edit one\r\n"
           "%\r\n"
-          "% Examples:\r\n"
+          "% <u>Examples</>>\r\n"
           "%   <i>exec motor_on</> - Execute command list named \"motor_on\"\r\n"), "Execute scripts" },
 #endif //ALIAS
 

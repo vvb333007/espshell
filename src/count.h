@@ -109,7 +109,9 @@ static void IRAM_ATTR count_pin_anyedge_interrupt(void *arg) {
   // Send an event to PCNT task blocking on TaskNotifyWait so it can unblock and start counting.
   task_signal_from_isr(t->taskid, SIGNAL_GPIO);
   // Disable further interrupts immediately
-  gpio_set_intr_type(t->pin, GPIO_INTR_DISABLE);
+  // XXX
+  //gpio_set_intr_type(t->pin, GPIO_INTR_DISABLE);
+  gpio_intr_disable(t->pin);
 }
 
 
@@ -306,9 +308,11 @@ bool count_wait_for_the_first_pulse(unsigned int pin) {
 
   // Always install the GPIO isr service. Even if it was installed before.
   // The reason for calling it each time is to be sure that code will work as intended even if user sketch has uninstalled GPIO ISR service
+  gpio_install_isr_service((int)ARDUINO_ISR_FLAG);
   gpio_set_intr_type(pin, GPIO_INTR_ANYEDGE);
-  gpio_install_isr_service((int)ARDUINO_ISR_FLAG);            
   gpio_isr_handler_add(pin, count_pin_anyedge_interrupt, &t);
+  gpio_intr_enable(pin);
+  
 
   // Keeping TRIGGER_POLL >= PULSE_WAIT helps minimize number of calls to anykey_pressed()
 #if TRIGGER_POLL < PULSE_WAIT

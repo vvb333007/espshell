@@ -56,6 +56,8 @@
 
 #define SEQUENCES_NUM 10         // Max number of sequences available for the command "sequence"
 
+//#define QM_JOIN_HEADERS        // Supress repeating headers on "? command" when multiple entries are printed
+
 // -- Compile-time settings END --
 
 #if ARDUINO_USB_CDC_ON_BOOT      // USB mode?
@@ -82,9 +84,9 @@
 #  warning "Shell command history is DISABLED because of MEMTEST (== 1)"  
 #endif
 
-#define ALT_PIN_VER       // experimental fast "pin" processor
+
 #define ALT_RW_VER        // experimental RWLock with atomic_exchange
-#define MPIPE_USES_MSGBUF // experimental MessagePipes using FreeRTOS MessageBuffers
+//#define MPIPE_USES_MSGBUF // experimental MessagePipes using FreeRTOS MessageBuffers
 
 // -- ESPShell public API --
 

@@ -13,9 +13,11 @@
 // -- Q-Lib: helpful routines: ascii to number conversions,platform abstraction, etc --
 //
 // 1. OS/Kernel lightweight abstraction layer (mutexes, message pipes, time intervals, delays, etc.
-//    Part of it is in task.h file as well
+//    Part of it is in task.h file as well. QLib is used in number of different projects, thats why
+//    I came up with the idea of a lightweight wrappers. In most cases these wrappers are simply synonims for
+//    the OS, sometimes it is a small amout of code added.
 //
-// 2. Memory manager (for leaks detection, normally disabled)
+// 2. Memory logger (for leaks detection, normally disabled)
 // 3. Bunch of number->string and string->number conversion functions
 // 4. Core functions like q_printf(), core variables etc
 //
@@ -23,45 +25,79 @@
 
 #include <stdatomic.h>
 
-// gcc-specific branch prediction optimization macros 
+// GCC-specific branch prediction optimization macros 
+// Arduino Core is shipped with precompiled ESP-IDF where they have redefined likely() and unlikely() to be 
+// an empty statement. We just turn it back as it should be: it is used alot in /if/ expression which are rarely
+// executed (if at all)
+//
 #undef likely
 #undef unlikely
-#define unlikely(_X)     __builtin_expect(!!(_X), 0)
+#define unlikely(_X)   __builtin_expect(!!(_X), 0)
 #define likely(_X)     __builtin_expect(!!(_X), 1)
+
+// Memory type: a number from 0 to 15 to identify newly allocated memory block usage. 
+// Newly allocated memory is assigned one of the types below. Command "sh mem" invokes
+// q_memleaks() function to dump memory allocation information. Only works #if MEMTEST == 1
+
+enum {
+  MEM_TMP = 0,   // tmp buffer. must not appear on q_memleaks() report
+  MEM_STATIC,    // memory allocated once, never freed: sketch variables is an example
+  MEM_EDITLINE,  // allocated by editline library (general)
+  MEM_ARGIFY,    // argify() output
+  MEM_ARGCARGV,  // refcounted user input
+  MEM_LINE,      // input string from editline lib
+  MEM_HISTORY,   // command history entry
+  MEM_TEXT2BUF,  // TEXT argument (fs commands write,append,insert or uart's write are examples) converted to byte array
+  MEM_PATH,      // path (c-string)
+  MEM_GETLINE,   // memory allocated by files_getline()
+  MEM_SEQUENCE,  // sequence-related allocations
+  MEM_TASKID,    // Task remap entry
+  MEM_ALIAS,     // Aliases
+  MEM_IFCOND,
+  MEM_UNUSED14,
+  MEM_UNUSED15
+  // NOTE: only values 0..15 are allowed, do not add more!
+};
+
+static NORETURN void must_not_happen(const char *message, const char *file, int line);
 
 // Check if condition ... is true and if it is - halt ESPShell
 // A wrapper for the must_not_happen() function
 //
-static NORETURN void must_not_happen(const char *message, const char *file, int line);
-
 #define MUST_NOT_HAPPEN( ... ) \
   { \
     if ( unlikely(__VA_ARGS__) ) \
       must_not_happen(#__VA_ARGS__, __FILE__, __LINE__ ); \
   }
 
-// OS glue: timers & delays
-// ------------------------
+// OS Abstraction Layer. Thin wrapper to hide all OS-specific API and keep it in one place.
+// It includes: delay(), millis(), micros(), semaphores, mutexes, rwlocks, tasks etc. As a result, rest of the
+// ESPShell code is free from FreeRTOS-specific calls. This layer allows me to develop & debug big chunks of 
+// the code on my Cygwin installation.
+//
+// I call it "thin wrappers" because in most cases it is just a #define MyName() TheirName() however it is not
+// always the case. Finally, FreeRTOS does not have concept of an infinite delay, so this part is implemented in
+// this wrapper
+//
+
+
 // inlined version of millis() & delay() for better accuracy on small intervals
 // (because of decreased overhead). q_millis vs millis shows 196 vs 286 CPU cycles on ESP32
-#define q_micros() esp_timer_get_time()
-#define q_millis() ((unsigned long )(q_micros() / 1000ULL))
+//
 #define q_delay(_Delay) vTaskDelay(_Delay / portTICK_PERIOD_MS);
+#define q_micros()      esp_timer_get_time()
+#define q_millis()      ((unsigned long )(q_micros() / 1000ULL))
 
-// OS glue: context switch requests
-// --------------------------------
+
+// Context switch requests
 #define q_yield() vPortYield()
 #define q_yield_from_isr() portYIELD_FROM_ISR()
 
 
-// OS glue : sync objects (mutexes, binary semaphores, critical sections and rwlocks)
-// ----------------------------------------------------------------------------------
 //  -- Mutexes and Semaphores--
 
 // Mutexes and semaphores are initialized on first use (i.e. on first mutex_lock() / sem_lock() call)
-// These are simple wrappers which **do not increase code size** but allow for unified names 
-// and better portability. This OS->ESPShell "glue" must be kept simple and, ideally, inlineable 
-// or defined as a macro
+// These are fail-safe: mutex_lock() will continue to create a mutex if it was not created; it ensures stability in OOM scenarios
 
 // Mutex type. Mutex is a semaphore on FreeRTOS
 #define mutex_t SemaphoreHandle_t
@@ -159,7 +195,7 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
 //
 // RWLocks are used mostly with lists: one example is the alias.h where RWLocks are used 
 // to protect aliases list, another is ifcond.c, where we have array of lists, which is traversed from within an ISR
-// 
+// TODO: stress test with multiple reader/writer tasks
 
 // RWLock type
 typedef struct {
@@ -262,41 +298,63 @@ void rw_unlockr(rwlock_t *rw) {
 
 
 // -- Message Pipes --
-// A machinery to send messages from an ISR to a task.
-// Note that this code can not be used to send messages from task to task, only ISR->task is allowed
+//
+// A machinery to send messages from an ISR to a task, or from a task to another task
 // Messages are fixed in size (4 bytes, sizeof(void *)).
 //
 // Main idea around mpipes is to be able "to send" a pointer from an ISR to a task: e.g. GPIO ISR sends 
-// messages to some processing task.
+// messages to some processing task, but it is not limited to it.
 //
 // Depending on MPIPE_USES_MSGBUF macro, message pipes (mpipes) are implemented 
 // either via FreeRTOS Message Buffers or FreeRTOS Queues
+// Example of use:
+//    void *test = (void *)0x12345678;          // <--- sample data to send, 4 bytes
+//    unsigned int pipe_drops = 0;              // <--- "message dropped" counter. must be declared as PipeName + "_drops"
+//    mpipe_t pipe = mpipe_create( 123 );       // <--- create pipe, 123 entries long
+//    
+// if (mpipe_send_from_isr( pipe, test))        // <--- send a message from an ISR
+//      q_yield_from_isr();                     // <-+
+//
+// if (mpipe_send( pipe, test))                 // <--- send message from a task
+//      printf("pipe is full\r\n");             // <-+
+//
+// mpipe_destroy(pipe);
+//
+// NOTE: NOTE: NOTE: NOTE: NOTE: NOTE: NOTE: NOTE: NOTE: 
+//
+//  when creating a pipe, a static variable must be defined (of any integer type) like below:
+//
+//   static mpipe_t comm = MPIPE_INIT;    --> message pipe itself
+//   static unsigned int comm_drops = 0;  --> message pipe "dropped message" counter.
 //
 
 #ifdef MPIPE_USES_MSGBUF
 
-// Message Pipe type.
-// e.g. "static mpipe_t comm = MPIPE_INIT"
+// Message Pipe type, Message Pipe initializer
 #  define mpipe_t MessageBufferHandle_t
 #  define MPIPE_INIT NULL
 
-// Create a new message pipe
-// returns pointer to a created mpipe
-// _NumElements : maximum number of pending messages in the mpipe
+// Create a new message pipe.
+// Parameters:
+//  _NumElements - maximum number of pending messages in the mpipe
+// Returns:
+//  A pointer to a created mpipe or NULL
 //
 #  define mpipe_create(_NumElements) \
     xMessageBufferCreate(_NumElements * sizeof(void *))
 
 // Delete mpipe
-// _Pipe : pointer to a mpipe or NULL
+// Parameters:
+//  _Pipe - pointer to a mpipe or NULL
 //
 #  define mpipe_destroy(_Pipe) \
-    do { \
-      if (likely(_Pipe != MPIPE_INIT)) \
-        vMessageBufferDelete(_Pipe) \
-    } while(0)
+    { \
+     if (likely(_Pipe != MPIPE_INIT)) \
+       vMessageBufferDelete(_Pipe); \
+    }
 
-// Send an item (a pointer. we send pointers, not data)
+// Send an item (a pointer. we send pointers, not data), from isr to the task: isr->task
+// 
 // _Data : a variable (not an expression!), containing data to be sent (4 bytes, void *, unsigned int, float ...
 // _Pipe : pointer to a mpipe or NULL
 // 
@@ -304,34 +362,48 @@ void rw_unlockr(rwlock_t *rw) {
 // 
 // Returns /true/ if CPU yield should be done to rechedule higher priority task
 //
-#  define mpipe_send(_Pipe, _Data) \
+#  define mpipe_send_from_isr(_Pipe, _Data) \
     ({ \
-      BaseType_t ret; \
+      BaseType_t ret = pdFALSE; \
       if (likely(_Pipe != MPIPE_INIT)) \
-        xMessageBufferSendFromISR(_Pipe, &_Data, sizeof(void *), &ret); \
-      else \
-        ret = pdFALSE; \
-      (ret == pdTRUE); /* returned value, true or false */\
+        if (unlikely(xMessageBufferSendFromISR(_Pipe, &_Data, sizeof(void *), &ret) != sizeof(void *))) \
+          _Pipe ## _drops++; \
+      ret; /* returned value, true or false */\
     })
 
+// Same as above, but task->task, and does not require manual rescheduling
+//
+#  define mpipe_send(_Pipe, _Data) \
+    ({ \
+      BaseType_t timo = 1; /* 1 tick timeout. */ \
+      if (likely(_Pipe != MPIPE_INIT)) \
+        if (unlikely(xMessageBufferSend(_Pipe, &_Data, sizeof(void *), timo) != sizeof(void *))) { \
+          _Pipe ## _drops++; \
+          timo = 0; \
+        } \
+      timo; /* returned value, true or false */\
+    })
+
+
 // Get an item out of a pipe
-// If pipe is empty then mpipe_recv() will block
+// If pipe is empty then mpipe_recv() will block, spinning in while() with portMAX_DELAY.
+// Not suitable for use in ISR.
 // _Pipe : pointer to a mpipe or NULL
 // Returns a message, 4 bytes, as a void*: "void *value = mpipe_recv(ThePipe);"
 //
 #  define mpipe_recv(_Pipe) \
     ({ \
-      void *ptr; \
+      void *ptr = NULL; \
       if (likely(_Pipe != MPIPE_INIT)) \
-        while (xMessageBufferReceive(_Pipe, &ptr, sizeof(void *), portMAX_DELAY) == 0) /* Nothing here */; \
-      else \
-        ptr = NULL; \
+        while (xMessageBufferReceive(_Pipe, &ptr, sizeof(void *), portMAX_DELAY) == 0) \
+          ; \
       ptr; \
     })
 
 #else // use queues as underlying API
 
-// Message Pipe type
+// Message Pipe type and its initializer
+//
 #  define mpipe_t QueueHandle_t
 #  define MPIPE_INIT NULL
 
@@ -339,7 +411,7 @@ void rw_unlockr(rwlock_t *rw) {
 // _NumElements : maximum number of elements (i.e. pointers) this mpipe can hold  before it 
 //                starts to drop new incoming messages
 //
-// Returns pointer to the newly created pipe
+// Returns pointer to the newly created pipe or NULL
 //
 #  define mpipe_create(_NumElements) \
     xQueueCreate(_NumElements, sizeof(void *))
@@ -348,62 +420,59 @@ void rw_unlockr(rwlock_t *rw) {
 // _Pipe : pointer to a mpipe or NULL
 //
 #  define mpipe_destroy(_Pipe) \
-    do { \
+    { \
       if (likely(_Pipe != MPIPE_INIT)) \
-        vQueueDelete(_Pipe) \
-    } while(0)
+        vQueueDelete(_Pipe); \
+    }
 
 
 // Send a message (_Data must be a variable: we are taking address of it)
+// This is ISR->task routine. For task->task use mpipe_send()
+//
 // _Pipe : pointer to a mpipe or NULL
 // _Data : a variable, usually - a pointer, but can be any 4 bytes simple type
 //
-// Returns /true/ if taskYIELD was requested
+// Returns /true/ if taskYIELD is required
 //
-#  define mpipe_send(_Pipe, _Data) \
+#  define mpipe_send_from_isr(_Pipe, _Data) \
     ({ \
-      BaseType_t ret; \
+      BaseType_t ret = pdFALSE; \
       if (likely(_Pipe != MPIPE_INIT)) \
-        xQueueSendFromISR(_Pipe, &_Data, &ret); \
-      else \
-        ret = pdFALSE; \
-      (ret == pdTRUE); \
+        if (unlikely(xQueueSendFromISR(_Pipe, &_Data, &ret) != pdPASS)) \
+          _Pipe ## _drops++; \
+      ret; \
     })
 
-// Get an item out of the message pipe
+// ... same-same, but task->task messages
+// NOTE: Despite having similar name to the mpipe_send_from_isr(), the major difference is the return value
+// Returns /true/ if message was successfully sent. nothing about manual yielding CPU
+#  define mpipe_send(_Pipe, _Data) \
+    ({ \
+      BaseType_t timo = 1; \
+      if (likely(_Pipe != MPIPE_INIT)) \
+        if (unlikely(xQueueSend(_Pipe, &_Data, timo) != pdPASS)) { \
+          timo = 0; \
+          _Pipe ## _drops++; \
+        } \
+      timo; \
+    })
+
+// Get an item out of the message pipe. Spin in while() forever, using portMAX_DELAY, to simulate infinite timeout
+// Can not be used in ISR
 // _Pipe : pointer to a mpipe or NULL
 // Returns an item (4 byte-long variable, usually a pointer)
 //
 #  define mpipe_recv(_Pipe) \
     ({ \
-      void *ptr; \
+      void *ptr = 0; \
       if (likely(_Pipe != MPIPE_INIT)) \
-        while (xQueueReceive(_Pipe, &ptr, portMAX_DELAY) == pdFALSE) /* Nothing here */; \
-      else \
-        ptr = NULL; \
+        while (xQueueReceive(_Pipe, &ptr, portMAX_DELAY) == pdFALSE) \
+          ; \
       ptr; \
     })
 #endif // MessageBuffers or Queues?
 
-/// OS Glue End;
-
-// PPA(Number) generates 2 arguments for a printf ("%u%s",PPA(Number)), adding an "s" where its needed:
-// printf("%u second%s", PPA(1))  --> "1 second"
-// printf("%u second%s", PPA(2))  --> "2 seconds"
-//
-// NEE(Number) are similar to the PPA above except it generates "st", "nd",
-// "rd" and "th" depending on /Number/:
-// printf("You are %u%s on the queue", NEE(1))  --> "You are 1st on the queue"
-// printf("You are %u%s on the queue", NEE(2))  --> "You are 2nd on the queue"
-//
-static inline __attribute__((const)) const char *number_english_ending(unsigned int const n) {
-  const char *endings[] = { "th", "st", "nd", "rd" };
-  return n > 3 ? endings[0] : endings[n];
-
-}
-
-#define PPA(_X) _X, (_X) == 1 ? "" : "s"
-#define NEE(_X) _X, number_english_ending(_X)
+/// OS Abstraction Layer End;
 
 
 // Some globals as well.
@@ -457,30 +526,26 @@ static __attribute__((const)) const char *tag2ansi(char tag) {
                                                 : NULL);
 }
 
+// PPA(Number) generates 2 arguments for a printf ("%u%s",PPA(Number)), adding an "s" where its needed:
+// printf("%u second%s", PPA(1))  --> "1 second"
+// printf("%u second%s", PPA(2))  --> "2 seconds"
+//
+// NEE(Number) are similar to the PPA above except it generates "st", "nd",
+// "rd" and "th" depending on /Number/:
+// printf("You are %u%s on the queue", NEE(1))  --> "You are 1st on the queue"
+// printf("You are %u%s on the queue", NEE(2))  --> "You are 2nd on the queue"
+//
+static inline __attribute__((const)) const char *number_english_ending(unsigned int const n) {
+  const char *endings[] = { "th", "st", "nd", "rd" };
+  return n > 3 ? endings[0] : endings[n];
 
-// Memory type: a number from 0 to 15 to identify newly allocated memory block usage. 
-// Newly allocated memory is assigned one of the types below. Command "sh mem" invokes
-// q_memleaks() function to dump memory allocation information. Only works #if MEMTEST == 1
+}
 
-enum {
-  MEM_TMP = 0,   // tmp buffer. must not appear on q_memleaks() report
-  MEM_STATIC,    // memory allocated once, never freed: sketch variables is an example
-  MEM_EDITLINE,  // allocated by editline library (general)
-  MEM_ARGIFY,    // argify() output
-  MEM_ARGCARGV,  // refcounted user input
-  MEM_LINE,      // input string from editline lib
-  MEM_HISTORY,   // command history entry
-  MEM_TEXT2BUF,  // TEXT argument (fs commands write,append,insert or uart's write are examples) converted to byte array
-  MEM_PATH,      // path (c-string)
-  MEM_GETLINE,   // memory allocated by files_getline()
-  MEM_SEQUENCE,  // sequence-related allocations
-  MEM_TASKID,    // Task remap entry
-  MEM_ALIAS,     // Aliases
-  MEM_IFCOND,
-  MEM_UNUSED14,
-  MEM_UNUSED15
-  // NOTE: only values 0..15 are allowed, do not add more!
-};
+#define PPA(_X) _X, (_X) == 1 ? "" : "s"
+#define NEE(_X) _X, number_english_ending(_X)
+
+
+
 
 // Check if memory address is in valid range. This function does not check memory access
 // rights, only boundaries are checked.
@@ -796,7 +861,7 @@ static bool isnum(const char *p) {
 
 // Inlined optimized versions of isnum() and atoi() for special case: these are called from cmd_pin() handler,
 // and this optimization is to decrease delays when processing multiple "pin" arguments. Also the "-" sign is
-// not allowed. Functions below are intended to process small numbers, e.g. pin numbers 
+// not allowed. Functions below are intended to process small numbers (2 digits), e.g. pin numbers 
 static inline bool isnum2(const char *p) {
   return p[0] >= '0' && p[0] <= '9' && (p[1] == 0 || (p[1] >= '0' && p[1] <= '9'));
 }
@@ -824,15 +889,10 @@ static bool isfloat(const char *p) {
   return false;
 }
 
-// "to-lowercase" helper macro
-// Only works with ANSI charset, single-byte encodings
-//
-
-
 // Check if given ascii string is a hex number
 // String may or may not start with "0x"
-// Strings "a" , "5a", "0x5" and "0x5Ac5" are valid input
-
+// Strings "a" , "5a", "0x5" and "0x5Ac52345645645234564756" are all valid input
+//
 static bool ishex(const char *p) {
   if (p && *p) {
     char c;
@@ -840,6 +900,7 @@ static bool ishex(const char *p) {
       p += 2;
     while ((c = *p) != '\0') {
       
+      // Convert to lowercase
       if (c >= 'A' && c <= 'Z')
         c |= 1 << 5;
 
@@ -869,8 +930,9 @@ static bool ishex2(const char *p) {
   return false;
 }
 
-
-// 
+// Check, if asciiz string represents an octal number
+// "0777" is a valid input, '0888' is not
+//
 static bool isoct(const char *p) {
 
   if (p && *p) {
@@ -888,7 +950,8 @@ static bool isoct(const char *p) {
   return false;
 }
 
-//
+// Same as above but for binary data
+// "0b00101110101" 
 static bool isbin(const char *p) {
 
   if (p && *p) {
@@ -905,12 +968,9 @@ static bool isbin(const char *p) {
   return false;
 }
 
-
-
-
 // Check if string can be converted to a number, trying all possible formats: 
 // floats, octal, binary or hexadecimal with leading 0x or without it, both signed and unsigned
-
+//
 static bool q_isnumeric(const char *p) {
   if (p && *p) {
     if (p[0] == '0') {
@@ -973,6 +1033,7 @@ static unsigned int hex2uint32(const char *p) {
 
   while ((c = *p) != '\0') {
       
+    // turn to lowercase. TODO: unlikely()
     if (c >= 'A' && c <= 'Z')
       c |= 1 << 5;
 
@@ -1016,13 +1077,13 @@ static unsigned int binary2uint32(const char *p) {
   return value;
 }
 
+#define DEF_BAD ((unsigned int)(-1))
+
 // q_atol() : extended version of atol()
 // 1. Accepts decimal, hex,octal or binary numbers (0x for hex, 0 for octal, 0b for binary)
 // 2. If conversion fails (bad symbols in string, empty string etc) the
 //    "def" value is returned
 //
-#define DEF_BAD ((unsigned int)(-1))
-
 static unsigned int q_atol(const char *p, unsigned int def) {
    // 1. If condition is true -> continue to the right, else
    // 2. If condition is false, continue from "?" down to the first ":"
@@ -1038,36 +1099,12 @@ static unsigned int q_atol(const char *p, unsigned int def) {
                   : def;
 }
 
+// q_atoi only accepts decimal numbers
+//
 static inline int q_atoi(const char *p, int def) {
   return isnum(p) ? atoi(p) : def;
 }
 
-#if WITH_IFCOND
-// "1000" "seconds"
-// "49" "days"
-// "day" ""
-// "minute" ""
-
-
-static unsigned int q_rtime(const char *left, const char *right) {
-  unsigned int val = 1;
-  if (left && *left) {
-    if (isnum(left))
-      val = atol(left);
-    else
-      right = left;
-  
-    if (!q_strcmp(right,"millis")) val *= 1; else
-    if (!q_strcmp(right,"seconds")) val *= 1000; else
-    if (!q_strcmp(right,"minutes")) val *= 60*1000; else
-    if (!q_strcmp(right,"hours")) val *= 3600*1000; else
-    if (!q_strcmp(right,"days")) val *= 24*3600*1000; else return 0;
-
-    return val;
-  }
-  return 0;
-}
-#endif //WITH_IDCOND
 
 // Safe conversion to /float/ type. Returns /def/ if conversion can not be done
 //
@@ -1088,9 +1125,6 @@ static inline float q_atof(const char *p, float def) {
 // q_strcmp("seq","sequence") == 0
 // q_strcmp("sequence","seq") == 1
 //
-//
-// RATIONALE
-// ---------
 // It is implemented as byte-by-byte compare which is very efficient way to compare **short** strings
 // Longer strings are better to be compared as 32 bit chunks but this requires some calculation, string 
 // length measurement and so on making this approach very slow for typical 2-4 letter strings

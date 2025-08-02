@@ -109,7 +109,7 @@ static int help_command(int argc, char **argv) {
 
   int i = 0;
   int found = 0;
-  const char *prev = "*"; 
+  const char *brief = ""; 
 
   MUST_NOT_HAPPEN(argc < 2);
 
@@ -119,27 +119,19 @@ static int help_command(int argc, char **argv) {
     if (keywords[i].help || keywords[i].brief) {
       if (!q_strcmp(argv[1], keywords[i].cmd)) {
 
-        // Print common header for the first entry (in a group) only:
-        // 1. Help for commands, e.g. "? count" will be printed under 1 header (there are 3 commands "count", see keywords.h)
-        // 2. Ambiguity, like "? c" results in multiple commands match (i.e. count, cpu, camera), so multiple headers 
-        //    will be printed in such cases
-        //
-        // NOTE: commands having same name MUST be grouped together in keywords.h
-        //       moving "count" commands to different locations will result in 3 headers printed.
-        //
-        if (q_strcmp(prev, keywords[i].cmd) && keywords[i].brief) {
+        if (keywords[i].brief)
+          brief = keywords[i].brief;
 
-          unsigned int spaces_idx = strlen(keywords[i].brief);
-          // sizeof("% --  --") == 8
-          // strlen( brief ) + 8 must be < 40 so we have room for padding.
-          // calculate index to Spaces to get our padding string
-          spaces_idx = (spaces_idx + 8 >= sizeof(Spaces) - 1) ? sizeof(Spaces) - 1 // index points to '\0', i.e. empty padding string
-                                                              : spaces_idx + 8;    
+        unsigned int spaces_idx = strlen(brief);
           
-          q_printf("\r\n%%<r> -- %s --%s</>\r\n", 
-                    keywords[i].brief,    // Header text is derived from /.brief/
-                    &Spaces[spaces_idx]); // Padding with spaces, so our "<r>everse video" tag will be visible on the screen
-        }
+        // sizeof("% --  --") == 8
+        // strlen( brief ) + 8 must be < 40 so we have room for padding.
+        // calculate index to Spaces to get our padding string
+        spaces_idx = (spaces_idx + 8 >= sizeof(Spaces) - 1) ? sizeof(Spaces) - 1 // index points to '\0', i.e. empty padding string
+                                                              : spaces_idx + 8;    
+        q_printf("\r\n%%<r> -- %s --%s</>\r\n", 
+                  brief,    // Header text is derived from /.brief/
+                  &Spaces[spaces_idx]); // Padding with spaces, so our "<r>everse video" tag will be visible on the screen
 
         // Print help page
         q_printf("%s\r\n\r\n",keywords[i].help ? keywords[i].help                        // use /.help/ if it is exists
