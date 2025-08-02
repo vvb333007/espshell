@@ -130,6 +130,7 @@ static __attribute__((constructor)) void ifc_init_once() {
 
 
 
+
 // GPIO Interrupt routine, implemented via "GPIO ISR Service" API: a global GPIO handler is implemented in ESP-IDF
 // calls user-defined routines. 
 //
@@ -206,6 +207,45 @@ next_ifc:
   // mpipe_send() has unblocked a higher priority task: request rescheduling.
   if (force_yield)
     q_yield_from_isr();
+}
+
+
+// GPIO mask where ISR is enabled
+static uint64_t isr_enabled = 0;
+
+static void ifc_claim_interrupt(uint8_t pin) {
+  if (pin_exist(pin)) {
+    if (!(isr_enabled & (1ULL << pin))) {
+      isr_enabled |= 1ULL << pin;
+
+      VERBOSE(q_printf("%% ifc_claim_interrupt() : Registering an ISR for GPIO#%u\r\n",pin));
+      // install_isr_service can be called multiple times - if already installed it just returns with a warning message
+      // Since shell has to co-exist together with user sketch which can do isr_uninstall, we should restore our interrupt logic
+      // whenever possible
+      gpio_install_isr_service((int)ARDUINO_ISR_FLAG);
+      gpio_set_intr_type(pin, GPIO_INTR_ANYEDGE);
+      gpio_isr_handler_add(pin, ifc_anyedge_interrupt, (void *)(unsigned int)pin);
+      gpio_intr_enable(pin);
+    }
+  }
+}
+
+// Interrupts are disabled only when no conditions with trigger pin /pin/ exists.
+// Suppose we had called ifc_claim_interrupt(5, ...) six times: we had registered an interrupt for the first call, other
+// five calls had no effect. Upon ifcond removal, first the entry must be removed from the list
+// and only then ifc_release_interrupt() must be called - the latter checks if corresponding ifcond[] list is empty
+//
+static void ifc_release_interrupt(uint8_t pin) {
+  if (pin_exist_silent(pin)) {
+    if (isr_enabled & (1ULL << pin)) {
+      if (!ifconds[pin]) {
+        gpio_intr_disable(pin);
+        gpio_isr_handler_remove(pin);
+        isr_enabled &= ~(1ULL << pin);
+        VERBOSE(q_printf("%% ifc_release_interrupt() : removing ISR for GPIO#%u\r\n",pin));
+      }
+    }
+  }
 }
 
 
@@ -562,43 +602,6 @@ static void ifc_task(void *arg) {
   /* UNREACHED */
 }
 
-// GPIO mask where ISR is enabled
-static uint64_t isr_enabled = 0;
-
-static void ifc_claim_interrupt(uint8_t pin) {
-  if (pin_exist(pin)) {
-    if (!(isr_enabled & (1ULL << pin))) {
-      isr_enabled |= 1ULL << pin;
-
-      VERBOSE(q_printf("%% ifc_claim_interrupt() : Registering an ISR for GPIO#%u\r\n",pin));
-      // install_isr_service can be called multiple times - if already installed it just returns with a warning message
-      // Since shell has to co-exist together with user sketch which can do isr_uninstall, we should restore our interrupt logic
-      // whenever possible
-      gpio_install_isr_service((int)ARDUINO_ISR_FLAG);
-      gpio_set_intr_type(pin, GPIO_INTR_ANYEDGE);
-      gpio_isr_handler_add(pin, ifc_anyedge_interrupt, (void *)(unsigned int)pin);
-      gpio_intr_enable(pin);
-    }
-  }
-}
-
-// Interrupts are disabled only when no conditions with trigger pin /pin/ exists.
-// Suppose we had called ifc_claim_interrupt(5, ...) six times: we had registered an interrupt for the first call, other
-// five calls had no effect. Upon ifcond removal, first the entry must be removed from the list
-// and only then ifc_release_interrupt() must be called - the latter checks if corresponding ifcond[] list is empty
-//
-static void ifc_release_interrupt(uint8_t pin) {
-  if (pin_exist_silent(pin)) {
-    if (isr_enabled & (1ULL << pin)) {
-      if (!ifconds[pin]) {
-        gpio_intr_disable(pin);
-        gpio_isr_handler_remove(pin);
-        isr_enabled &= ~(1ULL << pin);
-        VERBOSE(q_printf("%% ifc_release_interrupt() : removing ISR for GPIO#%u\r\n",pin));
-      }
-    }
-  }
-}
 
 // Create an "if" condition
 //
