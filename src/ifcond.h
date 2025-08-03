@@ -33,12 +33,6 @@
 //
 // every <TIME> [delay <TIME>] exec ARG [<LIMIT>]    : execute alias periodically, starting from (now + delay time)
 //
-// if clear [gpio] NUM|all   : clear counters for all ifconds, all ifconds belonging to GPIO, all "no trigger" ifconds or specific (NUM) ifcond
-// every clear NUM|all       : clear counters of periodic events
-//
-// if delete [gpio] NUM|all  : delete ifcond by its number, all of them or all belonging to specific GPIO
-// every delete NUM|all      : delete periodic events
-
 #ifdef COMPILING_ESPSHELL
 
 struct ifcond {

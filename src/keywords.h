@@ -189,10 +189,10 @@ KEYWORDS_DECL(alias) {
           "% 1. No arguments. Means \"delete the last line\"\r\n"
           "% 2. One argument, keyword \"all\". Deletes all lines\r\n"
           "% 3. LINE is a line number, (use \"list\" to see line numbers)\r\n" 
-          "% Examples:\r\n"
-          "% <i>delete</>     - Removes last entered command from the alias\r\n"
-          "% <i>delete all</> - Removes everything\r\n"
-          "% <i>delete 4</>   - Removes line #4"),
+          "% <u>Examples:</>\r\n"
+          "%   <i>delete</>     - Removes last entered command from the alias\r\n"
+          "%   <i>delete all</> - Removes everything\r\n"
+          "%   <i>delete 4</>   - Removes line #4"),
     HELPK("Delete lines") },
 
   { "delete", cmd_alias_delete,NO_ARGS, HIDDEN_KEYWORD },
@@ -244,8 +244,9 @@ KEYWORDS_DECL(uart) {
           "% Parity    - \"<o>no</>\", \"<o>even</>\" or \"<o>odd</>\"\r\n"
           "% Stop bits - 1,2 or 1.5 stop bits\r\n"
           "%\r\n"
-          "% Ex.: <b>up 18 19 115200</> - Setup uart on pins rx=18, tx=19, at speed 115200\r\n"
-          "% Ex.: <b>up 18 19 115200 <i>8 even 1.5</> - Eight bits, 1.5 stopbits, even parity" ),
+          "% <u>Examples:</>\r\n"
+          "%   <i>up 18 19 115200</> - Setup uart on pins rx=18, tx=19, at speed 115200\r\n"
+          "%   <i>up 18 19 115200 <i>8 even 1.5</> - Eight bits, 1.5 stopbits, even parity" ),
     HELPK("Initialize uart (pins/speed)") },
     { "up", cmd_uart_up, 4, HIDDEN_KEYWORD },
     { "up", cmd_uart_up, 5, HIDDEN_KEYWORD },
@@ -255,7 +256,8 @@ KEYWORDS_DECL(uart) {
     HELPK("% \"<b>baud</> <i>SPEED</>\"\r\n"
           "%\r\n"
           "% Set speed for the uart (uart must be initialized)\r\n"
-          "% Ex.: <b>baud 115200</> - Set uart baud rate to 115200"),
+          "% <u>Examples:</>\r\n"
+          "%   <i>baud 115200</> - Set uart baud rate to 115200"),
     HELPK("Set baudrate") },
 
   { "down", cmd_uart_down, NO_ARGS,
@@ -285,7 +287,8 @@ KEYWORDS_DECL(uart) {
           "% <b>TEXT</> can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
           "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n"
           "%\r\n"
-          "% Ex.: \"<b>write ATI\\n\\rMixed\\20Text and \\20\\21\\ff\"</>"),
+          "% <u>Examples:</>\r\n"
+          "%   <i>write ATI\\n\\rMixed\\20Text and \\20\\21\\ff</>"),
     HELPK("Send bytes over this UART") },
 
   // contains common entries and a NULL entry at the end
@@ -303,14 +306,16 @@ KEYWORDS_DECL(iic) {
     HELPK("% \"<b>up</> <i>SDA SCL CLOCK</>\"\r\n"
           "%\r\n"
           "% Initialize I2C interface X, use pins SDA/SCL, clock rate CLOCK\r\n"
-          "% Ex.: <i>up 21 22 100000</> - enable i2c at pins sda=21, scl=22, 100kHz clock"),
+          "% <u>Examples:</>\r\n"
+          "%   <i>up 21 22 100000</> - enable i2c at pins sda=21, scl=22, 100kHz clock"),
     HELPK("Initialize interface (pins and speed)") },
 
   { "clock", cmd_i2c_clock, 1,
     HELPK("% \"<b>clock</> <i>SPEED</>\"\r\n"
           "%\r\n"
           "% Set I2C master clock (i2c must be initialized)\r\n"
-          "% Ex.: clock 100000 - Set i2c clock to 100kHz"),
+          "% <u>Examples:</>\r\n"
+          "%   <i>clock 100000</> - Set i2c clock to 100kHz"),
     HELPK("Set clock") },
 
   { "scan", cmd_i2c_scan, NO_ARGS,
@@ -323,14 +328,16 @@ KEYWORDS_DECL(iic) {
     HELPK("% \"<b>write</> <i>ADDR D1<i> [<o>D2 ... Dn</>]</>\"\r\n"
           "%\r\n"
           "% Write bytes D1..Dn (hex values) to address ADDR on I2C bus X\r\n"
-          "% Ex.: <b>write 0x57 0 0xff</> - write 2 bytes to address 0x57: 0 and 255"),
+          "% <u>Examples:</>\r\n"
+          "%   <i>write 0x57 0 0xff</> - write 2 bytes to address 0x57: 0 and 255"),
     HELPK("Send bytes to the device") },
 
   { "read", cmd_i2c_read, 2,
     HELPK("% \"<b>read</> <i>ADDR SIZE</></>\"\r\n"
           "%\r\n"
           "% Read SIZE bytes from a device at address ADDR\r\n"
-          "% Ex.: read 0x68 7 - read 7 bytes from device address 0x68"),
+          "% <u>Examples:</>\r\n"
+          "%   <i>read 0x68 7</> - read 7 bytes from device address 0x68"),
     HELPK("Read data from an I2C device") },
 
   { "down", cmd_i2c_down, NO_ARGS,
@@ -355,21 +362,24 @@ KEYWORDS_DECL(spi) {
     HELPK("% \"<b>up</> <i>MOSI MISO CLK</>\"\r\n"
           "%\r\n"
           "% Initialize SPI interface in MASTER mode, use pins MOSI/MISO/CLK\r\n"
-          "% Ex.: up 23 19 18 - Initialize SPI at pins 23,19,18"),
+          "% <u>Examples:</>\r\n"
+          "%   <i>up 23 19 18</> - Initialize SPI at pins 23,19,18"),
     HELPK("Initialize interface") },
 
   { "clock", cmd_spi_clock, 1,
     HELPK("% \"<b>clock</> <i>SPEED</>\"\r\n"
           "%\r\n"
           "% Set SPI master clock (SPI must be initialized)\r\n"
-          "% Ex.: clock 1000000 - Set SPI clock to 1 MHz"),
+          "% <u>Examples:</>\r\n"
+          "%   <i>clock 1000000</> - Set SPI clock to 1 MHz"),
     HELPK("Set clock") },
 
   { "write", cmd_spi_write, MANY_ARGS,
     HELPK("% \"<b>write</> <i>CHIP_SELECT</> <g>D1</> [<o>D2 D3 ... Dn</>]\"\r\n"
           "%\r\n"
           "% Write bytes D1..Dn (hex values) to SPI bus whicle setting CHIP_SELECT pin low\r\n"
-          "% Ex.: write 4 0 0xff - write 2 bytes, CS=4"),
+          "% <u>Examples:</>\r\n"
+          "%   <i>write 4 0 0xff</> - write 2 bytes, CS=4"),
     HELPK("Send bytes to the device") },
 
 
@@ -403,15 +413,17 @@ KEYWORDS_DECL(sequence) {
           "%\r\n"
           "% Set the sequence tick time: defines a resolution of a pulse sequence.\r\n"
           "% Expressed in microseconds, can be anything between 0.0125 and 3.2\r\n"
-          "% Ex.: <b>tick 0.1</> - set resolution to 0.1 microsecond (i.e. 1 tick = 0.1 usec)"),
+          "% <u>Examples:</>\r\n"
+          "%   <i>tick 0.1</> - set resolution to 0.1 microsecond (i.e. 1 tick = 0.1 usec)"),
     HELPK("Set resolution") },
 
   { "zero", cmd_seq_zeroone, 2,
     HELPK("% \"<b>zero</> <i>LEVEL/DURATION</> [<o>LEVEL2/DURATION2</>]\"\r\n"
           "%\r\n"
           "% Defines logic \"0\"\r\n"
-          "% Ex.: <b>zero 0/50</>      - 0 is a level: LOW for 50 ticks\r\n"
-          "% Ex.: <b>zero 1/50 0/20</> - 0 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"),
+          "% <u>Examples:</>\r\n"
+          "%   <i>zero 0/50</>      - 0 is a level: LOW for 50 ticks\r\n"
+          "%   <i>zero 1/50 0/20</> - 0 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"),
     HELPK("Define a zero") },
 
   { "zero", cmd_seq_zeroone, 1, HIDDEN_KEYWORD },  //1 arg command
@@ -420,8 +432,9 @@ KEYWORDS_DECL(sequence) {
     HELPK("% \"<b>one</> <i>LEVEL/DURATION</> [<o>LEVEL2/DURATION2</>]\"\r\n"
           "%\r\n"
           "% Defines logic \"1\"\r\n"
-          "% Ex.: <b>one 1/50</>       - 1 is a level: HIGH for 50 ticks\r\n"
-          "% Ex.: <b>one 1/50 0/20</>  - 1 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"),
+          "% <u>Examples:</>\r\n"
+          "%   <i>one 1/50</>       - 1 is a level: HIGH for 50 ticks\r\n"
+          "%   <i>one 1/50 0/20</>  - 1 is a pulse: HIGH for 50 ticks, then LOW for 20 ticks"),
     HELPK("Define an one") },
 
   { "one", cmd_seq_zeroone, 1, HIDDEN_KEYWORD },  //1 arg command
@@ -433,7 +446,8 @@ KEYWORDS_DECL(sequence) {
           "% Overrides previously set \"levels\" command\r\n"
           "% See commands \"one\" and \"zero\" to define \"1\" and \"0\"\r\n"
           "%\r\n"
-          "% Ex.: <b>bits 11101000010111100</>  - 17 bit sequence"),
+          "% <u>Examples:</>\r\n"
+          "%   <i>bits 11101000010111100</>  - 17 bit sequence"),
     HELPK("Set pattern to transmit") },
 
   { "levels", cmd_seq_levels, MANY_ARGS,
@@ -443,10 +457,11 @@ KEYWORDS_DECL(sequence) {
           "% D is the duration measured in ticks [0..32767] (see \"tick\" command) \r\n"
           "% Overrides previously set \"bits\" command\r\n"
           "%\r\n"
-          "% Ex.: <b>levels 1/50 0/20 1/100 0/500<b>  - HIGH 50 ticks, LOW 20, HIGH 100\r\n"
-          "%                                            and 0 for 500 ticks\r\n"
-          "% Ex.: <b>levels 1/32767 1/17233 0/32767 0/7233</> - HIGH for 50000 ticks,\r\n"
-          "%                                                    LOW for 40000 ticks"),
+          "% <u>Examples:</>\r\n"
+          "% <i>levels 1/50 0/20 1/100 0/500</>  - HIGH 50 ticks, LOW 20, HIGH 100\r\n"
+          "%                                          and 0 for 500 ticks\r\n"
+          "% <i>levels 1/32767 1/17233 0/32767 0/7233</> - HIGH for 50000 ticks,\r\n"
+          "%                                                  LOW for 40000 ticks"),
     HELPK("Set levels to transmit") },
 
   { "modulation", cmd_seq_modulation, 3,
@@ -455,9 +470,10 @@ KEYWORDS_DECL(sequence) {
           "% Enables/disables an output signal modulation with frequency FREQ\r\n"
           "% Optional parameters are: DUTY (from 0 to 1) and LEVEL (either high or low)\r\n"
           "%\r\n"
-          "% Ex.: <b>modulation 38000</>         - modulate all 1s with 38kHz, 50% duty cycle\r\n"
-          "% Ex.: <b>modulation 38000 0.3 low</> - modulate all 0s with 38kHz, 30% duty cycle\r\n"
-          "% Ex.: <b>modulation 0</>           - disable modulation\r\n"),
+          "% <u>Examples:</>\r\n"
+          "%   <i>modulation 38000</>         - modulate all 1s with 38kHz, 50% duty cycle\r\n"
+          "%   <i>modulation 38000 0.3 low</> - modulate all 0s with 38kHz, 30% duty cycle\r\n"
+          "%   <i>modulation 0</>           - disable modulation\r\n"),
     HELPK("Enable/disable modulation") },
   //TODO: "modulation off"
   { "modulation", cmd_seq_modulation, 2, HIDDEN_KEYWORD },
@@ -498,8 +514,9 @@ KEYWORDS_DECL(files) {
           "% <o>/MOUNT_POINT</> - A path, starting with \"/\" where filesystem will be mounted.\r\n"
           "% If mount point is omitted then \"/\" + LABEL will be used as a mountpoint\r\n"
           "%\r\n"
-          "% Ex.: mount ffat /fs - mount partition \"ffat\" at directory \"/fs\"\r\n"
-          "% Ex.: mount ffat     - mount partition \"ffat\" at directory \"/ffat\""),
+          "% <u>Examples:</>\r\n"
+          "%   <i>mount ffat /fs</> - mount partition \"ffat\" at directory \"/fs\"\r\n"
+          "%   <i>mount ffat</>     - mount partition \"ffat\" at directory \"/ffat\""),
     NULL },
 
   { "mount", cmd_files_mount, 1, HIDDEN_KEYWORD },
@@ -515,10 +532,10 @@ KEYWORDS_DECL(files) {
           "% <o>/MOUNTPOINT</>: A path, starting with \"/\" where filesystem will be mounted.\r\n"
           "%\r\n"
           "% If mount point is omitted then autogenerated name will be used, like \"scard4\"\r\n"
-          "% Examples:\r\n"
-          "%   mount vspi 19 23 18 4 400      - Same as above but SPI bus is at 400kHz\r\n"
-          "%   mount hspi 19 23 18 4 1000 /sd - 1 MHz SPI2 bus, mount to \"/sd\" directory\r\n"
-          "%   mount vspi 19 23 18 4 /sdcard  - Mount an SD card located on VSPI pins 19,\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>mount hspi 19 23 18 4 1000 /sd</> - 1 MHz SPI2 bus, mount to \"/sd\" directory\r\n"
+          "%   <i>mount hspi 19 23 18 4 400</>      - Same as above but SPI bus is at 400kHz\r\n"          
+          "%   <i>mount vspi 19 23 18 4 /sdcard</>  - Mount an SD card located on VSPI pins 19,\r\n"
           "%                                  23, 18 and 4"), NULL},
 
   { "mount", cmd_files_mount_sd, 7, HIDDEN_KEYWORD },
@@ -549,10 +566,11 @@ KEYWORDS_DECL(files) {
           "%\r\n"
           "% Change current directory. Paths having .. (i.e \"../dir/\") are not supported\r\n"
           "%\r\n"
-          "% Ex.: \"cd\"            - change current directory to filesystem's root\r\n"
-          "% Ex.: \"cd ..\"         - go one directory up\r\n"
-          "% Ex.: \"cd /ffat/test/  - change to \"/ffat/test/\"\r\n"
-          "% Ex.: \"cd test2/test3/ - change to \"/ffat/test/test2/test3\""),
+          "% <u>Examples:</>\r\n"
+          "%   <i>cd</>              - change current directory to filesystem's root\r\n"
+          "%   <i>cd ..</>           - go one directory up\r\n"
+          "%   <i>cd /ffat/test/</>  - change to \"/ffat/test/\"\r\n"
+          "%   <i>cd test2/test3/</> - change to \"/ffat/test/test2/test3\""),
     HELPK("Change directory") },
 
   { "rm", cmd_files_rm, MANY_ARGS,
@@ -566,11 +584,11 @@ KEYWORDS_DECL(files) {
     HELPK("% \"<b>mv</> <i>SOURCE DESTINATION</>\r\n"
           "%\r\n"
           "% Move or Rename file or directory SOURCE to DESTINATION\r\n"
-          "% Examples:\r\n"
-          "% \"mv /ffat/dir1 /ffat/dir2\"             - rename directory \"dir1\" to \"dir2\"\r\n"
-          "% \"mv /ffat/fileA.txt /ffat/fileB.txt\"   - rename file \"fileA.txt\" to \"fileB.txt\"\r\n"
-          "% \"mv /ffat/dir1/file1 /ffat/dir2\"       - move file to directory\r\n"
-          "% \"mv /ffat/fileA.txt /spiffs/fileB.txt\" - move file between filesystems"),
+          "% <u>Examples:</>\r\n"
+          "%   <i>mv /ffat/dir1 /ffat/dir2</>             - rename directory \"dir1\" to \"dir2\"\r\n"
+          "%   <i>mv /ffat/fileA.txt /ffat/fileB.txt</>   - rename file \"fileA.txt\" to \"fileB.txt\"\r\n"
+          "%   <i>mv /ffat/dir1/file1 /ffat/dir2</>       - move file to directory\r\n"
+          "%   <i>mv /ffat/fileA.txt /spiffs/fileB.txt</> - move file between filesystems"),
     HELPK("Move/rename files and/or directories") },
 
   { "cp", cmd_files_cp, 2,
@@ -578,11 +596,11 @@ KEYWORDS_DECL(files) {
           "%\r\n"
           "% Copy file SOURCE to file DESTINATION.\r\n"
           "% Files SOURCE and DESTINATION can be on different filesystems\r\n"
-          "% Examples:\r\n"
-          "% \"cp /ffat/test.txt /ffat/test2.txt\"       - copy file to file\r\n"
-          "% \"cp /ffat/test.txt /ffat/dir/\"            - copy file to directory\r\n"
-          "% \"cp /ffat/dir_src /ffat/dir/\"             - copy directory to directory\r\n"
-          "% \"cp /spiffs/test.txt /ffat/dir/test2.txt\" - copy between filesystems"),
+          "% <u>Examples:</>\r\n"
+          "%   <i>cp /ffat/test.txt /ffat/test2.txt</>       - copy file to file\r\n"
+          "%   <i>cp /ffat/test.txt /ffat/dir/</>            - copy file to directory\r\n"
+          "%   <i>cp /ffat/dir_src /ffat/dir/</>             - copy directory to directory\r\n"
+          "%   <i>cp /spiffs/test.txt /ffat/dir/test2.txt</> - copy between filesystems"),
     HELPK("Copy files/dirs") },
 
   { "write", cmd_files_write, MANY_ARGS,
@@ -592,7 +610,8 @@ KEYWORDS_DECL(files) {
           "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
           "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n"
           "%\r\n"
-          "% Ex.: \"write /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""),
+          "% <u>Examples:</>\r\n"
+          "%   <i>write /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff</>"),
     HELPK("Write strings/bytes to the file") },
 
   { "append", cmd_files_write, MANY_ARGS,
@@ -601,7 +620,8 @@ KEYWORDS_DECL(files) {
           "% Append an ascii/hex string(s) to file\r\n"
           "% Escape sequences & ascii codes are accepted just as in \"write\" command\r\n"
           "%\r\n"
-          "% Ex.: \"append /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff\""),
+          "% <u>Examples:</>\r\n"
+          "%   <i>append /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff</>"),
     HELPK("Append strings/bytes to the file") },
 
   { "insert", cmd_files_insdel, MANY_ARGS,
@@ -612,7 +632,8 @@ KEYWORDS_DECL(files) {
           "% Escape sequences & ascii codes accepted just as in \"write\" command\r\n"
           "% Lines are numbered starting from 0. Use \"cat\" command to find out line numbers\r\n"
           "%\r\n"
-          "% Ex.: \"insert 0 /ffat/test.txt Hello World!\""),
+          "% <u>Examples:</>\r\n"
+          "%   <i>insert 0 /ffat/test.txt Hello World!</>"),
     HELPK("Insert lines to text file") },
 
   { "delete", cmd_files_insdel, 3,
@@ -622,7 +643,8 @@ KEYWORDS_DECL(files) {
           "% Optionsl COUNT argument is the number of lines to remove (default is 1)"
           "% Lines are numbered starting from 1. Use \"cat -n\" command to find out line numbers\r\n"
           "%\r\n"
-          "% Ex.: \"delete 10 /ffat/test.txt\" - remove line #10 from \"/ffat/test.txt\""),
+          "% <u>Examples:</>\r\n"
+          "%   <i>delete 10 /ffat/test.txt</> - remove line #10 from \"/ffat/test.txt\""),
     HELPK("Delete lines from a text file") },
 
   { "delete", cmd_files_insdel, 2, HIDDEN_KEYWORD },
@@ -644,16 +666,16 @@ KEYWORDS_DECL(files) {
           "% COUNT : number of lines to display (OR bytes for \"-b\" option)\r\n"
           "% NUM   : UART interface number to transmit file to\r\n"
           "%\r\n"
-          "% Examples:\r\n"
-          "% cat file              - display file \"file\"\r\n"
-          "% cat -n file           - display file \"file\" + line numbers\r\n"
-          "% cat file 34           - display text file starting from line 34 \r\n"
-          "% cat file 900 10       - 10 lines, starting from line 900 \r\n"
-          "% cat -b file           - display binary file (formatted output)\r\n"
-          "% cat -b file 0x1234    - display binary file starting at offset 0x1234\r\n"
-          "% cat -b file 999 0x400 - 999 bytes starting from offset 1024 of a binary file\r\n"
-          "% cat file uart 1       - transmit a text file over UART1, strip \"\\r\" if any\r\n"
-          "% cat -b file uart 1    - transmit file over UART1 \"as-is\" byte by byte"),
+          "% <u>Examples:</>\r\n"
+          "%   <i>cat file</>              - display file \"file\"\r\n"
+          "%   <i>cat -n file</>           - display file \"file\" + line numbers\r\n"
+          "%   <i>cat file 34</>           - display text file starting from line 34 \r\n"
+          "%   <i>cat file 900 10</>       - 10 lines, starting from line 900 \r\n"
+          "%   <i>cat -b file</>           - display binary file (formatted output)\r\n"
+          "%   <i>cat -b file 0x1234</>    - display binary file starting at offset 0x1234\r\n"
+          "%   <i>cat -b file 999 0x400</> - 999 bytes starting from offset 1024 of a binary file\r\n"
+          "%   <i>cat file uart 1</>       - transmit a text file over UART1, strip \"\\r\" if any\r\n"
+          "%   <i>cat -b file uart 1</>    - transmit file over UART1 \"as-is\" byte by byte"),
     HELPK("Display/transmit text/binary file") },
 
   { "touch", cmd_files_touch, MANY_ARGS,
@@ -717,8 +739,9 @@ KEYWORDS_DECL(main) {
           "%\r\n"
           "% Set task priority. \r\n"
           "% If TASK_ID is omitted, then priority of a current task is adjusted\r\n"
-          "% Ex.: priority 10           - sets priority of the caller to 10\r\n"
-          "% Ex.: priority 10 0x4565243 - sets priority of the task 0x4565243"), "Adjust task priority" },
+          "% <u>Examples:</>\r\n"
+          "%   <i>priority 10</>           - sets priority of the caller to 10\r\n"
+          "%   <i>priority 10 0x4565243</> - sets priority of the task 0x4565243"), "Adjust task priority" },
 
   { "priority", cmd_priority, 2, HIDDEN_KEYWORD },
 
@@ -801,7 +824,8 @@ KEYWORDS_DECL(main) {
     HELPK("% \"<b>spi</> [<o>fspi|hspi|vspi</>]\" \r\n"
           "%\r\n"
           "% Enter SPI interface configuration mode \r\n"
-          "% Ex.: spi vspi - configure/use interface SPI3 (VSPI)"),
+          "% <u>Examples:</>\r\n"
+          "%   <i>spi vspi</> - configure/use interface SPI3 (VSPI)"),
     HELPK("SPI commands") },
 #endif
 
@@ -945,7 +969,7 @@ KEYWORDS_DECL(main) {
           "% User input echo / output control (default is on)\r\n"
           "% Executed without arguments displays current echo state.\r\n"
           "% Can be used to display TEXT as well\r\n"
-          "% Examples:\r\n"
+          "% <u>Examples:</>\r\n"
           "%  <i>echo on</>               : enable user input echo\r\n"
           "%  <i>echo off</>              : disable user input echo\r\n"
           "%  <i>echo silent</>           : disable all espshell output\r\n"
@@ -960,14 +984,16 @@ KEYWORDS_DECL(main) {
     HELPK("% \"<b>pin</>\"\r\n"
           "%\r\n"
           "% Display available/reserved pins, general GPIO information\r\n"
-          "% Ex.: \"pin\" - show GPIO availability"), 
+          "% <u>Examples:</>\r\n"
+          "%   <i>pin</> - show GPIO availability"), 
     HELPK("GPIO commands") },
 
   { "pin", cmd_show_pin, 1,
     HELPK("% \"<b>pin</> <i>PIN_NUM</>\"\r\n"
           "%\r\n"
           "% Show PIN_NUM GPIO configuration and its digital value\r\n"
-          "% Ex.: \"pin 2\" - show GPIO2 information"), 
+          "% <u>Examples:</>\r\n"
+          "%   <i>pin 2</> - show GPIO2 information"), 
     NULL },
 
   { "pin", cmd_pin, MANY_ARGS,
@@ -990,16 +1016,17 @@ KEYWORDS_DECL(main) {
           "%  \"<i>NUMBER</>\"  - Set pin. All subsequent keywords will apply to this new pin\r\n"
           "% \"<i>loop</>\"  - Execute whole \"pin\" command multiple times\r\n"
           "%\r\n"
-          "% Some examples:\r\n%\r\n"
-          "% pin 1 read               -pin1: read digital value\r\n"
-          "% pin 1 read aread         -pin1: digital read followed by an analog read\r\n"
-          "% pin 1 in out up          -pin1 is INPUT and OUTPUT with PULLUP\r\n"
-          "% pin 1 save high load     -save pin state, set HIGH(1), restore pin state\r\n"
-          "% pin 1 high               -pin1 set to logic \"1\"\r\n"
-          "% pin 1 high delay 100 low -set pin1 to logic \"1\", after 100ms to \"0\"\r\n"
-          "% pin 1 pwm 5000 0.3       -set 5kHz, 30% duty square wave output\r\n"
-          "% pin 1 pwm 0 0            -disable PWN on GPIO1\r\n"
-          "% pin 1 high delay 500 low delay 500 loop 10 - Blink a led 10 times\r\n%\r\n"
+          "% <u>Examples:</>\r\n%\r\n"
+          "%  <i>pin 1 read               - pin1: read digital value\r\n"
+          "%  <i>pin 1 read aread         - pin1: digital read followed by an analog read\r\n"
+          "%  <i>pin 1 in out up          - pin1 is INPUT and OUTPUT with PULLUP\r\n"
+          "%  <i>pin 1 save high load     - Save pin state, set HIGH(1), restore pin state\r\n"
+          "%  <i>pin 1 high               - pin1 set to logic \"1\"\r\n"
+          "%  <i>pin 1 high delay 100 low - Set pin1 to logic \"1\", after 100ms to \"0\"\r\n"
+          "%  <i>pin 1 pwm 5000 0.3       - Set 5kHz, 30% duty square wave output\r\n"
+          "%  <i>pin 1 pwm 0 0            - Disable PWN on GPIO1\r\n"
+          "%  <i>pin 1 low high loop inf  - Generate squarewave at max speed\r\n"
+          "%  <i>pin 1 hi del 500 lo del 500 loop 10 - Blink a led 10 times\r\n%\r\n"
           "% (see \"docs/html/GPIO.html\" for more details & examples)\r\n"),  NULL },
 
   // PWM generation
@@ -1015,13 +1042,13 @@ KEYWORDS_DECL(main) {
           "% DUTY resolution is autoselected but can be overriden with \"var ledc_res BITS\"\r\n"
           "%\r\n"
           "% CHANNEL is optional parameter, selects PWM channel to be used (0..15)\r\n"
-          "% Examples:\r\n"
-          "%   pwm 2 <i>1000</>      - enable PWM of 1kHz, 50% duty cycle on pin 2\r\n"
-          "%   pwm 2 <i>100 0.15</>  - enable PWM of 100 Hz, 15% duty cycle on pin 2\r\n"
-          "%   pwm 2 <i>100 0.15 4</>- 100 Hz, 15% duty ,pin 2, Hardware channel 4\r\n"
-          "%   pwm 2           - disable PWM on pin 2\r\n"
-          "%   pwm 2 <i>0</>         - same as above\r\n"
-          "%   pwm 2 <i>off</>       - same as above"),  "PWM output" },
+          "% <u>Examples:</>\r\n"
+          "%   <i>pwm 2 1000</>      - enable PWM of 1kHz, 50% duty cycle on pin 2\r\n"
+          "%   <i>pwm 2 100 0.15</>  - enable PWM of 100 Hz, 15% duty cycle on pin 2\r\n"
+          "%   <i>pwm 2 100 0.15 4</>- 100 Hz, 15% duty ,pin 2, Hardware channel 4\r\n"
+          "%   <i>pwm 2</>           - disable PWM on pin 2\r\n"
+          "%   <i>pwm 2 0</>         - same as above\r\n"
+          "%   <i>pwm 2 off</>       - same as above"),  "PWM output" },
 
   { "pwm", cmd_pwm, 3, HIDDEN_KEYWORD }, // pwm PIN FREQ DUTY
   { "pwm", cmd_pwm, 2, HIDDEN_KEYWORD }, // pwm PIN FREQ, pwm PIN off, pwm PIN 0
@@ -1036,24 +1063,23 @@ KEYWORDS_DECL(main) {
           "% Optional \"trigger\" keyword suspends the counter until the first pulse\r\n"
           "% Optional \"filter LEN\" keyword ignores pulses <u>shorter than</> LEN nanoseconds\r\n"
           "%\r\n"
-          "% Examples: \r\n"
-          "% \"<b>count 4</>\"             - Count pulses & measure frequency on GPIO4 for 1000ms\r\n"
-          "% \"<b>count 4 2000</>\"        - Same as above but measurement time is 2 seconds\r\n"
-          "% \"<b>count 4 filter 100</>\"  - Count pulses, discarding those <u>shorter than</> 100ns\r\n"
-          "% \"<b>count 4 infinite &</>\"  - Count pulses in <u>a background</> all the time\r\n"
-          "% \"<b>count 4 trigger</>\"     - Wait for the first pulse, then start to count\r\n"
-          "% \"<b>count 4 2000 filter 300 trig &</>\"\r\n"
-          "%                       - Wait for the 1st pulse pulse, then start to count\r\n"
-          "%                         pulses for 2 seconds in a background, ignoring pulses\r\n"
-          "%                         shorter than 300ns"), "Pulse counter" },
+          "% <u>Examples:</>\r\n"
+          "%   <i>count 4</>             - Count pulses & measure frequency on GPIO4 for 1000ms\r\n"
+          "%   <i>count 4 2000</>        - Same as above but measurement time is 2 seconds\r\n"
+          "%   <i>count 4 filter 100</>  - Count pulses, discarding those <u>shorter than</> 100ns\r\n"
+          "%   <i>count 4 infinite &</>  - Count pulses in <u>a background</> all the time\r\n"
+          "%   <i>count 4 trigger</>     - Wait for the first pulse, then start to count\r\n"
+          "%    Wait for the 1st pulse pulse, then start to count pulses for 2 seconds in a \r\n"
+          "%    background, ignoring pulses shorter than 300ns\r\n"
+          "%   <i>count 4 2000 filter 300 trig &</>"), "Pulse counter" },
 
   { "count", HELP_ONLY,
     HELPK("% \"<b>count <i>PIN</> <i>clear</>\"\r\n"
           "%\r\n"
           "% Clear counters associated with pin PIN. These may be stopped, \r\n"
           "% running or in \"trigger\" state\r\n"
-          "% Example: \r\n"
-          "% \"<b>count 4 clear</>\" - Clear all counters associated with GPIO4\r\n"), NULL },
+          "% <u>Example:</> \r\n"
+          "%   <i>count 4 clear</> - Clear all counters associated with GPIO4\r\n"), NULL },
     
 #if WITH_ESPCAM
   { "camera", cmd_cam, MANY_ARGS, 
@@ -1066,11 +1092,11 @@ KEYWORDS_DECL(main) {
           "% <i>clock HZ</> - Set XCLK frequency, Hertz. Default value is 16000000 (16Mhz)\n\r"
           "% <i>i2c NUM</>  - Use existing i2c interface, ignore SDA & SCL pins\r\n%\r\n"
           "%\r\n"
-          "%Examples:\r\n"
-          "% camera up <i>ai-thinker</>  - Initialize Ai-Thinker ESP32Cam\r\n"
-          "% camera up <i>custom</> clock <i>20000000</>  - Initialize custom pinout camera at 20Mhz\r\n"
-          "% camera up                - Camera assumed to be initialized by sketch, and used as is\r\n"
-          ), HELPK("Camera commands")
+          "% <u>Examples:</>\r\n"
+          "%   <i>camera up ai-thinker</> - Initialize Ai-Thinker ESP32Cam\r\n"
+          "%   <i>camera up</>            - Camera assumed to be initialized by sketch, and used as is\r\n"
+          "%   <i>camera up custom clock <i>20000000</>  - Initialize custom pinout camera at 20Mhz"),
+    HELPK("Camera commands")
   },
 
   { "camera", HELP_ONLY,
@@ -1080,7 +1106,8 @@ KEYWORDS_DECL(main) {
           "% <b>capture</>  - Capture a single shot\n\r"
           "% <b>filesize</> - Display last captured shot file size\n\r"
           "% <b>transfer</> - Transmit last picture taken (over UART)\n\r"
-          "% <b>down</>     - Camera shutdown & power-off"), NULL },
+          "% <b>down</>     - Camera shutdown & power-off"
+    ), NULL },
 
 
   { "camera", HELP_ONLY,
@@ -1089,20 +1116,23 @@ KEYWORDS_DECL(main) {
           "% Set custom pinout for the camera model \"<i>custom</>\"\r\n"
           "% Later it can be used with \"camera up custom\"\n\r"
           "%\n\r"
-          "% Command requires 16 arguments (pin numbers): i2c bus, data pins, etc\r\n"
+          "% Command requires 16 arguments (GPIO numbers): i2c bus, data pins, etc\r\n"
           "% If your board don't have / don't use certain pins then use \"-\" (minus sign)\r\n"
           "% instead of pin number to disable it (or \"-1\" - it also works).\r\n"
-          "% Example:\r\n"
+          "%   <i>PWDN</>  - Power down GPIO# (set LOW to power up)\r\n"
+          "%   <i>RESET</> - Camera reset GPIO\r\n"
+          "%   <i>XCLK</>  - High frequency source GPIO, camera clock\r\n"
+          "%   <i>SDA, SCL</> - Pins, where camera's I2C interface is connected\r\n"
+          "%   <i>D7..D0</> (or <i>Y9..Y2</>) - Pins where camera data bus is connected\r\n"
+          "%   <i>VSYNC HREF PCLK</> - GPIOs, where standart CMOS camera signals are connected\t\n"
+          "%\r\n"
+          "% <u>Example:</>\r\n"
           "%   <b>camera pinout</> <i>- - 1 2 3 4 5 6 7 8 9 10 11 12 13 14</>\r\n"
+          "%\r\n"
           "% In example above, pins PWDN & RESET are not used and thus set to \"-\"\r\n"
           "%\r\n"
-          "% This custom pinout can be activated via <i>camera up custom</>\r\n"
-          "% <i>PWDN</>  - Power down (set LOW to power up)\r\n"
-          "% <i>RESET</> - Camera reset\r\n"
-          "% <i>XCLK</>  - High frequency source from ESP32, camera clock\r\n"
-          "% <i>SDA, SCL</> - Pins, where camera's I2C interface is connected. Can be \"-\".\r\n"
-          "% <i>D7..D0</> (or <i>Y9..Y2</>) - Pins where camera data bus is connected\r\n"
-          "% <i>VSYNC HREF PCLK</> - Standart CMOS camera signals"), NULL},
+          "% This custom pinout can be activated via <i>camera up custom</>"
+    ), NULL},
 
 #endif //WITH_ESPCAM
   
@@ -1114,9 +1144,9 @@ KEYWORDS_DECL(main) {
           "% VARIABLE_NAME is the variable name (\"var\" to see the list of all vars)\r\n"
           "% NEW_VALUE can be integer or float point values, positive or negative\r\n"
           "%\r\n"
-          "% Examples:\r\n"
-          "% <b>var</> <i>button1</>     - Display current value of \"button1\" sketch variable\r\n"
-          "% <b>var</> <i>angle</> <g>-12.3</> - Set sketch variable \"angle\" to \"-12.3\"\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>var button1</>     - Display current value of \"button1\" sketch variable\r\n"
+          "%   <i>var angle -12.3</> - Set sketch variable \"angle\" to \"-12.3\"\r\n"
           "%\r\n"
           "% Note#1: Partial (shortened) variable names can be used\r\n"
           "% Note#2: Use prefix \"0x\" for hex, \"0\" for octal or \"0b\" for binary numbers"), "Sketch variables" },
@@ -1129,11 +1159,11 @@ KEYWORDS_DECL(main) {
           "% NUMBER can be anything that converts to a number. Use \"0b\",\"0x\" or \"0\"\r\n"
           "% prefixes to enter binary, hexadecimal or octal numbers."
           "%\r\n"
-          "% Examples:\r\n"
-          "% var -1234       - Get information on a decimal number -1234\r\n"
-          "% var 0x1234      -                 on a hex number..\r\n"
-          "% var 01234       -                 on an octal number..\r\n"
-          "% var 0b1001110   - and on a binary number"), NULL },
+          "% <u>Examples:</>\r\n"
+          "%   <i>var -1234</>     - Get information on a decimal number -1234\r\n"
+          "%   <i>var 0x1234</>    -                 on a hex number..\r\n"
+          "%   <i>var 01234</>     -                 on an octal number..\r\n"
+          "%   <i>var 0b1001110</> - and on a binary number"), NULL },
 
   { "var", cmd_var_show, NO_ARGS,
     HELPK("% \"<b>var</>\"\r\n"
@@ -1141,8 +1171,8 @@ KEYWORDS_DECL(main) {
           "% Display the list of sketch variables accessible from the shell\r\n"
           "% Variables must be registered with convar_add() macro\r\n"
           "%\r\n"
-          "% Examples:\r\n"
-          "%   var - Display variables list\r\n"), NULL },
+          "% <u>Examples:</>\r\n"
+          "%   <i>var</> - Display variables list\r\n"), NULL },
 #if WITH_ALIAS
   { "if", cmd_if, MANY_ARGS,
     HELPK("% \"<b>if <i>rising|falling</> PIN [<o>low|high PIN</>]* [<o>max-exec NUM</>] [<o>rate-limit NUM</>] <i>exec</> ALIAS</>\"\r\n"
@@ -1182,8 +1212,9 @@ KEYWORDS_DECL(main) {
           "%   <i>if low 5 max-exec 5 poll 1 exec Comm</> : .. five times max,"), NULL },
 
   { "if", cmd_if, 3,
-    HELPK("% \"<b>if delete [<o>gpio</>] NUM\"\r\n"
+    HELPK("% \"<b>if delete NUM\"\r\n"
           "% \"<b>if delete all\"\r\n"
+          "% \"<b>if delete gpio</> NUM\"\r\n"
           "%\r\n"
           "% Delete \"if\" condition: by its ID, by GPIO number or just all of them\r\n"
           "% (NOTE: Use \"show ifs\" to list all conditions and see their ID)\r\n"
