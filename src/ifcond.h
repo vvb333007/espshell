@@ -63,6 +63,7 @@ struct ifcond {
 
   uint32_t hits;            // number of times this condition was true
   uint64_t tsta;            // timestamp, microseconds. 
+  uint64_t tsta0;           // previous timestamp
                             // If /hits/ is nonzero, then this field has a timestamp of last successful match'
                             // If /hits/ is 0, then this field contains a timestamp of the last "counters clear"
   
@@ -114,9 +115,16 @@ static __attribute__((constructor)) void ifc_init_once() {
     }
   }
 }
-
-// Check if an ifcond with "limit NUM" keyword has been executed NUM times already
-// These: "if rising 5 exec alias1 limit 8"
+// TODO: having 64 bit math on counters on a 32bit arch is not a good idea
+// TODO: when tsta wraps we have slim chances of a one single event when rate is not controlled:
+//       this happens when tsta < tsta0, so comparision will be /true/. On a next hit tsta0 gets updated
+//       so no negative values appear
+static inline bool ifc_too_fast(struct ifcond *ifc) {
+  return  ifc->has_rlimit && 
+         (ifc->tsta - ifc->tsta0 < 1000ULL*ifc->rlimit);
+}
+// Check if ifcond must not be used. These are either "max-exec"-limited entries or
+// rate-limited entries ("rate-limit NUM")
 // It is not inline but a macro otherwise it must be declared with IRAM_ATTR
 #define ifc_not_expired(ifc) \
   (ifc->has_limit ? ifc->hits < ifc->limit \
@@ -212,7 +220,7 @@ static void ifc_claim_interrupt(uint8_t pin) {
     if (!(isr_enabled & (1ULL << pin))) {
       isr_enabled |= 1ULL << pin;
 
-      VERBOSE(q_printf("%% ifc_claim_interrupt() : Registering an ISR for GPIO#%u\r\n",pin));
+      //VERBOSE(q_printf("%% ifc_claim_interrupt() : Registering an ISR for GPIO#%u\r\n",pin));
       // install_isr_service can be called multiple times - if already installed it just returns with a warning message
       // Since shell has to co-exist together with user sketch which can do isr_uninstall, we should restore our interrupt logic
       // whenever possible
@@ -236,7 +244,7 @@ static void ifc_release_interrupt(uint8_t pin) {
         gpio_intr_disable(pin);
         gpio_isr_handler_remove(pin);
         isr_enabled &= ~(1ULL << pin);
-        VERBOSE(q_printf("%% ifc_release_interrupt() : removing ISR for GPIO#%u\r\n",pin));
+        //VERBOSE(q_printf("%% ifc_release_interrupt() : removing ISR for GPIO#%u\r\n",pin));
       }
     }
   }
@@ -300,6 +308,7 @@ static void ifc_show_all() {
     struct ifcond *ifc = ifconds[i];
     while (ifc) {
       j++;
+      // TODO: display "never" if hits == 0
       q_printf("%%%5u|%6lu|%6u sec|",ifc->id, ifc->hits, (unsigned int)((q_micros() - ifc->tsta) / 1000000ULL));
       ifc_show(ifc);
       ifc = ifc->next;
@@ -414,6 +423,7 @@ static void ifc_delete0(int num, bool all) {
         // If num == ID, then we got a match for this particular ID. Once it processed - job is done
         if (MULTIPLE_IFCONDS || ifc->id == num) {
             // Unlink /ifc/ from the list and q_free() it
+           
             struct ifcond *tmp = ifc;
             if (!prev)
               ifc = ifconds[i] = ifc->next;
@@ -421,31 +431,36 @@ static void ifc_delete0(int num, bool all) {
               ifc = prev->next = ifc->next;
 
             // Interrupt must be release AFTER ifc is unlinked from the list
-            if (ifc->trigger_pin != NO_TRIGGER)
-              ifc_release_interrupt(ifc->trigger_pin);
+            if (tmp->trigger_pin != NO_TRIGGER)
+              ifc_release_interrupt(tmp->trigger_pin);
 
             ifc_put(tmp);
-            
 
           // We had processed 1 element. Should we continue or return?
           if (!MULTIPLE_IFCONDS) {
+
             rw_unlockw(&ifc_rw);
             gpio_intr_enable(i); //TODO: do not enable if ifconds[i] == NULL
+
             return;
           }
         } else {
           // Proceed to the next ifcond
+
           prev = ifc;
           ifc = ifc->next;
         }
       } // while(ifc)
 
+
       gpio_intr_enable(i);
       if (!all && (num <= 0))
         break;
+
     }
   }
   rw_unlockw(&ifc_rw);
+
 }
 
 // Clear counters (hits and tsta)
@@ -551,6 +566,7 @@ static struct ifcond *ifc_create( uint8_t     trigger_pin,
 
     n->hits = 0;
     n->tsta = q_micros();
+    n->tsta0 = 0;
     
     // disable interrupts on real GPIOs, do nothing for NO_TRIGGER 
     if (trigger_pin < NUM_PINS)
@@ -564,7 +580,7 @@ static struct ifcond *ifc_create( uint8_t     trigger_pin,
     ifconds[trigger_pin] = n;
     rw_unlockw(&ifc_rw);
 
-    if (trigger_pin < NUM_PINS)
+    if ((trigger_pin < NUM_PINS) && (isr_enabled & (1ULL << trigger_pin)))
       gpio_intr_enable(trigger_pin);
   }
   return n;
@@ -580,14 +596,18 @@ static void ifc_task(void *arg) {
   while( true ) {
     struct ifcond *ifc = (struct ifcond *)mpipe_recv(ifc_mp);
     if (ifc) {
-      //q_printf("ifc_task() : ifcond#%u received\r\n",ifc->id);
-     
+      
+      // Store the timestamp.
+      // It is required for ifc_too_fast() and ifc_not_expired()
+      ifc->tsta0 = ifc->tsta;
       ifc->tsta = q_micros();
-      // "expired" means one of two things:
-      //   1. TODO: clamped by rate-limit
-      //   2. clamped by max-exec
+#if 0 // this check is done in the interrupt handler     
       if (ifc_not_expired(ifc))
+#endif
+      if (!ifc_too_fast(ifc))
         alias_exec_in_background(ifc->exec);
+
+      // TODO: add "dropped" counter (per ifc); increment when execution was skipped
 
       ifc->hits++;
     }
@@ -744,6 +764,10 @@ bad_gpio_number:
   }
 
   if (rate_limit) {
+    if (rate_limit > 0xffff) {
+      q_print("% \"rate-limit\" is set to maximum of 65.5 seconds\r\n");
+      rate_limit = 0xffff;
+    }
     ifc->has_rlimit = 1;
     ifc->rlimit = rate_limit;
   }
@@ -762,6 +786,8 @@ bad_gpio_number:
 static int cmd_show_ifs(int argc, char **argv) {
 
   ifc_show_all();
+  if (ifc_mp_drops)
+    q_printf("%% <e>Dropped messages (pipe overflow): %u</>\r\n", ifc_mp_drops);
   return 0;
 }
 
