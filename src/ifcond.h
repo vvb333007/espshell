@@ -142,6 +142,7 @@ static inline bool ifc_too_fast(struct ifcond *ifc) {
 // Handles "trigger ifconds", i.e. ifconds which have "rising" or "falling" keywords
 // Periodical ifconds ("if low 8 poll 5 sec exec foo") and "every" timers ("every 1 day delay 5 hours exec Foo")
 //
+static uint32_t In = 0, High = 0;
 static void IRAM_ATTR ifc_anyedge_interrupt(void *arg) {
 
   bool rising;
@@ -177,6 +178,8 @@ static void IRAM_ATTR ifc_anyedge_interrupt(void *arg) {
   //
   bool force_yield = false;
 
+  
+
   while (ifc) {
     // Do quick reject in the ISR, do not offload it to the ifc_task()
     // Number of "if"s with the same trigger pin is what can slow things down
@@ -187,8 +190,11 @@ static void IRAM_ATTR ifc_anyedge_interrupt(void *arg) {
     // 3. "high" condition match?
         if (ifc->has_high)
           if ((ifc->high & in) != ifc->high  ||   // MASK & READ_VALUES == MASK?
-              (ifc->high1 &  in1) != ifc->high1)
+              (ifc->high1 &  in1) != ifc->high1) {
+                High = ifc->high;
+                In = in;
             goto next_ifc;
+            }
     // 4. "low" condition match?
         if (ifc->has_low)
           if ((ifc->low & ~in) != ifc->low  ||
@@ -212,13 +218,26 @@ next_ifc:
 }
 
 
-// GPIO mask where ISR is enabled
+// GPIO mask where ISR is enabled. Bit 17 set means GPIO17 has its ISR registered 
 static uint64_t isr_enabled = 0;
 
+// Check if GPIO has ISR handler installed
+#define ifc_isr_is_enabled(_Gpio) \
+  (isr_enabled & (1ULL << (_Gpio)))
+
+#define ifc_isr_enable(_Gpio) \
+  (isr_enabled |= (1ULL << (_Gpio)))
+
+#define ifc_isr_disable(_Gpio) \
+  (isr_enabled &= ~(1ULL << (_Gpio)))
+
+// Ask for an interrupt for the pin. If it is already registered then nothing is done. Otherwise we
+// install a GPIO ANYEDGE interrupt handler and enable interrupts on that pin
+//
 static void ifc_claim_interrupt(uint8_t pin) {
   if (pin_exist(pin)) {
-    if (!(isr_enabled & (1ULL << pin))) {
-      isr_enabled |= 1ULL << pin;
+    if (!ifc_isr_is_enabled(pin)) {
+      ifc_isr_enable(pin);
 
       //VERBOSE(q_printf("%% ifc_claim_interrupt() : Registering an ISR for GPIO#%u\r\n",pin));
       // install_isr_service can be called multiple times - if already installed it just returns with a warning message
@@ -239,11 +258,11 @@ static void ifc_claim_interrupt(uint8_t pin) {
 //
 static void ifc_release_interrupt(uint8_t pin) {
   if (pin_exist_silent(pin)) {
-    if (isr_enabled & (1ULL << pin)) {
+    if (ifc_isr_is_enabled(pin)) {
       if (!ifconds[pin]) {
         gpio_intr_disable(pin);
         gpio_isr_handler_remove(pin);
-        isr_enabled &= ~(1ULL << pin);
+        ifc_isr_disable(pin);
         //VERBOSE(q_printf("%% ifc_release_interrupt() : removing ISR for GPIO#%u\r\n",pin));
       }
     }
@@ -294,22 +313,21 @@ static void ifc_show(struct ifcond *ifc) {
 // Display all ifconds, assign a number to each line
 // These line numbers can be used to delete the entity ("if delete NUMBER|all")
 //
-
-
 static void ifc_show_all() {
   int i,j;
 
   q_printf("%% ID# | Hits | Last hit | Condition and action                                 \r\n"
            "%%-----+------+----------+------------------------------------------------------\r\n");
 
-
   rw_lockr(&ifc_rw);
   for (i = j = 0; i < NUM_PINS + 1; i++) {
     struct ifcond *ifc = ifconds[i];
     while (ifc) {
       j++;
-      // TODO: display "never" if hits == 0
-      q_printf("%%%5u|%6lu|%6u sec|",ifc->id, ifc->hits, (unsigned int)((q_micros() - ifc->tsta) / 1000000ULL));
+      if (ifc->hits)
+        q_printf("%%%5u|%6lu|%6u sec|",ifc->id, ifc->hits, (unsigned int)((q_micros() - ifc->tsta) / 1000000ULL));
+      else
+        q_printf("%%%5u|%6lu|  never  |",ifc->id, ifc->hits);
       ifc_show(ifc);
       ifc = ifc->next;
     }
@@ -369,6 +387,7 @@ static struct ifcond *ifc_get() {
 }
 
 // Return unused ifcond back to "ifc_unused" list
+// Yes, classic mutex is enough here, but critical section is simple. 
 //
 static void ifc_put(struct ifcond *ifc) {
   if (ifc) {
@@ -380,14 +399,18 @@ static void ifc_put(struct ifcond *ifc) {
 }
 
 // Delete an ifcond entry (or all entries)
-// num <=0 ? -1*num is a pin number
-// num > 0 ? num is the ifcond ID
+//
+// num <=0 ? -1*num is a pin number. Remove all entries belonging to that pin 
+//           (i.e. whole ifconds[-num] list). Note that specifying -NO_TRIGGER will remove 
+//           all "polling" ifconds. TODO: The latter is not available through the shell commands yet
+// num > 0 ? num is the ifcond ID. Remove one single ifcond and exit
+// all == true ? ignore /num/ and remove all entries
 //
 static void ifc_delete0(int num, bool all) {
 
   int i, maxp = NUM_PINS;
 
-  if (!all && num < -(NUM_PINS - 1)) {
+  if (!all && num < -(NUM_PINS)) {
     q_printf("%% Pin number %u is out of range\r\n", -num);
     return;
   }
@@ -405,8 +428,9 @@ static void ifc_delete0(int num, bool all) {
   //
   if (all) {
     num = 0;
-    maxp++;   // including NO_TRIGGER ifconds
-  }
+    maxp++;   // all, including NO_TRIGGER ifconds
+  } else if (num == -NO_TRIGGER)
+    maxp++;   // only NO_TRIGGER ifconds
 
   for (i = num < 0 ? -num : 0; i < maxp; i++) {
 
@@ -414,7 +438,9 @@ static void ifc_delete0(int num, bool all) {
     // to prevent ifc_anyedge_interrupt() from traversing ifconds lists
     if (ifconds[i]) {
 
-      gpio_intr_disable(i);
+      if (i != NO_TRIGGER)
+        gpio_intr_disable(i);
+
       struct ifcond *ifc = ifconds[i], *prev = NULL;
 
       while (ifc) {
@@ -430,17 +456,21 @@ static void ifc_delete0(int num, bool all) {
             else
               ifc = prev->next = ifc->next;
 
-            // Interrupt must be release AFTER ifc is unlinked from the list
+            // Interrupt must be released AFTER ifc is unlinked from the list:
+            // ifc_release_interrupt() checks if list is empty and if it is - uninstalls the ISR
             if (tmp->trigger_pin != NO_TRIGGER)
               ifc_release_interrupt(tmp->trigger_pin);
 
+            // return ifcond memory to the pool
             ifc_put(tmp);
 
           // We had processed 1 element. Should we continue or return?
           if (!MULTIPLE_IFCONDS) {
 
             rw_unlockw(&ifc_rw);
-            gpio_intr_enable(i); //TODO: do not enable if ifconds[i] == NULL
+            // Enable interrupts (for real GPIOs only,and only if there is an ISR handler registered)
+            if (i != NO_TRIGGER && ifc_isr_is_enabled(i))
+              gpio_intr_enable(i); 
 
             return;
           }
@@ -580,7 +610,7 @@ static struct ifcond *ifc_create( uint8_t     trigger_pin,
     ifconds[trigger_pin] = n;
     rw_unlockw(&ifc_rw);
 
-    if ((trigger_pin < NUM_PINS) && (isr_enabled & (1ULL << trigger_pin)))
+    if (trigger_pin < NUM_PINS && ifc_isr_is_enabled(trigger_pin))
       gpio_intr_enable(trigger_pin);
   }
   return n;
@@ -599,13 +629,11 @@ static void ifc_task(void *arg) {
       
       // Store the timestamp.
       // It is required for ifc_too_fast() and ifc_not_expired()
-      ifc->tsta0 = ifc->tsta;
       ifc->tsta = q_micros();
-#if 0 // this check is done in the interrupt handler     
-      if (ifc_not_expired(ifc))
-#endif
-      if (!ifc_too_fast(ifc))
+      if (!ifc_too_fast(ifc)) {
+        ifc->tsta0 = ifc->tsta;
         alias_exec_in_background(ifc->exec);
+      }
 
       // TODO: add "dropped" counter (per ifc); increment when execution was skipped
 
@@ -657,6 +685,12 @@ bad_gpio_number:
       if (argv[1][0] == 'd')
         ifc_delete_all(); else ifc_clear_all();
 
+    // if delete|clear polling
+    } else if (!q_strcmp(argv[2],"polling")) {
+
+      if (argv[1][0] == 'd')
+        ifc_delete_pin(NO_TRIGGER); else ifc_clear_pin(NO_TRIGGER);
+
     // if delete|clear NUM
     } else if (isnum(argv[2])) {
 
@@ -691,12 +725,16 @@ bad_gpio_number:
 
     unsigned char pin;
 
-    // Read pin number, check if it is ok
+    // Read pin number, check if it is ok. Enable input on them otherwise we can't access
+    // them in the ISR
     if ((pin = q_atoi(argv[cond_idx + 1], NO_TRIGGER)) == NO_TRIGGER)
       return cond_idx + 1;
 
     if (!pin_exist(pin))
       return cond_idx + 1;
+
+    // Every GPIO which is used in a condition must be readable, i.e. INPUT-enabled
+    gpio_input_enable(pin);
 
     // Set corresponding bit and a gpio bitmask
     if (argv[cond_idx][0] == 'l')
@@ -788,6 +826,10 @@ static int cmd_show_ifs(int argc, char **argv) {
   ifc_show_all();
   if (ifc_mp_drops)
     q_printf("%% <e>Dropped messages (pipe overflow): %u</>\r\n", ifc_mp_drops);
+
+
+    q_printf("ifcond->high==%08x, reg_read==%08x\r\n",High,In);
+
   return 0;
 }
 
