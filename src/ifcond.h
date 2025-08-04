@@ -35,6 +35,9 @@
 //
 #ifdef COMPILING_ESPSHELL
 
+// ifcond: this is what "if rising 5 low 6 high 10 ..." commands are parsed to.
+// There are lists of ifconds per every pin: (ifconds[NUM_PINS+1]) plus 1 last entry (ifconds[NO_TRIGGER]) is to store 
+// "polling" ifconds; ifconds on a list are always belong to the same pin
 struct ifcond {
 
   struct ifcond *next;      // ifconds with the same pin
@@ -50,7 +53,7 @@ struct ifcond {
   uint8_t has_limit:1;      // has "max-exec" keyword?
   uint8_t has_rlimit:1;     // has "rate-limit" keyword?
   uint8_t reserved3:3;
-  uint16_t id;              // unique ID for delete command
+  uint16_t id;              // unique ID for delete/clear commands
   uint16_t rlimit;          // once per X milliseconds (max ~ 1 time per minute [65535 msec])
   uint16_t poll_interval;   // poll interval, in seconds, for non-trigger ifconds
   uint32_t limit;           // max number of hits (if (ifc->hits > ifc->limit) { ignore } else { process } )
@@ -98,39 +101,47 @@ static void ifc_task(void *arg);
 static mpipe_t ifc_mp = MPIPE_INIT;
 static unsigned int ifc_mp_drops = 0;
 
-// daemon task
-static task_t ifc_handle = NULL;
 
 // Create message pipe and start a daemon task
 // Daemon priority set is just below system tasks priority
 //
+#define IFCOND_PRIORITY 21 // prio 22..24 are used by system tasks of ESP-IDF, don't disturb them
+
 static __attribute__((constructor)) void ifc_init_once() {
-  
+
+  task_t ifc_handle = NULL; // daemon task id
+
   if ((ifc_mp = mpipe_create(MPIPE_CAPACITY)) != MPIPE_INIT) {
-    if ((ifc_handle = task_new(ifc_task, NULL, "ifcond")) != NULL)
-      task_set_priority(ifc_handle, 21); // prio 22..24 are used by system tasks of ESP-IDF, don't disturb them
-    else {
+    if ((ifc_handle = task_new(ifc_task, NULL, "ifcond")) != NULL) {
+      task_set_priority(ifc_handle, IFCOND_PRIORITY); 
+    } else {
+      // TODO: StartupFailed = "ifcond daemon"
       mpipe_destroy(ifc_mp);
       ifc_mp = NULL;
     }
-  }
+  } // else
+  // TODO: StartupFailed = "ifcond message pipe";
+  
 }
-// TODO: having 64 bit math on counters on a 32bit arch is not a good idea
-// TODO: when tsta wraps we have slim chances of a one single event when rate is not controlled:
-//       this happens when tsta < tsta0, so comparision will be /true/. On a next hit tsta0 gets updated
-//       so no negative values appear
+
+// Check if requests are coming too fast.
+//
+// Having 64 bit math on counters on a 32bit arch in a time-critical code is not a good idea,
+// so unlike ifc_not_expired(), this one (ifc_too_fast()) is called from a daemon task, not from the ISR
+//
+// Note on the timer counter wrap/overflow: it happens in ~500000 years 
+//
 static inline bool ifc_too_fast(struct ifcond *ifc) {
   return  ifc->has_rlimit && 
          (ifc->tsta - ifc->tsta0 < 1000ULL*ifc->rlimit);
 }
 // Check if ifcond must not be used. These are either "max-exec"-limited entries or
 // rate-limited entries ("rate-limit NUM")
-// It is not inline but a macro otherwise it must be declared with IRAM_ATTR
+// It is not a function but a macro otherwise it must be declared with IRAM_ATTR
+//
 #define ifc_not_expired(ifc) \
   (ifc->has_limit ? ifc->hits < ifc->limit \
                   : true)
-
-
 
 
 // GPIO Interrupt routine, implemented via "GPIO ISR Service" API: a global GPIO handler is implemented in ESP-IDF
@@ -142,7 +153,7 @@ static inline bool ifc_too_fast(struct ifcond *ifc) {
 // Handles "trigger ifconds", i.e. ifconds which have "rising" or "falling" keywords
 // Periodical ifconds ("if low 8 poll 5 sec exec foo") and "every" timers ("every 1 day delay 5 hours exec Foo")
 //
-static uint32_t In = 0, High = 0;
+
 static void IRAM_ATTR ifc_anyedge_interrupt(void *arg) {
 
   bool rising;
@@ -178,8 +189,6 @@ static void IRAM_ATTR ifc_anyedge_interrupt(void *arg) {
   //
   bool force_yield = false;
 
-  
-
   while (ifc) {
     // Do quick reject in the ISR, do not offload it to the ifc_task()
     // Number of "if"s with the same trigger pin is what can slow things down
@@ -190,11 +199,9 @@ static void IRAM_ATTR ifc_anyedge_interrupt(void *arg) {
     // 3. "high" condition match?
         if (ifc->has_high)
           if ((ifc->high & in) != ifc->high  ||   // MASK & READ_VALUES == MASK?
-              (ifc->high1 &  in1) != ifc->high1) {
-                High = ifc->high;
-                In = in;
+              (ifc->high1 &  in1) != ifc->high1)
             goto next_ifc;
-            }
+            
     // 4. "low" condition match?
         if (ifc->has_low)
           if ((ifc->low & ~in) != ifc->low  ||
@@ -316,18 +323,24 @@ static void ifc_show(struct ifcond *ifc) {
 static void ifc_show_all() {
   int i,j;
 
-  q_printf("%% ID# | Hits | Last hit | Condition and action                                 \r\n"
-           "%%-----+------+----------+------------------------------------------------------\r\n");
+  q_printf("%%<r> ID# |  Hits  | Last hit | Condition and action                               </>\r\n"
+           "%%-----+--------+----------+----------------------------------------------------\r\n");
 
   rw_lockr(&ifc_rw);
   for (i = j = 0; i < NUM_PINS + 1; i++) {
     struct ifcond *ifc = ifconds[i];
     while (ifc) {
       j++;
+      const char *pre = " ", *pos = " ";
+      if (!ifc_not_expired(ifc)) {
+        pre = "<w>[";
+        pos = "]</>";
+      }
+
       if (ifc->hits)
-        q_printf("%%%5u|%6lu|%6u sec|",ifc->id, ifc->hits, (unsigned int)((q_micros() - ifc->tsta) / 1000000ULL));
+        q_printf("%%%5u|%s%6lu%s|%6u sec|",ifc->id, pre, ifc->hits, pos, (unsigned int)((q_micros() - ifc->tsta) / 1000000ULL));
       else
-        q_printf("%%%5u|%6lu|  never  |",ifc->id, ifc->hits);
+        q_printf("%%%5u|%s%6lu%s|  never  |",ifc->id, pre, ifc->hits, pos);
       ifc_show(ifc);
       ifc = ifc->next;
     }
@@ -337,7 +350,7 @@ static void ifc_show_all() {
   if (!j)
     q_print("%\r\n% <i>No conditions were defined</>; Use command \"if\" to add some\r\n");
   else
-    q_print("%-----+------+----------+------------------------------------------------------\r\n");
+    q_print("%-----+--------+----------+----------------------------------------------------\r\n");
 }
 
 // Delete/Clear ifcond entry/entries
@@ -818,18 +831,14 @@ bad_gpio_number:
   return 0;
 }
 
+// "show ifs"
 //
 //
-//
-static int cmd_show_ifs(int argc, char **argv) {
+static int cmd_show_ifs(UNUSED int argc, UNUSED char **argv) {
 
   ifc_show_all();
   if (ifc_mp_drops)
-    q_printf("%% <e>Dropped messages (pipe overflow): %u</>\r\n", ifc_mp_drops);
-
-
-    q_printf("ifcond->high==%08x, reg_read==%08x\r\n",High,In);
-
+    q_printf("%% <e>Dropped events (pipe overflow): %u</>\r\n", ifc_mp_drops);
   return 0;
 }
 
