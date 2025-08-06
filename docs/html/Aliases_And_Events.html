@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Aliases and Events : creating and executing shell scripts</title>
+  <link rel="stylesheet" href="espshell.css">
+  <meta charset="UTF-8">
+</head>
+<body>
+<p align=center><a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: Basic concepts and command index" width="70%" height="70%" /></a></p>
+<h3 align=center><a href="Aliases.ru.html">[ На русском ]</a>&nbsp;&harr;&nbsp;<a href="Aliases.html">[ English ]</a></h3>
+<p>
+  <ul>
+    <li><a href="#wit">What is this? An example</a></li>
+    <li><a href="#cee">Aliases : creating, editing, executing</a></li>
+    <li><a href="#show">Displaying information on aliases</a></li>
+    <li><a href="#ifcond">Conditions and events: command "<b>if</b>"</a></li>
+    <li><a href="#ifcond_show">Periodic events: command "<b>every</b>"</a></li>
+ </ul>
+</p>
+
+<p><h2 id=wit><a href="#top">&#8686;</a>WHAT IS THIS:</h2></p>
+
+<p>
+Aliases, or "command aliases", are a way to execute several shell commands at once, like a shell script—either explicitly using the "<b>exec</b>" command or indirectly as part of the "<b>if</b>" command. 
+Aliases have <i>names</i> and are referred to by those names. You can think of them as <i>named containers</i> filled with commands—similar to "<b>.sh</b>" or "<b>.bat</b>" files, but stored in RAM.
+</p>
+
+<p>
+Let's look at a simple home automation task: water pump control. This will give you a general understanding of the alias and event system. A full command list and additional details are provided later in the document.
+</p>
+
+<p>
+You have a water tank with two sensors: GPIO2 for "Water Too Low" and GPIO4 for "Water Too High".
+</p>
+
+<p>
+Sensors consist of two wires that are shorted by water in the tank. A HIGH level appears at the "sensor" output when water touches it, and it goes LOW when the water level drops below the sensor.
+</p>
+
+<p>
+The water pump can be turned ON and OFF by toggling GPIO20 HIGH for 3 seconds, then toggling GPIO21 HIGH. GPIO20 is used to "start" the motor with a higher current, while GPIO21 allows the pump to run normally.
+</p>
+
+<p>
+When the water reaches the upper sensor, GPIO4 voltage goes from LOW to HIGH. When the water drops below the lower sensor, GPIO2 voltage falls from HIGH to LOW.
+</p>
+
+<p><b>How do you implement automatic pump control using shell commands?</b></p>
+
+<p>
+First, let's create "motor_on" and "motor_off" aliases to control the motor:
+<pre>
+  esp32#>alias motor_on
+  esp32-alias>
+</pre>
+
+The "<b>alias motor_on</b>" command creates a new alias named "motor_on". The shell enters alias editing mode, where <b><i>any</i></b> command you type is recorded as part of the alias:
+</p>
+
+<pre>
+esp32#>alias motor_on
+esp32-alias>pin 4 high delay 3000 low
+esp32-alias>pin 4 low 2 high
+esp32-alias>Hello World!
+</pre>
+
+<p>
+<b>NOTE:</b> To exit alias editing mode, use the <b>"quit"</b> command instead of "<b>exit</b>". This is because "exit" may be a valid command within the alias itself.
+</p>
+
+<p>
+You can list the alias contents at any time using the "<b>list</b>" command:
+<pre>
+  esp32-alias>list
+  % Alias "motor_on":
+  % 1: pin 4 high delay 3000 low
+  % 2: pin 2 high 4 low
+  % 3: Hello World!
+  % --- END ---
+</pre>
+
+The numbers are <i>line numbers</i>, which can be used with the "<b>delete</b>" command to remove specific lines. For example, let's delete the "Hello World!" line:
+<pre>
+  esp32-alias><b>del 3</b>
+  esp32-alias><b>list</b>
+  % Alias "motor_on":
+  % 1: pin 4 high delay 3000 low
+  % 2: pin 4 low 2 high
+  % --- END ---
+</pre>
+<b>NOTE:</b> "delete" without arguments removes the last command. "delete all" clears the entire alias.
+</p>
+
+<p>
+Now let’s define the "<b>motor_off</b>" alias:
+<pre>
+  esp32#>alias motor_off
+  esp32-alias>pin 2 low 4 low
+  esp32-alias>quit
+  esp32#>
+</pre>
+
+You’ve now created two aliases filled with commands, ready to be executed using the "<b>exec</b>" command:
+<pre>
+  esp32#>exec motor_on
+  esp32#>exec motor_off
+</pre>
+</p>
+
+<p>
+Recall that GPIO2 (lower sensor) and GPIO4 (upper sensor) indicate water levels. GPIO4 voltage <i>rises</i> when the water reaches the upper sensor; GPIO2 voltage <i>falls</i> when the water drops below the lower sensor.
+
+For such events (rising or falling edges), use the <b>if</b> command:
+<pre>
+  esp32#>if falling 2 exec motor_on
+  esp32#>if rising 4 exec motor_off
+</pre>
+
+This was a quick example of how the alias and event system works. Let’s now dive into the details.
+</p>
+
+---
+
+<h2 id=cee><a href="#top">&#8686;</a>ALIASES: CREATING, EDITING, EXECUTING</h2>
+
+<table>
+<tr><td><b>Command</b></td><td><b>Description and examples</b></td></tr>
+
+<tr>
+<td><b>alias <i>NAME</i></b></td>
+<td>
+<p>
+1. Creates an empty alias <i>NAME</i> and enters alias editing mode ("quit" to exit)<br />
+2. If the alias already exists, simply enters alias editing mode
+</p>
+
+<p>
+While in editing mode, you can list the alias content (with "<b>list</b>"), delete lines (with "<b>delete</b>"), or exit editing mode (with "<b>quit</b>"). The "<b>exit</b>" command is allowed within an alias, so the shell uses "<b>quit</b>" to leave editing mode.
+</p>
+
+<p>
+Any other command entered is recorded as part of the alias.
+</p>
+
+<p align="center">
+Example:
+<pre>
+esp32#>alias motor_off
+% Entering alias editing mode. "quit" to return
+esp32-alias>pin 2 low 4 low
+esp32-alias>echo Setting pins 2 and 4 low
+esp32-alias>quit
+esp32#>
+</pre>
+</p>
+</td></tr>
+
+<tr>
+<td><b>show alias <i>[NAME]</i></b></td>
+<td>
+<p>
+<b>show alias</b> — shows all defined aliases<br />
+<b>show alias <i>NAME</i></b> — shows the content of alias <i>NAME</i>
+</p>
+
+<p>
+Example: show all aliases
+<pre>
+esp32#>show alias
+% List of defined aliases:
+% 1. "motor_off"
+% 2. "motor_on"
+% 3. "fail_2"
+% 4. "test", empty
+esp32#>
+</pre>
+
+Example: show alias <b>motor_on</b>
+<pre>
+esp32#>sh al motor_on
+% Alias "motor_on":
+% 1: echo silent
+% 2: uart 0
+% 3: write Motor spin-up, wait...
+% 4: pin 20 high delay 3000
+% 5: write Done.\n
+% 6: pin 21 high 20 low
+% 7: write Pumping, wait...
+% 8: exit
+% 9: echo on
+% --- END ---
+</pre>
+</p>
+</td></tr>
+
+<tr>
+<td><b>exec <i>NAME</i> [NAME1 NAME2 ... NAMEn]</b></td>
+<td>
+<p>Executes alias/aliases <i>NAME</i>, NAME1, NAME2, ..., in sequence.</p>
+
+<p>
+Example: execute alias <b>motor_on</b>
+<pre>
+esp32#>exec motor_on
+Motor spin-up, wait...Done.
+Pumping, wait...
+</pre>
+</p>
+</td></tr>
+</table>
+
+
+
+</body>
+</html>
