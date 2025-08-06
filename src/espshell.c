@@ -429,11 +429,6 @@ espshell_command(char *p, argcargv_t *aa) {
     }
   }
 
-  // Find a handler if not found yet
-  if (!aa->gpp) 
-    if ((bad = userinput_find_handler(aa)) != 0)
-      goto unref_and_exit; // command not found?
-  
   // Foreground or background?
   // If aa is executed for the first time it may have "&XX" at the end. Strip it and set appropriate flags in aa.
   if (aa->argv[aa->argc - 1][0] == '&') {
@@ -457,6 +452,12 @@ espshell_command(char *p, argcargv_t *aa) {
       aa->argc--;
     }
   } // if "&"
+
+  // Find a handler if not found yet
+  if (!aa->gpp) 
+    if ((bad = userinput_find_handler(aa)) != 0)
+      goto unref_and_exit; // command not found?
+
 
   // Execute a background command
   if (aa->has_amp) {
