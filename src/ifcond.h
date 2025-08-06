@@ -65,6 +65,7 @@ struct ifcond {
   uint32_t low1;            // GPIO 32..63: ...
 
   uint32_t hits;            // number of times this condition was true
+  uint32_t drops;           // number of times alias was not executed (rate-limited or max-exec-limited)
   uint64_t tsta;            // timestamp, microseconds. 
   uint64_t tsta0;           // previous timestamp
                             // If /hits/ is nonzero, then this field has a timestamp of last successful match'
@@ -213,7 +214,8 @@ static void IRAM_ATTR ifc_anyedge_interrupt(void *arg) {
     // and executing associated aliases
     // TODO: play with ifc_task() priority
         force_yield |= mpipe_send_from_isr(ifc_mp, ifc);
-      } // if not expired?
+      } else // if not expired?
+        ifc->drops++;
     } // edge match?
 next_ifc:
     ifc = ifc->next;
@@ -323,24 +325,24 @@ static void ifc_show(struct ifcond *ifc) {
 static void ifc_show_all() {
   int i,j;
 
-  q_printf("%%<r> ID# |  Hits  | Last hit | Condition and action                               </>\r\n"
-           "%%-----+--------+----------+----------------------------------------------------\r\n");
+  q_printf("%%<r>ID#|  Hits |Last |Drops| Condition and action                               </>\r\n"
+           "%%---+-------+-----+-----+----------------------------------------------------\r\n");
 
   rw_lockr(&ifc_rw);
   for (i = j = 0; i < NUM_PINS + 1; i++) {
     struct ifcond *ifc = ifconds[i];
     while (ifc) {
       j++;
-      const char *pre = " ", *pos = " ";
+      const char *pre = " ", *pos = "";
       if (!ifc_not_expired(ifc)) {
-        pre = "<w>[";
-        pos = "]</>";
+        pre = "<w>!";
+        pos = "</>";
       }
 
       if (ifc->hits)
-        q_printf("%%%5u|%s%6lu%s|%6u sec|",ifc->id, pre, ifc->hits, pos, (unsigned int)((q_micros() - ifc->tsta) / 1000000ULL));
+        q_printf("%%%3u|%s%6lu%s|%5u|%5u|",ifc->id, pre, ifc->hits, pos, (unsigned int)((q_micros() - ifc->tsta) / 1000000ULL),ifc->drops);
       else
-        q_printf("%%%5u|%s%6lu%s|  never  |",ifc->id, pre, ifc->hits, pos);
+        q_printf("%%%3u|%s%6lu%s|never|%5u|",ifc->id, pre, ifc->hits, pos,ifc->drops);
       ifc_show(ifc);
       ifc = ifc->next;
     }
@@ -350,7 +352,7 @@ static void ifc_show_all() {
   if (!j)
     q_print("%\r\n% <i>No conditions were defined</>; Use command \"if\" to add some\r\n");
   else
-    q_print("%-----+--------+----------+----------------------------------------------------\r\n");
+    q_print("%---+-------+-----+-----+----------------------------------------------------\r\n");
 }
 
 // Delete/Clear ifcond entry/entries
@@ -539,8 +541,9 @@ static void ifc_clear0(int num, bool all) {
       while (ifc) {
         // Found an item user wishes to clear?
         if (MULTIPLE_IFCONDS || ifc->id == num) {
-
             ifc->hits = 0;
+            ifc->tsta0 = 0;
+            ifc->drops = 0;
             ifc->tsta = q_micros();
 
             // Clear by icond ID? return then. NOTE: ifc->id is always > 0
@@ -608,6 +611,7 @@ static struct ifcond *ifc_create( uint8_t     trigger_pin,
     n->high1 = (uint32_t)((high >> 32) & 0xffffffffULL);
 
     n->hits = 0;
+    n->drops = 0;
     n->tsta = q_micros();
     n->tsta0 = 0;
     
@@ -641,16 +645,14 @@ static void ifc_task(void *arg) {
     if (ifc) {
       
       // Store the timestamp.
-      // It is required for ifc_too_fast() and ifc_not_expired()
+      // It is required for ifc_too_fast()
       ifc->tsta = q_micros();
       if (!ifc_too_fast(ifc)) {
         ifc->tsta0 = ifc->tsta;
         alias_exec_in_background(ifc->exec);
-      }
-
-      // TODO: add "dropped" counter (per ifc); increment when execution was skipped
-
-      ifc->hits++;
+        ifc->hits++;
+      } else
+        ifc->drops++;
     }
   }
   task_finished();
@@ -766,24 +768,35 @@ bad_gpio_number:
 
   // Read "max-exec NUM", "rate-limit NUM", "poll NUM" and "exec ALIAS_NAME"
   // all of them are 2-keywords statements
+
   while (cond_idx + 1 < argc) {
 
     if ( !q_strcmp(argv[cond_idx],"poll")) {
-      if (0 > (poll = q_atoi(argv[cond_idx + 1], -1)))
-        return cond_idx + 1;
+      if (0 > (poll = q_atoi(argv[++cond_idx], -1))) {
+        HELP(q_print("% <e>Polling value (milliseconds) is expected</>\r\n"));
+        return cond_idx;
+      }
+
     } else if ( !q_strcmp(argv[cond_idx],"max-exec")) {
-      if (0 > (max_exec = q_atoi(argv[cond_idx + 1], -1)))
-        return cond_idx + 1;
+      if (0 > (max_exec = q_atoi(argv[++cond_idx], -1))) {
+        HELP(q_print("% <e>Numeric value is expected</>\r\n"));
+        return cond_idx;
+      }
+
     } else if ( !q_strcmp(argv[cond_idx],"rate-limit")) {
-      if (0 > (rate_limit = q_atoi(argv[cond_idx + 1], -1)))
-        return cond_idx + 1;
+      if (0 > (rate_limit = q_atoi(argv[++cond_idx], -1))) {
+        HELP(q_print("% <e>Time interval (milliseconds) is expected</>\r\n"));
+        return cond_idx;
+      }
+
     } else if ( !q_strcmp(argv[cond_idx],"exec")) {
-      exec = argv[cond_idx + 1];
+      exec = argv[++cond_idx];
+      // Check if alias exist and show a warning if it doesn't: it helps to catch typos when writing "if" shell clauses
     } else {
       q_print("% <e>\"max-exec\", \"poll\", \"rate-limit\" or \"exec\" keywords are expected</>\r\n");
       return cond_idx;
     }
-    cond_idx += 2;
+    cond_idx++;
   }
 
   if (exec == NULL) {
@@ -801,9 +814,11 @@ bad_gpio_number:
     q_print("% Failed. Out of memory?\r\n");
     return 0;
   }
+
+  // If not set, "poll interval" defaults to 1 second.
   if (trigger_pin == NO_TRIGGER) {
     if (!poll)
-      poll = 1;
+      poll = 1000;
     if (rate_limit) {
       q_print("% \"<i>rate-limit</>\" keyword is ignored for polling conditions:\r\n"
               "% rate is a constant which is defined by \"<i>poll</>\" keyword\r\n");
@@ -825,6 +840,7 @@ bad_gpio_number:
 
   ifc->poll_interval = poll;
   
+  // allocate an interrupt (allocated or reused - decides ifc_claim_interrupt())
   if (trigger_pin != NO_TRIGGER)
     ifc_claim_interrupt(trigger_pin);
 
@@ -832,13 +848,13 @@ bad_gpio_number:
 }
 
 // "show ifs"
-//
+// Displays list of active ifconds and mpipe drops stats
 //
 static int cmd_show_ifs(UNUSED int argc, UNUSED char **argv) {
 
   ifc_show_all();
   if (ifc_mp_drops)
-    q_printf("%% <e>Dropped events (pipe overflow): %u</>\r\n", ifc_mp_drops);
+    q_printf("%% <e>Dropped events (pipe overflow, increase MPIPE_CAPACITY): %u</>\r\n", ifc_mp_drops);
   return 0;
 }
 
