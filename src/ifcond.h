@@ -858,6 +858,7 @@ bad_gpio_number:
     return 0;
   }
 
+  // No-Trigger entries:
   // If not set, "poll interval" defaults to 1 second.
   if (trigger_pin == NO_TRIGGER) {
     if (!poll)
@@ -867,11 +868,13 @@ bad_gpio_number:
               "% rate is a constant which is defined by \"<i>poll</>\" keyword\r\n");
       rate_limit = 0;
     }
-  } else if (poll) {
-    q_print("% \"poll\" keyword is ignored for rising/falling conditions\r\n");
-    poll = 0;
-  }
+  } else // Rising/Falling conditions:
+    if (poll) {
+      q_print("% \"poll\" keyword is ignored for rising/falling conditions\r\n");
+      poll = 0;
+    }
 
+  // Rate limit can be anything from 0 to 65535 milliseconds.
   if (rate_limit) {
     if (rate_limit > 0xffff) {
       q_print("% \"rate-limit\" is set to maximum of 65.5 seconds\r\n");
@@ -895,9 +898,16 @@ bad_gpio_number:
 //
 static int cmd_show_ifs(UNUSED int argc, UNUSED char **argv) {
 
+  // show rules
   ifc_show_all();
-  if (ifc_mp_drops)
-    q_printf("%% <e>Dropped events (pipe overflow, increase MPIPE_CAPACITY): %u</>\r\n", ifc_mp_drops);
+
+  // display queue drops. 
+  // Drop happens when more than MPIPE_CAPACITY rules fire together: it results in more items to the pipe,
+  // but ifc_task daemon is stopped (we are in the ISR!) so we drop these
+  if (ifc_mp_drops) {
+    q_printf("%% <e>Dropped events (more than %u conds at once): %u</>\r\n", MPIPE_CAPACITY, ifc_mp_drops);
+    q_print("% <e>Use \"rate-limit\" or increase MPIPE_CAPACITY</>\r\n");
+  }
   return 0;
 }
 
