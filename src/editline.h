@@ -728,8 +728,11 @@ meta() {
       code = code * 10 + c - '0';
       c = TTYget();
     }
-    Pushed = 1;
-    PushBack = code;
+    // If symbol code is 0, that means TTYget() will read EOF
+    if (code != 0) {
+      Pushed = 1;
+      PushBack = code;
+    }
     return CSstay;
   }
 
@@ -774,7 +777,8 @@ TTYspecial(unsigned int c) {
   }
 
   // If @ is the first symbol of the Line, we temporary switch Echo off (until <Enter>).
-  // This is to simulate "@echo off" DOS behaviour.
+  // This is to simulate "@echo off" DOS behaviour. Symbol '@' itself is supressed.
+  // This can be used to securely enter passwords
   // enter_pressed() restores Echo from Echop
   if (c == '@' && Line[0] == '\0') {
     Echop = Echo;

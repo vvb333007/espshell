@@ -212,9 +212,9 @@ static void IRAM_ATTR ifc_anyedge_interrupt(void *arg) {
     // 5. Full match: send ifc pointer to the ifc_task() and continue processing 
     // (there may be more matched ifconds). ifc_task() will go through the queue, fetching pointers 
     // and executing associated aliases
-    // TODO: play with ifc_task() priority
+    
         force_yield |= mpipe_send_from_isr(ifc_mp, ifc);
-      } else // if not expired?
+      } else // if expired
         ifc->drops++;
     } // edge match?
 next_ifc:
@@ -319,14 +319,55 @@ static void ifc_show(struct ifcond *ifc) {
   }
 }
 
+// These functions are not reentrant, use with care: subsequent calls destroy previous value
+// as it is static buffers used. Because of this these functions are not general use API and thus is not in qlib
+//
+// Convert seconds to "XXX d", "XXX s", "XXX h" and so on, 5 symbols
+static char *q_strtime(uint32_t seconds) {
+
+  static char buf[8] = { 0 };
+  uint32_t divider = 60*60*24;
+
+  if (seconds >= divider) {
+    sprintf(buf,"%3lu", seconds / divider);
+    strcat(buf, "day");
+    return buf;
+  }
+  divider /= 24;
+  if (seconds >= divider) {
+    sprintf(buf,"%3lu", seconds / divider);
+    strcat(buf, "hrs");
+    return buf;
+  }
+  divider /= 60;
+  if (seconds >= divider) {
+    sprintf(buf,"%3lu", seconds / divider);
+    strcat(buf, "min");
+    return buf;
+  }
+  sprintf(buf,"%3lu", seconds);
+  strcat(buf, "sec");
+  return buf;
+}
+
+// Display 5 digit number as is, but after 99999 display ">99999"
+static char *q_strnum_sat(uint32_t num) {
+  static char buf[8] = { 0 };
+  if (num > 99999)
+    strcpy(buf,">99999");
+  else
+    sprintf(buf,"%lu",num);
+  return buf;
+}
+
 // Display all ifconds, assign a number to each line
 // These line numbers can be used to delete the entity ("if delete NUMBER|all")
 //
 static void ifc_show_all() {
   int i,j;
 
-  q_printf("%%<r>ID#|  Hits |Last |Drops| Condition and action                               </>\r\n"
-           "%%---+-------+-----+-----+----------------------------------------------------\r\n");
+  q_printf("%%<r>ID#|  Hits | Last | Drops| Condition and action                               </>\r\n"
+           "%%---+-------+------+------+----------------------------------------------------\r\n");
 
   rw_lockr(&ifc_rw);
   for (i = j = 0; i < NUM_PINS + 1; i++) {
@@ -338,11 +379,13 @@ static void ifc_show_all() {
         pre = "<w>!";
         pos = "</>";
       }
-
       if (ifc->hits)
-        q_printf("%%%3u|%s%6lu%s|%5u|%5u|",ifc->id, pre, ifc->hits, pos, (unsigned int)((q_micros() - ifc->tsta) / 1000000ULL),ifc->drops);
+        q_printf("%%%3u|%s%6lu%s|%6s|%6s|",
+            ifc->id, pre, ifc->hits, pos,
+            q_strtime((uint32_t)((q_micros() - ifc->tsta) / 1000000ULL)),
+            q_strnum_sat(ifc->drops));
       else
-        q_printf("%%%3u|%s%6lu%s|never|%5u|",ifc->id, pre, ifc->hits, pos,ifc->drops);
+        q_printf("%%%3u|%s%6lu%s|never |%6s|",ifc->id, pre, ifc->hits, pos,q_strnum_sat(ifc->drops));
       ifc_show(ifc);
       ifc = ifc->next;
     }
@@ -352,7 +395,7 @@ static void ifc_show_all() {
   if (!j)
     q_print("%\r\n% <i>No conditions were defined</>; Use command \"if\" to add some\r\n");
   else
-    q_print("%---+-------+-----+-----+----------------------------------------------------\r\n");
+    q_print("%---+-------+------+------+----------------------------------------------------\r\n");
 }
 
 // Delete/Clear ifcond entry/entries

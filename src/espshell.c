@@ -406,6 +406,7 @@ espshell_command(char *p, argcargv_t *aa) {
   
   int bad = CMD_FAILED;
 
+  // _One_ of function arguments MUST be NULL:
   MUST_NOT_HAPPEN(((aa != NULL) && (p != NULL)) || ((aa == NULL) && (p == NULL)));
   
   // got ascii string to process?
@@ -413,17 +414,23 @@ espshell_command(char *p, argcargv_t *aa) {
   // this behaviour is needed for "exec ALIAS_NAME"
   //
   // if we got only /p/ and /aa/ is NULL then /aa/ is created from /p/, and history is updated:
-
   if (p) {
-    //make a history entry, if history is enabled (default)
+    // Make a history entry, if history is enabled (default)
+    // Do a simple empty-string check to avoid unnecessary calls to the userinput_tokenize()
+    //
     if (History) {
       userinput_strip(p);
       if (*p)
         history_add_entry(p);
+      else
+        goto free_p_and_exit;
     }
 
-    // tokenize user input
+    // Tokenize user input, create /aa/. 
+    // This will destroy contents of /p/ : its whitespace will be replaced with '\0's
+    //
     if ((aa = userinput_tokenize(p)) == NULL) {
+free_p_and_exit:
       q_free(p);
       return -1;
     }
@@ -439,7 +446,7 @@ espshell_command(char *p, argcargv_t *aa) {
     {
       // Strip last "&" argument and store it in the AA flag.
       // Accept priority value if extended &-syntax was used: ("&10" - set priority to 10)
-      //
+      // If priority value is out of range, then behave like no priority was read at all
       if (aa->argv[aa->argc - 1][1]) {
         aa->has_prio = 1;
         aa->prio = q_atoi(&(aa->argv[aa->argc - 1][1]), TASK_MAX_PRIO + 1);
@@ -480,7 +487,7 @@ unref_and_exit:
 
   // Decrease aa's reference counter, display error code if any and exit
   // Normally, refcounter is 1, so aa is removed as part of unref(). However, aliases have their refcounter > 1 so
-  // aa's of the alias are kept intact
+  // aa's of the alias are kept intact and thus can be reused
   //
   userinput_unref(aa);
 
@@ -582,12 +589,14 @@ static void espshell_task(const void *arg) {
     HELP(q_print(WelcomeBanner));
 
     // The main REPL : read & execute commands until "exit ex" is entered
-    // TODO: if readline() return NULL or an empty string it may be caused
-    //       by UART/USB link going down. In such case we are risking to be in a spinning loop
-    //       blocking other tasks.
+    //
     while (!Exit) {
-      espshell_command(readline(prompt), NULL);
-      q_yield(); 
+      char *line = readline(prompt);
+      if (line)
+        espshell_command(line, NULL);
+      else
+        // if readline() starts to fail, we risk to end up in a spinloop, starving IDLE0 or IDLE1 tasks
+        q_yield();  
     }
     HELP(q_print(Bye));
 
