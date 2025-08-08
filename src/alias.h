@@ -344,14 +344,41 @@ static int alias_exec(struct alias *al) {
 }
 
 // The task which executes aliases in a background
+struct helper_arg {
+  struct alias *al;
+  uint32_t delay_ms;
+};
+
 static void alias_helper_task(void *arg) {
-   alias_exec((struct alias *)arg);
-   task_finished();
+  struct helper_arg *ha = (struct helper_arg *)arg;
+
+  if (likely(ha)) {
+    if (ha->delay_ms)
+      q_delay(ha->delay_ms);
+    alias_exec(ha->al);
+  }
+  q_free(arg); // TODO: ha_put()
+  task_finished();
 }
 
 // Execute alias as if it was with "&" symbol at the end 
-static UNUSED int alias_exec_in_background(struct alias *al) {
-  return task_new(alias_helper_task, al, al->name) == NULL ? CMD_FAILED : 0;
+#define alias_exec_in_background(_Alias) \
+          alias_exec_in_background_delayed(_Alias, 0)
+
+static int alias_exec_in_background_delayed(struct alias *al, uint32_t delay_ms) {
+
+  // TODO: ha_get()
+  struct helper_arg *ha = (struct helper_arg *)q_malloc(sizeof(struct helper_arg ), MTYPE_ALIAS);
+
+  if (ha) {
+    ha->al = al;
+    ha->delay_ms = delay_ms;
+
+    return task_new(alias_helper_task,
+                    ha, // TODO: URGENT: _get()/_put() fast alloc
+                    al->name) == NULL ? CMD_FAILED : 0;
+  }
+  return CMD_FAILED;
 }
 
 // "exec ALIAS_NAME [ NAME2 NAME3 ... NAMEn]"

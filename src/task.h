@@ -75,20 +75,22 @@ static vsa_t *task_list = 0;            //  vsa to hold active tasks list
 
 // Resume
 #define task_resume(_TaskID) \
-  vTaskResume(_TaskID);
+  vTaskResume(_TaskID)
 
 // Suspend
 #define task_suspend(_TaskID) \
-  vTaskSuspend(_TaskID);
+  vTaskSuspend(_TaskID)
 
 // Kill
 #define task_kill(_TaskID) \
-  vTaskDelete(_TaskID); \
+  vTaskDelete(_TaskID)
 
 // 
 #define task_kill_self() \
-  vTaskDelete(NULL); \
+  vTaskDelete(NULL)
 
+#define task_by_name(_Name) \
+  xTaskGetHandle(_Name)
 
 
 // Start a new thread on the same core espshell is running, remember the task_id.
@@ -297,17 +299,22 @@ static int cmd_show_tasks(int argc, char **argv) {
 }
 #endif
 
+
+
 //"suspend"
 // suspends main Arduino task (i.e loop()) or any other task
 //
 static int cmd_suspend(int argc, char **argv) {
 
-  uint32_t taskid;
+  task_t taskid;
   task_t sus = loopTaskHandle;
   if (argc > 1) {
-    taskid = hex2uint32(argv[1]);
-    if (is_taskid_good(taskid)) 
-      sus = (task_t )taskid; 
+    if (q_isnumeric(argv[1]))
+      taskid = (task_t)hex2uint32(argv[1]);
+    else
+      taskid = task_by_name(argv[1]);
+    if (is_taskid_good((uint32_t)taskid)) 
+      sus = taskid; 
     else 
       return 1;
   }
@@ -320,12 +327,15 @@ static int cmd_suspend(int argc, char **argv) {
 // Resume previously suspended task
 //
 static int cmd_resume(int argc, char **argv) {
-  uint32_t taskid;
+  task_t taskid;
   task_t sus = loopTaskHandle;
   if (argc > 1) {
-    taskid = hex2uint32(argv[1]);
-    if (is_taskid_good(taskid))
-      sus = (task_t )taskid;
+    if (q_isnumeric(argv[1]))
+      taskid = (task_t)hex2uint32(argv[1]);
+    else
+      taskid = task_by_name(argv[1]);
+    if (is_taskid_good((uint32_t )taskid))
+      sus = taskid;
     else
       return 1;
   }
@@ -336,10 +346,11 @@ static int cmd_resume(int argc, char **argv) {
 //"kill [-term|-kill|-9|-15] TASK_ID"
 // 1. Stop a background command
 // 2. Terminate arbitrary FreeRTOS task
-//
+// 
 static int cmd_kill(int argc, char **argv) {
 
-  unsigned int sig = SIGNAL_TERM, i = 1, taskid;
+  unsigned int sig = SIGNAL_TERM, i = 1;
+  task_t taskid;
   if (argc < 2)
     return CMD_MISSING_ARG;
 
@@ -355,14 +366,19 @@ static int cmd_kill(int argc, char **argv) {
   if (i >= argc)
     return CMD_MISSING_ARG;
 
-  if (is_taskid_good((taskid = hex2uint32(argv[i])))) {
+  if (q_isnumeric(argv[i]))
+    taskid = (task_t)hex2uint32(argv[i]);
+  else
+    taskid = task_by_name(argv[i]);
+
+  if (is_taskid_good((uint32_t)taskid)) {
     // SIGNAL_KILL is never sent to a task. Instead, task is deleted.
     if (sig == SIGNAL_KILL) {
       task_suspend((task_t )taskid);
       q_delay(1);
       task_kill((task_t )taskid);
       taskid_forget((task_t )taskid);
-      HELP(q_printf("%% Killed: \"0x%x\"\r\n", taskid));
+      HELP(q_printf("%% Killed: \"%p\"\r\n", taskid));
     } else
       // -term, -hup and other signals are sent directly to the task
       task_signal(taskid, sig);
@@ -392,7 +408,13 @@ static int cmd_priority(int argc, char **argv) {
   // sizeof(task_t) must be equal to sizeof(uint32_t) - this is checked as static_assert in espshell.h
 
   if (argc > 2) {
-    if (!is_taskid_good((uint32_t )(taskid = (task_t )hex2uint32(argv[2]))))
+
+    if (q_isnumeric(argv[2]))
+      taskid = (task_t)hex2uint32(argv[2]);
+    else
+      taskid = task_by_name(argv[2]);
+
+    if (!is_taskid_good((uint32_t )taskid))
       return 2;
   } else
     taskid = NULL; // self

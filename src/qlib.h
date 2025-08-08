@@ -472,6 +472,12 @@ void rw_unlockr(rwlock_t *rw) {
     })
 #endif // MessageBuffers or Queues?
 
+// Timers
+#include <esp_timer.h>
+#define timer_t esp_timer_handle_t
+#define TIMER_INIT NULL
+#define timerfunc_t esp_timer_cb_t
+
 /// OS Abstraction Layer End;
 
 

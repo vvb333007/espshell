@@ -730,18 +730,24 @@ KEYWORDS_DECL(main) {
           "% Suspend sketch execution (Hotkey: Ctrl+C). Resume with \"resume\""), "Suspend sketch/task execution" },
 
   { "suspend", cmd_suspend, 1,
-    HELPK("% \"<b>suspend <i>TASK_ID</>\"\r\n"
+    HELPK("% \"<b>suspend <i>TASK_ID|TASK_NAME</>\"\r\n"
           "%\r\n"
-          "% Suspend an arbitrary FreeRTOS task"), NULL },
+          "% Suspend execution of an arbitrary FreeRTOS task\r\n"
+          "% By its name or its ID, which can be obtained with \"show tasks\" command"
+          ), NULL },
 
   { "priority", cmd_priority, 1,
-    HELPK("% \"<b>priority <i>NUM <o>[TASK_ID]</>\"\r\n"
+    HELPK("% \"<b>priority <i>NUM <o>[TASK_ID | TASK_NAME]</>\"\r\n"
           "%\r\n"
-          "% Set task priority. \r\n"
-          "% If TASK_ID is omitted, then priority of a current task is adjusted\r\n"
+          "% Adjust the priority of an arbitrary FreeRTOS task\r\n"
+          "% By its name or its ID, which can be obtained with \"show tasks\" command."
+          "% If TASK_ID/TASK_NAME are omitted, then priority of a <u>current task</> is adjusted\r\n"
+          "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>priority 10</>           - sets priority of the caller to 10\r\n"
-          "%   <i>priority 10 0x4565243</> - sets priority of the task 0x4565243"), "Adjust task priority" },
+          "%   <i>priority 10 esp_timer</> - sets priority of the esp_timer system task\r\n"
+          "%   <i>priority 10 \"Tmr Svc\"</> - task with a space in its name\r\n"
+          "%   <i>priority 10 0x4565243</> - sets priority of the task ID 0x4565243"), "Adjust task priority" },
 
   { "priority", cmd_priority, 2, HIDDEN_KEYWORD },
 
@@ -751,22 +757,27 @@ KEYWORDS_DECL(main) {
           "% Resume sketch execution"), "Resume sketch/task execution" },
 
   { "resume", cmd_resume, 1,
-    HELPK("% \"<b>resume <i>TASK_ID</>\"\r\n"
+    HELPK("% \"<b>resume <i>TASK_ID | TASK_NAME</>\"\r\n"
           "%\r\n"
-          "% Resume an arbitrary FreeRTOS task"), NULL },
+          "% Resume execution of an arbitrary FreeRTOS task\r\n"
+          "% By its name or its ID, which can be obtained with \"show tasks\" command"
+          ), NULL },
 
   { "kill", cmd_kill, 2,
-    HELPK("% \"<b>kill <o>[-term|-kill|-9|-15] <i>TASK_ID</>\"\r\n"
+    HELPK("% \"<b>kill <o>[-term|-kill|-9|-15] <i>TASK_ID | TASK_NAME</>\"\r\n"
           "%\r\n"
-          "% Send <i>TERMinate</i> signal to an arbitrary task OR kill the task\r\n"
+          "% Send <i>TERMinate</> signal to an arbitrary task OR kill the task\r\n"
           "% If <i>-9</> (or <i>-kill</>, <i>-k</>) option is used then task is deleted (unsafe):\r\n"
-          "% use this options for tasks which can not be stopped otherwise.\r\n"
+          "% use this options for tasks which can not be stopped otherwise (e.g. system\r\n"
+          "% tasks, like esp_timer or ipc0).\r\n"
           "%\r\n"
           "% No options, <i>-term</>, <i>-t</> or <i>-15</>: ask a task to finish (safe):\r\n"
           "% this is the default and preferred way to stop a task.\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>kill 0x3fff0000</>    -Terminates tasks in a safe way (using task notifications)\r\n"
+          "%   <i>kill pin</>           -Safe termination of espshell's background command \"pin\"\r\n"
+          "%   <i>kill -9 loopTask</>   -Forcefull deletion of Arduino's loop() task\r\n"
           "%   <i>kill -9 0x3fff0000</> -Terminates tasks forcefully (task deletion)"),"Kill tasks" },
 
   { "kill", cmd_kill, 1, HIDDEN_KEYWORD },
@@ -800,7 +811,7 @@ KEYWORDS_DECL(main) {
           "% I2C_NUM is a number [0..1] of I2C bus to configure\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>iic 0</>     - Enter I2C mode, use I2C bus#0"), "I2C commands" },
-  // alias for iic        
+  // alias for iic. we need it for is_subdirectory()
   { "i2c", cmd_i2c_if, 1, HIDDEN_KEYWORD },
    
 
@@ -867,6 +878,7 @@ KEYWORDS_DECL(main) {
           "% Displays an IO_MUX function currently assigned for every pin"),"Display system information"},
 
   // Entries below are only for the /full/ help line (/brief/ line is copied from the first "show" entry 
+
   { "show", HELP_ONLY,
     HELPK("% \"<b>show <i>tasks</>\"\r\n"
           "%\r\n"
@@ -953,6 +965,18 @@ KEYWORDS_DECL(main) {
           "%\r\n"
           "% \"show alias\"     - Display list of configured aliases\r\n"
           "% \"show alias NAME\"- Display alias NAME listing "),NULL},
+
+  { "show", HELP_ONLY,
+    HELPK("% \"<b>show <i>if</> [<o>NUM</>]\"\r\n"
+          "%\r\n"
+          "% Displays brief list of \"if\" conditions\r\n"
+          "% Displays details if condition ID is specified"),NULL},
+
+  { "show", HELP_ONLY,
+    HELPK("% \"<b>show <i>every</> [<o>NUM</>]\"\r\n"
+          "%\r\n"
+          "% Displays brief list of \"every\" conditions\r\n"
+          "% Displays details if condition ID is specified"),NULL},
 
 #endif
 
@@ -1237,6 +1261,40 @@ KEYWORDS_DECL(main) {
           "%   <i>if clear 6</>        : Clear condition #6\r\n"
           "%   <i>if clear all</>      : Clear all conditions (all, means ALL)\r\n"
           "%   <i>if clear gpio 7</>   : Clear rising/falling conditions assigned to GPIO 7"), NULL },
+
+  { "every", cmd_if, MANY_ARGS,
+    HELPK("% \"<b>every <i>TIME</> [<o>delay MILLIS</>] [<o>max-exec NUM</>] exec <i>ALIAS</>\"\r\n"
+          "%\r\n"
+          "% Periodic events. TIME specified as NUMBER \"milliseconds|seconds|minutes|hours|days\"\r\n"
+          "%\r\n"
+          "%   <i>max-exec</> NUM   : execute this condition not more than NUM times\r\n"
+          "%   <i>delay</> MILLIS     : postpone first execution for specified amount of time\r\n"
+          "%   <i>exec</> ALIAS     : alias to exec\r\n"
+          "%\r\n"
+          "% <u>Examples</>\r\n"
+          "%   <i>every 5 sec exec alias my_alias</>\r\n"
+          "%   <i>every 5 sec delay 50000 exec alias my_alias</>\r\n"
+          "%   <i>every 5 sec delay 50000 max-exec 7 exec alias my_alias</>"
+          ), "Conditional GPIO events" },
+
+  { "every", cmd_if, 3,
+    HELPK("% \"<b>every delete</> <i>NUM</>\"\r\n"
+          "%\r\n"
+          "% Delete \"every\" condition by its ID\r\n"
+          "% (NOTE: Use \"show ifs\" to list all conditions and see their ID)\r\n"
+          "%\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <b>every delete <i>6</>        : delete condition #6"), NULL },
+
+  { "every", cmd_if, 3,
+    HELPK("% \"<b>every clear</> <i>NUM</>\"\r\n"
+          "%\r\n"
+          "% Clear counters : (hits count & timestamp) for given \"every\" condition\r\n"
+          "% Use \"<i>show ifs</>\" to list all conditions and see their ID)\r\n"
+          "% Use \"<i>every clear</>\" to reset conditions with \"max-exec\" attribute\r\n"
+          "%\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>every clear 6</>        : Clear condition #6"), NULL },
 
   { "exec", cmd_exec, MANY_ARGS,
     HELPK("% \"<b>exec NAME [NAME NAME ... NAME ]</>\"\r\n"

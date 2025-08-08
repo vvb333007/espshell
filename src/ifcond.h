@@ -52,11 +52,14 @@ struct ifcond {
   uint8_t has_low:1;        // has "low" statements?
   uint8_t has_limit:1;      // has "max-exec" keyword?
   uint8_t has_rlimit:1;     // has "rate-limit" keyword?
-  uint8_t reserved3:3;
+  uint8_t has_delay:1;      // has "delay" keyword?
+  uint8_t reserved2:2;
   uint16_t id;              // unique ID for delete/clear commands
   uint16_t rlimit;          // once per X milliseconds (max ~ 1 time per minute [65535 msec])
-  uint16_t poll_interval;   // poll interval, in seconds, for non-trigger ifconds
+  uint32_t poll_interval;   // poll interval, in seconds, for non-trigger ifconds
+  timer_t  timer;           // timer handle for periodic events
   uint32_t limit;           // max number of hits (if (ifc->hits > ifc->limit) { ignore } else { process } )
+  uint32_t delay_ms;        // max number of hits (if (ifc->hits > ifc->limit) { ignore } else { process } )
   
 
   uint32_t high;            // GPIO 0..31: bit X set == GPIO X must be HIGH for condition to match
@@ -73,14 +76,18 @@ struct ifcond {
   
 };
 
+
 // index of "no trigger" entry in the ifconds array
 #define NO_TRIGGER NUM_PINS
+
+// index where "every" command stores its rules
+#define EVERY_IDX (NO_TRIGGER + 1)
 
 // Ifconds array. Each element of the array is a list of 
 // ifconds: ifconds[5] contains all "if rising|falling 5" statements for example.
 // "no trigger" statements (i.e. those without rising or falling keywords) are located
 // in the last entry of this array: ifconds[NUM_PINS]
-static struct ifcond *ifconds[NUM_PINS + 1] = { 0 };   // plus 1 for the last NO_TRIGGER entry
+static struct ifcond *ifconds[NUM_PINS + 2] = { 0 };   // plus 1 for the NO_TRIGGER entry and plus 1 for "every" entries
 
 // RWLock to protect lists of ifconds. Lists are modified only by "if" and "if delete" commands.
 // Others are "readers", including the GPIO ISR (which traverses these lists). Obtaining a writer lock
@@ -240,6 +247,104 @@ static uint64_t isr_enabled = 0;
 #define ifc_isr_disable(_Gpio) \
   (isr_enabled &= ~(1ULL << (_Gpio)))
 
+
+static void ifc_disable_periodic_timers() {
+
+}
+
+static void ifc_enable_periodic_timers() {
+  
+}
+
+static void ifc_claim_timer(struct ifcond *ifc);
+
+// Timer callback for polled entries ("if low 5 poll .." or "every ..")
+// It is called periodically by esp_timer system task. It is analog of ifc_anyedge_interrupt() handler but for polling
+//
+static void ifc_callback(void *arg) {
+
+  struct ifcond *ifc = (struct ifcond *)arg;
+
+  uint32_t in = REG_READ(GPIO_IN_REG);   // GPIO 0..31
+  uint32_t in1 = REG_READ(GPIO_IN1_REG); // GPIO 32..63
+
+  // 1. entry is not expired?
+  if (ifc_not_expired(ifc)) {
+  // 2. "high" condition match?
+    if (ifc->has_high)
+      if ((ifc->high & in) != ifc->high  ||   // MASK & READ_VALUES == MASK?
+          (ifc->high1 &  in1) != ifc->high1)
+        return ;
+            
+  // 3. "low" condition match?
+    if (ifc->has_low)
+      if ((ifc->low & ~in) != ifc->low  ||
+          (ifc->low1 &  ~in1) != ifc->low1)
+        return ;
+
+  // 4. Execute
+    if (mpipe_send(ifc_mp, ifc))
+      return ;
+  }
+
+  ifc->drops++;
+}
+
+// When entry has "delay" keyword we must postpone first execution hence the
+// name
+static void ifc_callback_delayed(void *arg) {
+  struct ifcond *ifc = (struct ifcond *)arg;
+  if (ifc) {
+    // delay time has passed: execute and schedule periodic timer. remove old timer
+    ifc_callback(arg);
+
+    esp_timer_stop(ifc->timer);
+    esp_timer_delete(ifc->timer);
+
+    // Temporary set has_delay to 0 so ifc_claim_timer() will choose right callback function
+    // (ifc_callback instead of ifc_callback_delayed). Same ifc can not be executed from two different tasks,
+    // so it is safe to temporary change ifc->has_delay value.
+    ifc->has_delay = 0;
+    ifc_claim_timer(ifc);
+    ifc->has_delay = 1;
+  }
+}
+
+
+static void ifc_claim_timer(struct ifcond *ifc) {
+
+    timer_t handle = TIMER_INIT;
+
+    esp_timer_create_args_t timer_args = {
+        .callback = &ifc_callback,
+        .dispatch_method = ESP_TIMER_TASK,
+        .arg = ifc,
+        .name = ifc->exec ? ifc->exec->name : "unnamed",
+    };
+
+    if (ifc->has_delay)
+      timer_args.callback = &ifc_callback_delayed;
+
+    if (ESP_OK == esp_timer_create(&timer_args, &handle)) {
+      ifc->timer = handle;
+      if (ifc->has_delay)
+        esp_timer_start_once(handle, 1000ULL * ifc->delay_ms);
+      else {
+        ifc_callback(ifc);
+        esp_timer_start_periodic(handle, 1000ULL * ifc->poll_interval);
+      }
+    }
+}
+
+static void ifc_release_timer(struct ifcond *ifc) {
+  if (ifc && ifc->timer) {
+    VERBOSE(q_print("ifc_release_timer()\r\n"));
+    esp_timer_stop(ifc->timer);
+    esp_timer_delete(ifc->timer);
+    ifc->timer = NULL;
+  }
+}
+
 // Ask for an interrupt for the pin. If it is already registered then nothing is done. Otherwise we
 // install a GPIO ANYEDGE interrupt handler and enable interrupts on that pin
 //
@@ -279,38 +384,56 @@ static void ifc_release_interrupt(uint8_t pin) {
 }
 
 
-// Displays content of a single ifcond
+// Displays content of a single ifcond, by its pointer.
+// Displays information in compact (and clamped) form: it is a /brief/ version if ifc_show_single(). 
+//
+// NOTE: NOTE: NOTE:
+// Its purpose is to be used from within ifc_show_all(), and it is assummed to be called in a loop, repeatedely,
+// so it takes a *pointer* as a parameter.
+// in contrast, ifc_show_single() takes *ifcond ID* as a parameter and performs search by itself
+// Uses shortened keywords (rate not rate-limit etc) as we have limited space (80 columns!)
 //
 static void ifc_show(struct ifcond *ifc) {
 
   if (ifc) {
     uint8_t i;
 
-    if (ifc->trigger_pin != NO_TRIGGER)
-      q_printf("if %s %u ", ifc->trigger_rising ? "rising" : "falling", ifc->trigger_pin);
+    if (ifc->trigger_pin == EVERY_IDX)
+      q_print("every ");
+    else if (ifc->trigger_pin != NO_TRIGGER)
+      q_printf("if %s %u ", ifc->trigger_rising ? "rising" : "fall", ifc->trigger_pin);
     else
       q_print("if ");
 
     if (ifc->has_high)
       for (i = 0; i <32; i++) {
-        if (ifc->high & (1UL << i))  q_printf("high %u ",i);
-        if (ifc->high1 & (1UL << i)) q_printf("high %u ",i + 32);
+        if (ifc->high & (1UL << i))  q_printf("hi %u ",i);
+        if (ifc->high1 & (1UL << i)) q_printf("hi %u ",i + 32);
       }
 
     if (ifc->has_low)
       for (i = 0; i <32; i++) {
-        if (ifc->low & (1UL << i))  q_printf("low %u ",i);
-        if (ifc->low1 & (1UL << i)) q_printf("low %u ",i + 32);
+        if (ifc->low & (1UL << i))  q_printf("lo %u ",i);
+        if (ifc->low1 & (1UL << i)) q_printf("lo %u ",i + 32);
       }
 
-    if (ifc->poll_interval)
-      q_printf("poll %u ",ifc->poll_interval);
+    
+    if (ifc->poll_interval) {
+      if (ifc->trigger_pin == EVERY_IDX)
+        // TODO: display TIME for "every" and milliseconds for others
+        q_printf("%lu mil ",ifc->poll_interval);
+      else
+        q_printf("poll %lu ",ifc->poll_interval);
+    }
+
+    if (ifc->has_delay)
+      q_printf("delay %lu",ifc->delay_ms);
 
     if (ifc->has_limit)
-      q_printf("max-exec %lu ",ifc->limit);
+      q_printf("max %lu ",ifc->limit);
 
     if (ifc->has_rlimit)
-      q_printf("rate-limit %u ",ifc->rlimit);
+      q_printf("rate %u ",ifc->rlimit);
 
 
     if (ifc->exec)
@@ -318,6 +441,69 @@ static void ifc_show(struct ifcond *ifc) {
     q_print(CRLF);
   }
 }
+
+// Display ifcond by its ID
+// Shows a bit more detailed information on given ifcond.
+//
+static void ifc_show_single(unsigned int num) {
+  int i,j;
+
+  rw_lockr(&ifc_rw);
+  for (i = j = 0; i < NUM_PINS + 2; i++) {
+    struct ifcond *ifc = ifconds[i];
+    while (ifc) {
+      if (ifc->id == num) {
+
+        q_printf("%% \"%s\" condition#%u", ifc->trigger_pin == EVERY_IDX ? "Every" : "If", num);
+        if (!ifc->hits)
+          q_print(", never executed (triggered)");
+        if (!ifc_not_expired(ifc))
+          q_printf(", <w>expired</>, (\"if clear %u\" to reset)",num);
+        q_print(CRLF);
+
+        if (ifc->hits)
+          q_printf("%% Last executed: <i>%llu</> seconds ago, <i>%lu</> times total\r\n",(q_micros() - ifc->tsta0) / 1000000ULL, ifc->hits);
+        
+
+        if (ifc->drops)
+          q_printf("%% Execution skipped (event dropped): <i>%lu</>\r\n",ifc->drops);
+
+        if (ifc->has_limit)
+          q_printf("%% Expires after <i>%lu</> executions\r\n",ifc->limit);
+        else
+          q_print("% Never expires\r\n");
+
+        if (ifc->has_rlimit)
+          q_printf("%% Minimum interval between two executions: <i>%u</> ms\r\n",ifc->rlimit);
+        else
+          q_print("% Not rate-limited\r\n");
+        
+        if (ifc->poll_interval)
+          q_printf("%% Poll interval: every %lu milliseconds\r\n", ifc->poll_interval);
+        
+        if (ifc->has_delay)
+          q_printf("%% Initial (first exec) delay: %lu milliseconds\r\n", ifc->delay_ms);
+
+        // ifconds are created with non-null alias pointer even alias was not existing: ifc_create() creates
+        // alias if it does not exist. Alias pointers are persistent (always valid, even for a deleted alias)
+        MUST_NOT_HAPPEN(ifc->exec == NULL);
+
+        // See if alias is empty or not. TODO: make alias_is_empty() macro
+        if (ifc->exec->lines == NULL)
+          q_printf("%% Note that alias <i>\"%s\" is empty!</> (\"alias %s\" to edit)\r\n", ifc->exec->name, ifc->exec->name);
+        else
+          q_printf("%% Action: <i>Execute alias \"%s\"\r\n", ifc->exec->name);
+        rw_unlockr(&ifc_rw);
+        return ;
+      }
+
+      ifc = ifc->next;
+    }
+  }
+  rw_unlockr(&ifc_rw);
+  q_printf("%% No \"if\" condition with ID = %u. (\"show ifs\" to list all IDs)\r\n", num);
+}
+
 
 // These functions are not reentrant, use with care: subsequent calls destroy previous value
 // as it is static buffers used. Because of this these functions are not general use API and thus is not in qlib
@@ -370,7 +556,7 @@ static void ifc_show_all() {
            "%%---+-------+------+------+----------------------------------------------------\r\n");
 
   rw_lockr(&ifc_rw);
-  for (i = j = 0; i < NUM_PINS + 1; i++) {
+  for (i = j = 0; i < NUM_PINS + 2; i++) {
     struct ifcond *ifc = ifconds[i];
     while (ifc) {
       j++;
@@ -397,6 +583,8 @@ static void ifc_show_all() {
   else
     q_print("%---+-------+------+------+----------------------------------------------------\r\n");
 }
+
+
 
 // Delete/Clear ifcond entry/entries
 //
@@ -466,7 +654,7 @@ static void ifc_put(struct ifcond *ifc) {
 //
 static void ifc_delete0(int num, bool all) {
 
-  int i, maxp = NUM_PINS;
+  int i;
 
   if (!all && num < -(NUM_PINS)) {
     q_printf("%% Pin number %u is out of range\r\n", -num);
@@ -484,20 +672,20 @@ static void ifc_delete0(int num, bool all) {
   //
   // If /all/ is /true/, then value of /num/ is ignored, all entries are removed
   //
-  if (all) {
+  if (all)
     num = 0;
-    maxp++;   // all, including NO_TRIGGER ifconds
-  } else if (num == -NO_TRIGGER)
-    maxp++;   // only NO_TRIGGER ifconds
 
-  for (i = num < 0 ? -num : 0; i < maxp; i++) {
+  for (i = num < 0 ? -num : 0; i <= EVERY_IDX; i++) {
 
     // if there are ifconds associated with the pin, we disable GPIO interrupts on this particular GPIO
     // to prevent ifc_anyedge_interrupt() from traversing ifconds lists
     if (ifconds[i]) {
 
-      if (i != NO_TRIGGER)
+      if (i < NO_TRIGGER)
         gpio_intr_disable(i);
+      else
+        ifc_disable_periodic_timers();
+      
 
       struct ifcond *ifc = ifconds[i], *prev = NULL;
 
@@ -516,8 +704,11 @@ static void ifc_delete0(int num, bool all) {
 
             // Interrupt must be released AFTER ifc is unlinked from the list:
             // ifc_release_interrupt() checks if list is empty and if it is - uninstalls the ISR
-            if (tmp->trigger_pin != NO_TRIGGER)
+            if (tmp->trigger_pin < NO_TRIGGER)
               ifc_release_interrupt(tmp->trigger_pin);
+            else
+              ifc_release_timer(tmp);
+            
 
             // return ifcond memory to the pool
             ifc_put(tmp);
@@ -526,9 +717,13 @@ static void ifc_delete0(int num, bool all) {
           if (!MULTIPLE_IFCONDS) {
 
             rw_unlockw(&ifc_rw);
+
             // Enable interrupts (for real GPIOs only,and only if there is an ISR handler registered)
-            if (i != NO_TRIGGER && ifc_isr_is_enabled(i))
+            // For periodic events and polling conditions - enable timer service
+            if (i < NO_TRIGGER && ifc_isr_is_enabled(i))
               gpio_intr_enable(i); 
+            if (i >= NO_TRIGGER)
+              ifc_enable_periodic_timers();
 
             return;
           }
@@ -541,7 +736,13 @@ static void ifc_delete0(int num, bool all) {
       } // while(ifc)
 
 
-      gpio_intr_enable(i);
+      // Enable interrupts (for real GPIOs only,and only if there is an ISR handler registered)
+      // For periodic events and polling conditions - enable timer service
+      if (i < NO_TRIGGER && ifc_isr_is_enabled(i))
+        gpio_intr_enable(i); 
+      if (i >= NO_TRIGGER)
+        ifc_enable_periodic_timers();
+
       if (!all && (num <= 0))
         break;
 
@@ -637,9 +838,12 @@ static struct ifcond *ifc_create( uint8_t     trigger_pin,
     n->trigger_pin = trigger_pin;
     n->trigger_rising = rising;
     n->exec = al;
+    n->has_delay = 0;
+    n->delay_ms = 0;
     n->has_rlimit = 0;
     n->rlimit = 0;
     n->poll_interval = 0;
+    n->timer = TIMER_INIT;
     n->has_limit = limit > 0;
     n->limit = limit;
 
@@ -659,7 +863,7 @@ static struct ifcond *ifc_create( uint8_t     trigger_pin,
     n->tsta0 = 0;
     
     // disable interrupts on real GPIOs, do nothing for NO_TRIGGER 
-    if (trigger_pin < NUM_PINS)
+    if (trigger_pin < NO_TRIGGER)
       gpio_intr_disable(trigger_pin);
 
     // Still need to rw_lockw(), even with interrupts disabled : 
@@ -692,7 +896,10 @@ static void ifc_task(void *arg) {
       ifc->tsta = q_micros();
       if (!ifc_too_fast(ifc)) {
         ifc->tsta0 = ifc->tsta;
-        alias_exec_in_background(ifc->exec);
+        if (ifc->has_delay)
+          alias_exec_in_background_delayed(ifc->exec,ifc->delay_ms);
+        else
+          alias_exec_in_background(ifc->exec);
         ifc->hits++;
       } else
         ifc->drops++;
@@ -710,16 +917,19 @@ static void ifc_task(void *arg) {
 //
 static int cmd_if(int argc, char **argv) {
 
-  int cond_idx = 1, max_exec = 0, rate_limit = 0, poll = 0;
+  unsigned int cond_idx = 1, max_exec = 0, rate_limit = 0, poll = 0, delay_ms = 0;
   const char *exec = NULL; // alias name
   unsigned char trigger_pin = NO_TRIGGER;
   bool rising = false;
+  uint64_t low = 0, high = 0;
 
   // min command is "if clear 6" which is 3 keywords long
   if (argc < 3)
     return CMD_MISSING_ARG;
 
+  //////////////////////////////////////////////
   // "delete" and "clear"
+  //////////////////////////////////////////////
   if (!q_strcmp(argv[1],"delete") || !q_strcmp(argv[1],"clear")) {
 
     int num;
@@ -744,6 +954,7 @@ bad_gpio_number:
         ifc_delete_all(); else ifc_clear_all();
 
     // if delete|clear polling
+    // TODO: if delete|clear every
     } else if (!q_strcmp(argv[2],"polling")) {
 
       if (argv[1][0] == 'd')
@@ -763,71 +974,111 @@ bad_gpio_number:
     return 0;
   }
 
+
+ // if rising 5 exec Alias -> 5
+ // if low 5 exec Alias -> 5
+ // every 1 day exec Alias -> 5
   if (argc < 5)
     return CMD_MISSING_ARG;
 
-  // Read trigger condition, if any
-  rising = (argv[1][0] == 'r');
-  if (rising || argv[1][0] == 'f') {
-    if ((trigger_pin = q_atoi(argv[2], NO_TRIGGER)) == NO_TRIGGER)
+  ///////////////////////////////////////////////////////
+  // The "every" command start with TIME statement
+  ///////////////////////////////////////////////////////
+  if (!q_strcmp(argv[0],"every")) {
+    trigger_pin = EVERY_IDX;
+    if (!q_isnumeric(argv[1])) {
+      q_print("% Numeric value expected (interval)\r\n");
+      return 1;
+    }
+    poll = q_atol(argv[1],1000);
+    if (!q_strcmp(argv[2],"days"))
+      poll *= 24*60*60*1000;
+    else if (!q_strcmp(argv[2],"hours"))
+      poll *= 60*60*1000;
+    else if (!q_strcmp(argv[2],"minutes"))
+      poll *= 60*1000;
+    else if (!q_strcmp(argv[2],"seconds"))
+      poll *= 1000;
+    else if (!q_strcmp(argv[2],"milliseconds"))
+      poll *= 1;
+    else {
+      q_print("% Time unit is expected (days, hours, minutes, seconds or milliseconds)\r\n");
       return 2;
-    if (!pin_exist(trigger_pin))
-      return 2;
+    }
+
     cond_idx += 2;
+  } else {
+    /////////////////////////////////////////////////
+    // Normal "if" statement
+    /////////////////////////////////////////////////
+
+    // Read trigger condition, if any
+    rising = (argv[1][0] == 'r');
+
+    if (rising || argv[1][0] == 'f') {
+      if ((trigger_pin = q_atoi(argv[2], NO_TRIGGER)) == NO_TRIGGER)
+        return 2;
+      if (!pin_exist(trigger_pin))
+        return 2;
+      cond_idx += 2;
+    }
+
+    // Read conditions
+    
+    while( ((cond_idx + 1) < argc) &&                                   // while there are at least 2 keywords available
+            (argv[cond_idx][0] == 'l' || argv[cond_idx][0] == 'h') ) {  // and the first keyword is either "low" or "high"
+
+      unsigned char pin;
+
+      // Read pin number, check if it is ok. Enable input on them otherwise we can't access
+      // them in the ISR
+      if ((pin = q_atoi(argv[cond_idx + 1], NO_TRIGGER)) == NO_TRIGGER)
+        return cond_idx + 1;
+
+      if (!pin_exist(pin))
+        return cond_idx + 1;
+
+      // Every GPIO which is used in a condition must be readable, i.e. INPUT-enabled
+      gpio_input_enable(pin);
+
+      // Set corresponding bit and a gpio bitmask
+      if (argv[cond_idx][0] == 'l')
+        low |= 1ULL << pin;
+      else
+        high |= 1ULL << pin;
+
+      // Next 2 keywords
+      cond_idx += 2;
+    }
+
+    if (!low && !high && (trigger_pin == NO_TRIGGER))
+      trigger_pin = EVERY_IDX;
   }
 
-  // Read conditions
-  uint64_t low = 0, high = 0;
-  while( ((cond_idx + 1) < argc) &&                                   // while there are at least 2 keywords available
-          (argv[cond_idx][0] == 'l' || argv[cond_idx][0] == 'h') ) {  // and the first keyword is either "low" or "high"
-
-    unsigned char pin;
-
-    // Read pin number, check if it is ok. Enable input on them otherwise we can't access
-    // them in the ISR
-    if ((pin = q_atoi(argv[cond_idx + 1], NO_TRIGGER)) == NO_TRIGGER)
-      return cond_idx + 1;
-
-    if (!pin_exist(pin))
-      return cond_idx + 1;
-
-    // Every GPIO which is used in a condition must be readable, i.e. INPUT-enabled
-    gpio_input_enable(pin);
-
-    // Set corresponding bit and a gpio bitmask
-    if (argv[cond_idx][0] == 'l')
-      low |= 1ULL << pin;
-    else
-      high |= 1ULL << pin;
-
-    // Next 2 keywords
-    cond_idx += 2;
-  }
-
-  if (!low && !high && (trigger_pin == NO_TRIGGER)) {
-    q_print("% Condition is expected after \"if\"\r\n");
-    return 1;
-  }
-
-  // Read "max-exec NUM", "rate-limit NUM", "poll NUM" and "exec ALIAS_NAME"
+  // Read "max-exec NUM", "rate-limit NUM", "poll NUM", "delay NUM" and "exec ALIAS_NAME"
   // all of them are 2-keywords statements
 
   while (cond_idx + 1 < argc) {
 
-    if ( !q_strcmp(argv[cond_idx],"poll")) {
-      if (0 > (poll = q_atoi(argv[++cond_idx], -1))) {
+    if ( !q_strcmp(argv[cond_idx],"delay")) {
+      if (0 == (delay_ms = q_atoi(argv[++cond_idx], 0))) {
+        HELP(q_print("% <e>Delay value (milliseconds) is expected</>\r\n"));
+        return cond_idx;
+      }
+    } else if ( !q_strcmp(argv[cond_idx],"poll")) {
+      if (0 == (poll = q_atoi(argv[++cond_idx], 0))) {
         HELP(q_print("% <e>Polling value (milliseconds) is expected</>\r\n"));
         return cond_idx;
       }
 
     } else if ( !q_strcmp(argv[cond_idx],"max-exec")) {
-      if (0 > (max_exec = q_atoi(argv[++cond_idx], -1))) {
+      if (0 == (max_exec = q_atoi(argv[++cond_idx], 0))) {
         HELP(q_print("% <e>Numeric value is expected</>\r\n"));
         return cond_idx;
       }
 
     } else if ( !q_strcmp(argv[cond_idx],"rate-limit")) {
-      if (0 > (rate_limit = q_atoi(argv[++cond_idx], -1))) {
+      if (0 == (rate_limit = q_atoi(argv[++cond_idx], 0))) {
         HELP(q_print("% <e>Time interval (milliseconds) is expected</>\r\n"));
         return cond_idx;
       }
@@ -836,7 +1087,7 @@ bad_gpio_number:
       exec = argv[++cond_idx];
       // Check if alias exist and show a warning if it doesn't: it helps to catch typos when writing "if" shell clauses
     } else {
-      q_print("% <e>\"max-exec\", \"poll\", \"rate-limit\" or \"exec\" keywords are expected</>\r\n");
+      q_print("% <e>\"max-exec\", \"poll\", \"rate-limit\", \"delay\" or \"exec\" keywords are expected</>\r\n");
       return cond_idx;
     }
     cond_idx++;
@@ -860,7 +1111,7 @@ bad_gpio_number:
 
   // No-Trigger entries:
   // If not set, "poll interval" defaults to 1 second.
-  if (trigger_pin == NO_TRIGGER) {
+  if (trigger_pin == NO_TRIGGER || trigger_pin == EVERY_IDX) {
     if (!poll)
       poll = 1000;
     if (rate_limit) {
@@ -885,10 +1136,18 @@ bad_gpio_number:
   }
 
   ifc->poll_interval = poll;
+
+  if (delay_ms) {
+    ifc->has_delay = 1;
+    ifc->delay_ms = delay_ms;
+  }
   
   // allocate an interrupt (allocated or reused - decides ifc_claim_interrupt())
-  if (trigger_pin != NO_TRIGGER)
+  if (trigger_pin < NO_TRIGGER)
     ifc_claim_interrupt(trigger_pin);
+  else
+    ifc_claim_timer(ifc);
+  
 
   return 0;
 }
@@ -896,21 +1155,22 @@ bad_gpio_number:
 // "show ifs"
 // Displays list of active ifconds and mpipe drops stats
 //
-static int cmd_show_ifs(UNUSED int argc, UNUSED char **argv) {
+static int cmd_show_ifs(int argc, char **argv) {
 
-  // show rules
-  ifc_show_all();
+  if (argc < 3)
+  // show all rules
+    ifc_show_all();
+  else
+  // show specified rule
+    ifc_show_single(q_atol(argv[2], 0)); // no rule with ID0 exist
 
-  // display queue drops. 
-  // Drop happens when more than MPIPE_CAPACITY rules fire together: it results in more items to the pipe,
-  // but ifc_task daemon is stopped (we are in the ISR!) so we drop these
+  // Display queue drops. 
+  // Drops happen when more than MPIPE_CAPACITY "if"s fire together: it results in more items flowing to the pipe,
+  // but ifc_task daemon is suspended (we are in the ISR!), so nobody unloads messages from the pipe and it eventually overflows
   if (ifc_mp_drops) {
     q_printf("%% <e>Dropped events (more than %u conds at once): %u</>\r\n", MPIPE_CAPACITY, ifc_mp_drops);
     q_print("% <e>Use \"rate-limit\" or increase MPIPE_CAPACITY</>\r\n");
   }
   return 0;
 }
-
 #endif // COMPILING_ESPSHELL
-
-
