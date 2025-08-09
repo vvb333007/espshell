@@ -1549,7 +1549,7 @@ vsa_t *vsa_find_slot(vsa_t **vsa0, int *slot0, vsaval_t value, bool create) {
     }
 
     // Allocate new chunk
-    vsa_t *n = (vsa_t *)q_malloc(sizeof(vsa_t ) + VSASIZE, MEM_);
+    vsa_t *n = (vsa_t *)q_malloc(sizeof(vsa_t ) + VSASIZE, MEM_TMP);
     if (!n)
       return NULL;
 

@@ -343,21 +343,60 @@ static int alias_exec(struct alias *al) {
   return ret;
 }
 
-// The task which executes aliases in a background
+// A task argument for the alias_helper_task(). We can only have 1 argument 
+// to the function so we use this temporary struct
+//
 struct helper_arg {
-  struct alias *al;
-  uint32_t delay_ms;
+  struct alias      *al;
+  uint32_t           delay_ms;
+  struct helper_arg *next;     // list entry, normally NULL, can be freely used
 };
 
+// Once allocated, structures never freed. Instead they are put on the "unused" list
+// Since alias_exec_in_background() is called everytime condition is triggered, we want our alloc/free
+// to be as fast as possible. Second reason is to keep pointers persistent - so any stored pointer always points 
+// to a valid memory region
+static struct helper_arg *ha_unused = NULL;
+static mutex_t ha_mux = MUTEX_INIT;
+
+// Allocate / Reuse
+//
+static struct helper_arg *ha_get() {
+
+  struct helper_arg *ret;
+
+  mutex_lock(ha_mux);
+  if ((ret = ha_unused) != NULL)
+    ha_unused = ha_unused->next;
+  mutex_unlock(ha_mux);
+
+  return ret ? ret : (struct helper_arg *)q_malloc(sizeof(struct helper_arg ), MEM_ALIAS);
+}
+
+// Deallocate / Put on the unused list
+//
+static void ha_put(struct helper_arg *ha) {
+  if (ha != NULL) {
+    mutex_lock(ha_mux);
+    ha->next = ha_unused;
+    ha_unused = ha;
+    mutex_unlock(ha_mux);
+  }
+}
+
+
+// The task which executes aliases in a background
+//
 static void alias_helper_task(void *arg) {
   struct helper_arg *ha = (struct helper_arg *)arg;
 
   if (likely(ha)) {
+    // delay, if required (see alias_exec_in_background_delayed())
     if (ha->delay_ms)
       q_delay(ha->delay_ms);
     alias_exec(ha->al);
   }
-  q_free(arg); // TODO: ha_put()
+  ha_put(ha);
   task_finished();
 }
 
@@ -366,16 +405,14 @@ static void alias_helper_task(void *arg) {
           alias_exec_in_background_delayed(_Alias, 0)
 
 static int alias_exec_in_background_delayed(struct alias *al, uint32_t delay_ms) {
+  struct helper_arg *ha;
 
-  // TODO: ha_get()
-  struct helper_arg *ha = (struct helper_arg *)q_malloc(sizeof(struct helper_arg ), MTYPE_ALIAS);
-
-  if (ha) {
+  if ((ha = ha_get()) != NULL) {
     ha->al = al;
     ha->delay_ms = delay_ms;
 
     return task_new(alias_helper_task,
-                    ha, // TODO: URGENT: _get()/_put() fast alloc
+                    ha,
                     al->name) == NULL ? CMD_FAILED : 0;
   }
   return CMD_FAILED;

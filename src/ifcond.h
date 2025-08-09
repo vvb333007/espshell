@@ -11,6 +11,7 @@
  */
 
 // -- "If" and "Every" : GPIO and Timer events --
+// BIG MESS
 //
 // "ifcond" or "if conditional" is a data structure that holds information about: 
 // a GPIO event, an action that should be done in response to the event and some extra
@@ -19,25 +20,27 @@
 // ifconds are created with "if" and "every" shell commands and are added to a global array of ifconds
 // (see ifconds[] below)
 //
-// When displayed (see ifc_show_all() ) every ifcond is assigned a number which can be used to manipulate 
-// that ifcond: delete it, clear timestamp ,clear hit count
+// When displayed (see ifc_show_all() ) every ifcond appears assigned a number (ID) which can be used
+// to manipulate that ifcond: delete it, clear timestamp ,clear hit count
 //
 // When a GPIO interrupt happens, ifconds belonging to that GPIO are checked, 
-// and associated aliases are executed
+// and associated aliases are executed. Timed events are governed by esp_timer.
 //
 // Thread safety:
 // ifcond lists are protected by a global rwlock (ifc_rw) AND by disabling GPIO interrupts: userspace tasks
 // acquire "reader" lock, ISR does not use locking at all, and actual editing of ifconds which is done by
 // "if" and "every" shell commands ensures that "writer" lock is obtained and GPIO interrupts are disabled
-//
-//
-// every <TIME> [delay <TIME>] exec ARG [<LIMIT>]    : execute alias periodically, starting from (now + delay time)
+//  (see ifc_delete0(...) on how to properly lock to modify lists)
 //
 #ifdef COMPILING_ESPSHELL
 
-// ifcond: this is what "if rising 5 low 6 high 10 ..." commands are parsed to.
-// There are lists of ifconds per every pin: (ifconds[NUM_PINS+1]) plus 1 last entry (ifconds[NO_TRIGGER]) is to store 
-// "polling" ifconds; ifconds on a list are always belong to the same pin
+// ifcond: this is what "if rising 5 low 6 high 10 ..." or "every 1 day ..." commands are parsed into.
+//
+// There are lists of ifconds per every pin: ifconds[0..NUM_PINS-1]) and these  are for "if rising|falling X ... "
+//       ifconds on a list are always belong to the same pin
+// There are list of "polled" ifconds: ifconds[NO_TRIGGER], and these are for "if low|high X ... poll ..."
+// There are list of "every" ifconds: ifconds[EVERY_IDX], and these are for "every ..."
+//
 struct ifcond {
 
   struct ifcond *next;      // ifconds with the same pin
@@ -59,7 +62,7 @@ struct ifcond {
   uint32_t poll_interval;   // poll interval, in seconds, for non-trigger ifconds
   timer_t  timer;           // timer handle for periodic events
   uint32_t limit;           // max number of hits (if (ifc->hits > ifc->limit) { ignore } else { process } )
-  uint32_t delay_ms;        // max number of hits (if (ifc->hits > ifc->limit) { ignore } else { process } )
+  uint32_t delay_ms;        // initial delay. used for "every" ifconds
   
 
   uint32_t high;            // GPIO 0..31: bit X set == GPIO X must be HIGH for condition to match
@@ -110,11 +113,13 @@ static mpipe_t ifc_mp = MPIPE_INIT;
 static unsigned int ifc_mp_drops = 0;
 
 
+#define IFCOND_PRIORITY 22 // Run at the esp_timer priority so both esp_timer-controlled events 
+                           // and interrupt-driven events will run at the same priority level
+
+
 // Create message pipe and start a daemon task
 // Daemon priority set is just below system tasks priority
 //
-#define IFCOND_PRIORITY 21 // prio 22..24 are used by system tasks of ESP-IDF, don't disturb them
-
 static __attribute__((constructor)) void ifc_init_once() {
 
   task_t ifc_handle = NULL; // daemon task id
@@ -132,7 +137,7 @@ static __attribute__((constructor)) void ifc_init_once() {
   
 }
 
-// Check if requests are coming too fast.
+// Check if we request given ifcond too fast. Flood protection
 //
 // Having 64 bit math on counters on a 32bit arch in a time-critical code is not a good idea,
 // so unlike ifc_not_expired(), this one (ifc_too_fast()) is called from a daemon task, not from the ISR
@@ -143,8 +148,7 @@ static inline bool ifc_too_fast(struct ifcond *ifc) {
   return  ifc->has_rlimit && 
          (ifc->tsta - ifc->tsta0 < 1000ULL*ifc->rlimit);
 }
-// Check if ifcond must not be used. These are either "max-exec"-limited entries or
-// rate-limited entries ("rate-limit NUM")
+// Check if ifcond must not be used, because it has reached "max-exec" limit.
 // It is not a function but a macro otherwise it must be declared with IRAM_ATTR
 //
 #define ifc_not_expired(ifc) \
@@ -159,9 +163,7 @@ static inline bool ifc_too_fast(struct ifcond *ifc) {
 // GPIO interrupts. Arduino sketches use GPIO interrupts via GPIO ISR Service so we do the same.
 //
 // Handles "trigger ifconds", i.e. ifconds which have "rising" or "falling" keywords
-// Periodical ifconds ("if low 8 poll 5 sec exec foo") and "every" timers ("every 1 day delay 5 hours exec Foo")
 //
-
 static void IRAM_ATTR ifc_anyedge_interrupt(void *arg) {
 
   bool rising;
@@ -248,12 +250,15 @@ static uint64_t isr_enabled = 0;
   (isr_enabled &= ~(1ULL << (_Gpio)))
 
 
-static void ifc_disable_periodic_timers() {
+// I don't think we need them
+//
 
+static void ifc_disable_periodic_timers() {
+  // TODO:
 }
 
 static void ifc_enable_periodic_timers() {
-  
+  // TODO:  
 }
 
 static void ifc_claim_timer(struct ifcond *ifc);
@@ -310,7 +315,8 @@ static void ifc_callback_delayed(void *arg) {
   }
 }
 
-
+// Allocate periodic timer for polled events
+//
 static void ifc_claim_timer(struct ifcond *ifc) {
 
     timer_t handle = TIMER_INIT;
@@ -322,6 +328,7 @@ static void ifc_claim_timer(struct ifcond *ifc) {
         .name = ifc->exec ? ifc->exec->name : "unnamed",
     };
 
+    // 2 stage-setup for delayed events
     if (ifc->has_delay)
       timer_args.callback = &ifc_callback_delayed;
 
@@ -588,13 +595,17 @@ static void ifc_show_all() {
 
 // Delete/Clear ifcond entry/entries
 //
-#define ifc_delete(X)     ifc_delete0(X, false)    // delete one entry by its ID
-#define ifc_delete_pin(X) ifc_delete0(-X, false)   // delete all entries that are triggered by pin X
-#define ifc_delete_all()  ifc_delete0(0, true)     // delete all entries
+#define ifc_delete(X)       ifc_delete0(X, false)           // delete one entry by its ID
+#define ifc_delete_pin(X)   ifc_delete0(-X, false)          // delete all entries that are triggered by pin X
+#define ifc_delete_poll(X)  ifc_delete0(-NO_TRIGGER, false) // delete all "if low|high poll" entries
+#define ifc_delete_every(X) ifc_delete0(-EVERY_IDX, false)  // delete all "every" entries
+#define ifc_delete_all()    ifc_delete0(0, true)            // delete all entries
 
-#define ifc_clear(X)     ifc_clear0(X, false)      // clear counters for one entry by its ID
-#define ifc_clear_pin(X) ifc_clear0(-X, false)     // clear counters for all entries that are triggered by pin X
-#define ifc_clear_all()  ifc_clear0(0, true)       // clear counters for all entries
+#define ifc_clear(X)     ifc_clear0(X, false)               // clear counters for one entry by its ID
+#define ifc_clear_pin(X) ifc_clear0(-X, false)              // clear counters for all entries that are triggered by pin X
+#define ifc_delete_poll(X)  ifc_delete0(-NO_TRIGGER, false) // clear all "if low|high poll" entries
+#define ifc_delete_every(X) ifc_delete0(-EVERY_IDX, false)  // clear all "every" entries
+#define ifc_clear_all()  ifc_clear0(0, true)                // clear counters for all entries
 
 
 #define MULTIPLE_IFCONDS ((num <= 0) || all) // have to process multiple ifconds or just one?
@@ -656,7 +667,7 @@ static void ifc_delete0(int num, bool all) {
 
   int i;
 
-  if (!all && num < -(NUM_PINS)) {
+  if (!all && num < -(NUM_PINS + 2)) {
     q_printf("%% Pin number %u is out of range\r\n", -num);
     return;
   }
@@ -759,9 +770,9 @@ static void ifc_delete0(int num, bool all) {
 //
 static void ifc_clear0(int num, bool all) {
 
-  int i, maxp = NUM_PINS;
+  int i;
 
-  if (!all && num < -(NUM_PINS - 1)) {
+  if (!all && num < -(NUM_PINS + 2))) {
     q_printf("%% Pin number %u is out of range\r\n", -num);
     return;
   }
@@ -771,14 +782,11 @@ static void ifc_clear0(int num, bool all) {
 
   // "all" means all :). Triggered and non-triggered ifconds.
   // Non-triggered entries belong to non-existing pin, next to the maximum GPIO number
-  if (all) {
+  if (all)
     num = 0;
-    maxp++;
-  }
 
-  for ( i = num < 0 ? -num : 0; 
-        i < maxp;
-        i++) {
+  for (i = num < 0 ? -num : 0; i <= EVERY_IDX; i++) {
+
     if (ifconds[i]) {
       struct ifcond *ifc = ifconds[i];
 
@@ -896,9 +904,9 @@ static void ifc_task(void *arg) {
       ifc->tsta = q_micros();
       if (!ifc_too_fast(ifc)) {
         ifc->tsta0 = ifc->tsta;
-        if (ifc->has_delay)
-          alias_exec_in_background_delayed(ifc->exec,ifc->delay_ms);
-        else
+//        if (ifc->has_delay)
+//          alias_exec_in_background_delayed(ifc->exec,ifc->delay_ms);
+//        else
           alias_exec_in_background(ifc->exec);
         ifc->hits++;
       } else
@@ -914,6 +922,8 @@ static void ifc_task(void *arg) {
 //
 // if rising|falling NUM [low|high NUM]* [max-exec NUM] [rate-limit MSEC] exec ALIAS_NAME
 // if low|high NUM [low|high NUM]* [poll MSEC] [max-exec NUM] [rate-limit MSEC] exec ALIAS_NAME
+//
+// TODO: this functions is huge. must be split in smaller routines
 //
 static int cmd_if(int argc, char **argv) {
 
@@ -1119,13 +1129,17 @@ bad_gpio_number:
               "% rate is a constant which is defined by \"<i>poll</>\" keyword\r\n");
       rate_limit = 0;
     }
-  } else // Rising/Falling conditions:
-    if (poll) {
-      q_print("% \"poll\" keyword is ignored for rising/falling conditions\r\n");
+  } else { // Rising/Falling conditions:
+    if (poll || delay_ms) {
+      q_print("% \"poll\" and \"delay\" keywords are ignored for rising/falling conditions\r\n");
       poll = 0;
+      delay_ms = 0;
     }
+  }
 
   // Rate limit can be anything from 0 to 65535 milliseconds.
+  // 16 bit is choosen to save memory. The sole purpose of this limiter is not to get flooded by
+  // interrupts, so values greater than 1 sec are meaningless
   if (rate_limit) {
     if (rate_limit > 0xffff) {
       q_print("% \"rate-limit\" is set to maximum of 65.5 seconds\r\n");
