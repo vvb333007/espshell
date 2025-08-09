@@ -62,14 +62,23 @@ so "<i>loop()</i>" is a process.
 </p>
 
 <p>
-Tasks are accessed and controlled using their TASK_ID (a hexadecimal number, e.g., "0x3fca370c"), 
-except for the main Arduino loop() task: the main sketch execution can be controlled by omitting 
-the TASK_ID parameter in the command. That is, to suspend the sketch, instead of writing 
-"suspend 0x12345678", one can simply use "suspend" without arguments.
+Access to tasks and their management is done by their TASK_ID (a hexadecimal number, for example "0x3fca370c") or by name,
+except for the main Arduino loop() task: the execution of the main sketch can be controlled by omitting the TASK_ID
+parameter in the command. That is, to suspend the sketch, instead of "suspend 0x12345678" you can use
+the command "suspend" without arguments.
+</p>
+<p>
+IMPORTANT: Several processes may have exactly the same names. This happens, for example, when multiple background commands are started, such as "pin":
+<pre>
+  esp32#>pin 2 low delay 100 high delay 100 loop infinite &
+  esp32#>pin 4 low delay 200 high delay 200 loop infinite &
+</pre>
+The process list will then contain two processes with the identical name "pin". In this case, you should use the TASK_ID instead of the name. If you use the task name, the operation will be performed on the first task with that name in the list.
+The task’s index in the list changes constantly and should not be relied upon.
 </p>
 
 <p>
-Okay, but where can we get these task IDs?
+Okay, but where can we get these task IDs and names?
 </p>
 <p>
 For example, you can use the <b>show tasks</b> command:
@@ -90,7 +99,7 @@ esp32#>show tasks
 % Total: 9 tasks
 esp32#>
 </pre>
-
+Command displays all tasks, including system tasks started by FreeRTOS and tasks started by ESP-IDF.
 </p>
 <p>
 Also, every ESPShell command that is run as a background process displays its TASK_ID. 
@@ -124,10 +133,10 @@ Another source of TASK_IDs is the "<b><a href="Pulse_Counter.html#show">show cou
   </tr>
 
   <tr>
-    <td><b>suspend</b> <i>TASK_ID</i></td>
+    <td><b>suspend</b>&nbsp;<i>TASK_ID|TASK_NAME</i></td>
     <td>
-      <p><b>suspend</b> <i>TASK_ID</i></p>
-      <p>Suspends an arbitrary task if its TASK_ID is known. The command requires one argument -a hexadecimal task ID.</p>
+      <p><b>suspend</b> <i>TASK_ID | TASK_NAME</i></p>
+      <p>Suspends an arbitrary task by its name or ID. The command requires one argument -a hexadecimal task ID or a task name. Please note that there may be several tasks with the same name (but IDs are different).</p>
     </td>
   </tr>
 
@@ -139,10 +148,10 @@ Another source of TASK_IDs is the "<b><a href="Pulse_Counter.html#show">show cou
   </tr>
 
   <tr>
-    <td><b>resume</b> <i>TASK_ID</i></td>
+    <td><b>resume</b>&nbsp;<i>TASK_ID&nbsp;|&nbsp;TASK_NAME</i></td>
     <td>
-      <p><b>resume</b> <i>TASK_ID</i></p>
-      <p>Resumes an arbitrary task if its TASK_ID is known. The command requires one argument -a hexadecimal task ID.</p>
+      <p><b>resume</b> <i>TASK_ID | TASK_NAME</i></p>
+      <p>Resumes an arbitrary task by its TASK_ID or by its TASK_NAME. The command requires one argument -a hexadecimal task ID or a name.</p>
     </td>
   </tr>
 
@@ -157,25 +166,23 @@ arbitrary FreeRTOS task, use the <b>kill</b> command:
   <tr><th>Command</th><th>Description and examples</th></tr>
 
   <tr>
-    <td><b>kill</b> <i>TASK_ID</i></td>
+    <td><b>kill</b>&nbsp;<i>TASK_ID|TASK_NAME</i></td>
     <td>
 <p><b>kill</b> [-TERM | -15 | -KILL | -9] <i>TASK_ID</i></p>
 
 <p>
-Stops execution of the task with the given TASK_ID. This ID is either printed when a background command 
-is started or is the identifier of a generic FreeRTOS task. If the "&" symbol is used at the end of a command,
+Stops execution of the task with the given TASK_ID / TASK_NAME. If the "&" symbol is used at the end of a command,
 ESPShell executes it in the background by spawning a new task:
-</p>
-
 <pre>
       esp32#>pin 2 delay 999 &
       % Background task started
       % Copy/paste "kill 0x3fca370c" command to stop execution  &larr; note the TASK_ID
       esp32#>
 </pre>
-
+Please note that any background command like the "pin 2 low ..." command will have the same task name: "pin". In such cases, use the TASK_ID to distinguish between different "pin" commands.
+</p>
 <p>
-In the simplest case -when only the TASK_ID is provided -the command <i>sends a notification</i> to the task
+In the simplest case -when only the TASK_ID or TASK_NAME are provided - the command <i>sends a notification</i> to the task
 in an attempt to initiate a graceful shutdown.
 </p>
 
@@ -213,7 +220,7 @@ System-level inter-core communication tasks — <b>ipc0</b> and <b>ipc1</b> — 
 </p><p>
 By default, ESPShell starts with priority 0, which corresponds to the priority of system idle tasks. All auxiliary tasks created by the shell are also launched with the same priority. Tasks started by the shell (e.g., background commands) inherit this priority.
 </p><p>
-The priority can be changed using the "<b>priority</b> NUM [<i>TASK_ID</i>]" command. If the second parameter (task ID) is omitted, the new priority is applied to the shell itself. If provided, the specified task’s priority will be updated instead.
+The priority can be changed using the "<b>priority</b> NUM [<i>TASK_ID | TASK_NAME</i>]" command. If the second parameter (task ID) is omitted, the new priority is applied to the shell itself. If provided, the specified task’s priority will be updated instead.
 </p>
 <p>
 Example: check the current priority of the shell and change it to 5.

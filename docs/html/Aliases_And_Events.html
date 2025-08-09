@@ -12,9 +12,10 @@
   <ul>
     <li><a href="#wit">What is this? An example</a></li>
     <li><a href="#cee">Aliases : creating, editing, executing</a></li>
-    <li><a href="#show">Displaying information on aliases</a></li>
+    <li><a href="#show_alias">Displaying information on aliases</a></li>
     <li><a href="#ifcond">Conditions and events: command "<b>if</b>"</a></li>
-    <li><a href="#ifcond_show">Periodic events: command "<b>every</b>"</a></li>
+    <li><a href="#every">Periodic events: command "<b>every</b>"</a></li>
+    <li><a href="#show_ifs">Displaying information on events</a></li>
  </ul>
 </p>
 
@@ -31,6 +32,33 @@ Let's look at a simple home automation task: water pump control. This will give 
 
 <p>
 You have a water tank with two sensors: GPIO2 for "Water Too Low" and GPIO4 for "Water Too High".
+</p>
+<p>
+You have a water tank, with two sensors, GPIO2, for "Water Too Low" and another (GPIO4) is "Water Too High". 
+</p>
+
+<p>
+<pre>                        
+                             water in
+                           <=========+
+                      |       |      |
+  GPIO4 <-------------#       |      |
+ "Overflow" sens      |~~~~~~~|      |
+                      | .  o  |      |
+                      |  . .  |      |
+  GPIO2 <-------------# water |     ###<------------- GPIO20, "Start"
+ "Too low!" sens      | o .   |     # # WATER PUMP
+                      |__   __|     ###<------------- GPIO21, "Drive"
+                         \ /
+                         | |
+                      water out
+
+</pre>
+</p>
+
+<p align=center>
+<img src="i/watertank.jpg" width="70%" height="70%" alt="Water Tank Scheme" /><br>
+<i>Fig. 1: Water Tank and Water Pump scheme</i>
 </p>
 
 <p>
@@ -110,16 +138,20 @@ You’ve now created two aliases filled with commands, ready to be executed usin
 <p>
 Recall that GPIO2 (lower sensor) and GPIO4 (upper sensor) indicate water levels. GPIO4 voltage <i>rises</i> when the water reaches the upper sensor; GPIO2 voltage <i>falls</i> when the water drops below the lower sensor.
 
-For such events (rising or falling edges), use the <b>if</b> command:
+For such events (signal rising/falling edges), the <b><a href="#if">if</a></b> command is used:
 <pre>
   esp32#>if falling 2 exec motor_on
   esp32#>if rising 4 exec motor_off
 </pre>
 
-This was a quick example of how the alias and event system works. Let’s now dive into the details.
+Entered conditions (if) start working immediately (unless <a href="#delay">otherwise specified</a>), monitoring the signal level
+on the sensors and turning the motor on/off at the appropriate time. Of course, this is a very simplified scheme. In reality, you will need to specify
+the <i>maximum allowed frequency</i> for event triggering.
 </p>
 
----
+<p>
+Ok, done with short example, now the details:
+</p>
 
 <h2 id=cee><a href="#top">&#8686;</a>ALIASES: CREATING, EDITING, EXECUTING</h2>
 

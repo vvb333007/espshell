@@ -379,14 +379,29 @@ This behaviour could be changed by using an &amp; symbol:
  is well known to Linux users, where <b>&amp;</b> is used to run commands in background.
 </p>
 <p>
+Example: run the command "pin 2 low high loop inf" in the background
+<pre>
+  esp32#>pin 2 low high loop inf &
+</pre>
+</p>
+
+<p>
  This option (background execution) is especially useful with commands "pin" and 
  "count" which may take long time to finish. Every running background command 
  allocates around 5000 bytes of stack memory which is freed after execution
 </p>
 <p>
-Symbol <b>&amp</b> can also be used to set a background task <i><a href="Kill_Suspend_And_Resume.html#prio">priority</a></i>,
-like this: <b>&10</b> - sets task priority to 10.
+Additionally, using the &amp; flag you can specify the <i><a href="Kill_Suspend_And_Resume.html#prio">task priority</a></i>,
+for example: <b>&amp;10</b> — run the command in the background and set the priority of this running task to 10. You can read more about priorities
+at the link above.
 </p>
+<p>
+Example: run the command "pin 2 low high loop inf" in the background with elevated priority 24
+<pre>
+  esp32#>pin 2 low high loop inf &24
+</pre>
+</p>
+
 
 <p>
  Any background command can be stopped by using command <a href="Kill_Suspend_And_Resume.html">kill</a>
@@ -425,7 +440,7 @@ like this: <b>&10</b> - sets task priority to 10.
       esp32#>uart 0
       % You are about to configure the Serial espshell is running on. Be careful
       % Entering UART configuration mode. Ctrl+Z or "exit" to return
-      % Hint: Main commands are still avaiable (but not visible in "?" command list)
+      % Main commands are still avaiable (but not visible in "?" command list)
 
 
       <b>&rarr;List all available commands:</b>
@@ -455,7 +470,7 @@ In example above shell searches Main command directory after it realizes that th
 To exit command directory command "<b>exit</b>" is used.
 Note: Ctrl+Z is a hotkey for command "exit"
 </p><p>
-Other command directories ESPShell has are: <a href="UART.html">uart</a>, <a href="I2C.html">i<sup>2</sup>c</a>, <a href="Filesystems.html">files</a>, <a href="Pulse_Generator.html">sequence</a> and <a href="Camera.html">camera settings</a>
+Other command directories ESPShell has are: <a href="UART.html">uart</a>,<a href="Aliases_And_Events.html">alias</a> <a href="I2C.html">i<sup>2</sup>c</a>, <a href="Filesystems.html">files</a>, <a href="Pulse_Generator.html">sequence</a> and <a href="Camera.html">camera settings</a>
 </p><p>
 
 <h3 id=index><a href="#top">&#8686;</a>Command Index / Brief with links to documentation pages</h3>
