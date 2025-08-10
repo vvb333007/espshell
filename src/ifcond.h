@@ -629,8 +629,8 @@ static void ifc_show_all() {
 
 #define ifc_clear(X)     ifc_clear0(X, false)               // clear counters for one entry by its ID
 #define ifc_clear_pin(X) ifc_clear0(-X, false)              // clear counters for all entries that are triggered by pin X
-#define ifc_delete_poll()  ifc_clear0(-NO_TRIGGER, false) // clear all "if low|high poll" entries
-#define ifc_delete_every() ifc_clear0(-EVERY_IDX, false)  // clear all "every" entries
+#define ifc_clear_poll()  ifc_clear0(-NO_TRIGGER, false) // clear all "if low|high poll" entries
+#define ifc_clear_every() ifc_clear0(-EVERY_IDX, false)  // clear all "every" entries
 #define ifc_clear_all()  ifc_clear0(0, true)                // clear counters for all entries
 
 
