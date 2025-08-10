@@ -52,7 +52,7 @@ enum {
   MEM_GETLINE,   // memory allocated by files_getline()
   MEM_SEQUENCE,  // sequence-related allocations
   MEM_TASKID,    // Task remap entry
-  MEM_ALIAS,     // Aliases
+  MEM_ALIAS,     // Aliases and related allocation (see struct helper_arg)
   MEM_IFCOND,
   MEM_UNUSED14,
   MEM_UNUSED15

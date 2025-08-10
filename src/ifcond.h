@@ -499,7 +499,7 @@ static void ifc_show_single(unsigned int num) {
         if (ifc->exec->lines == NULL)
           q_printf("%% Note that alias <i>\"%s\" is empty!</> (\"alias %s\" to edit)\r\n", ifc->exec->name, ifc->exec->name);
         else
-          q_printf("%% Action: <i>Execute alias \"%s\"\r\n", ifc->exec->name);
+          q_printf("%% Action: <i>Execute alias \"%s\"</>\r\n", ifc->exec->name);
         rw_unlockr(&ifc_rw);
         return ;
       }
