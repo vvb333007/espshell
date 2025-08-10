@@ -10,15 +10,15 @@
  * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
-// -- "If" and "Every" : GPIO and Timer events --
-// BIG MESS
+// -- "If" and "Every" : GPIO and/or Timer events --
+// WELL-COMMENTED BIG MESS. Has to be refactored.
 //
 // "ifcond" or "if conditional" is a data structure that holds information about: 
-// a GPIO event, an action that should be done in response to the event and some extra
-// statistics information - number of "hits" and a timestamp of "last use"
+// a GPIO event or a timer, an action that should be done in response to the event 
+// and some extra statistics information - number of "hits" and a timestamp of "last use"
 //
 // ifconds are created with "if" and "every" shell commands and are added to a global array of ifconds
-// (see ifconds[] below)
+// (see ifconds[] below). Deletion is done with the same "if delete" or "every delete" commands
 //
 // When displayed (see ifc_show_all() ) every ifcond appears assigned a number (ID) which can be used
 // to manipulate that ifcond: delete it, clear timestamp ,clear hit count
@@ -32,6 +32,9 @@
 // "if" and "every" shell commands ensures that "writer" lock is obtained and GPIO interrupts are disabled
 //  (see ifc_delete0(...) on how to properly lock to modify lists)
 //
+// Extra layer of safety comes from the fact that struct ifcond as well as struct alias are *persistent pointers*
+// That means these pointers always point to valid memory region
+//
 #ifdef COMPILING_ESPSHELL
 
 // ifcond: this is what "if rising 5 low 6 high 10 ..." or "every 1 day ..." commands are parsed into.
@@ -44,11 +47,12 @@
 struct ifcond {
 
   struct ifcond *next;      // ifconds with the same pin
-  struct alias  *exec;      // pointer to alias. alias pointers are persistent, always valid
+  struct alias  *exec;      // pointer to the alias. alias pointers are persistent, always valid
                             // only 1 alias per ifcond. Use extra ifconds to execute multiple aliases
 
   uint8_t trigger_pin;      // GPIO, where RISING or FALLING edge is expected or 
-                            // NO_TRIGGER if it is pure conditional ifcond
+                            // NO_TRIGGER if it is pure conditional ifcond or EVERY_IDX for 
+                            // ifconds created with "every" command
 
   uint8_t trigger_rising:1; // 1 == rising, 0 == falling
   uint8_t has_high:1;       // has "high" statements?
@@ -56,6 +60,7 @@ struct ifcond {
   uint8_t has_limit:1;      // has "max-exec" keyword?
   uint8_t has_rlimit:1;     // has "rate-limit" keyword?
   uint8_t has_delay:1;      // has "delay" keyword?
+  uint8_t alive:1;          // is this entry active or is it on the ifc_unused list? set and reset by ifc_get() and ifc_put()
   uint8_t reserved2:2;
   uint16_t id;              // unique ID for delete/clear commands
   uint16_t rlimit;          // once per X milliseconds (max ~ 1 time per minute [65535 msec])
@@ -236,17 +241,19 @@ next_ifc:
 }
 
 
-// GPIO mask where ISR is enabled. Bit 17 set means GPIO17 has its ISR registered 
+// GPIO mask where ISR is registered. Bit 17 set means GPIO17 has its ISR registered 
+// This mask is used when enabling/disabling GPIO interrupts (as part of access protection in ifc_delete)
+//
 static uint64_t isr_enabled = 0;
 
 // Check if GPIO has ISR handler installed
-#define ifc_isr_is_enabled(_Gpio) \
+#define ifc_isr_is_registered(_Gpio) \
   (isr_enabled & (1ULL << (_Gpio)))
 
-#define ifc_isr_enable(_Gpio) \
+#define ifc_set_isr_registered(_Gpio) \
   (isr_enabled |= (1ULL << (_Gpio)))
 
-#define ifc_isr_disable(_Gpio) \
+#define ifc_clear_isr_registered(_Gpio) \
   (isr_enabled &= ~(1ULL << (_Gpio)))
 
 
@@ -266,9 +273,21 @@ static void ifc_claim_timer(struct ifcond *ifc);
 // Timer callback for polled entries ("if low 5 poll .." or "every ..")
 // It is called periodically by esp_timer system task. It is analog of ifc_anyedge_interrupt() handler but for polling
 //
+// Once again: this code relies on the "pointers persistence". That means, deletion ("if delete") of any ifcond does not
+// make access to this ifcond impossible. It is possible. And access to its ->exec (pointer to an alias) is also OK because
+// alias pointers are persistent also.
+//
+// By the time this callback fires it is possible that user deletes the ifcond. Deletion of ifcond also removes the timer, but
+// even if timer was allowed to fire, it will execute that "deleted" condition. Which is bad, but is better than a memory access exception
+//
 static void ifc_callback(void *arg) {
 
   struct ifcond *ifc = (struct ifcond *)arg;
+
+  MUST_NOT_HAPPEN(ifc == NULL);
+
+  if (!ifc->alive)
+    return ;
 
   uint32_t in = REG_READ(GPIO_IN_REG);   // GPIO 0..31
   uint32_t in1 = REG_READ(GPIO_IN1_REG); // GPIO 32..63
@@ -300,11 +319,15 @@ static void ifc_callback(void *arg) {
 static void ifc_callback_delayed(void *arg) {
   struct ifcond *ifc = (struct ifcond *)arg;
   if (ifc) {
-    // delay time has passed: execute and schedule periodic timer. remove old timer
-    ifc_callback(arg);
 
+    if (!ifc->alive)
+      return ;
+
+    // delay time has passed: execute alias and schedule periodic timer. remove old timer
+    ifc_callback(arg);
     esp_timer_stop(ifc->timer);
     esp_timer_delete(ifc->timer);
+    ifc->timer = TIMER_INIT;
 
     // Temporary set has_delay to 0 so ifc_claim_timer() will choose right callback function
     // (ifc_callback instead of ifc_callback_delayed). Same ifc can not be executed from two different tasks,
@@ -357,8 +380,8 @@ static void ifc_release_timer(struct ifcond *ifc) {
 //
 static void ifc_claim_interrupt(uint8_t pin) {
   if (pin_exist(pin)) {
-    if (!ifc_isr_is_enabled(pin)) {
-      ifc_isr_enable(pin);
+    if (!ifc_isr_is_registered(pin)) {
+      ifc_set_isr_registered(pin);
 
       //VERBOSE(q_printf("%% ifc_claim_interrupt() : Registering an ISR for GPIO#%u\r\n",pin));
       // install_isr_service can be called multiple times - if already installed it just returns with a warning message
@@ -379,11 +402,14 @@ static void ifc_claim_interrupt(uint8_t pin) {
 //
 static void ifc_release_interrupt(uint8_t pin) {
   if (pin_exist_silent(pin)) {
-    if (ifc_isr_is_enabled(pin)) {
+    if (ifc_isr_is_registered(pin)) {
+      // When releasing an interrupt for the pin we check if there any ifconds left (associated with this pin)
+      // If we have zero "if"s left (an empty list of ifconds) - we can remove our ISR handler and disable 
+      // interrupts for the pin.
       if (!ifconds[pin]) {
         gpio_intr_disable(pin);
         gpio_isr_handler_remove(pin);
-        ifc_isr_disable(pin);
+        ifc_clear_isr_registered(pin);
         //VERBOSE(q_printf("%% ifc_release_interrupt() : removing ISR for GPIO#%u\r\n",pin));
       }
     }
@@ -428,7 +454,7 @@ static void ifc_show(struct ifcond *ifc) {
     if (ifc->poll_interval) {
       if (ifc->trigger_pin == EVERY_IDX)
         // TODO: display TIME for "every" and milliseconds for others
-        q_printf("%lu mil ",ifc->poll_interval);
+        q_printf("%lu millis ",ifc->poll_interval);
       else
         q_printf("poll %lu ",ifc->poll_interval);
     }
@@ -473,10 +499,10 @@ static void ifc_show_single(unsigned int num) {
         
 
         if (ifc->drops)
-          q_printf("%% Execution skipped (event dropped): <i>%lu</>\r\n",ifc->drops);
+          q_printf("%% Execution skipped (event dropped): <i>%lu</> times\r\n",ifc->drops);
 
         if (ifc->has_limit)
-          q_printf("%% Expires after <i>%lu</> executions\r\n",ifc->limit);
+          q_printf("%% Expires after <i>%lu</> executions (%s)\r\n",ifc->limit, ifc_not_expired(ifc) ? "Not expired yet" : "Expired already");
         else
           q_print("% Never expires\r\n");
 
@@ -597,14 +623,14 @@ static void ifc_show_all() {
 //
 #define ifc_delete(X)       ifc_delete0(X, false)           // delete one entry by its ID
 #define ifc_delete_pin(X)   ifc_delete0(-X, false)          // delete all entries that are triggered by pin X
-#define ifc_delete_poll(X)  ifc_delete0(-NO_TRIGGER, false) // delete all "if low|high poll" entries
-#define ifc_delete_every(X) ifc_delete0(-EVERY_IDX, false)  // delete all "every" entries
+#define ifc_delete_poll()  ifc_delete0(-NO_TRIGGER, false) // delete all "if low|high poll" entries
+#define ifc_delete_every() ifc_delete0(-EVERY_IDX, false)  // delete all "every" entries
 #define ifc_delete_all()    ifc_delete0(0, true)            // delete all entries
 
 #define ifc_clear(X)     ifc_clear0(X, false)               // clear counters for one entry by its ID
 #define ifc_clear_pin(X) ifc_clear0(-X, false)              // clear counters for all entries that are triggered by pin X
-#define ifc_delete_poll(X)  ifc_delete0(-NO_TRIGGER, false) // clear all "if low|high poll" entries
-#define ifc_delete_every(X) ifc_delete0(-EVERY_IDX, false)  // clear all "every" entries
+#define ifc_delete_poll()  ifc_clear0(-NO_TRIGGER, false) // clear all "if low|high poll" entries
+#define ifc_delete_every() ifc_clear0(-EVERY_IDX, false)  // clear all "every" entries
 #define ifc_clear_all()  ifc_clear0(0, true)                // clear counters for all entries
 
 
@@ -631,26 +657,40 @@ static struct ifcond *ifc_get() {
   barrier_unlock(ifc_mux);
 
   // New entries get new ID; Reused entries must use their previously assigned ID.
-  // ifc_get() only guarantees that /->id/ field is initialized, while all other fields
-  // contain some old data
+  // ifc_get() only guarantees that /->id/ and /->alive/ fields are initialized, while 
+  // all other fields MAY contain some old data (if entry is reused)
   if (!ret) {
-    ret = (struct ifcond *)q_malloc(sizeof(struct ifcond),MEM_IFCOND);
-    if (ret)
-      ret->id = id++; // is Var++ on _Atomic variable atomic?
-    // TODO: handle overflow (must be 65535 active ifconds for it to happen)
+    if ((ret = (struct ifcond *)q_malloc(sizeof(struct ifcond),MEM_IFCOND)) == NULL)
+      return NULL;
+    ret->exec = NULL;
+    ret->timer = TIMER_INIT;
+    ret->id = id++; // TODO: is Var++ on _Atomic variable atomic or do we need to use atomic_fetch_add()?
+                    // TODO: handle overflow (must be 65535 active ifconds for it to happen tho)
   }
+
+  ret->alive = 1;
   
   return ret;
 }
 
 // Return unused ifcond back to "ifc_unused" list
-// Yes, classic mutex is enough here, but critical section is simple. 
+// TODO: use mutex_t instead of barrier_t. We don't need to disable interrupts each time.
 //
 static void ifc_put(struct ifcond *ifc) {
   if (ifc) {
+
+    if (unlikely(ifc->timer != NULL))
+      q_printf("ifc_put() : ifcond.id=%u has an active timer still counting\r\n",ifc->id);
+
+    if (unlikely(ifc->alive == 0))
+      q_printf("ifc_put() : ifcond.id=%u is dead\r\n",ifc->id);
+
     barrier_lock(ifc_mux);
     ifc->next = ifc_unused;
     ifc_unused = ifc;
+    // alive flag is checked by timer callbacks. code logic prevents callbacks to fire if corresponding ifcond
+    // entry is removed, because corresponding timers are removed also. It is an extra layer.
+    ifc->alive = 0;
     barrier_unlock(ifc_mux);
   }
 }
@@ -667,10 +707,7 @@ static void ifc_delete0(int num, bool all) {
 
   int i;
 
-  if (!all && num < -(NUM_PINS + 2)) {
-    q_printf("%% Pin number %u is out of range\r\n", -num);
-    return;
-  }
+  MUST_NOT_HAPPEN(!all && num <= -(NUM_PINS + 2));
 
   // If we are about to modify one of the ifconds[] lists, acquire writers lock
   rw_lockw(&ifc_rw);
@@ -692,6 +729,9 @@ static void ifc_delete0(int num, bool all) {
     // to prevent ifc_anyedge_interrupt() from traversing ifconds lists
     if (ifconds[i]) {
 
+      // 0..NUM_PINS-1 => GPIOs ("if rising|falling" conditions) 
+      // NUM_PINS == NO_TRIGGER => "if poll" conditions
+      // NUM_PINS+1 == EVERY_IDX => "every" conditions
       if (i < NO_TRIGGER)
         gpio_intr_disable(i);
       else
@@ -731,7 +771,7 @@ static void ifc_delete0(int num, bool all) {
 
             // Enable interrupts (for real GPIOs only,and only if there is an ISR handler registered)
             // For periodic events and polling conditions - enable timer service
-            if (i < NO_TRIGGER && ifc_isr_is_enabled(i))
+            if (i < NO_TRIGGER && ifc_isr_is_registered(i))
               gpio_intr_enable(i); 
             if (i >= NO_TRIGGER)
               ifc_enable_periodic_timers();
@@ -749,11 +789,12 @@ static void ifc_delete0(int num, bool all) {
 
       // Enable interrupts (for real GPIOs only,and only if there is an ISR handler registered)
       // For periodic events and polling conditions - enable timer service
-      if (i < NO_TRIGGER && ifc_isr_is_enabled(i))
+      if (i < NO_TRIGGER && ifc_isr_is_registered(i))
         gpio_intr_enable(i); 
       if (i >= NO_TRIGGER)
         ifc_enable_periodic_timers();
 
+      // If we were processing an ifcond chain that belongs to a GPIO - we are done.
       if (!all && (num <= 0))
         break;
 
@@ -764,26 +805,27 @@ static void ifc_delete0(int num, bool all) {
 }
 
 // Clear counters (hits and tsta)
-// Arguments are the same as those for ifc_delete0
+// Arguments are the same as those for ifc_delete0, the difference is that we use readers lock. Yes we are actually
+// writing to the counters but it is ok as long as we do not modify the ifcond list itself.
 //
-// NOTE: clearing /hits/ will reenable expired ifconds (those with "limit" argument)
+// NOTE: clearing /hits/ will reenable expired ifconds (those with "max-exec" or "rate-limit" keywords)
 //
 static void ifc_clear0(int num, bool all) {
 
   int i;
 
-  if (!all && num < -(NUM_PINS + 2))) {
-    q_printf("%% Pin number %u is out of range\r\n", -num);
-    return;
-  }
+  MUST_NOT_HAPPEN(!all && num <= -(NUM_PINS + 2));
 
   // Clearing counters does not modify list itself, so treat clearing as a reader's operation
   rw_lockr(&ifc_rw);
 
   // "all" means all :). Triggered and non-triggered ifconds.
-  // Non-triggered entries belong to non-existing pin, next to the maximum GPIO number
-  if (all)
-    num = 0;
+  // Non-triggered entries belong to non-existing pins NO_TRIGGER and EVERY_IDX
+  
+  if (all) {
+    ifc_mp_drops = 0; // "all" also clears global mpipe drops counter
+    num = 0;          // start with pin#0
+  }
 
   for (i = num < 0 ? -num : 0; i <= EVERY_IDX; i++) {
 
@@ -798,7 +840,8 @@ static void ifc_clear0(int num, bool all) {
             ifc->drops = 0;
             ifc->tsta = q_micros();
 
-            // Clear by icond ID? return then. NOTE: ifc->id is always > 0
+            // Clear by icond ID? return then. 
+            // NOTE: ifc->id is always > 0, so "if clear 0" is about the GPIO#0, not ifcond.id == 0
             if (ifc->id == num) {
               rw_unlockr(&ifc_rw);
               return;
@@ -807,6 +850,7 @@ static void ifc_clear0(int num, bool all) {
         ifc = ifc->next;
       }
 
+      // If we were deleting/clearing ifconds for specified GPIO - break the "for" loop, we are done
       if (!all && num <= 0)
         break;
     } // if ifconds[i]
@@ -882,7 +926,8 @@ static struct ifcond *ifc_create( uint8_t     trigger_pin,
     ifconds[trigger_pin] = n;
     rw_unlockw(&ifc_rw);
 
-    if (trigger_pin < NUM_PINS && ifc_isr_is_enabled(trigger_pin))
+    // if trigger_pin is a real GPIO and ISR (must be) enabled - reenable it. 
+    if (trigger_pin < NUM_PINS && ifc_isr_is_registered(trigger_pin))
       gpio_intr_enable(trigger_pin);
   }
   return n;
@@ -958,17 +1003,21 @@ bad_gpio_number:
         ifc_delete_pin(num); else ifc_clear_pin(num);
 
     // if delete|clear all
+    // every delete|clear all
     } else if (!q_strcmp(argv[2],"all")) {
 
-      if (argv[1][0] == 'd')
-        ifc_delete_all(); else ifc_clear_all();
+      if (!q_strcmp(argv[0],"every")) {
+        if (argv[1][0] == 'd')
+          ifc_delete_every(); else ifc_clear_every();
+      } else {
+        if (argv[1][0] == 'd')
+          ifc_delete_all(); else ifc_clear_all();
+      }
 
     // if delete|clear polling
-    // TODO: if delete|clear every
-    } else if (!q_strcmp(argv[2],"polling")) {
-
+    } else if (!q_strcmp(argv[2],"poll")) {
       if (argv[1][0] == 'd')
-        ifc_delete_pin(NO_TRIGGER); else ifc_clear_pin(NO_TRIGGER);
+        ifc_delete_poll(); else ifc_clear_poll();
 
     // if delete|clear NUM
     } else if (isnum(argv[2])) {
@@ -981,13 +1030,11 @@ bad_gpio_number:
     // unrecognized keywords :(
     } else
         return 2;
+
     return 0;
   }
 
 
- // if rising 5 exec Alias -> 5
- // if low 5 exec Alias -> 5
- // every 1 day exec Alias -> 5
   if (argc < 5)
     return CMD_MISSING_ARG;
 
@@ -1048,7 +1095,8 @@ bad_gpio_number:
       if (!pin_exist(pin))
         return cond_idx + 1;
 
-      // Every GPIO which is used in a condition must be readable, i.e. INPUT-enabled
+      // Every GPIO which is used in a condition test must be readable, i.e. INPUT-enabled
+      // Even if GPIO is LOW, for "low" condition to work this GPIO must be readable.
       gpio_input_enable(pin);
 
       // Set corresponding bit and a gpio bitmask

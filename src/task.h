@@ -103,7 +103,7 @@ static vsa_t *task_list = 0;            //  vsa to hold active tasks list
                                           _Name, \
                                           STACKSIZE, \
                                           _Arg, \
-                                          shell_prio, \
+                                          shell_prio, /*TODO: uxTaskPriorityGet(NULL) ?*/ \
                                           &handle, \
                                           shell_core)) \
       taskid_remember(handle); \
