@@ -240,7 +240,119 @@ Pumping, wait...
 </p>
 </td></tr>
 </table>
+</p>
 
+
+<h2 id=ifcond><a href="#top">&#8686;</a>CONDITIONS, EVENTS, AND ACTIONS: THE "IF" COMMAND</h2>
+<p>
+The <b>if</b> command, as illustrated in the water tank example at the beginning of this document, is designed
+to respond to <i>events</i> on pins. There are two such events — a voltage rise (transition from logical 0 to logical 1, "rising") and
+a voltage drop ("1" &rarr; "0", "falling"). The registration of these events is handled by hardware — the processor generates interrupts when such events occur.
+</p>
+<p>
+The simplest condition reacts to a voltage falling on GPIO2 by triggering some reaction/action:
+<pre>
+  esp32#>if falling 2 exec My_Alias
+</pre>
+The initial condition that triggers the shell (rising or falling) can be extended with <i>additional conditions</i>.
+Let’s add extra checks to the above example so that it only triggers if GPIO4 is in state "0" and GPIO1 is in state "1":
+<pre>
+  esp32#>if falling 2 <b>low 4 high 0</b> exec My_Alias
+</pre>
+These additional conditions are checked at the moment the main event occurs, and if they do not match the actual pin states, the event is discarded,
+and the dropped events counter is increased (see the "show if" command, "Drops" column).
+</p>
+
+<p>
+Is it possible to omit the main (rising/falling) event entirely, and what would that mean?
+</p>
+<p>
+Yes, it is possible. For example, you can write the following condition:
+<pre>
+  esp32#>if low 2 exec My_Alias
+</pre>
+What will happen in this case? ESPShell will poll the state of pin #2 <i>once per second</i>, and if the condition matches, it will execute
+the My_Alias alias. This type of condition is called a <i>periodic</i> or <i>polling</i> condition. The polling frequency can be set by using the <b>poll</b> keyword:
+<pre>
+  esp32#>if low 2 poll 10000 exec My_Alias &larr; poll every 10,000 milliseconds.
+</pre>
+The <b>poll</b> keyword only makes sense for periodic conditions. If the condition is rising or falling, the poll parameter will be ignored,
+and a corresponding warning will be displayed.
+</p>
+
+<p>
+Can you limit the number of times a condition is triggered? Yes, you can use the <b>max-exec</b> keyword for that.
+The example below limits the number of triggers to five and also adds two more pin checks:
+<pre>
+  esp32#>if low 2 low 4 high 0 poll 10000 max-exec 5 exec My_Alias
+</pre>
+What happens after the condition triggers five times? The condition will still be evaluated but will no longer execute the alias.
+Instead, the dropped events counter will increase, which you can see in the output of the "<b>show if</b>" command (in the Drops column):
+</p>
+<p align=center><img src="i/show_ifs.jpg" alt="show ifs command output" width="70%" height="70%"><br><i>Fig. 1: "show ifs" output, drops counters</i></p>
+
+<p>
+When defining rising/falling conditions, remember that these are checked inside an interrupt. If the interrupt rate is not limited,
+you risk being flooded with events and triggering the My_Alias command excessively. Simple signal bounce can generate
+a thousand interrupts per second, and a floating ESP32 pin or other factors could cause the system to hang.
+</p>
+<p>
+To prevent this, use the <b>rate-limit</b> keyword (or simply <b>rate</b> — keywords can be abbreviated).
+This keyword takes a single parameter — the minimum interval in milliseconds between condition triggers. For example, specifying
+<b>rate-limit 500</b> ensures that the condition will not trigger more than once every half second (500 milliseconds). Events occurring more frequently than the set limit will be discarded, and the dropped events counter will increase:
+</p>
+<p align=center><img src="i/show_ifs.jpg" alt="show ifs command output" width="70%" height="70%"><br><i>Fig. 2: "show ifs" output, rate-limit</i></p>
+
+<table>
+<tr><td><b>Command</b></td><td><b>Description and examples</b></td></tr>
+
+<tr><td><p><b>if</b></p></td><td>
+<p>if <b>rising</b>|<b>falling</b> <i>PIN1</i> [<b>low</b>|<b>high</b> <i>PINn</i>]* [<b>max-exec</b> <i>NUM</i>] [<b>rate-limit</b> <i>MILLIS</i>] <b>exec</b> <i>ALIAS_NAME</i> </p>
+<p>if <b>low</b>|<b>high</b> <i>PIN1</i> [<b>low</b>|<b>high</b> <i>PINn</i>]* [<b>max-exec</b> <i>NUM</i>] [<b>poll</b> <i>MILLIS</i>] <b>exec</b> <i>ALIAS_NAME</i> </p>
+<p>if <b>clear</b>|<b>delete</b> [<b>gpio</b>] <i>NUM</i></p>
+<p>if <b>clear</b>|<b>delete</b> <b>all</b></p>
+TBD:..
+</td></tr>
+</table>
+
+<p>
+You can also write a condition without any condition at all — this will be a simple periodic event that executes unconditionally:
+<pre>
+  esp32#>if poll 10000 exec My_Alias
+</pre>
+Although this syntax works, it is not the proper way to define a periodic event.
+For periodic events, there is a more convenient form: the <b>every</b> command.
+</p>
+
+<h2 id=every><a href="#top">&#8686;</a>PERIODIC EVENTS</h2>
+<p>
+To set up periodic execution, you can use the <b>every</b> command, which takes (in addition to the alias to execute) the <i>interval</i> between executions and an optional <i>initial delay</i>.
+</p>
+<p>
+If we define a simple periodic condition like this:
+<pre>
+  esp32#>every 1 day exec My_Alias
+</pre>
+the <i>first execution</i> will happen immediately, right after pressing &lt;Enter&gt;, and subsequent executions will occur every 24 hours.
+But what if we don’t want the first execution to happen immediately? We can use the <b>delay</b> keyword:
+<pre>
+  esp32#>every 1 day delay 1 hour exec My_Alias
+</pre>
+In this version, the first execution will happen in one hour, and all subsequent executions will occur every 24 hours.
+</p>
+<p>
+<table>
+<tr><td><b>Command</b></td><td><b>Description and examples</b></td></tr>
+
+<tr><td><p><b>every</b></p></td><td>
+<p>every NUM milliseconds|seconds|minutes|hours|days [<b>max-exec</b> <i>NUM</i>] [<b>delay</b> <i>MILLIS</i>] <b>exec</b> <i>ALIAS_NAME</i> </p>
+<p>every <b>clear</b> <i>NUM</i>|<b>all</b></p>
+<p>every <b>delete</b> <i>NUM</i>|<b>all</b></p>
+
+TBD:..
+</td></tr>
+</table>
+</p>
 
 
 </body>
