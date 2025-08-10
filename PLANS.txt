@@ -5,57 +5,24 @@ Core:
 Command processor:
 ------------------
 
-1. Command aliases:
-   Add "alias" command implements named scripts.
-   Like:
-    esp32#>alias pwm_on                          <--- create an empty alias with name "pwm_on"
-    esp32#pwm_on>echo silent                     
-    esp32#pwm_on>pwm $1 5000 0.7
-    esp32#pwm_on>pin 2 high
-    esp32#pwm_on>uart 0
-    esp32#pwm_on>write "PWM Enabled"
-    esp32#pwm_on>exit                            <--- "exit" is the part of the alias
-    esp32#pwm_on>echo on
-    esp32#pwm_on>end                             <--- exit alias editing mode
-    % Alias "pwm_on" is configured
-    esp32#>pwm_on 3000
-
-        list                                 <--- list alias content
-        delete [ LINE_NUMBER | all]          <--- delete last line or LINE_NUMBER or all lines
+++++1. Command aliases:
+++++   Add "alias" command implements named scripts.
   
 2. Make command processor be able to expand "$" values: $1 is argv[1] and $VarName is a sketch variable
     This is one of requirements for [1].
 
-  done: 3. Upgrade command interpreter so it will recognize "@" symbol and supress echo until <Enter> is pressed
-   to simulate DOS' "@echo off"
+++++3. Upgrade command interpreter so it will recognize "@" symbol and supress echo until <Enter> is pressed
+++++   to simulate DOS' "@echo off"
 
 GPIO:
 -----
 
-1. add event system: configure GPIO masks which, if detected, trigger an alias:
-
-  Like interrupt trigger which checks pinx && piny && .. && pinz condition
-    esp32#>if 0 1 !2   exec WaterTankOverflow              <-- 3 interrupt handlers (via isr service), 0=HIGH, 1=HIGH 2=LOW
-    esp32#>if !0 !1 !2 exec WaterTankUnderflow             <-- 3 interrupt handlers (via isr service), 0=LOW, 1=LOW 2=LOW
-    esp32#>if 2 exec Motor_Off
-
-  analogRead() conditional ()
-    esp32#>if 4<2048 poll 1000 exec Motor_On               <-- 0 interrupt handlers, 1 global "poll" task (same as timeout() in *BSD)
-
-    
-    if COND1 COND2 ... CONDn [poll INTERVAL] exec TEXT
-      COND := PIN_NUMBER | !PIN_NUMBER | PIN_NUMBER<VALUE | PIN_NUMBER>VALUE
-      COND := \PIN_NUMBER | /PIN_NUMBER (falling & rising)
-      INTERVAL := Polling interval, ms
-      checks if COND1 && COND2 .. && CONDn is true and executes TEXT (either a command or an alias)
-      By default uses GPIO ANYEDGE interrupts to evaluate CONDn, but can be forced to use polling (in sketches 
-      with their own GPIO interrupt handlers, where ESPShell don't want to interfere with sketch logic)
-
-2. add "every" command: esp32#> every INTERVAL_SEC exec TEXT
+++++1. add event system: configure GPIO masks which, if detected, trigger an alias:
+++++2. add "every" command: esp32#> every INTERVAL_SEC exec TEXT
 
 
- done: 3. add "toggle" keyword to "pin" command, to toggle output value betwen 1 and 0  "pin 2 toggle read toggle read"
- done: 4. pin_save() on startup so subsequent pin_load() will be guaranteed to not load junk
+++++3. add "toggle" keyword to "pin" command, to toggle output value betwen 1 and 0  "pin 2 toggle read toggle read"
+++++4. pin_save() on startup so subsequent pin_load() will be guaranteed to not load junk
 
 
 PWM:
@@ -82,7 +49,7 @@ Pulse counter / Frequency meter:
 
 File Manager:
 
-1. Implement "mv" and "cp" commands
+1. Implement "mv" and "cp" commands to be able to copy directory structure
 
 3. Port a single-user, single-threaded simple FTP server - to be able to upload a premade filesystem (i.e. files and directories)
 
