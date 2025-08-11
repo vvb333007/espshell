@@ -1262,6 +1262,20 @@ KEYWORDS_DECL(main) {
           "%   <i>if clear all</>      : Clear all conditions (all, means ALL)\r\n"
           "%   <i>if clear gpio 7</>   : Clear rising/falling conditions assigned to GPIO 7"), NULL },
 
+  { "if", cmd_if, 3,
+    HELPK("% \"<b>if <i>disable</>|<i>enable</> NUM|<i>all</>\"\r\n"
+          "% \"<b>every <i>disable</>|<i>enable</> NUM|<i>all</>\"\r\n"
+          "%\r\n"
+          "% Enable or disable execution of given \"if\" or \"every\" condition, by its ID\r\n"
+          "% (NOTE: Use \"show ifs\" to list all conditions and see their ID)\r\n"
+          "%\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <b>if disable <i>6</>      : disable condition #6\r\n"
+          "%   <b>every disable <i>all</> : disable all \"every\" conditions\r\n"
+          "%   <b>if enable <i>all</>     : Enable processing of all \"if\" conditions"), NULL },
+
+
+
   { "every", cmd_if, MANY_ARGS,
     HELPK("% \"<b>every <i>TIME</> [<o>delay MILLIS</>] [<o>max-exec NUM</>] exec <i>ALIAS</>\"\r\n"
           "%\r\n"
@@ -1295,6 +1309,8 @@ KEYWORDS_DECL(main) {
           "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>every clear 6</>        : Clear condition #6"), NULL },
+
+
 
   { "exec", cmd_exec, MANY_ARGS,
     HELPK("% \"<b>exec NAME [NAME NAME ... NAME ]</>\"\r\n"
