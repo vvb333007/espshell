@@ -61,7 +61,7 @@ struct ifcond {
   uint8_t has_rlimit:1;     // has "rate-limit" keyword?
   uint8_t has_delay:1;      // has "delay" keyword?
   uint8_t alive:1;          // is this entry active or is it on the ifc_unused list? set and reset by ifc_get() and ifc_put()
-  uint8_t reserved2:2;
+  uint8_t disabled:1;       // "disabled" entries skips their alias execution
   uint16_t id;              // unique ID for delete/clear commands
   uint16_t rlimit;          // once per X milliseconds (max ~ 1 time per minute [65535 msec])
   uint32_t poll_interval;   // poll interval, in seconds, for non-trigger ifconds
@@ -153,12 +153,18 @@ static inline bool ifc_too_fast(struct ifcond *ifc) {
   return  ifc->has_rlimit && 
          (ifc->tsta - ifc->tsta0 < 1000ULL*ifc->rlimit);
 }
-// Check if ifcond must not be used, because it has reached "max-exec" limit.
+
+// Check if ifcond must not be used, because it has reached "max-exec" limit or it was manually disabled.
 // It is not a function but a macro otherwise it must be declared with IRAM_ATTR
 //
-#define ifc_not_expired(ifc) \
-  (ifc->has_limit ? ifc->hits < ifc->limit \
-                  : true)
+#define ifc_not_expired(_Ifc) \
+  (!_Ifc->disabled && (_Ifc->has_limit ? _Ifc->hits < _Ifc->limit : true))
+
+#define ifc_set_disabled(_Ifc) \
+  _Ifc->disabled = 1;
+
+#define ifc_clear_disabled(_Ifc) \
+  _Ifc->disabled = 0;
 
 
 // GPIO Interrupt routine, implemented via "GPIO ISR Service" API: a global GPIO handler is implemented in ESP-IDF
@@ -320,7 +326,7 @@ static void ifc_callback_delayed(void *arg) {
   struct ifcond *ifc = (struct ifcond *)arg;
   if (ifc) {
 
-    if (!ifc->alive)
+    if (!ifc->alive || ifc->disabled)
       return ;
 
     // delay time has passed: execute alias and schedule periodic timer. remove old timer
@@ -450,33 +456,49 @@ static void ifc_show(struct ifcond *ifc) {
         if (ifc->low1 & (1UL << i)) q_printf("lo %u ",i + 32);
       }
 
-    
+    // poll_interval is either poll interval for the "if" statement
+    // or a frequency of an "every" statement. Measured in milliseconds (49 days max interval)
     if (ifc->poll_interval) {
-      if (ifc->trigger_pin == EVERY_IDX)
-        // TODO: display TIME for "every" and milliseconds for others
-        q_printf("%lu millis ",ifc->poll_interval);
-      else
+      if (ifc->trigger_pin == EVERY_IDX) {
+        // Some heuristics for "every" variant, to save screen space in table view:
+        //   For times below 10 sec  display "XXXX millis"
+        //   Anything above 120 sec is displayed in minutes
+        //   Anything in between is displayed as seconds
+        if (ifc->poll_interval < 10000)
+          q_printf("%lu milli ",ifc->poll_interval);
+        else if (ifc->poll_interval > 120*1000)
+          q_printf("%lu min ",ifc->poll_interval / (1000 * 60));
+        else
+          q_printf("%lu sec ",ifc->poll_interval / 1000);
+      } else
         q_printf("poll %lu ",ifc->poll_interval);
     }
 
+    // Normally, only EVERY entries can have delays, but we let it be for the "future extensions (c)"
     if (ifc->has_delay)
       q_printf("delay %lu",ifc->delay_ms);
 
+    // shortened to save screen space
     if (ifc->has_limit)
       q_printf("max %lu ",ifc->limit);
 
+    // shortened to save screen space
     if (ifc->has_rlimit)
       q_printf("rate %u ",ifc->rlimit);
 
-
+    // Use quotes: aliases could have spaces in their names and we want to generate
+    // "executable" output, which can be simply copy/pasted to the espshell prompt again
     if (ifc->exec)
-      q_printf("exec %s",ifc->exec->name);
+      q_printf("exec \"%s\"",ifc->exec->name);
+
     q_print(CRLF);
   }
 }
 
 // Display ifcond by its ID
 // Shows a bit more detailed information on given ifcond.
+// It is used by "show if NUM" and used mostly to view counters which are >99999 and thus
+// are not displayed fully on a table view ("show ifs")
 //
 static void ifc_show_single(unsigned int num) {
   int i,j;
@@ -490,6 +512,9 @@ static void ifc_show_single(unsigned int num) {
         q_printf("%% \"%s\" condition#%u", ifc->trigger_pin == EVERY_IDX ? "Every" : "If", num);
         if (!ifc->hits)
           q_print(", never executed (triggered)");
+        if (ifc->disabled)
+          q_printf(", <w>disabled</>, (\"if enable %u\" to enable)",num);
+        else
         if (!ifc_not_expired(ifc))
           q_printf(", <w>expired</>, (\"if clear %u\" to reset)",num);
         q_print(CRLF);
@@ -691,6 +716,7 @@ static void ifc_put(struct ifcond *ifc) {
     // alive flag is checked by timer callbacks. code logic prevents callbacks to fire if corresponding ifcond
     // entry is removed, because corresponding timers are removed also. It is an extra layer.
     ifc->alive = 0;
+    ifc->disabled = 1;
     barrier_unlock(ifc_mux);
   }
 }
@@ -705,7 +731,7 @@ static void ifc_put(struct ifcond *ifc) {
 //
 static void ifc_delete0(int num, bool all) {
 
-  int i;
+  int i, max_entry = EVERY_IDX; // by default we run through /if/ and /every/ entries
 
   MUST_NOT_HAPPEN(!all && num <= -(NUM_PINS + 2));
 
@@ -718,12 +744,15 @@ static void ifc_delete0(int num, bool all) {
   // If num > 0, i.e. removal of specified ifcond (by its ID, num == ID) was requested, then 
   // we process all pins starting from 0 to NUM_PINS
   //
-  // If /all/ is /true/, then value of /num/ is ignored, all entries are removed
+  // If /all/ is /true/, then value of /num/ is ignored, all entries are 
+  // removed, except /every/ entries
   //
-  if (all)
+  if (all) {
     num = 0;
+    max_entry = NO_TRIGGER;
+  }
 
-  for (i = num < 0 ? -num : 0; i <= EVERY_IDX; i++) {
+  for (i = num < 0 ? -num : 0; i <= max_entry; i++) {
 
     // if there are ifconds associated with the pin, we disable GPIO interrupts on this particular GPIO
     // to prevent ifc_anyedge_interrupt() from traversing ifconds lists
@@ -755,6 +784,8 @@ static void ifc_delete0(int num, bool all) {
 
             // Interrupt must be released AFTER ifc is unlinked from the list:
             // ifc_release_interrupt() checks if list is empty and if it is - uninstalls the ISR
+            // Real GPIO: attempt to elease interrupt
+            // Timed events: release the rimer
             if (tmp->trigger_pin < NO_TRIGGER)
               ifc_release_interrupt(tmp->trigger_pin);
             else
@@ -889,6 +920,7 @@ static struct ifcond *ifc_create( uint8_t     trigger_pin,
     // n->id is already initialized by ifc_get()
     n->trigger_pin = trigger_pin;
     n->trigger_rising = rising;
+    n->disabled = 0;
     n->exec = al;
     n->has_delay = 0;
     n->delay_ms = 0;
@@ -963,29 +995,48 @@ static void ifc_task(void *arg) {
 }
 
 
-// Create an "if" condition
-//
-// if rising|falling NUM [low|high NUM]* [max-exec NUM] [rate-limit MSEC] exec ALIAS_NAME
-// if low|high NUM [low|high NUM]* [poll MSEC] [max-exec NUM] [rate-limit MSEC] exec ALIAS_NAME
-//
-// TODO: this functions is huge. must be split in smaller routines
-//
-static int cmd_if(int argc, char **argv) {
 
-  unsigned int cond_idx = 1, max_exec = 0, rate_limit = 0, poll = 0, delay_ms = 0;
-  const char *exec = NULL; // alias name
-  unsigned char trigger_pin = NO_TRIGGER;
-  bool rising = false;
-  uint64_t low = 0, high = 0;
+// "if disable NUM|all"
+// "if enable NUM|all"
+// "every enable ..."
+// "every disable ..."
+//
+static int cmd_if_disable_enable(int argc, char **argv) {
 
-  // min command is "if clear 6" which is 3 keywords long
+  int num,i, start = 0, stop = NO_TRIGGER, disable = 1;
+
   if (argc < 3)
     return CMD_MISSING_ARG;
 
-  //////////////////////////////////////////////
-  // "delete" and "clear"
-  //////////////////////////////////////////////
-  if (!q_strcmp(argv[1],"delete") || !q_strcmp(argv[1],"clear")) {
+  if (!q_strcmp(argv[0],"every"))
+    start = stop = EVERY_IDX;
+
+  if (!q_strcmp(argv[1],"enable"))
+    disable = 0;
+
+  num = q_atoi(argv[2],0); // applied to "all" returns 0. There are no ifconds with ID==0, so we use this ID as disable-all marker
+
+  struct ifcond *ifc;
+
+  for (i = start; i <= stop; i++)
+    if ((ifc = ifconds[i]) != NULL)
+      while(ifc) {
+        if (ifc->id == num || num == 0) {
+          ifc->disabled = disable;
+          if (num)
+            return 0;
+        }
+        ifc = ifc->next;
+      }
+
+  return 0;
+}
+
+// "if|every delete|clear NUM|all"
+// "if delete|clear gpio NUM"
+// "if delete|clear poll"
+//
+static int cmd_if_delete_clear(int argc, char **argv) {
 
     int num;
     // if delete|clear gpio NUM
@@ -1019,7 +1070,7 @@ bad_gpio_number:
       if (argv[1][0] == 'd')
         ifc_delete_poll(); else ifc_clear_poll();
 
-    // if delete|clear NUM
+    // if|every delete|clear NUM
     } else if (isnum(argv[2])) {
 
       if ((num = q_atoi(argv[2], -1)) < 0)
@@ -1032,7 +1083,38 @@ bad_gpio_number:
         return 2;
 
     return 0;
-  }
+}
+
+// Create an "if" condition
+//
+// if rising|falling NUM [low|high NUM]* [max-exec NUM] [rate-limit MSEC] exec ALIAS_NAME
+// if low|high NUM [low|high NUM]* [poll MSEC] [max-exec NUM] [rate-limit MSEC] exec ALIAS_NAME
+//
+// TODO: this functions is huge. must be split in smaller routines
+//
+static int cmd_if(int argc, char **argv) {
+
+  unsigned int cond_idx = 1, max_exec = 0, rate_limit = 0, poll = 0, delay_ms = 0;
+  const char *exec = NULL; // alias name
+  unsigned char trigger_pin = NO_TRIGGER;
+  bool rising = false;
+  uint64_t low = 0, high = 0;
+
+  // min command is "if clear 6" which is 3 keywords long
+  if (argc < 3)
+    return CMD_MISSING_ARG;
+
+  //////////////////////////////////////////////
+  // "disable" and "enable"
+  //////////////////////////////////////////////
+  if (!q_strcmp(argv[1],"disable") || !q_strcmp(argv[1],"enable"))
+    return cmd_if_disable_enable(argc, argv);
+
+  //////////////////////////////////////////////
+  // "delete" and "clear"
+  //////////////////////////////////////////////
+  if (!q_strcmp(argv[1],"delete") || !q_strcmp(argv[1],"clear"))
+    return cmd_if_delete_clear(argc, argv);
 
 
   if (argc < 5)

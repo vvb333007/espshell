@@ -556,8 +556,6 @@ static inline __attribute__((const)) const char *number_english_ending(unsigned 
 // Check if memory address is in valid range. This function does not check memory access
 // rights, only boundaries are checked.
 // sizeof(unsigned int) == sizeof(void *) is ensured in espshell.c static_asserts section
-// TODO: implement memory maps query (ESP32_Memory_Maps/maps.h)
-// TODO: use esp_ptr_... API to get properties of the memory region (byte/dword access etc)
 //
 bool __attribute__((const)) is_valid_address(const void *addr, unsigned int count) {
   
@@ -941,11 +939,7 @@ static bool ishex2(const char *p) {
 //
 static bool isoct(const char *p) {
 
-  if (p && *p) {
-
-    if (*p != '0')
-      return false;
-
+  if (p && *p == '0') {
     p++;
 
     while (*p >= '0' && *p < '8') 
@@ -1264,6 +1258,7 @@ static int q_print(const char *str) {
 
 // print /Address : Value/ pairs, decoding the data according to data type
 // 1,2 and 4 bytes long data types are supported
+// If it is more than 1 element in the table, then print a header also
 //
 static void q_printtable(const unsigned char *p, unsigned int count, unsigned char length, bool isu, bool isf, bool isp) {
     if (p && count && length) {
@@ -1278,17 +1273,17 @@ static void q_printtable(const unsigned char *p, unsigned int count, unsigned ch
         } else {
           if (length == 4) {
             if (isu)
-              q_printf("%u (0x%x as hex)\r\n",*((unsigned int *)p),*((unsigned int *)p));
+              q_printf("%u (0x%x)\r\n",*((unsigned int *)p),*((unsigned int *)p));
             else
               q_printf("%i\r\n",*((signed int *)p));
           } else if (length == 2) {
             if (isu)
-              q_printf("%u (0x%x as hex)\r\n",*((unsigned short *)p),*((unsigned short *)p));
+              q_printf("%u (0x%x)\r\n",*((unsigned short *)p),*((unsigned short *)p));
             else
               q_printf("%i\r\n",*((signed short *)p));
           } else if (length == 1) {
             if (isu)
-              q_printf("%u (0x%x as hex)\r\n",*((unsigned char *)p),*((unsigned char *)p));
+              q_printf("%u (0x%x)\r\n",*((unsigned char *)p),*((unsigned char *)p));
             else
               q_printf("%i\r\n",*((signed char *)p));
           } else {
@@ -1378,7 +1373,14 @@ static void q_printhex(const unsigned char *p, unsigned int len) {
 
 
 // convert argument TEXT for uart/write and files/write commands (and others)
-// to a buffer.
+// to a buffer. This function is used to join up argv's which are the same logical text.
+// Alternatively one can use quote, but they were introduced much later, so text2buf still is in use.
+//
+// "arg1" "arg2" "arg3" --> "arg1 arg2 arg3"
+//
+// Since all whitespace between arguments is lost due to argify(), this function can not recover multiple spaces:
+// esp32#>write This        is     a TEXT
+// will be read as "This is a TEXT". The only way to preserve repeating spaces is to use quotes, or encode spaces as \20
 //
 // /argc/
 // /argv/
@@ -1452,8 +1454,6 @@ static int text2buf(int argc, char **argv, int i /* START */, char **out) {
 //  returns duration if everything was ok, 
 // returns !=duration if was interrupted (returns real time spent in delay_interruptible())
 //
-// TODO: investigate why zero delays do not work as kill-points for "kill -15".
-//       the only difference is that xTaskNotifyWait() is called with zero timeout
 #define TOO_LONG       2999
 #define DELAY_POLL     250
 #define DELAY_INFINITE 0xffffffffUL
@@ -1468,30 +1468,36 @@ static unsigned int delay_interruptible(unsigned int duration) {
   if (!is_foreground_task()) {
     uint32_t note;
     if (task_wait_for_signal(&note, duration) == true)
-      return q_millis() - now; // Interrupted 
-    return duration;         // Success!
+      return q_millis() - now; // Interrupted
+    return duration;           // Success! (Important: return exactly what was passed as an argument, not real time!)
+                               // This returned value is used to verify if delay was interrupted or timeouted on its own
   }
 
   // Called from the foreground task (i.e. called from main espshell task context)
-  // Only foreground task can be interrupted by a keypress
-  if (duration > TOO_LONG) {
+  // Only foreground task can be interrupted by a keypress and only if delay is over 3 sec long.
+  if (duration > TOO_LONG)
     while (duration >= DELAY_POLL) {
-      duration -= DELAY_POLL;
+
+      if (duration != DELAY_INFINITE)
+        duration -= DELAY_POLL;
+
       q_delay(DELAY_POLL);
+
       if (anykey_pressed())
         return q_millis() - now;  // interrupted by a keypress
     }
-  }
+  
   q_delay(duration);
 
-  // Success! Return exactly requested time, not the real one. Don't change this behaviour or if you do examine all calls to delay_interruptible()
+  // Success! Return exactly requested time, not the real one. 
+  // Don't change this behaviour or if you do, examine all calls to delay_interruptible()
   return duration0;
 }
 
 
-// Variable Sized Array
+// Variable Sized Array.
 // Consist of blocks 256 bytes in size, linked into list.
-// Currently is used only by task.h to keep track of running tasks (tasks, started by espshell only)
+// Currently it is used only by task.h to keep track of running tasks and is the subject for removal
 //
 #define VSASIZE 256
 
@@ -1567,22 +1573,6 @@ vsa_t *vsa_find_slot(vsa_t **vsa0, int *slot0, vsaval_t value, bool create) {
 
   return NULL;
 }
-
-#if 0
-void vsa_dump(vsa_t *vsa) {
-
-  if (vsa) {
-    while (vsa) {
-      printf("\r\nVSA chunk:\r\n");
-      for (int i = 0; i < VSASIZE/sizeof(vsaval_t); i++)
-        printf("%x, ",vsa->values[i]);
-      vsa = vsa->next;
-    }
-  } else
-    printf("VSA@%p is empty\r\n",vsa);
-}
-#endif
-
 
 #endif //#if COMPILING_ESPSHELL
 

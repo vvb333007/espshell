@@ -10,8 +10,6 @@
  * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
- // TODO: make all calls to be cmd_show_...(int, char**) and use a calltable
-
 #if COMPILING_ESPSHELL
 
 // Displays ESPShell version.

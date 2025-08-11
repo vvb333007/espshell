@@ -879,7 +879,7 @@ readline(const char *prompt) {
   TTYflush();
 
   if ((line = editinput()) != NULL) {
-    const unsigned char *nl = (const unsigned char *)"\r\n";
+    const unsigned char *nl = (const unsigned char *)"\r\n"; // TODO: 
     line = (unsigned char *)q_strdup((char *)line, MEM_EDITLINE);
     TTYputs(nl);
     TTYflush();

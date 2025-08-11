@@ -290,7 +290,18 @@ static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
 
   bool pd, pu, ie, oe, od, slp_sel;
   uint32_t drv, fun_sel, sig_out;
+  uint8_t start_pin = 0, stop_pin = NUM_PINS - 1;
 
+  // Read optional "start from" pin number
+  if (argc > 2)
+    start_pin = q_atol(argv[2], start_pin);
+
+  // Read optional "finish by" pin number
+  if (argc > 3)
+    stop_pin = q_atol(argv[3], stop_pin);
+
+  if (start_pin != 0 || stop_pin != NUM_PINS-1) 
+    HELP(q_printf( "%% NOTE: Displaying only pins <i>%u..%u</>. Use \"<i>show iomux</>\" to display all\r\n",start_pin,stop_pin));
   HELP(q_print( "% IO MUX has <i>" xstr(IOMUX_NFUNC) "</> functions for every pin. The mapping is as follows:\r\n"));
 
   // Table header Save space.
@@ -303,7 +314,7 @@ static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
   q_print(CRLF);
 
   // run through all the pins
-  for (pin = 0; pin < NUM_PINS; pin++) {
+  for (pin = start_pin; pin <= stop_pin; pin++) {
     
     if (pin_exist_silent(pin)) {
       // add "!" before pin number for RESERVED pins. 

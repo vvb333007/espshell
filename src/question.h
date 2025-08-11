@@ -19,38 +19,72 @@
 
 #if WITH_HELP
 static const char *Hints[] = {
-  "% Press <TAB> repeatedly to cycle cursor through command arguments.\r\n"
-  "% This is faster than using arrows <-- -->",
-  "% <HOME> and <END> keys are not working? Use Ctrl+A instead of <HOME> and\r\n"
-  "% Ctrl+E instead of <END>. Read help page on keys used in ESPShell: \"? keys\"",
-  "% Press <ESC> then type a number and press <ESC> again to enter symbol by\r\n"
-  "% its code: <ESC>, 32, <ESC> sends \"space\" (code 32)",
-  "% Pressing <ESC> and then <BACKSPACE> removes one word instead of single symbol",
-  "% Use command \"colors off\" if your terminal does not support ANSI colors",
-  "% Use command \"history off\" to disable history and remove history entries",
-  "% Command \"uptime\" also shows the last reboot (crash) cause",
-  "% Command \"suspend\" (or Ctrl+C) pauses sketch execution. Resume with \"resume\"",
-  "% You can use Ctrl+Z as a hotkey for \"exit\" command",
-  "% You can shorten command names and its arguments: \"suspend\" can be \"su\" or\r\n"
-  "% even \"p 2 i o op\" instead of \"pin 2 in out open\"",
-  "% To mount a filesystem on partition \"FancyName\" one can type \"mount F\".\r\n"
-  "% Shortening also works for \"unmout\" arguments",
-  "% Command \"unmount\" has alias \"umount\"",
-  "% \"mkdir\" creates all missing directories in given path",
-  "% \"touch\" creates all missing directories in given path before file creation",
-  "% Use \"var ls_show_dir_size 0\" to disable dirs size counting by \"ls\" command:\r\n"
-  "% filesystems with huge amount of files & dirs can slow things down",
-  "% To use spaces in filenames, replace spaces with asterisk (*): \"mkdir A*Path\"",
-  "% Main commands are available in every command subdirectory: one can execute\r\n"
-  "% command \"pin\" while in UART configuration mode, without need to \"exit\"",
-  "% You can send files over UARTs with filesystem's \"cat\" command",
-  "% Press Ctrl+R to search through the commands history: start typing and press\r\n"
-  "% <Enter> to find a matched command entered previously",
-  "% Use \"^\" symbol when history searching (Ctrl+R) to emphasize that search\r\n"
-  "% pattern is matched from the beginning of the string (i.e. regexp-like \"^\")",
-  "% Press Ctrl+L to clear the screen and enable terminal colors",
-  "% Adding an \"&\" at the end of any command makes that command run in a <u>background</>,\r\n"
-  "% just like in Bash/Linux:  \"count 4 &\""
+  "% Press <TAB> repeatedly to cycle the cursor through command arguments.\r\n"
+  "% This is faster than using the arrow keys (<-- and -->).",
+
+  "% <HOME> and <END> keys not working? Use Ctrl+A instead of <HOME> and\r\n"
+  "% Ctrl+E instead of <END>. Read the help page on keys used in ESPShell: \"? keys\"",
+
+  "% Press <ESC>, then type a number, and press <ESC> again to enter a symbol\r\n"
+  "% by its code: <ESC>, 32, <ESC> sends a \"space\" (code 32).",
+
+  "% Pressing <ESC> and then <BACKSPACE> deletes one word instead of a single character.",
+
+  "% Use the command \"colors off\" if your terminal does not support ANSI colors.",
+
+  "% Use the command \"history off\" to disable command history and clear existing entries.",
+
+  "% The \"uptime\" command also shows the last reboot (crash) cause.",
+
+  "% The \"suspend\" command (or Ctrl+C) pauses sketch execution. Resume with \"resume\".",
+
+  "% You can use Ctrl+Z as a shortcut for the \"exit\" command.",
+
+  "% You can shorten command names and their arguments: \"suspend\" can be \"su\" or\r\n"
+  "% even \"p 2 i o op\" instead of \"pin 2 in out open\".",
+
+  "% To mount a filesystem on the \"FancyName\" partition, type \"mount F\".\r\n"
+  "% Shortening also works for \"unmount\" arguments.",
+
+  "% The \"unmount\" command has an alias: \"umount\".",
+
+  "% The \"mkdir\" command creates all missing directories in the given path.",
+
+  "% The \"touch\" command creates all missing directories in the given path before file creation.",
+
+  "% Use \"var ls_show_dir_size 0\" to disable directory size calculation in the \"ls\" command:\r\n"
+  "% filesystems with a large number of files and directories may slow down.",
+
+  "% To use spaces in filenames, replace them with an asterisk (*): \"mkdir A*Path\".",
+
+  "% Main commands are available in every command subdirectory: you can run\r\n"
+  "% the \"pin\" command while in UART configuration mode without having to \"exit\".",
+
+  "% You can send files over UART using the filesystem's \"cat\" command.",
+
+  "% Press Ctrl+R to search through the command history: start typing and press\r\n"
+  "% <Enter> to find a previously entered matching command.",
+
+  "% Use the \"^\" symbol when searching history (Ctrl+R) to match from the start\r\n"
+  "% of the string (similar to regexp \"^\").",
+
+  "% Press Ctrl+L to clear the screen and enable terminal colors.",
+
+  "% Adding an \"&\" at the end of any command runs that command in the background,\r\n"
+  "% just like in Bash/Linux: \"count 4 &\".",
+
+  "% The \"if\" command can be used to set up GPIO conditions and corresponding\r\n"
+  "% actions, for example: \"if rising 2 exec my_alias\".",
+
+  "% The \"every\" command can be used to schedule periodic tasks (delayed or immediate),\r\n"
+  "% for example: \"every 2 hours exec my_alias\".",
+
+  "% The \"if\" command can also be used to poll GPIO values:\r\n"
+  "% \"if low 4 high 5 poll 1000 exec my_alias\".",
+
+  "% Press @ at the beginning of the input prompt to hide your input.\r\n"
+  "% The shell will return to normal operation after <Enter> is pressed.",
+
 };
 
 // Display useful hints. 

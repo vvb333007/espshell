@@ -174,9 +174,9 @@ static bool task_wait_for_signal(uint32_t *sig, uint32_t timeout_ms) {
 //
 static bool is_taskid_good(unsigned int taskid) {
 
-  // Use range of "1" for now. TODO: change it to the sizeof(TaskHandle)
-  if (!is_valid_address((void *)taskid,1)) {
-    HELP(q_print("% Task ID is a <i>hex number</>, something like \"3ffb0030\" or \"0x40005566\"\r\n"));
+  if (!is_valid_address((void *)taskid,sizeof(task_t))) {
+    HELP(q_print("% Task ID you entered seems to be invalid\r\n"
+                 "% Task ID is a <i>hex number</>, something like \"3ffb0030\" or \"0x40005566\"\r\n"));
     return false;
   }
   
@@ -224,12 +224,12 @@ static INLINE bool is_background_task() {
 // These are fetched as part of TaskState_t structure in cmd_show_tasks()
 //
 static const char *task_state_name[] = { 
-  "Running",
-  "Ready",
-  "Waiting",
+  "Running  ",
+  "Ready    ",
+  "Waiting  ",
   "Suspended",
-  "Deleted",
-  "Invalid"
+  "Deleted  ",
+  "Invalid  "
 };
 
 //"show tasks"
@@ -250,24 +250,31 @@ static int cmd_show_tasks(int argc, char **argv) {
     // Creates a lag, because disables scheduling completely during information gathering
     uxTaskGetSystemState( tasks, nt, NULL);
 
-    q_print("%<r>  # |  Task  ID  |        Name      | Prio |   State   </>\r\n"
-            "%----+------------+------------------+------+-----------\r\n");
+    q_print("%<r>  # |  Task  ID  |        Name      | Prio |   State   | Stack/(HighWM)   </>\r\n"
+            "%----+------------+------------------+------+-----------+--------------------\r\n");
 
     for (j = 0; j < nt; j++) {
       // just in case. you never know when they decide to update their eStatus enum
       if (tasks[j].eCurrentState > 5)
         tasks[j].eCurrentState = 5;
 
-      q_printf("%% %3u| %p | %16s |  %2u  | %s\r\n",
+      const char *warn = "<w>!";
+      if (tasks[j].usStackHighWaterMark > 1023)
+        warn = " ";
+
+      q_printf("%% %3u| %p | %16s |  %2u  | %s |%s%p (%u)</>\r\n",
         j + 1,
         tasks[j].xHandle,
         tasks[j].pcTaskName,
         tasks[j].uxCurrentPriority,
-        task_state_name[tasks[j].eCurrentState]);
+        task_state_name[tasks[j].eCurrentState],
+        warn,
+        tasks[j].pxStackBase,
+        (unsigned int)tasks[j].usStackHighWaterMark);
     }
   }
-  q_printf("%%----+------------+------------------+------+-----------\r\n"
-           "%% Total: %u tasks\r\n",j);
+  q_printf("%%----+------------+------------------+------+-----------+------------------\r\n"
+           "%% Total: %u tasks. Note that <w>low HighWM</> values indicate stack overflow risks\r\n",j);
   return 0;
 }
 #else //!CONFIG_FREERTOS_USE_TRACE_FACILITY
