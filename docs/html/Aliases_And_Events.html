@@ -290,7 +290,7 @@ What happens after the condition triggers five times? The condition will still b
 Instead, the dropped events counter will increase, which you can see in the output of the "<b>show if</b>" command (in the Drops column):
 </p>
 <p align=center><img src="i/show_ifs_drops_max-exec.jpg" alt="show ifs command output" width="70%" height="70%"><br><i>Fig. 2: "show ifs" output, max-exec limit reached</i></p>
-<p>Note the red color and an exclamation mark at <i>Hits</> counter: it is an indication, that condition is reached its <b>max-exec</b> limit. Such entries can be reset to its initial state with command <b>if clear</b></p>
+<p>Note the red color and an exclamation mark at <i>Hits</i> counter: it is an indication, that condition is reached its <b>max-exec</b> limit. Such entries can be reset to its initial state with command <b>if clear</b></p>
 <p>
 When defining rising/falling conditions, remember that these are checked inside an interrupt. If the interrupt rate is not limited,
 you risk being flooded with events and triggering the My_Alias command excessively. Simple signal bounce can generate

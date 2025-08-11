@@ -284,7 +284,7 @@ Pumping, wait...
 который можно увидеть в выводе команды "<b>show if</b>" (в колонке Drops):
 </p>
 <p align=center><img src="i/show_ifs_drops_max-exec.jpg" alt="show ifs command output" width="70%" height="70%"><br><i>Рис. 2: вывод команды "<b>show ifs</b>", достигли ограничения <b>max-exec</b></i></p>
-<p>Обратите внимание на восклицательный знак рядом со счетчиком <i>Hits</>, а так же на восклицательный знак 
+<p>Обратите внимание на восклицательный знак рядом со счетчиком <i>Hits</i>, а так же на восклицательный знак 
 (для монохромных мониторов): это указание на то, что условие выполнилось максимальное (<b>max-exec</b>) количество раз и более выполнятся не будет.
 Командой <b>if clear</b> (а так же <b>every clear</b>) можно "обнулить" счетчики условий, как если бы эти условия никогда не отрабатывали</p>
 
@@ -306,10 +306,27 @@ Pumping, wait...
 
 <tr><td><p><b>if</b></p></td><td>
 <p>if <b>rising</b>|<b>falling</b> <i>PIN1</i> [<b>low</b>|<b>high</b> <i>PINn</i>]* [<b>max-exec</b> <i>NUM</i>] [<b>rate-limit</b> <i>MILLIS</i>] <b>exec</b> <i>ALIAS_NAME</i> </p>
+<p>Условие на событие rising или falling, с опциональными дополнительными low/high условиями: как только уровент на PIN1 начинает падать (или нарастать) таким образом, что это совпадет с условием - условие сработает</p>
+<p>Необязательный параметр <b>max-exec</b> задает максимальное количество срабатываний условия ("запускать не более, чем max-exec раз"); другой необязательный параметр, <b>rate-limit</b>, задает минимальный интервал, в миллисекундах, между срабатываниями условия.</p>
+<p>Пример: реагировать на падение напряжения на GPIO2, но только, если пины GPIO4 и GPIO0 находятся в состоянии "low":
+<pre>
+  esp32#>if falling 2 low 0 low 4 exec my_action
+</pre>
+Пример: то же, что и в примере выше, но ограничить частоту вызовов - не чаще одного раза в секунду
+<pre>
+  esp32#>if falling 2 low 0 low 4 rate-limit 1000 exec my_action
+</pre>
+</p>
+
 <p>if <b>low</b>|<b>high</b> <i>PIN1</i> [<b>low</b>|<b>high</b> <i>PINn</i>]* [<b>max-exec</b> <i>NUM</i>] [<b>poll</b> <i>MILLIS</i>] <b>exec</b> <i>ALIAS_NAME</i> </p>
-<p>if <b>clear</b>|<b>delete</b> [<b>gpio</b>] <i>NUM</i></p>
-<p>if <b>clear</b>|<b>delete</b> <b>all</b></p>
-TBD:..
+
+<p>if <b>delete</b> [<b>gpio</b>] <i>NUM</i></p>
+<p>if <b>delete</b> <b>all</b></p>
+<p>if <b>clear</b> [<b>gpio</b>] <i>NUM</i></p>
+<p>if <b>clear</b> <b>all</b></p>
+<p>if <b>enable</b> NUM|<b>all</b></p>
+<p>if <b>disable</b> NUM<b>all</b></p>
+
 </td></tr>
 </table>
 
@@ -343,10 +360,12 @@ TBD:..
 <table>
 <tr><td><b>Команда</b></td><td><b>Описание и примеры</b></td></tr>
 
-<tr><td><p><b>if</b></p></td><td>
-<p>every NUM milliseconds|seconds|minutes|hours|days [<b>max-exec</b> <i>NUM</i>] [<b>delay</b> <i>MILLIS</i>] <b>exec</b> <i>ALIAS_NAME</i> </p>
-<p>every <b>clear</b> <i>NUM</i>|<b>all</b></p>
-<p>every <b>delete</b> <i>NUM</i>|<b>all</b></p>
+<tr><td><p><b>every</b></p></td><td>
+<p>every NUM <b>milliseconds</b>|<b>seconds</b>|<b>minutes</b>|<b>hours</b>|<b>days</b> [<b>max-exec</b> <i>NUM</i>] [<b>delay</b> <i>MILLIS</i>] <b>exec</b> <i>ALIAS_NAME</i> </p>
+<p>every <b>delete</b> NUM|<b>all</b></p>
+<p>every <b>clear</b> NUM|<b>all</b></p>
+<p>every <b>enable</b> NUM|<b>all</b></p>
+<p>every <b>disable</b> NUM<b>all</b></p>
 
 TBD:..
 </td></tr>
