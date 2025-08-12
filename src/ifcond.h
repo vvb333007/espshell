@@ -77,11 +77,9 @@ struct ifcond {
 
   uint32_t hits;            // number of times this condition was true
   uint32_t drops;           // number of times alias was not executed (rate-limited or max-exec-limited)
-  uint64_t tsta;            // timestamp, microseconds. 
-  uint64_t tsta0;           // previous timestamp
-                            // If /hits/ is nonzero, then this field has a timestamp of last successful match'
-                            // If /hits/ is 0, then this field contains a timestamp of the last "counters clear"
-  
+  uint64_t tsta;            // timestamp, microseconds. time when condition matched
+  uint64_t tsta0;           // previous timestamp. time, when condition was executed last time.
+                            // updated from tsta on every alias execution
 };
 
 
@@ -94,7 +92,7 @@ struct ifcond {
 // Ifconds array. Each element of the array is a list of 
 // ifconds: ifconds[5] contains all "if rising|falling 5" statements for example.
 // "no trigger" statements (i.e. those without rising or falling keywords) are located
-// in the last entry of this array: ifconds[NUM_PINS]
+// in the ifconds[NO_TRIGGER]
 static struct ifcond *ifconds[NUM_PINS + 2] = { 0 };   // plus 1 for the NO_TRIGGER entry and plus 1 for "every" entries
 
 // RWLock to protect lists of ifconds. Lists are modified only by "if" and "if delete" commands.
@@ -108,7 +106,7 @@ static rwlock_t ifc_rw = RWLOCK_INIT;
 // 17th message from the ISR to ifc_task() will be dropped. Don't make it too small.
 //
 // If it is too big, then no events will be missed but at cost of higher RAM usage. Don't make it too big
-// TODO: implement a counter for dropped messages, display it on "show ifs"
+
 #define MPIPE_CAPACITY 16
 
 static void ifc_task(void *arg);
@@ -133,13 +131,11 @@ static __attribute__((constructor)) void ifc_init_once() {
     if ((ifc_handle = task_new(ifc_task, NULL, "ifcond")) != NULL) {
       task_set_priority(ifc_handle, IFCOND_PRIORITY); 
     } else {
-      // TODO: StartupFailed = "ifcond daemon"
+
       mpipe_destroy(ifc_mp);
       ifc_mp = NULL;
     }
-  } // else
-  // TODO: StartupFailed = "ifcond message pipe";
-  
+  }
 }
 
 // Check if we request given ifcond too fast. Flood protection
@@ -348,7 +344,7 @@ static void ifc_callback_delayed(void *arg) {
 }
 
 // Allocate periodic or single-shot timer for polled events
-// Pereofic or single-shot is defined by ifc.has_delay: if ifcond has "delay" option, then timer callback is initialized in
+// Periodic or single-shot is defined by ifc.has_delay: if ifcond has "delay" option, then timer callback is initialized in
 // two steps.
 // 1. Set up one-shot timer equal to ifc.delay_ms
 // 2. Once it fires - schedule pereodic timer

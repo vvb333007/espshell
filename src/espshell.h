@@ -23,7 +23,7 @@
 
 // -- Compile-time settings BEGIN --
 //
-#define ESPSHELL_VERSION "0.99.9" // Code version
+#define ESPSHELL_VERSION "0.99.10" // Code version
 
 //#define MEMTEST 1              // Enable memory logger (extra output on "show memory"). For shell self-diagnostics
 #define WITH_ALIAS 1             // Set to 0 to disable alias support (commands "alias", "if", "every" and "exec")
