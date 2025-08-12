@@ -326,55 +326,64 @@ static void ifc_callback_delayed(void *arg) {
   struct ifcond *ifc = (struct ifcond *)arg;
   if (ifc) {
 
-    if (!ifc->alive || ifc->disabled)
+    if (!ifc->alive)
       return ;
 
     // delay time has passed: execute alias and schedule periodic timer. remove old timer
-    ifc_callback(arg);
+    if (!ifc->disabled)
+      ifc_callback(arg);
+
+    // Stop one-shot timer and schedule new, periodic timer
     esp_timer_stop(ifc->timer);
     esp_timer_delete(ifc->timer);
     ifc->timer = TIMER_INIT;
 
     // Temporary set has_delay to 0 so ifc_claim_timer() will choose right callback function
     // (ifc_callback instead of ifc_callback_delayed). Same ifc can not be executed from two different tasks,
-    // so it is safe to temporary change ifc->has_delay value.
+    // so it is safe to temporary change ifc->has_delay value: all executions are done by ifc_task()
     ifc->has_delay = 0;
     ifc_claim_timer(ifc);
     ifc->has_delay = 1;
   }
 }
 
-// Allocate periodic timer for polled events
-//
+// Allocate periodic or single-shot timer for polled events
+// Pereofic or single-shot is defined by ifc.has_delay: if ifcond has "delay" option, then timer callback is initialized in
+// two steps.
+// 1. Set up one-shot timer equal to ifc.delay_ms
+// 2. Once it fires - schedule pereodic timer
 static void ifc_claim_timer(struct ifcond *ifc) {
 
-    timer_t handle = TIMER_INIT;
+  timer_t handle = TIMER_INIT;
 
-    esp_timer_create_args_t timer_args = {
-        .callback = &ifc_callback,
-        .dispatch_method = ESP_TIMER_TASK,
-        .arg = ifc,
-        .name = ifc->exec ? ifc->exec->name : "unnamed",
-    };
+  esp_timer_create_args_t timer_args = {
+      .callback = &ifc_callback,
+      .dispatch_method = ESP_TIMER_TASK,
+      .arg = ifc,
+      .name = (ifc && ifc->exec) ? ifc->exec->name : "unnamed",
+  };
 
-    // 2 stage-setup for delayed events
+  // 2 stage-setup for delayed events
+  if (ifc->has_delay)
+    timer_args.callback = &ifc_callback_delayed;
+
+  if (ESP_OK == esp_timer_create(&timer_args, &handle)) {
+    ifc->timer = handle;
     if (ifc->has_delay)
-      timer_args.callback = &ifc_callback_delayed;
-
-    if (ESP_OK == esp_timer_create(&timer_args, &handle)) {
-      ifc->timer = handle;
-      if (ifc->has_delay)
-        esp_timer_start_once(handle, 1000ULL * ifc->delay_ms);
-      else {
-        ifc_callback(ifc);
-        esp_timer_start_periodic(handle, 1000ULL * ifc->poll_interval);
-      }
+      esp_timer_start_once(handle, 1000ULL * ifc->delay_ms);
+    else {
+      // First executions is right now, subsequent - after a delay
+      ifc_callback(ifc);
+      esp_timer_start_periodic(handle, 1000ULL * ifc->poll_interval);
     }
+  }
 }
 
+// Release timer
+//
 static void ifc_release_timer(struct ifcond *ifc) {
   if (ifc && ifc->timer) {
-    VERBOSE(q_print("ifc_release_timer()\r\n"));
+    //VERBOSE(q_print("ifc_release_timer()\r\n"));
     esp_timer_stop(ifc->timer);
     esp_timer_delete(ifc->timer);
     ifc->timer = NULL;
