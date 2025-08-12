@@ -307,10 +307,14 @@ This keyword takes a single parameter — the minimum interval in milliseconds b
 <tr><td><b>Command</b></td><td><b>Description and examples</b></td></tr>
 
 <tr><td><p><b>if</b></p></td><td>
-<p>if <b>rising</b>|<b>falling</b> <i>PIN1</i> [<b>low</b>|<b>high</b> <i>PINn</i>]* [<b>max-exec</b> <i>NUM</i>] [<b>rate-limit</b> <i>MILLIS</i>] <b>exec</b> <i>ALIAS_NAME</i> </p>
 <p>if <b>low</b>|<b>high</b> <i>PIN1</i> [<b>low</b>|<b>high</b> <i>PINn</i>]* [<b>max-exec</b> <i>NUM</i>] [<b>poll</b> <i>MILLIS</i>] <b>exec</b> <i>ALIAS_NAME</i> </p>
-<p>if <b>clear</b>|<b>delete</b> [<b>gpio</b>] <i>NUM</i></p>
-<p>if <b>clear</b>|<b>delete</b> <b>all</b></p>
+
+<p>if <b>delete</b> [<b>gpio</b>] <i>NUM</i></p>
+<p>if <b>delete</b> <b>all</b></p>
+<p>if <b>clear</b> [<b>gpio</b>] <i>NUM</i></p>
+<p>if <b>clear</b> <b>all</b></p>
+<p>if <b>enable</b> NUM|<b>all</b></p>
+<p>if <b>disable</b> NUM<b>all</b></p>
 TBD:..
 </td></tr>
 </table>
@@ -343,11 +347,13 @@ In this version, the first execution will happen in one hour, and all subsequent
 <p>
 <table>
 <tr><td><b>Command</b></td><td><b>Description and examples</b></td></tr>
-
 <tr><td><p><b>every</b></p></td><td>
-<p>every NUM milliseconds|seconds|minutes|hours|days [<b>max-exec</b> <i>NUM</i>] [<b>delay</b> <i>MILLIS</i>] <b>exec</b> <i>ALIAS_NAME</i> </p>
-<p>every <b>clear</b> <i>NUM</i>|<b>all</b></p>
-<p>every <b>delete</b> <i>NUM</i>|<b>all</b></p>
+<p>every NUM <b>milliseconds</b>|<b>seconds</b>|<b>minutes</b>|<b>hours</b>|<b>days</b> [<b>max-exec</b> <i>NUM</i>] [<b>delay</b> <i>MILLIS</i>] <b>exec</b> <i>ALIAS_NAME</i> </p>
+<p>every <b>delete</b> NUM|<b>all</b></p>
+<p>every <b>clear</b> NUM|<b>all</b></p>
+<p>every <b>enable</b> NUM|<b>all</b></p>
+<p>every <b>disable</b> NUM<b>all</b></p>
+
 
 TBD:..
 </td></tr>
