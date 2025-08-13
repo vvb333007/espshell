@@ -2,60 +2,51 @@ Core:
 -----
 1. Remove Arduino Core dependency: be able to compile & work in plain ESP-IDF
 
+Tasks:
+------
+
+1. implement "cpu [0|1|any] task TASK_ID|TASK_NAME" - set task affinity, move task from one core to another.
+   For this, however, I need to get single-core chip for testing
+
 Command processor:
 ------------------
 
-++++1. Command aliases:
-++++   Add "alias" command implements named scripts.
-  
-2. Make command processor be able to expand "$" values: $1 is argv[1] and $VarName is a sketch variable
-    This is one of requirements for [1].
-
-++++3. Upgrade command interpreter so it will recognize "@" symbol and supress echo until <Enter> is pressed
-++++   to simulate DOS' "@echo off"
+1. Make command processor be able to expand "$" values: $1 is argv[1] and $VarName is a sketch variable
 
 GPIO:
 -----
-
-++++1. add event system: configure GPIO masks which, if detected, trigger an alias:
-++++2. add "every" command: esp32#> every INTERVAL_SEC exec TEXT
-
-
-++++3. add "toggle" keyword to "pin" command, to toggle output value betwen 1 and 0  "pin 2 toggle read toggle read"
-++++4. pin_save() on startup so subsequent pin_load() will be guaranteed to not load junk
 
 
 PWM:
 ----
 
-1. Implement phase shift between adjacent channels using .hpoint: adjacent channels share the same timer so their frequency 
-   is the same, only DUTY and PHASE can be controlled
 
 Sequence generator:
 -------------------
 
-1. add sequence capture (using RMT), captured sequence display and saving to a FS. (IR remote capture & playback)
+1. RX: add sequence capture (using RMT), captured sequence display and saving to a FS. (IR remote capture & playback)
+   add sequence decode, based on user-supplied alphabet ("one" & "zero")
 
-  done: 2. make RMT's clock divisor be configurable
-
-3. add support for byte strings (currently only bitstrings are recognized)
+2. TX: add support for byte strings (currently only bitstrings are recognized)
 
 
 Pulse counter / Frequency meter:
 --------------------------------
 
-1. Add support for start/stop pin (i.e. hardware, externally controlled start/stop). This can improve accuracy: setting GPIO high/low from an PCNT interrupt handler
-   is much faster than sending TaskNotification
+1. Add support for start/stop pin (i.e. hardware, externally controlled start/stop). 
+   This can improve accuracy: setting GPIO high/low from an PCNT interrupt handler
+   is much faster than sending TaskNotification.
 
 File Manager:
+-------------
 
-1. Implement "mv" and "cp" commands to be able to copy directory structure
+1. Make "mv" and "cp" commands to be able to copy directory structure
 
-3. Port a single-user, single-threaded simple FTP server - to be able to upload a premade filesystem (i.e. files and directories)
-
+2. Port a single-user, single-threaded simple FTP server - to be able to 
+   upload a premade filesystem (i.e. files and directories)
+3. Make a VFS, to access flash partitions from the file manager: e.g. bootloader.bin, nvs.bin etc
 
 UART, I2C, SPI
 --------------
 
 1. Implement "show uart|i2c|spi [NUM]" : dislpay current interface settings (pins, speed, data width, parity/stopbits where applicable)
-
