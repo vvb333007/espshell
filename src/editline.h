@@ -59,16 +59,18 @@ static struct {
   unsigned char *Lines[HIST_SIZE];
 } H;
 
-// TODO: get rid of barriers if possible. Use _Atomics
-//static barrier_t Input_mux = BARRIER_INIT;
+// TODO: refactor to minimize malloc/free calls.
 static const char *CRLF = "\r\n";
-static unsigned char *Line = NULL;  // Raw user input TODO: make it preallocated 256 bytes buffer? Longer commands are very unlikely anyway
+static unsigned char *Line = NULL;  // Raw user input
+
 static const char *Prompt = NULL;   // Current prompt to use
+static const char *PromptID = "";   // Tag, displayed before prompt: "myhost@esp32#>"
+
 static char *Screen = NULL;         // Output buffer. TTYput, TTYshow etc all write to that buffer; it is displayed by TTYfluh()
 static unsigned int ScreenCount;
 static unsigned int ScreenSize;
 
-static int Repeat;                  // TODO: get rid of it. 
+static int Repeat;                  
 static int End;                     // Line[End] is the symbol at the end
 static int Mark;
 static int OldPoint;
@@ -76,7 +78,8 @@ static int Point;                   // Current cursor position(index) in Line[]
 static int PushBack;
 static int Pushed;
 static _Atomic (const char *) Input = "";  // "Artificial input queue". if non empty then symbols are
-                                // fed to TTYget as if it was user input. used by espshell_exec()
+                                           // fed to TTYget as if it was user input. used by espshell_exec()
+                                           // Must never be NULL!
 static unsigned int Length;
 static bool History = true;
 
@@ -250,19 +253,25 @@ TTYget() {
     Pushed = 0;
     return PushBack;
   }
-
+what_else_we_can_do:
   do {
     // read byte from a priority queue if any.
-    //barrier_lock(Input_mux);
     if (*Input)
       c = *Input++;
-    //barrier_unlock(Input_mux);
     if (c)
       return c;
 
     // read 1 byte from user.
     // if returned value is < 1, that means either "timeout" or "console down"
   } while (console_read_bytes(&c, 1, pdMS_TO_TICKS(500)) < 1);
+
+  // EOF symbol must not enter espshell command pipeline. We can get EOF only if we have problems
+  // with transport layer (uart down or USB down)
+  if (c == 0) {
+    q_delay(1000);
+    q_print("% ESPShell failed to read serial port\r\n");
+    goto what_else_we_can_do;
+  }
 
 #if WITH_COLOR
   // Trying to be smart when coloring mode is set to "auto" (default behaviour):
@@ -291,6 +300,11 @@ reposition() {
   unsigned char *p;
 
   TTYput('\r');
+
+  if (*PromptID) {
+    TTYputs((const unsigned char *)PromptID);
+    TTYput('@');
+  }
   TTYputs((const unsigned char *)Prompt);
 
   for (i = Point, p = Line; --i >= 0; p++)
@@ -324,32 +338,44 @@ ring_bell() {
   return CSstay;
 }
 
-// Ctrl+Z hanlder: send "exit" commnd, disabled echo
-static EL_STATUS
-ctrlz_pressed() {
-  static char cmd[] = {'@','e','x','i','t','\n','\0'};
-  TTYflush();
-  Line[0] = '\0';
-  cmd[5] = SeenCR ? '\r' : '\n'; // <CR> spotted before? Use <CR> as line ending; Use <LF> otherwise
-  TTYqueue(cmd);
-  return CSstay;
-}
-
+// TODO: move SeenCR logic to TTYqueue()
 // Ctrl+C handler: sends "suspend", disabled echo
 static EL_STATUS
 ctrlc_pressed() {
 
-  // This mess here is because of automatic line ending detection. 
-  // Injected commands like that one below must not change /SeenCR/ global variable
-  // so we have to manually construct proper line ending to this command: it must match user terminal line endings
-  // TODO: use clear_lne()
+  // Why not just send "@suspend\r\n"? If we do, then ESPShell will see bith "\r" and "\n" and will assume that
+  // user terminal sends CRLF, which may be not true.
+  //
   static char cmd[] = {'@','s','u','s','p','e','n','d','\n','\0'};
+
+  // mimic user terminal line-endings
+  if (SeenCR)
+    cmd[8] = '\r'; 
+
+  // flush Screen buffer
+  TTYflush();
+
+  // cancel and delete all user input
+  Line[0] = '\0';
+  
+  // Inject our "@suspend" command
+  TTYqueue(cmd);
+
+  return CSstay;
+}
+
+// Ctrl+Z hanlder: send "exit" command, disabled echo
+static EL_STATUS
+ctrlz_pressed() {
+  static char cmd[] = {'@','e','x','i','t','\n','\0'};
+  if (SeenCR)
+    cmd[5] = '\r';
   TTYflush();
   Line[0] = '\0';
-  cmd[8] = SeenCR ? '\r' : '\n'; // <CR> spotted before? Use <CR> as line ending; Use <LF> otherwise
   TTYqueue(cmd);
   return CSstay;
 }
+
 
 
 static EL_STATUS
@@ -397,7 +423,10 @@ ceol() {
 
 static void
 clear_line() {
-  Point = -strlen(Prompt);
+  size_t pid = strlen(PromptID);
+  if (pid)
+    pid++;
+  Point = -strlen(Prompt) - pid;
   TTYput('\r');
   ceol();
   Point = 0;
@@ -439,6 +468,12 @@ static EL_STATUS
 redisplay() {
   const unsigned char *nl = (const unsigned char *)"\r\n";
   TTYputs(nl);
+
+  if (*PromptID) {
+    TTYputs((const unsigned char *)PromptID);
+    TTYput('@');
+  }
+
   TTYputs((const unsigned char *)Prompt);
 
   TTYstring(Line);
@@ -553,16 +588,22 @@ static EL_STATUS h_search() {
   old_prompt = Prompt;
   Prompt = PROMPT_SEARCH;
 #if WITH_COLOR
-  if (Color) TTYputs((const unsigned char *)"\033[1;36m"); //TODO: use tag2ansi() call here
+  if (Color) TTYputs((const unsigned char *)tag2ansi('c')); 
 #endif
 #if WITH_HELP
-  const char *Hint = "% Command history search: start typing and press <Enter> to\r\n% find a matching command executed previously\r\n";
+  const char *Hint = "% Command history search: start typing and press <Enter> to\r\n"
+                     "% find a matching command executed previously\r\n";
   TTYputs((const unsigned char *)Hint);
 #endif
   TTYputs((const unsigned char *)Prompt);
 
   move = Repeat == NO_ARG ? prev_hist : next_hist;
   p = editinput();
+
+#if WITH_COLOR
+  if (Color) TTYputs((const unsigned char *)tag2ansi('/')); 
+#endif
+
   Prompt = old_prompt;
   Searching = 0;
   p = search_hist(p, move);
@@ -703,14 +744,17 @@ meta() {
   unsigned int c;
   const KEYMAP *kp;
 
-  if ((int)(c = TTYget()) == EOF)
+  if ((int)(c = TTYget()) == EOF) {
+    MUST_NOT_HAPPEN(true);
     return CSeof;
+  }
 
   /* Also include VT-100 arrows. */
   if (c == '[' || c == 'O')
     switch ((int)(c = TTYget())) {
       default: return ring_bell();
-      case EOF: return CSeof;
+      case EOF: MUST_NOT_HAPPEN(true);
+                return CSeof;
       case 'A': return h_prev();         // Arrow UP
       case 'B': return h_next();         // Arrow DOWN
       case 'C': return right_pressed();  // Arrow RIGHT
@@ -786,9 +830,7 @@ TTYspecial(unsigned int c) {
     return CSstay;
   }
 
-  // TODO: does this ever happen? Do we handle CSeof correctly?
-  if (c == 0 && Point == 0 && End == 0)
-    return CSeof;
+  MUST_NOT_HAPPEN(c == 0 && Point == 0 && End == 0);
 
   return CSdispatch;
 }
@@ -828,8 +870,8 @@ editinput() {
     }
   }
 
-  // TODO: review this code. Does it ever get control?
-  //if (strlen((char *)Line))
+  MUST_NOT_HAPPEN(c == EOF);
+  
   if (Line[0])
     return Line;
 
@@ -873,6 +915,11 @@ readline(const char *prompt) {
     ScreenSize = SCREEN_INC;
     if ((Screen = NEW(char, ScreenSize, MEM_EDITLINE)) == NULL)
       return NULL;
+  }
+// TODO: make draw_prompt()
+  if (*PromptID) {
+    TTYputs((const unsigned char *)PromptID);
+    TTYput('@');
   }
 
   TTYputs((const unsigned char *)(Prompt = prompt));

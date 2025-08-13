@@ -259,6 +259,40 @@ static bool pin_is_reserved(unsigned char pin) {
   return Reserved & (1ULL << pin);
 }
 
+#if ESP_IDF_VERSION_MAJOR < 5
+#  error "ESP-IDF version 5.x.x or higher is required: update your Arduino Core"
+#endif
+
+// Read GPIO configuration: pull up/down, input enable/disable etc.
+// Previously it was a call to gpio_ll_get_io_config( ... ) a function with many arguments, but
+// ESP-IDF 5.5 has breaking change (changed arguments of gpio_ll_get_io_config() to a single struct).
+//
+// NOTE: Pin must be physical pin, this must be checked before calling this function
+// 
+static void pin_get_io_config(uint8_t pin,
+                              bool *pu,          // pull up? 
+                              bool *pd,          // pull down?
+                              bool *ie,          // input enable?
+                              bool *oe,          // output enable?
+                              bool *od,          // open drain?
+                              uint32_t *drv,     // drive streinght
+                              uint32_t *fun_sel, // iomux function
+                              uint32_t *sig_out, // output peri signal
+                              bool *slp_sel) {
+
+#if (ESP_IDF_VERSION_MAJOR == 5) && (ESP_IDF_VERSION_MINOR < 5)
+  gpio_ll_get_io_config(&GPIO, pin, pu, pd, ie, oe, od, drv, fun_sel, sig_out, slp_sel);
+#else
+#  define X(_Member) *_Member = c._Member
+  gpio_io_config_t c;
+  gpio_get_io_config((gpio_num_t)pin, &c);
+  X(fun_sel);  X(sig_out);  X(drv);  X(pu);  X(pd);  X(ie);  X(oe);  X(od);  X(slp_sel);
+#  undef X
+}
+#endif // Old or new IDF?
+
+
+
 
 // WARNING! Not reentrat, use with caution
 // WARNING! Undefined behaviour IF io_mux_func_name[][] is a long number, as a text: "12345". These numbers
@@ -333,8 +367,9 @@ static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
       q_printf( "%% %c<%c>%02u</> ",mark,color,pin);
 
       // get pin IO_MUX function currently selected
-      // TODO: use gpio_get_io_config()
-      gpio_ll_get_io_config(&GPIO, pin, &pu, &pd, &ie, &oe, &od, &drv, &fun_sel, &sig_out, &slp_sel);
+      // TODO: just read IOMUX register.
+
+      pin_get_io_config(pin, &pu, &pd, &ie, &oe, &od, &drv, &fun_sel, &sig_out, &slp_sel);
 
       // For each pin, run through all its functions. 
       // Highligh function that is currently assigned to the pin (via pre/post tags)
@@ -540,7 +575,7 @@ static void pin_save(int pin) {
     return;
   
 
-  gpio_ll_get_io_config(&GPIO, pin, &pu, &pd, &ie, &oe, &od, &drv, &fun_sel, &sig_out, &slp_sel);
+  pin_get_io_config(pin, &pu, &pd, &ie, &oe, &od, &drv, &fun_sel, &sig_out, &slp_sel);
 
   //Pin peri connections:
   // If fun_sel == PIN_FUNC_GPIO then sig_out is the signal ID
@@ -707,8 +742,8 @@ static int cmd_show_pin(int argc, char **argv) {
         }
 
         q_printf(usage, perimanGetTypeName(type));
-        //TODO: use gpio_get_io_config()
-        gpio_ll_get_io_config(&GPIO, pin, &pu, &pd, &ie, &oe, &od, &drv, &fun_sel, &sig_out, &sleep_sel);
+        
+        pin_get_io_config(pin, &pu, &pd, &ie, &oe, &od, &drv, &fun_sel, &sig_out, &sleep_sel);
 
         if (ie || oe || od || pu || pd || sleep_sel) {
           q_print("% Mode:<i> ");

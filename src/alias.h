@@ -70,7 +70,7 @@ static bool alias_add_line(argcargv_t **s,  argcargv_t *aa) {
 // When deleting, 
 // line number 0 means "last line in the alias" 
 // line number -1 means "all lines in the alias"
-// TODO: change 0 and -1, because -1 looks more natural when deleting the last line
+// TODO:3 change 0 and -1, because -1 looks more natural when deleting the last line
 //
 static int alias_delete_line(argcargv_t **s, int nline) {
 
@@ -107,24 +107,19 @@ static int alias_delete_line(argcargv_t **s, int nline) {
   return del;
 }
 
-// "show alias NAME"
-// "list"
-// TODO: refactor to use userinput_show()
+// Displays alias content
+// /s/ is either pointer to AA or NULL
 static int alias_show_lines(argcargv_t *s) {
-  int i = 0,j;
+  int i = 0;
   const char *pre = "";
   for ( ; s; s = s->next) {
-    WD()
-    q_printf("%% % 3u: %s%s", ++i, pre, s->argv[0]);
-    WE()
-    for (j = 1; j < s->argc; j++) {
-      q_print(" ");
-      q_print(s->argv[j]);
-    }
-    q_print("\r\n");
+
+    q_printf("%% %3u: %s", ++i, pre);
+    userinput_show(s);
+    q_print(CRLF);
 
     // Indent commands inside subdirectories. Only one level. Indent is restored on "exit" command
-    // TODO:
+    // TODO:2
     // "camera settings" is not indented because is_command_directory() only pays attention to the first element (i.e. "camera")
     // Plus to that, keywords are named "keywords_espcam", not "keywords_camera"
     if (!q_strcmp(s->argv[0],"exit"))
@@ -298,8 +293,8 @@ static int cmd_alias_asterisk(int argc, char **argv) {
   // subdirectory: we don't track directories. In such cases command handler is not precached and will be found on
   // a first alias use
   //
-  // TODO: refactor, probably a racecond. Add a parameter to userinput_find_handler() 
-  //       to specify search directories
+  // TODO:1 refactor, probably a racecond. Add a parameter to userinput_find_handler() 
+  //       to specify search directories, don't modify global /keywords/ variable!
   const struct keywords_t *tmp = keywords;
   keywords = keywords_main;
   userinput_find_handler(AA);
@@ -331,7 +326,6 @@ static int alias_exec(struct alias *al) {
     
   for (p = al->lines; p; p = p->next) {
     userinput_ref(p);                   // espshell_command() does unref()
-    p->bg_exec = 0;                     // TODO: remove. command processor decides if it is background or foreground command
     if (espshell_command(NULL, p) != 0) {// execute
       ret = CMD_FAILED; // if there were errors during execution, signal it as generic error:
                         // no point in returning real code as it makes sence only for a particular argcargv, not for command "exec"

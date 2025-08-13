@@ -366,7 +366,7 @@ static int cmd_count(int argc, char **argv) {
         return count_clear_counter(pin);
 
   // Allocate new counter unit: find an index to units[] array which is free to use
-  // TODO: move it after options processing to get rid of count_release_unit() on errors
+  // TODO:3 move it after options processing to get rid of count_release_unit() on errors
   if ((unit = count_claim_unit()) < 0) {
     q_print("% <e>All " xstr(PCNT_UNIT_MAX) "counters are in use</>\r\n% Use \"kill\" to free up counter resources\r\n");
     if (pcnt_unit != PCNT_UNIT_0)
@@ -414,7 +414,7 @@ bad_filter:
       // position to the next argument (a filter value "count 10 trigger filter VALUE")
       // numeric argument is expected
       i++;
-      if (isnum(argv[i])) { // TODO: q_numeric()?
+      if (isnum(argv[i])) { 
   
         unsigned int val_ns;
         val_ns = val = q_atol(argv[i],0);
@@ -513,7 +513,7 @@ release_hardware_and_exit:
   // mark this PCNT unit as unused
   count_release_unit(unit);
 
-  // print measurement results. TODO: make <1Hz display possible
+  // print measurement results. TODO:2 make <1Hz display possible
   unsigned int freq;
   count_read_counter(unit,&freq,NULL);
   q_printf("%% %u pulses in approx. %llu ms (%u Hz, %u IRQs)\r\n", units[unit].count, units[unit].interval / 1000ULL, freq, units[unit].overflow);
@@ -542,13 +542,20 @@ static int cmd_show_counters(UNUSED int argc, UNUSED char **argv) {
     cnt = count_read_counter(i,&freq,&interval);
     
 // wish we can have #pragma in #define ..
-    WD()
-    q_printf("%%  %d |% 3u| %s | 0x%08x | <g>% 11u</> | % 10u | % 8u | ", i, units[i].pin, count_state_name(i), units[i].taskid, cnt, (unsigned int )(interval / 1000ULL), freq); // TODO: bad typecast
+
+    q_printf("%%  %d |%3u| %s | 0x%08x | <g>%11u</> | %10u | %8u | ", 
+                  i, 
+                  units[i].pin,
+                  count_state_name(i),
+                  units[i].taskid,
+                  cnt,
+                  (unsigned int )(interval / 1000ULL), // TODO:3 bad typecast
+                  freq); 
     if (units[i].filter_enabled)
       q_printf(" <i>%u</>\r\n", units[i].filter_value);
     else
       q_print("-off-\r\n");
-    WE()
+
   }
 
   if (pcnt_counters) {

@@ -26,20 +26,16 @@ extern bool setCpuFrequencyMhz(uint32_t);
 // TODO: make cpu_ticks() to accept an address where result is stored
 //       if *address == 0, then CCOUNT is stored otherwise, if *address != 0
 //       then *address = CCOUNT - *address
-
+//
+static inline __attribute__((always_inline)) uint32_t cpu_ticks() {
+  uint32_t ccount;
 #if __XTENSA__
-static inline __attribute__((always_inline)) uint32_t cpu_ticks() {
-  uint32_t ccount;
   asm ( "rsr.ccount %0;" : "=a"(ccount) /*Out*/ : /*In*/ : /* Clobber */);
-  return ccount;
-}
 #else // RISCV
-static inline __attribute__((always_inline)) uint32_t cpu_ticks() {
-  uint32_t ccount;
   asm ( "csrr %0, mcycle" : "=r"(ccount) /*Out*/ : /*In*/ : /* Clobber */);
+#endif
   return ccount;
 }
-#endif
 
 // Check if APB frequency is optimal or can be raised
 // ESP32 and ESP32-S2 lower their APB frequency if CPU frequency goes below 80 MHz
@@ -90,7 +86,8 @@ static void __attribute__((constructor)) cpu_read_frequencies() {
 //
 // Display CPU ID information, frequencies, chip temperature, flash chip information
 // and a couple of other things.
-// Must be kept in sync with latest ArduinoCore
+// Code below is based on Arduino Core 3.x.x and must be kept in sync with latest ArduinoCore
+//
 static int cmd_show_cpuid(int argc, char **argv) {
 
   esp_chip_info_t chip_info;
@@ -186,7 +183,7 @@ static int cmd_show_cpuid(int argc, char **argv) {
   
   //
   // global variable g_rom_flashchip is defined in linker file.
-  // TODO: may be use bootloader_read_flash_id() ?
+  // may be use bootloader_read_flash_id() ?
   const char *mfg, *type; 
 
   uint8_t  manufacturer = (g_rom_flashchip.device_id >> 16) & 0xff;
@@ -216,7 +213,7 @@ static int cmd_show_cpuid(int argc, char **argv) {
   q_printf( "\r\n%%\r\n%% <u>Flash chip (SPI Flash):</>\r\n"
             "%% Chip ID: 0x%04X (%s), manufacturer ID: %02X (%s)\r\n"
             "%% Size <i>%lu</> bytes (%lu MB)\r\n"
-            "%% Block size is <i>%lu</>, sector size is %lu and page size is %lu)",
+            "%% Block size is <i>%lu</>, sector size is %lu and page size is %lu",
             id,
             type,
             manufacturer,
@@ -230,10 +227,10 @@ static int cmd_show_cpuid(int argc, char **argv) {
   q_print("\r\n%\r\n% <u>Firmware:</>\r\n");
   q_printf( "%% Sketch is running on <b>" ARDUINO_BOARD "</>, (an <b>" ARDUINO_VARIANT "</> variant), uses:\r\n"
             "%% Arduino Core version <i>%s</>, which uses\r\n"
-            "%% Espressif ESP-IDF version \"%s\"\r\n"
+            "%% Espressif ESP-IDF version \"<i>%u.%u.%u</>\"\r\n"
             "%% ESPShell library <i>" ESPSHELL_VERSION "</>\r\n", 
             ESP_ARDUINO_VERSION_STR, 
-            esp_get_idf_version());
+            ESP_IDF_VERSION_MAJOR,ESP_IDF_VERSION_MINOR,ESP_IDF_VERSION_PATCH);
 
   q_print("%\r\n% <u>Last boot:</>\r\n");            
   cmd_uptime(argc, argv);

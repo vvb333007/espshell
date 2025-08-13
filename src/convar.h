@@ -128,7 +128,7 @@ void espshell_varadd(const char *name, void *ptr, int size, bool isf, bool isp, 
 // Code above fails when trying to register a pointer, because of integer comparision code
 // Code below is used to register pointers
 // The /size/ argument here is the sizeof(*ptr), i.e. size of a memory region pointed by pointer
-// TODO: pointer to a pointer can not be registered on the same reason
+//
 void espshell_varaddp(const char *name, void *ptr, int size, bool isf, bool isp, bool isu) {
 
   struct convar *var;
@@ -159,7 +159,7 @@ void espshell_varaddp(const char *name, void *ptr, int size, bool isf, bool isp,
 // Because of this it is possible to set an array variable to a new value. It will not affect the sketch 
 // (you can not change address of an array) but it will affect ESPShell.
 //
-// TODO: array of pointers can not be registered. 
+//
 void espshell_varadda(const char *name, void *ptr, int size,int count, bool isf, bool isp, bool isu) {
 
   struct convar *var;

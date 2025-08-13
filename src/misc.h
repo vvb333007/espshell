@@ -250,6 +250,26 @@ static int cmd_colors(int argc, char **argv) {
 }
 #endif  //WITH_COLOR
 
+//"hostname"
+//
+// Hidden command, to add a hostname to the prompt.
+//
+static int cmd_hostname(int argc, char **argv) {
+  static char buf[32];
+  if (argc < 2) {
+    if (*PromptID)
+      q_printf("%% Host name is \"%s\"\r\n", PromptID);
+    else
+      q_print("% Host name is not set. Use \"hostname Name\" to set\r\n");
+  } else {
+    // Copy user input.
+    strlcpy(buf,argv[1],sizeof(buf));
+    PromptID = buf;
+  }
+  return 0;
+}
+
+
 // Used in MUST_NOT_HAPPEN() macro. Declared here because of conflicts in include files
 // (can not be declared in qlib.h so let it be here)
 //

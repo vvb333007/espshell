@@ -499,7 +499,7 @@ static signed char  Echop = 0;               // "Previous" state of the /Echo/. 
 //
 // The HTML-looking tags we use are single-letter tags: <b> <e> <i> ... 
 // Closing tag </> simply sets standart colors and text attributes (cancels action of ALL previous tags)
-// Tag actions are additive: <g><u> will set text color to green and then turns underline font option; 
+// Tag actions are additive: <u><g> will set text color to green and turns underline font option; 
 // the </> tag afterwards will cancel both <g> and <u>
 //
 // Color tags are processed in q_print() (there are 1 direct use of color sequence in editline.h) and
@@ -508,15 +508,23 @@ static signed char  Echop = 0;               // "Previous" state of the /Echo/. 
 // Sequences below have their **length** encoded as the very first byte to save on strlen() later.
 //
 static const char *ansi_tags['z' - 'a' + 1] = {
+  // Foreground color
   ['b' - 'a'] = "\07\033[1;97m",   // [b]old bright white
+  ['d' - 'a'] = "\07\033[37m",     // [d]ark white  (<b><d> Bold Dark White</>)
   ['e' - 'a'] = "\05\033[95m",     // [e]rror message (bright magenta)
   ['i' - 'a'] = "\010\033[33;93m", // [i]important information (eye-catching bright yellow)
   ['n' - 'a'] = "\04\033[0m",      // [n]ormal colors. cancels all tags
   ['r' - 'a'] = "\04\033[7m",      // [r]everse video
   ['w' - 'a'] = "\05\033[91m",     // [w]arning message ( bright red )
   ['o' - 'a'] = "\05\033[33m",     // [o]ptional dark yellow
-  ['u' - 'a'] = "\07\033[4;37m",   // [u]nderlined, normal white
+  ['u' - 'a'] = "\07\033[4;37m",   // [u]nderlined, normal white. (<u><b>Underlined Bright White</>)
   ['g' - 'a'] = "\05\033[92m",     // [g]reen. Bright green
+  ['c' - 'a'] = "\05\033[36m",     // [c]yan. dark
+  ['z' - 'a'] = "\05\033[96m",     // [z]yan. bright
+
+  // Background color
+  ['x' - 'a'] = "\05\033[41m",     // red background ( X - no no no)
+  ['y' - 'a'] = "\05\033[42m",     // green background ( Y - yes yes yes)
   //other definitions can be added here as well as long as they are in [a-z] range
 };
 

@@ -251,14 +251,14 @@ static int cmd_show_tasks(int argc, char **argv) {
     uxTaskGetSystemState( tasks, nt, NULL);
 
     q_print("%<r>  # |  Task  ID  |        Name      | Prio |   State   | Stack/(HighWM)   </>\r\n"
-            "%----+------------+------------------+------+-----------+--------------------\r\n");
+            "%----+------------+------------------+------+-----------+------------------\r\n");
 
     for (j = 0; j < nt; j++) {
       // just in case. you never know when they decide to update their eStatus enum
       if (tasks[j].eCurrentState > 5)
         tasks[j].eCurrentState = 5;
 
-      const char *warn = "<w>!";
+      const char *warn = "<x>!";
       if (tasks[j].usStackHighWaterMark > 1023)
         warn = " ";
 
@@ -274,7 +274,7 @@ static int cmd_show_tasks(int argc, char **argv) {
     }
   }
   q_printf("%%----+------------+------------------+------+-----------+------------------\r\n"
-           "%% Total: %u tasks. Note that <w>low HighWM</> values indicate stack overflow risks\r\n",j);
+           "%% Total: %u tasks. <x>low HighWM</> values MAY indicate stack overflow risks\r\n",j);
   return 0;
 }
 #else //!CONFIG_FREERTOS_USE_TRACE_FACILITY

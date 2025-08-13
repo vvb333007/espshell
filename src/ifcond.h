@@ -166,8 +166,11 @@ static inline bool ifc_too_fast(struct ifcond *ifc) {
 // GPIO Interrupt routine, implemented via "GPIO ISR Service" API: a global GPIO handler is implemented in ESP-IDF
 // calls user-defined routines. 
 //
-// Using an GPIO ISR Service creates less headache when co-existing together with a sketch which also uses 
-// GPIO interrupts. Arduino sketches use GPIO interrupts via GPIO ISR Service so we do the same.
+// Using an GPIO ISR Service (as compared to global GPIO handler) creates less headache when co-existing 
+// together with a sketch which also uses GPIO interrupts. Arduino sketches use GPIO interrupts via GPIO 
+// ISR Service so we do the same.
+//
+// We DO install ISR service even if it was installed already: user sketch can unregister it
 //
 // Handles "trigger ifconds", i.e. ifconds which have "rising" or "falling" keywords
 //

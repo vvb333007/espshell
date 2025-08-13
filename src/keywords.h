@@ -144,6 +144,8 @@ static int cmd_history(int, char **);
 static int cmd_colors(int, char **);
 #endif
 static int cmd_tty(int, char **);
+static int cmd_hostname(int, char **);
+
 
 #if WITH_ALIAS
 static int cmd_alias_if(int, char **);
@@ -980,6 +982,7 @@ KEYWORDS_DECL(main) {
 
 #endif
 
+  { "hostname", cmd_hostname, MANY_ARGS, HIDDEN_KEYWORD },
   // Switch espshell's input to another UART
   { "tty", cmd_tty, MANY_ARGS, HIDDEN_KEYWORD },
 
@@ -1497,8 +1500,7 @@ static void keywords_register(const struct keywords_t *key, const char *name) {
 }
 
 // Check, if given name can be a command directory
-// TODO: rename keywords_espcam to keywords_camera: 
-//       this will result in all camera commands treated as a subdir
+// TODO: rename keywords_espcam to keywords_camera 
 //
 static bool is_command_directory(const char *p) {
   if (p && *p) {

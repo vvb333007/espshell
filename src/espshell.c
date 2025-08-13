@@ -195,12 +195,10 @@ void STARTUP_HOOK espshell_start();
 // "Context": an user-defined value (a number) which is set by change_command_directory() when switching to new command subtree. 
 // This is how command "uart 1" passes its argument  (the number "1") to the subtree commands like "write" or "read". 
 // Used to store: sequence number, uart,i2c interface number, probably something else
-// TODO: make it to be an union of basic C-types
+// TODO:2 make it to be an union of basic C-types
 static unsigned int Context = 0;
 
 // Currently used prompt
-// TODO: get rid of all these /static char prompt[]/ (defined in functions) by replacing them with one
-//       single buffer for everyone
 static const char * prompt = PROMPT; 
 
 // Common messages. 
@@ -288,6 +286,8 @@ static int espshell_command(char *p, argcargv_t *aa);
 #include "show.h"               // "show KEYWORD [ARG1 ARG2 ... ARGn]" command
 #include "question.h"           // cmd_question(), context help handler and help pages
 
+
+
 // Moved to a function, because it is called both from asyn shell command and command processor
 //
 static void espshell_display_error(int ret, int argc, char **argv) {
@@ -368,19 +368,18 @@ static int exec_in_background(argcargv_t *aa_current) {
 
   // Start async task. Pin to the same core where espshell is executed
   
-// TODO: make_task_name_from_aa()
+// TODO:3 make_task_name_from_aa()
   if ((ignored = task_new(espshell_async_task, aa_current, aa_current->argv[0])) == NULL) {
     q_print("% <e>Can not start a new task. Resources low? Adjust STACKSIZE macro in \"espshell.h\"</>\r\n");
     userinput_unref(aa_current);
-  } else
-
+  } else {
     // Update task priority if requested    
     if (aa_current->has_prio)
       task_set_priority(ignored, aa_current->prio);
 
     //Hint user on how to stop bg command
     q_printf("%% Background task started\r\n%% Copy/paste \"<i>kill %p</>\" to abort\r\n", ignored);
-
+  }
   return 0;
 }
 

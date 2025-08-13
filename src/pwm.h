@@ -265,9 +265,9 @@ static int cmd_show_pwm(UNUSED int argc, UNUSED char **argv) {
       }
     }
 
-    q_printf("%%\r\n%% PWM clock source is \"%s\", (running at %lu Hz)\r\n",
-              pwm_clock_source(), 
-              pwm_source_clock_frequency());
+  q_printf("%%\r\n%% PWM clock source is \"%s\", (running at %lu Hz)\r\n",
+            pwm_clock_source(), 
+            pwm_source_clock_frequency());
 
     return 0;
 }
