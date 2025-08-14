@@ -1,0 +1,35 @@
+Persistent Pointers
+
+In ESPShell, certain data structures, once allocated, are never truly freed.
+Instead, deallocated entries are moved to an “unused entries” list.
+
+For example, struct helper_arg in alias.h is frequently allocated and 
+deallocated, but its pointers remain persistent. Dereferencing such a pointer 
+is safe, even after deallocation.
+
+Benefits:
+
+Higher performance – fewer malloc() calls.
+
+Better stability – deallocated pointers remain valid.
+
+These structures are managed via _get() and _put() functions, e.g., ha_get()
+and ha_put(). Pointer persistence is widely used in ESPShell to avoid mutexes,
+reduce pointer checks, and simplify code.
+
+Example:
+struct alias {
+  ...
+  char name[0];    // always valid
+};
+
+struct ifcond {
+  ...
+  struct alias *al; // always valid
+  ...
+} *ifc;              // always valid
+
+Accessing ifc->al->name is always safe because every pointer in the chain is 
+persistent. While dereferencing freed memory is still a bug, persistent 
+pointers allow the program to continue running, making it easier to debug 
+without constant crashes.
