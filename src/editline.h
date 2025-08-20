@@ -899,7 +899,7 @@ hist_add(unsigned char *p) {
 
 // old good readline()
 static char *
-readline(const char *prompt) {
+readline(const char *pro) {
   unsigned char *line;
   unsigned char nil[] = { 0 };
 
@@ -922,7 +922,7 @@ readline(const char *prompt) {
     TTYput('@');
   }
 
-  TTYputs((const unsigned char *)(Prompt = prompt));
+  TTYputs((const unsigned char *)(Prompt = pro));
   TTYflush();
 
   if ((line = editinput()) != NULL) {

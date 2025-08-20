@@ -201,6 +201,53 @@ static INLINE bool is_background_task() {
 }
 
 
+// A task argument for the ..._helper_task(). We can only have 1 argument 
+// to the function so we use this temporary struct
+//
+struct helper_arg {
+  struct helper_arg        *next;     // TODO: make a union of these 3 pointers?
+  struct alias             *al;
+  argcargv_t               *aa;
+  uint32_t                  delay_ms;
+  __typeof__(Context)       context;
+  const struct keywords_t  *keywords;
+};
+
+
+// Once allocated, structures never freed. Instead they are put on the "unused" list
+// Since alias_exec_in_background() is called everytime condition is triggered, we want our alloc/free
+// to be as fast as possible - thats why ha_get() and ha_put(). 
+// Second reason is to keep pointers persistent - so any stored pointer always points 
+// to a valid memory region
+//
+static struct helper_arg *ha_unused = NULL;
+static mutex_t ha_mux = MUTEX_INIT;
+
+// Allocate / Reuse
+//
+static struct helper_arg *ha_get() {
+
+  struct helper_arg *ret;
+
+  mutex_lock(ha_mux);
+  if ((ret = ha_unused) != NULL)
+    ha_unused = ha_unused->next;
+  mutex_unlock(ha_mux);
+
+  return ret ? ret : (struct helper_arg *)q_malloc(sizeof(struct helper_arg ), MEM_TMP);
+}
+
+// Deallocate / Put on the unused list
+//
+static void ha_put(struct helper_arg *ha) {
+  if (ha != NULL) {
+    mutex_lock(ha_mux);
+    ha->next = ha_unused;
+    ha_unused = ha;
+    mutex_unlock(ha_mux);
+  }
+}
+
 // Older versions of  ESP-IDF had FreeRTOS Trace Facility disabled, so we had to use an ugly workaround 
 // (see taskid_remember(), taskid_forget())
 // 
@@ -350,7 +397,7 @@ static int cmd_resume(int argc, char **argv) {
   return 0;
 }
 
-//"kill [-term|-kill|-9|-15] TASK_ID"
+//"kill [-term|-kill|-9|-15] TASK_ID|TASK_NAME"
 // 1. Stop a background command
 // 2. Terminate arbitrary FreeRTOS task
 // 
@@ -361,12 +408,17 @@ static int cmd_kill(int argc, char **argv) {
   if (argc < 2)
     return CMD_MISSING_ARG;
 
-  if (argv[i][0] == '-') { // an option, task id follows
+  if (argv[i][0] == '-' && argv[i][1]) { // an option, task id follows
     q_tolower(argv[i]);
-    // TODO: refactor to 1..2 char comparisions, drop q_strcmp()
+#if 0    
     if (!q_strcmp(argv[i],"-term") || !q_strcmp(argv[i],"-15")) sig = SIGNAL_TERM; else
-    if (!q_strcmp(argv[i],"-hup") ||  !q_strcmp(argv[i],"-1")) sig = SIGNAL_HUP; else
+    if (!q_strcmp(argv[i],"-hup")  ||  !q_strcmp(argv[i],"-1")) sig = SIGNAL_HUP;  else
     if (!q_strcmp(argv[i],"-kill") || !q_strcmp(argv[i],"-9"))  sig = SIGNAL_KILL; else return 1;
+#else
+    if (argv[i][1] == 't' || (argv[i][1] == '1' && argv[i][2] == '5')) sig = SIGNAL_TERM; else
+    if (argv[i][1] == 'h' || (argv[i][1] == '1' && argv[i][2] == 0)) sig = SIGNAL_HUP; else
+    if (argv[i][1] == 'k' || (argv[i][1] == '9' && argv[i][2] == 0)) sig = SIGNAL_KILL; else return 1;
+#endif    
     i++;
   }
 

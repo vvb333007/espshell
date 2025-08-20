@@ -112,7 +112,7 @@ static int cmd_uart_if(int argc, char **argv) {
 //
 static int cmd_uart_baud(int argc, char **argv) {
 
-  unsigned char u = Context;
+  unsigned char u = context_get_uint();
 
   if (argc < 2)
     return CMD_MISSING_ARG;
@@ -133,7 +133,7 @@ static int cmd_uart_baud(int argc, char **argv) {
 //
 static int cmd_uart_up(int argc, char **argv) {
 
-  unsigned char u = Context, bits = 8, parity = 0, sbits = 1;
+  unsigned char u = context_get_uint(), bits = 8, parity = 0, sbits = 1;
   unsigned int rx, tx, speed;
 
   if (argc < 4)
@@ -194,9 +194,9 @@ static int cmd_uart_up(int argc, char **argv) {
 //
 static int cmd_uart_down(UNUSED int argc, UNUSED char **argv) {
 
-  if (uart_isup(Context)) {
-    HELP(q_printf("%% Shutting down UART%u\r\n", Context));
-    uartEnd(Context);
+  if (uart_isup(context_get_uint())) {
+    HELP(q_printf("%% Shutting down UART%u\r\n", context_get_uint()));
+    uartEnd(context_get_uint());
   }
 
   return 0;
@@ -207,7 +207,7 @@ static int cmd_uart_down(UNUSED int argc, UNUSED char **argv) {
 //
 static int cmd_uart_read(UNUSED int argc, UNUSED char **argv) {
 
-  unsigned char u = Context;
+  unsigned char u = context_get_uint();
   size_t available = 0, tmp = 0;
 
   if (uart_isup(u)) {
@@ -238,7 +238,7 @@ static int cmd_uart_read(UNUSED int argc, UNUSED char **argv) {
 static int cmd_uart_write(int argc, char **argv) {
 
   int sent = 0, size;
-  unsigned char u = Context;
+  unsigned char u = context_get_uint();
   char *out = NULL;
 
   if (argc < 2)
@@ -262,7 +262,7 @@ static int cmd_uart_write(int argc, char **argv) {
 //
 static int cmd_uart_tap(int argc, char **argv) {
 
-  unsigned char u = Context;
+  unsigned char u = context_get_uint();
 
   if (uart != u) {
     if (uart_isup(u)) {

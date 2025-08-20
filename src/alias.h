@@ -29,8 +29,8 @@
 // Helper macro for handlers (cmd_... ) : get a pointer to currently edited alias
 // Pointer resides in the /Context/
 #define ALIAS(_X) \
-  struct alias *_X = ((struct alias *)Context); \
-  MUST_NOT_HAPPEN(Context == 0)
+  struct alias *_X = context_get_ptr(struct alias); \
+  MUST_NOT_HAPPEN(_X == NULL)
 
 // Aliases database (a list):
 //
@@ -122,6 +122,7 @@ static int alias_show_lines(argcargv_t *s) {
     // TODO:2
     // "camera settings" is not indented because is_command_directory() only pays attention to the first element (i.e. "camera")
     // Plus to that, keywords are named "keywords_espcam", not "keywords_camera"
+    // SOLUTION: rename keywords_espcam to keywords_camera and move all camera commands under the "camera" directory
     if (!q_strcmp(s->argv[0],"exit"))
       pre = "";
     else if (is_command_directory(s->argv[0]))
@@ -138,9 +139,10 @@ static int alias_show_lines(argcargv_t *s) {
 //
 struct alias *alias_by_name(const char *name) {
   struct alias *al = Aliases;
-  if (name && *name)
+  if (likely(name && *name))
     for (; al; al = al->next)
-      if (!q_strcmp(name, al->name))
+      //if (!q_strcmp(name, al->name))
+      if (!strcmp(name, al->name)) // can't use loose strcmp here: test and test2 would match
         break;
   return al;
 }
@@ -228,8 +230,9 @@ static int cmd_show_alias(int argc, char **argv) {
       q_print("% List of defined aliases:\r\n");
       for (i = 1, al = Aliases; al ; ++i, al = al->next)
         q_printf("%% %d. \"%s\"%s\r\n",i,al->name,al->lines ? "" : ", empty");
+      HELP(q_print("% Use command \"<i>show alias NAME</>\" to display alias content\r\n"));
     } else
-      q_print("% No aliases defined. Use \"alias NAME\" to create one\r\n");
+      HELP(q_print("% No aliases defined. Use \"<i>alias NAME</>\" to create one\r\n"));
     return 0;
   } else {
     al = alias_by_name(argv[2]);
@@ -337,60 +340,28 @@ static int alias_exec(struct alias *al) {
   return ret;
 }
 
-// A task argument for the alias_helper_task(). We can only have 1 argument 
-// to the function so we use this temporary struct
-//
-struct helper_arg {
-  struct alias      *al;
-  uint32_t           delay_ms;
-  struct helper_arg *next;     // list entry, normally NULL, can be freely used
-};
-
-// Once allocated, structures never freed. Instead they are put on the "unused" list
-// Since alias_exec_in_background() is called everytime condition is triggered, we want our alloc/free
-// to be as fast as possible. Second reason is to keep pointers persistent - so any stored pointer always points 
-// to a valid memory region
-static struct helper_arg *ha_unused = NULL;
-static mutex_t ha_mux = MUTEX_INIT;
-
-// Allocate / Reuse
-//
-static struct helper_arg *ha_get() {
-
-  struct helper_arg *ret;
-
-  mutex_lock(ha_mux);
-  if ((ret = ha_unused) != NULL)
-    ha_unused = ha_unused->next;
-  mutex_unlock(ha_mux);
-
-  return ret ? ret : (struct helper_arg *)q_malloc(sizeof(struct helper_arg ), MEM_ALIAS);
-}
-
-// Deallocate / Put on the unused list
-//
-static void ha_put(struct helper_arg *ha) {
-  if (ha != NULL) {
-    mutex_lock(ha_mux);
-    ha->next = ha_unused;
-    ha_unused = ha;
-    mutex_unlock(ha_mux);
-  }
-}
-
-
-// The task which executes aliases in a background
+// The task which executes aliases in a background. It is called from alias_exec_in_background()
+// usually in response to ifcond/every events. Ordinary bg commands are executed via exec_in_background()
 //
 static void alias_helper_task(void *arg) {
   struct helper_arg *ha = (struct helper_arg *)arg;
 
+  // TODO: copy ha, do ha_put() asap
   if (likely(ha)) {
+
+    // set our "global" variables (inherited from the spawning task)
+    context_set(ha->context);
+    keywords_set_ptr(ha->keywords);
+
     // delay, if required (see alias_exec_in_background_delayed())
     if (ha->delay_ms)
       q_delay(ha->delay_ms);
     alias_exec(ha->al);
+    ha_put(ha);
   }
-  ha_put(ha);
+  // prompt must be unchanged at this point, because change_command_directory() changes prompt
+  // for foreground tasks only. Background commands can not change prompt.
+
   task_finished();
 }
 
@@ -402,8 +373,15 @@ static int alias_exec_in_background_delayed(struct alias *al, uint32_t delay_ms)
   struct helper_arg *ha;
 
   if ((ha = ha_get()) != NULL) {
+
     ha->al = al;
     ha->delay_ms = delay_ms;
+    // Context & Keywords are per-thread variables!
+    // Make local copy of the context & keywords values. Spawned task will initialize its
+    // own Context and keywords variables from these values.
+    ha->context = context_get_uint();
+    ha->keywords = keywords_get();
+    //ha->prompt = prompt;
 
     return task_new(alias_helper_task,
                     ha,
@@ -414,7 +392,7 @@ static int alias_exec_in_background_delayed(struct alias *al, uint32_t delay_ms)
 
 // "exec ALIAS_NAME [ NAME2 NAME3 ... NAMEn]"
 // Main command directory
-//
+// TODO: "exec /file_name"
 static int cmd_exec(int argc, char **argv) {
 
   struct alias *al;

@@ -156,11 +156,30 @@ static inline bool ifc_too_fast(struct ifcond *ifc) {
 #define ifc_not_expired(_Ifc) \
   (!_Ifc->disabled && (_Ifc->has_limit ? _Ifc->hits < _Ifc->limit : true))
 
+// Mark ifcond entry as "disabled"
 #define ifc_set_disabled(_Ifc) \
   _Ifc->disabled = 1;
 
+// Clear "disabled" flag
 #define ifc_clear_disabled(_Ifc) \
   _Ifc->disabled = 0;
+
+// GPIO mask where ISR is registered. Bit 17 set means GPIO17 has its ISR registered 
+// This mask is used when enabling/disabling GPIO interrupts (as part of access protection in ifc_delete)
+//
+static uint64_t isr_enabled = 0;
+
+// Check if GPIO has ISR handler installed
+#define ifc_isr_is_registered(_Gpio) \
+  (isr_enabled & (1ULL << (_Gpio)))
+
+// Set "ISR Installed" falg for pin _Gpio
+#define ifc_set_isr_registered(_Gpio) \
+  (isr_enabled |= (1ULL << (_Gpio)))
+
+// Clear "ISR Installed" falg for pin _Gpio
+#define ifc_clear_isr_registered(_Gpio) \
+  (isr_enabled &= ~(1ULL << (_Gpio)))
 
 
 // GPIO Interrupt routine, implemented via "GPIO ISR Service" API: a global GPIO handler is implemented in ESP-IDF
@@ -246,58 +265,45 @@ next_ifc:
 }
 
 
-// GPIO mask where ISR is registered. Bit 17 set means GPIO17 has its ISR registered 
-// This mask is used when enabling/disabling GPIO interrupts (as part of access protection in ifc_delete)
+
+// I don't think we need them, but it is left here for future extensions
 //
-static uint64_t isr_enabled = 0;
-
-// Check if GPIO has ISR handler installed
-#define ifc_isr_is_registered(_Gpio) \
-  (isr_enabled & (1ULL << (_Gpio)))
-
-#define ifc_set_isr_registered(_Gpio) \
-  (isr_enabled |= (1ULL << (_Gpio)))
-
-#define ifc_clear_isr_registered(_Gpio) \
-  (isr_enabled &= ~(1ULL << (_Gpio)))
-
-
-// I don't think we need them
-//
-
-static void ifc_disable_periodic_timers() {
-  // TODO:
-}
-
-static void ifc_enable_periodic_timers() {
-  // TODO:  
-}
+static void ifc_disable_periodic_timers() {}
+static void ifc_enable_periodic_timers() {}
 
 static void ifc_claim_timer(struct ifcond *ifc);
 
-// Timer callback for polled entries ("if low 5 poll .." or "every ..")
-// It is called periodically by esp_timer system task. It is analog of ifc_anyedge_interrupt() handler but for polling
+// Timer callback for polled entries (e.g., "if low 5 poll ..." or "every ...").
+// Called periodically by the esp_timer system task.
+// This is analogous to the ifc_anyedge_interrupt() handler, but used for polling.
 //
-// Once again: this code relies on the "pointers persistence". That means, deletion ("if delete") of any ifcond does not
-// make access to this ifcond impossible. It is possible. And access to its ->exec (pointer to an alias) is also OK because
-// alias pointers are persistent also.
+// Reminder: this code relies on "pointer persistence." This means that deleting
+// an ifcond ("if delete") does not make it inaccessible — access to it is still valid.
+// Access to its ->exec (a pointer to an alias) is also safe, since alias pointers
+// are persistent as well.
 //
-// By the time this callback fires it is possible that user deletes the ifcond. Deletion of ifcond also removes the timer, but
-// even if timer was allowed to fire, it will execute that "deleted" condition. Which is bad, but is better than a memory access exception
+// However, by the time this callback runs, the user may have already deleted the ifcond.
+// Deleting an ifcond also removes its timer, but if the timer still manages to fire,
+// it will execute that "deleted" condition. This is undesirable, but still preferable
+// to a memory access violation.
 //
 static void ifc_callback(void *arg) {
 
-  struct ifcond *ifc = (struct ifcond *)arg;
+  uint32_t in, in1;
+  struct ifcond *ifc;
+  
+  MUST_NOT_HAPPEN(arg == NULL);
 
-  MUST_NOT_HAPPEN(ifc == NULL);
+  ifc = (struct ifcond *)arg;
 
-  if (!ifc->alive)
-    return ;
+  // Must be "alive" (code integrity check)
+  MUST_NOT_HAPPEN (ifc->alive == 0);
 
-  uint32_t in = REG_READ(GPIO_IN_REG);   // GPIO 0..31
-  uint32_t in1 = REG_READ(GPIO_IN1_REG); // GPIO 32..63
+  // Read all GPIO values
+  in = REG_READ(GPIO_IN_REG);   // GPIO 0..31
+  in1 = REG_READ(GPIO_IN1_REG); // GPIO 32..63
 
-  // 1. entry is not expired?
+  // 1. entry is not expired/disabled? 
   if (ifc_not_expired(ifc)) {
   // 2. "high" condition match?
     if (ifc->has_high)
@@ -311,7 +317,7 @@ static void ifc_callback(void *arg) {
           (ifc->low1 &  ~in1) != ifc->low1)
         return ;
 
-  // 4. Execute
+  // 4. Send to the ifc_task() for execution
     if (mpipe_send(ifc_mp, ifc))
       return ;
   }
@@ -331,50 +337,61 @@ static void ifc_callback_delayed(void *arg) {
     // delay time has passed: execute alias and schedule periodic timer. remove old timer
     if (!ifc->disabled)
       ifc_callback(arg);
+    else
+      ifc->drops++;
 
     // Stop one-shot timer and schedule new, periodic timer
     esp_timer_stop(ifc->timer);
     esp_timer_delete(ifc->timer);
     ifc->timer = TIMER_INIT;
 
-    // Temporary set has_delay to 0 so ifc_claim_timer() will choose right callback function
-    // (ifc_callback instead of ifc_callback_delayed). Same ifc can not be executed from two different tasks,
-    // so it is safe to temporary change ifc->has_delay value: all executions are done by ifc_task()
+  // Temporarily set has_delay to 0 so that ifc_claim_timer() selects the correct callback
+  // (ifc_callback instead of ifc_callback_delayed). The same ifc cannot be executed from
+  // two different tasks, so it is safe to temporarily change ifc->has_delay: all executions
+  // are handled by ifc_task().
+
     ifc->has_delay = 0;
     ifc_claim_timer(ifc);
     ifc->has_delay = 1;
   }
 }
 
-// Allocate periodic or single-shot timer for polled events
-// Periodic or single-shot is defined by ifc.has_delay: if ifcond has "delay" option, then timer callback is initialized in
-// two steps.
-// 1. Set up one-shot timer equal to ifc.delay_ms
-// 2. Once it fires - schedule pereodic timer
+// Allocate a timer for polled events, either periodic or single-shot.
+// The mode is determined by ifc.has_delay:
+// If the ifcond includes the "delay" option, the timer callback is set up in two steps:
+//
+//   1. Create a one-shot timer with a duration of ifc.delay_ms.
+//   2. Once it fires, schedule a periodic timer.
+//
 static void ifc_claim_timer(struct ifcond *ifc) {
 
-  timer_t handle = TIMER_INIT;
+  if (likely(ifc != NULL)) {
 
-  esp_timer_create_args_t timer_args = {
+    timer_t handle = TIMER_INIT;
+
+    esp_timer_create_args_t timer_args = {
       .callback = &ifc_callback,
       .dispatch_method = ESP_TIMER_TASK,
       .arg = ifc,
-      .name = (ifc && ifc->exec) ? ifc->exec->name : "unnamed",
-  };
+      .name = ifc->exec ? ifc->exec->name : "unnamed",
+    };
 
-  // 2 stage-setup for delayed events
-  if (ifc->has_delay)
-    timer_args.callback = &ifc_callback_delayed;
-
-  if (ESP_OK == esp_timer_create(&timer_args, &handle)) {
-    ifc->timer = handle;
+    // 2 stage-setup for delayed events
     if (ifc->has_delay)
-      esp_timer_start_once(handle, 1000ULL * ifc->delay_ms);
-    else {
-      // First executions is right now, subsequent - after a delay
-      ifc_callback(ifc);
-      esp_timer_start_periodic(handle, 1000ULL * ifc->poll_interval);
+      timer_args.callback = &ifc_callback_delayed;
+
+    if (ESP_OK == esp_timer_create(&timer_args, &handle)) {
+      ifc->timer = handle;
+      if (ifc->has_delay)
+        esp_timer_start_once(handle, 1000ULL * ifc->delay_ms);
+      else {
+        // First executions is right now, subsequent - after a delay
+        ifc_callback(ifc);
+        esp_timer_start_periodic(handle, 1000ULL * ifc->poll_interval);
+      }
     }
+  } else {
+    VERBOSE(q_print("% ifc_claim_timer() : ifc == NULL !\r\n"));
   }
 }
 
@@ -382,63 +399,71 @@ static void ifc_claim_timer(struct ifcond *ifc) {
 //
 static void ifc_release_timer(struct ifcond *ifc) {
   if (ifc && ifc->timer) {
-    //VERBOSE(q_print("ifc_release_timer()\r\n"));
     esp_timer_stop(ifc->timer);
     esp_timer_delete(ifc->timer);
     ifc->timer = NULL;
+  } else {
+    VERBOSE(q_print("% ifc_release_timer() : ifc == NULL !\r\n"));
   }
 }
 
-// Ask for an interrupt for the pin. If it is already registered then nothing is done. Otherwise we
-// install a GPIO ANYEDGE interrupt handler and enable interrupts on that pin
+// Request an interrupt for the pin. If it is already registered, do nothing.
+// Otherwise, install a GPIO ANYEDGE interrupt handler and enable interrupts on the pin.
 //
 static void ifc_claim_interrupt(uint8_t pin) {
-  if (pin_exist(pin)) {
+  if (pin_exist_silent(pin)) {
     if (!ifc_isr_is_registered(pin)) {
       ifc_set_isr_registered(pin);
 
-      //VERBOSE(q_printf("%% ifc_claim_interrupt() : Registering an ISR for GPIO#%u\r\n",pin));
-      // install_isr_service can be called multiple times - if already installed it just returns with a warning message
-      // Since shell has to co-exist together with user sketch which can do isr_uninstall, we should restore our interrupt logic
-      // whenever possible
+      // gpio_install_isr_service can be called multiple times — if it's already installed, it just returns with a warning.
+      // Since the shell must coexist with the user sketch, which may call gpio_isr_service_uninstall, we should restore
+      // our interrupt logic whenever possible.
+      //
       gpio_install_isr_service((int)ARDUINO_ISR_FLAG);
       gpio_set_intr_type(pin, GPIO_INTR_ANYEDGE);
       gpio_isr_handler_add(pin, ifc_anyedge_interrupt, (void *)(unsigned int)pin);
       gpio_intr_enable(pin);
     }
+  } else {
+    // pin existence must be checked before calling ifc_claim_interrupt!
+    MUST_NOT_HAPPEN( true );
   }
 }
 
-// Interrupts are disabled only when no conditions with trigger pin /pin/ exists.
-// Suppose we had called ifc_claim_interrupt(5, ...) six times: we had registered an interrupt for the first call, other
-// five calls had no effect. Upon ifcond removal, first the entry must be removed from the list
-// and only then ifc_release_interrupt() must be called - the latter checks if corresponding ifcond[] list is empty
+// Interrupts are disabled only when no conditions exist for the given trigger pin.
+// For example, if ifc_claim_interrupt(5, ...) was called six times, an interrupt is registered
+// on the first call; the remaining five calls have no effect. When removing an ifcond, the entry
+// must first be removed from the list, and only then should ifc_release_interrupt() be called.
+// The latter checks whether the corresponding ifcond[] list is empty.
 //
 static void ifc_release_interrupt(uint8_t pin) {
   if (pin_exist_silent(pin)) {
     if (ifc_isr_is_registered(pin)) {
-      // When releasing an interrupt for the pin we check if there any ifconds left (associated with this pin)
-      // If we have zero "if"s left (an empty list of ifconds) - we can remove our ISR handler and disable 
-      // interrupts for the pin.
+      // When releasing an interrupt for a pin, we check if any ifconds are still associated with it.
+      // If there are no remaining "if"s (i.e., the ifcond list is empty), we can remove the ISR handler
+      // and disable interrupts for that pin.
+      //
       if (!ifconds[pin]) {
         gpio_intr_disable(pin);
         gpio_isr_handler_remove(pin);
         ifc_clear_isr_registered(pin);
-        //VERBOSE(q_printf("%% ifc_release_interrupt() : removing ISR for GPIO#%u\r\n",pin));
+        
       }
+    } else {
+      VERBOSE(q_printf("%% ifc_release_interrupt() : GPIO#%u, ISR is not registered!\r\n",pin));
     }
   }
 }
 
 
-// Displays content of a single ifcond, by its pointer.
-// Displays information in compact (and clamped) form: it is a /brief/ version if ifc_show_single(). 
+// Display the content of a single ifcond by its pointer.
+// Shows information in a compact (clamped) form: this is a /brief/ version of ifc_show_single().
 //
-// NOTE: NOTE: NOTE:
-// Its purpose is to be used from within ifc_show_all(), and it is assummed to be called in a loop, repeatedely,
-// so it takes a *pointer* as a parameter.
-// in contrast, ifc_show_single() takes *ifcond ID* as a parameter and performs search by itself
-// Uses shortened keywords (rate not rate-limit etc) as we have limited space (80 columns!)
+// NOTE:
+// This function is intended to be used within ifc_show_all() and is assumed to be called in a loop,
+// repeatedly. Therefore, it takes a *pointer* as a parameter.
+// In contrast, ifc_show_single() takes an *ifcond ID* and performs a search internally.
+// Shortened keywords are used (e.g., rate instead of rate-limit) due to limited space (80 columns).
 //
 static void ifc_show(struct ifcond *ifc) {
 
@@ -567,7 +592,7 @@ static void ifc_show_single(unsigned int num) {
     }
   }
   rw_unlockr(&ifc_rw);
-  q_printf("%% No \"if\" condition with ID = %u. (\"show ifs\" to list all IDs)\r\n", num);
+  q_print("% Wrong ID. Use \"<i>show ifs</>\" to list all IDs)\r\n");
 }
 
 
@@ -693,15 +718,19 @@ static struct ifcond *ifc_get() {
   // ifc_get() only guarantees that /->id/ and /->alive/ fields are initialized, while 
   // all other fields MAY contain some old data (if entry is reused)
   if (!ret) {
+
+    uint16_t new_id = atomic_fetch_add(&id, 1); 
+    MUST_NOT_HAPPEN(new_id == 0); // TODO: handle id overflow (must be 65535 active ifconds for it to happen tho)
+
     if ((ret = (struct ifcond *)q_malloc(sizeof(struct ifcond),MEM_IFCOND)) == NULL)
       return NULL;
     ret->exec = NULL;
     ret->timer = TIMER_INIT;
-    ret->id = id++; // TODO: is Var++ on _Atomic variable atomic or do we need to use atomic_fetch_add()?
-                    // TODO: handle overflow (must be 65535 active ifconds for it to happen tho)
+    ret->id = new_id;
   }
 
   ret->alive = 1;
+  ret->disabled = 0;
   
   return ret;
 }
@@ -733,7 +762,7 @@ static void ifc_put(struct ifcond *ifc) {
 //
 // num <=0 ? -1*num is a pin number. Remove all entries belonging to that pin 
 //           (i.e. whole ifconds[-num] list). Note that specifying -NO_TRIGGER will remove 
-//           all "polling" ifconds. TODO: The latter is not available through the shell commands yet
+//           all "polling" ifconds.
 // num > 0 ? num is the ifcond ID. Remove one single ifcond and exit
 // all == true ? ignore /num/ and remove all entries
 //

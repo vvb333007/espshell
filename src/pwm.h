@@ -240,7 +240,7 @@ static int cmd_show_pwm(UNUSED int argc, UNUSED char **argv) {
           "% ------+-----------+---------+----------+-------------\r\n");
 
   // Go through all existing pins and try to fetch PWM parameters using ArduinoCore API
-  for (int pin = 0; pin < NUM_PINS; pin++)
+  for (uint8_t pin = 0; pin < NUM_PINS; pin++)
     if (pin_exist_silent(pin)) {
 
       uint32_t freq,       // PWM frequency as read "from the pin"
@@ -258,9 +258,9 @@ static int cmd_show_pwm(UNUSED int argc, UNUSED char **argv) {
           channel = bus->channel;
           duty = ledcRead(pin);
           percent = (unsigned)(((float)duty / (float)duty_max) * 100.0f);
-          WD()
-          q_printf("%%   % 2lu  |  % 8lu |  % 6lu |    % 5u | %s%u\r\n",pin, freq, duty, percent, hw, channel);
-          WE()
+          
+          q_printf("%%   %2u  |  %8lu |  %6lu |    %5u | %s%u\r\n",pin, freq, duty, percent, hw, channel);
+          
         }
       }
     }

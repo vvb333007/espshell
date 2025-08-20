@@ -115,6 +115,12 @@ static int cmd_seq_zeroone(int argc, char **argv);
 static int cmd_seq_tick(int argc, char **argv);
 static int cmd_seq_bits(int argc, char **argv);
 static int cmd_seq_levels(int argc, char **argv);
+static int cmd_seq_bytes(int argc, char **argv);
+static int cmd_seq_loop(int argc, char **argv);
+static int cmd_seq_save(int argc, char **argv);
+static int cmd_seq_decode(int argc, char **argv);
+static int cmd_seq_capture(int argc, char **argv);
+static int cmd_seq_profile(int argc, char **argv);
 
 // sketch variables
 static int cmd_var(int, char **);
@@ -164,7 +170,7 @@ static int cmd_alias_asterisk(int, char **);
 //
 // There are number of keyword arrays: 
 //
-// keywords_alias    : 
+// keywords_alias    : Alias editor
 // keywords_uart     : UART commands
 // keywords_iic      : I2C commands
 // keywords_spi      : don't use it
@@ -403,18 +409,15 @@ KEYWORDS_DECL(sequence) {
 
   KEYWORDS_BEGIN
 
-  { "eot", cmd_seq_eot, 1,
-    HELPK("% \"<b>eot</> <i>high|low</>\"\r\n"
-          "%\r\n"
-          "% End of transmission: pull the line high or low at the\r\n"
-          "% end of a sequence. Default is \"low\""),
-    HELPK("End-of-Transmission pin state") },
-
   { "tick", cmd_seq_tick, 1,
     HELPK("% \"<b>tick</> <i>TIME</>\"\r\n"
           "%\r\n"
           "% Set the sequence tick time: defines a resolution of a pulse sequence.\r\n"
           "% Expressed in microseconds, can be anything between 0.0125 and 3.2\r\n"
+          "%\r\n"
+          "% Every duration period (commands one,zero,head,tail,levels) is expressed\r\n"
+          "% in ticks, not in microseconds.\r\n"
+          "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>tick 0.1</> - set resolution to 0.1 microsecond (i.e. 1 tick = 0.1 usec)"),
     HELPK("Set resolution") },
@@ -441,23 +444,48 @@ KEYWORDS_DECL(sequence) {
 
   { "one", cmd_seq_zeroone, 1, HIDDEN_KEYWORD },  //1 arg command
 
+  { "head", cmd_seq_zeroone, 2,
+    HELPK("% \"<b>head L/D L/D</>\"\r\n"
+          "%\r\n"
+          "% Symbol, transmitted before the main data stream"), HELPK("Sequence header") },
+
+  { "tail", cmd_seq_zeroone, 1,
+    HELPK("% \"<b>tail L/D</>\"\r\n"
+          "%\r\n"
+          "% Symbol, transmitted after the main data stream"), HELPK("Sequence trailer") },
+
+
   { "bits", cmd_seq_bits, 1,
     HELPK("% \"<b>bits</> <i>STRING</>\"\r\n"
           "%\r\n"
           "% A bit pattern to be used as a sequence. STRING must contain only 0s and 1s\r\n"
-          "% Overrides previously set \"levels\" command\r\n"
+          "% Overrides previously set \"levels\" and \"bytes\"commands\r\n"
           "% See commands \"one\" and \"zero\" to define \"1\" and \"0\"\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>bits 11101000010111100</>  - 17 bit sequence"),
-    HELPK("Set pattern to transmit") },
+    HELPK("Set bits to transmit") },
+
+  { "bytes", cmd_seq_bytes, MANY_ARGS,
+    HELPK("% \"<b>bytes</> D0 D1 ... Dn\"\r\n"
+          "% \"<b>bytes</> none\"\r\n"
+          "%\r\n"
+          "% A byte pattern to be used as a sequence. D0, D1.. Dn are hex bytes\r\n"
+          "% Overrides previously set \"levels\" and \"bits\" commands\r\n"
+          "% See commands \"one\" and \"zero\" to define \"1\" and \"0\"\r\n"
+          "%\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>bytes a9 18 8f f cd 15</>  - 6-byte sequence\r\n"
+          "%   <i>bytes none</>  - Clear bits, levels and bytes"),
+    HELPK("Set bytes to transmit") },
+
 
   { "levels", cmd_seq_levels, MANY_ARGS,
     HELPK("% \"<b>levels</> <i>L1/D1</> [<o>L2/D2 ... Ln/Dn</>]\"\r\n"
           "%\r\n"
           "% A bit pattern to be used as a sequnce. L is either 1 or 0 and \r\n"
           "% D is the duration measured in ticks [0..32767] (see \"tick\" command) \r\n"
-          "% Overrides previously set \"bits\" command\r\n"
+          "% Overrides previously set \"bits\" and \"bytes\" commands\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
           "% <i>levels 1/50 0/20 1/100 0/500</>  - HIGH 50 ticks, LOW 20, HIGH 100\r\n"
@@ -468,24 +496,99 @@ KEYWORDS_DECL(sequence) {
 
   { "modulation", cmd_seq_modulation, 3,
     HELPK("% \"<b>modulation</> <i>FREQ</> [<o>DUTY</> [<o>low|high</>] ]\"\r\n"
+          "% \"<b>modulation</> <i>off</>\"\r\n"
           "%\r\n"
           "% Enables/disables an output signal modulation with frequency FREQ\r\n"
           "% Optional parameters are: DUTY (from 0 to 1) and LEVEL (either high or low)\r\n"
+          "% Typical IR receivers use 38kHz, 33% duty cycle carrier, high level is modulated\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <i>modulation 38000</>         - modulate all 1s with 38kHz, 50% duty cycle\r\n"
-          "%   <i>modulation 38000 0.3 low</> - modulate all 0s with 38kHz, 30% duty cycle\r\n"
-          "%   <i>modulation 0</>           - disable modulation\r\n"),
+          "%   <i>modulation 38000</>         - modulate all 1s with 38kHz, 33% duty cycle\r\n"
+          "%   <i>modulation 38000 0.5 low</> - modulate all 0s with 38kHz, 50% duty cycle\r\n"
+          "%   <i>modulation off</>           - disable modulation\r\n"
+          "%   <i>modulation 0</>             - disable modulation"),
     HELPK("Enable/disable modulation") },
-  //TODO: "modulation off"
+  
   { "modulation", cmd_seq_modulation, 2, HIDDEN_KEYWORD },
   { "modulation", cmd_seq_modulation, 1, HIDDEN_KEYWORD },
+
+  { "eot", cmd_seq_eot, 1,
+    HELPK("% \"<b>eot</> <i>high|low</>\"\r\n"
+          "%\r\n"
+          "% End of transmission: pull the line high or low at the\r\n"
+          "% end of a sequence. Default is \"low\""),
+    HELPK("End-of-Transmission pin state") },
+
+  { "loop", cmd_seq_loop, MANY_ARGS
+  
+  ,
+    HELPK("% \"<b>loop</> [<o>NUM</>]\"\r\n"
+          "%\r\n"
+          "% Loop sequence NUM times or infinitely (no arguments)\r\n"
+          "% If NUM is >1 then sequence will be looped for NUM times (in hardware)\r\n"
+          "% To disable looping, set loop count to \"1\"\r\n"
+          "%\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>loop</>     : Loop infinitely\r\n"
+          "%   <i>loop 5</>   : Loop 5 times\r\n"
+          "%   <i>loop 1</>   : Disable looping\r\n"
+          "%   <i>loop off</> : Disable looping"),
+    HELPK("Sequence looping") },
 
   { "show", cmd_show_sequence, NO_ARGS,
     HELPK("% \"<b>show</>\"\r\n"
           "%\r\n"
-          "% Display <u>this</> sequence; Also \"show sequence NUM\""), HELPK("Show sequence") },
+          "% Display <u>this</> sequence; Shortcut for \"show sequence NUM\""), HELPK("Show sequence") },
 
+  // we have "save" but we don't have "load" here: the "load" command is a global command which simply
+  // reads text files line by line and executes them until any errors are detected
+  // This allows for modules (e.g. sequence, alias, ifcond, ...) to save their current configuration to a
+  // text file for later execution. Saved files is a shell script.
+  { "save", cmd_seq_save, 1,
+    HELPK("% \"<b>save /FILE_NAME</>\"\r\n"
+          "%\r\n"
+          "% NOTE: filesystem must be mounted prior to use of this feature\r\n"
+          "% (see \"files\" command and commands inside the \"files\" group)\r\n"
+          "%\r\n"
+          "% Save <u><b>this</> sequence in/from a text file; Text file can be modified and\r\n"
+          "% its content is loaded back (see global \"exec\" command), or copy/pasted to the\r\n"
+          "% command line. Captured sequences (see \"capture\") also can be saved"), 
+    HELPK("Save sequence to a file") },
+
+  { "decode", cmd_seq_decode, 1,
+    HELPK("% \"<b>decode [TOLERANCE]</>\"\r\n"
+          "%\r\n"
+          "% Attempt to decode \"levels\" to a bit string according to pulse descriptions\r\n"
+          "% in \"one\" and \"zero\" alphabet, allowing for timing characteristics to be\r\n"
+          "% around desired values +/- TOLERANCE percents (Default value is 20%%)\r\n"
+          "%\r\n"
+          "% Sequence must be initialized: either manually, by \"capture\" command,\r\n"
+          "% or loaded from the file by global \"exec\" command.\r\n"
+          "% <u>Example:</>\r\n"
+          "%   <i>profile nec</> : load NEC protocol preset\r\n"
+          "%   <i>decode 10</>   : decode as NEC protocol, (+- 10% for timing characteristics is ok)\r\n"
+          "% If the pulse we are expecting is 100uS long, then any pulse from 90 to 110 uS\r\n"
+          "% will match"), HELPK("Sequence decode") },
+
+  { "decode", cmd_seq_decode, 0, HIDDEN_KEYWORD },
+
+  { "capture", cmd_seq_capture, 2,
+    HELPK("% \"<b>capture PIN</>\"\r\n"
+          "%\r\n"
+          "% Capture sequence of pulses on GPIO# PIN, to <u><b>this</> sequence\r\n"
+          "% Once \"one\" and \"zero\" alphabet is set, an attempt to decode\r\n"
+          "% the bit string could be made (see \"decode\" command)"),
+    HELPK("Sequence capture") },
+
+
+  { "profile", cmd_seq_profile, 1,
+    HELPK("% \"<b>profile <i>nec|lg|lg32|samsung|1wire|neopixel|none</>\"\r\n"
+          "%\r\n"
+          "% Load presets for different IR protocols:\r\n"
+          "% Loads header and trailer, modulation parameters, \"one\" \r\n"
+          "% and \"zero\" definitions, tick rate"
+          ),
+    HELPK("Timing profiles") },
 
   KEYWORDS_END
 };
@@ -1322,8 +1425,17 @@ KEYWORDS_DECL(main) {
           "% Aliases are <u>list of commands</>; Use \"alias\" to create/edit one\r\n"
           "%\r\n"
           "% <u>Examples</>>\r\n"
-          "%   <i>exec motor_on</> - Execute command list named \"motor_on\"\r\n"), "Execute scripts" },
+          "%   <i>exec motor_on</> - Execute command list named \"motor_on\"\r\n"), "Execute scripts/aliases" },
 #endif //ALIAS
+  { "exec", cmd_exec, MANY_ARGS,
+    HELPK("% \"<b>exec /FILE_NAME</>\"\r\n"
+          "%\r\n"
+          "% Execute a shell script (from a filesystem), a file named /FILE_NAME\r\n"
+          "% Filesystem must be mounted and /FILE_NAME must start with \"/\"\r\n"
+          "%\r\n"
+          "% <u>Examples</>>\r\n"
+          "%   <i>exec /ffat/Desktop/New Folder(1)/script.cfg</>"), NULL },
+
 
 #if WITH_HISTORY
   { "history", cmd_history, 1, HIDDEN_KEYWORD },
@@ -1433,11 +1545,20 @@ KEYWORDS_DECL(espcam) {
 KEYWORDS_REG(espcam);
 #endif // WITH_ESPCAM
 
-//current keywords list in use and a barrier to protect it.
-// TODO: get rid of barriers if possible. Use _Atomics
-//static barrier_t keywords_mux = BARRIER_INIT;
-static _Atomic (const struct keywords_t *) keywords = keywords_main;
+//current keywords list in use
+// It is an thread-specific variable (every task has its own copy of this variable)
+// Background commands obtain a copy of this variable and initialize their own
+static __thread const struct keywords_t *keywords = keywords_main;
 
+// TODO: replace direct access to /keywords/ variable with these macros
+#define keywords_set(_Key) \
+  keywords = keywords_ ## _Key
+
+#define keywords_set_ptr(_Ptr) \
+  keywords = _Ptr
+
+#define keywords_get() \
+  keywords
 
 // Called from cmd_uart_if(), cmd_i2c_if(),cmd_seq_if() and cmd_files_if and others to set a new command list (command directory); 
 // displays user supplied text,  returns a pointer to the keywords tree used before
@@ -1449,14 +1570,14 @@ static const struct keywords_t *change_command_directory(
                                     const char *text) {           // User-defined text which will be displayed after entering new directory
   const struct keywords_t *old_dir;
 
-//  barrier_lock(keywords_mux);
-
-  Context = context;
-  old_dir = keywords;
-  keywords = dir;
-  prompt = prom;
-
-//  barrier_unlock(keywords_mux);
+  context_set(context);
+  old_dir = keywords_get();
+  keywords_set_ptr(dir);
+  // Only change prompt for foreground tasks
+  if (is_foreground_task())
+    prompt = prom;
+  else
+    VERBOSE(q_print("% Prompt is not changed for a background command\r\n"));
 
   if (text) {
     HELP(q_printf("%% Entering %s mode. Ctrl+Z or \"exit\" to return\r\n"
@@ -1474,7 +1595,7 @@ static const struct keywords_t *change_command_directory(
 static int cmd_exit(int argc, char **argv) {
   // Change directory to main, leave Context untouched, restore main prompt
   // If "exit" was executed from the main tree, then either exit the shell or display a hint
-  if (change_command_directory(Context, keywords_main, PROMPT, NULL) == keywords_main) {
+  if (change_command_directory(context_get_uint(), keywords_main, PROMPT, NULL) == keywords_main) {
     if (argc > 1 && !q_strcmp(argv[1], "exit"))
       Exit = true;
     else {
@@ -1487,7 +1608,7 @@ static int cmd_exit(int argc, char **argv) {
 static struct {
   const struct keywords_t *key;
   const char *name;
-} Subdirs[16] = { 0 };
+} Subdirs[16] = { 0 }; // TODO: no raw numbers!
 
 // Temporary.
 // Will be rewritten

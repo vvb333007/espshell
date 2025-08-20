@@ -50,7 +50,7 @@ static int cmd_i2c_if(int argc, char **argv) {
 //
 static int cmd_i2c_clock(int argc, char **argv) {
 
-  unsigned char iic = (unsigned char)Context;
+  unsigned char iic = context_get_uint();
 
   if (argc < 2)
     return CMD_MISSING_ARG;
@@ -74,7 +74,7 @@ static int cmd_i2c_clock(int argc, char **argv) {
 //
 static int cmd_i2c_up(int argc, char **argv) {
 
-  unsigned char iic = (unsigned char)Context, sda, scl;
+  unsigned char iic = context_get_uint(), sda, scl;
   unsigned int clock = argc < 4 ? I2C_DEF_FREQ : q_atol(argv[3], I2C_DEF_FREQ);
 
   if (argc < 3) return CMD_MISSING_ARG;
@@ -94,7 +94,7 @@ static int cmd_i2c_up(int argc, char **argv) {
 //
 static int cmd_i2c_down(int argc, char **argv) {
 
-  unsigned char iic = (unsigned char)Context;
+  unsigned char iic = context_get_uint();
   if (i2c_isup(iic))
     i2cDeinit(iic);
   return 0;
@@ -105,7 +105,7 @@ static int cmd_i2c_down(int argc, char **argv) {
 //
 static int cmd_i2c_read(int argc, char **argv) {
 
-  unsigned char iic = (unsigned char)Context, addr;
+  unsigned char iic = context_get_uint(), addr;
   int size;
   size_t got = 0;
 
@@ -140,7 +140,7 @@ static int cmd_i2c_read(int argc, char **argv) {
 //
 static int cmd_i2c_write(int argc, char **argv) {
 
-  unsigned char iic = (unsigned char)Context, addr;
+  unsigned char iic = context_get_uint(), addr;
   int i, size;
 
   // at least 1 byte but not too much
@@ -174,7 +174,7 @@ static int cmd_i2c_write(int argc, char **argv) {
 //
 static int cmd_i2c_scan(int argc, char **argv) {
 
-  unsigned char iic = (unsigned char)Context, addr;
+  unsigned char iic = context_get_uint(), addr;
   int i;
 
   if (i2c_isup(iic)) {

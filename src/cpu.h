@@ -303,8 +303,8 @@ static int NORETURN cmd_reload(UNUSED int argc, UNUSED char **argv) {
 }
 
 
-//"nap [SECONDS]"
-// TODO: "nap deep SECONDS" 
+//"nap [deep] [NUM seconds|minutes|hours|days]"
+// TODO: "nap deep" 
 // Put cpu into light or deep sleep
 //
 static int cmd_nap(int argc, char **argv) {
@@ -352,7 +352,7 @@ static int cmd_nap(int argc, char **argv) {
   }
   
   HELP(q_print("% Entering light sleep\r\n"));
-  q_delay(100);  // give a chance to the printf above do its job
+  HELP(q_delay(100));  // give a chance to the q_print above to do its job
   esp_light_sleep_start();
   HELP(q_print("% Resuming\r\n"));
   return 0;

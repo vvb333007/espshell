@@ -768,7 +768,7 @@ static void *q_realloc(void *ptr, size_t new_size,UNUSED int type) {
 //
 static char *q_strdup(const char *ptr, int type) {
   char *p = NULL;
-  if (ptr != NULL)
+  if (likely(ptr != NULL))
     if ((p = (char *)q_malloc(strlen(ptr) + 1,type)) != NULL)
       strcpy(p,ptr);
   return p;
@@ -794,9 +794,9 @@ static void q_memleaks(const char *text) {
           "%--------+--------------+---------+-----------</>\r\n");
 
   for (memlog_t *ml = head; ml; ml = (memlog_t *)(ml->li.next)) {
-    WD()
-    q_printf("%%  % 5u | % 12s | % 7u | %p \r\n",++count,memtags[ml->type],ml->len,ml->ptr);
-    WE()
+    
+    q_printf("%%  %5u | %12s | %7u | %p \r\n",++count,memtags[ml->type],ml->len,ml->ptr);
+    
     counters[ml->type]++;
   }
 
@@ -826,7 +826,7 @@ static void q_memleaks(const char *text) {
 // TODO: This is bad. Make generic q_strdup_tailroom(const char *string, int tailroom)
 static char *q_strdup256(const char *ptr, int type) {
   char *p = NULL;
-  if (ptr != NULL) {
+  if (likely(ptr != NULL)) {
     int len = strlen(ptr);
     if ((p = (char *)q_malloc(len + 256 + 1, type)) != NULL)
       strcpy(p, ptr);
@@ -841,7 +841,7 @@ static char *q_strdup256(const char *ptr, int type) {
 // /p/   - pointer to the string being converted (must be writeable memory)
 //
 static void q_tolower(char *p) {
-  if (p) {
+  if (likely(p != NULL)) {
     char pp;
     do {
       pp = *p; // pp undergo CSE removal, while *p is not :(
@@ -856,7 +856,7 @@ static void q_tolower(char *p) {
 // "minus" sign is only accepted at the beginning (must be 1st symbol)
 // Can be called with p = NULL, it is normal
 static bool isnum(const char *p) {
-  if (p && *p) {
+  if (likely(p && *p)) {
     if (*p == '-')
       p++;
     //just single "-" is not a valid number
@@ -906,14 +906,14 @@ static bool isfloat(const char *p) {
 // Strings "a" , "5a", "0x5" and "0x5Ac52345645645234564756" are all valid input
 //
 static bool ishex(const char *p) {
-  if (p && *p) {
+  if (likely(p && *p)) {
     char c;
     if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X'))
       p += 2;
     while ((c = *p) != '\0') {
       
       // Convert to lowercase
-      if (c >= 'A' && c <= 'Z')
+      if (unlikely(c >= 'A' && c <= 'Z'))
         c |= 1 << 5;
 
       if (c < '0' || (c > '9' && c < 'a') || c > 'f')
@@ -929,7 +929,7 @@ static bool ishex(const char *p) {
 // 
 static bool ishex2(const char *p) {
 
-  if (p && *p) {
+  if (likely(p && *p)) {
     if (p[0] == '0' && p[1] == 'x')
       p += 2;
 
@@ -962,7 +962,7 @@ static bool isoct(const char *p) {
 // "0b00101110101" 
 static bool isbin(const char *p) {
 
-  if (p && *p) {
+  if (likely(p && *p)) {
 
     if (p[0] == '0' && (p[1] == 'b' || p[1] == 'B'))
       p += 2;
@@ -980,7 +980,7 @@ static bool isbin(const char *p) {
 // floats, octal, binary or hexadecimal with leading 0x or without it, both signed and unsigned
 //
 static bool q_isnumeric(const char *p) {
-  if (p && *p) {
+  if (likely(p && *p)) {
     if (p[0] == '0') {
       if (p[1] == 'x' || p[1] == 'X') return ishex(p + 2);
       if (p[1] == 'b' || p[1] == 'B') return isbin(p + 2);
@@ -1041,8 +1041,8 @@ static unsigned int hex2uint32(const char *p) {
 
   while ((c = *p) != '\0') {
       
-    // turn to lowercase. TODO: unlikely()
-    if (c >= 'A' && c <= 'Z')
+    // turn to lowercase.
+    if (unlikely(c >= 'A' && c <= 'Z'))
       c |= 1 << 5;
 
     if (c >= '0' && c <= '9') four = c - '0'; else 
@@ -1458,9 +1458,9 @@ static int text2buf(int argc, char **argv, int i /* START */, char **out) {
 // keypress)or by a "kill" command. If called from a different context (i.e. from a "background" command or
 // any task which is not an espshell_task) then it can not be interrupted by a keypress.
 //
-// `duration` - delay time in milliseconds, or 0 for infinite delay
-//  returns duration if everything was ok, 
-// returns !=duration if was interrupted (returns real time spent in delay_interruptible())
+// `duration` - delay time in milliseconds, or DELAY_INFINITE for the infinite delay
+//  returns `duration` if everything was ok, 
+//  returns value less than `duration` if was interrupted (returns real time spent in delay_interruptible())
 //
 #define TOO_LONG       2999
 #define DELAY_POLL     250
@@ -1483,6 +1483,7 @@ static unsigned int delay_interruptible(unsigned int duration) {
 
   // Called from the foreground task (i.e. called from main espshell task context)
   // Only foreground task can be interrupted by a keypress and only if delay is over 3 sec long.
+  // Foreground "pin" command can be interrupted regardless delay duration.
   if (duration > TOO_LONG)
     while (duration >= DELAY_POLL) {
 
@@ -1509,7 +1510,6 @@ static unsigned int delay_interruptible(unsigned int duration) {
 //
 #define VSASIZE 256
 
-// What is stored in slots? task_t is a pointer, so this code can be reused 
 typedef void *  vsaval_t; 
 
 // Dynamic array type

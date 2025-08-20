@@ -10,12 +10,22 @@
  * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
- // HELLO DEAR RANDOM PROGRAMMER!
- // ACTUAL SOURCES IS IN .H FILES
- // 
- // STARTUP FLOW: espshell_start()->starts espshell_task()->which implements REPL (via readline()/espshell_command())
+// HELLO DEAR RANDOM PROGRAMMER!
+// ACTUAL SOURCE CODE IS IN .H FILES. THIS FILE JUST JOINS ALL MODULES TOGETHER
 
-#define COMPILING_ESPSHELL 1  // dont touch this!
+#define COMPILING_ESPSHELL 1
+
+// These asserts are mostly for var.h module since it *assumes* that sizeof(int) == sizeof(void *) == 4
+// (as it should be on a 32bit CPU). Problem will arise when porting this code to 64 bit system (i.e. sizeof(void *) > sizeof(int))
+//
+// Affected code is related to task ID (task.h module) and to variables (var.h)
+//
+// We do these asserts in the beginning so we can safely convert between 32-bit types and make safe our, 
+// generally speaking unsafe code
+//
+
+// enable -Wformat warnings. Turned off by Arduino IDE by default.
+#pragma GCC diagnostic warning "-Wformat"  
 
 // Limits
 #define CONSOLE_UP_POLL_DELAY 1000     // 1000ms. How often to check if Serial is up
@@ -114,6 +124,7 @@
 #define NORETURN __attribute__((noreturn))
 #define PRINTF_LIKE __attribute__((format(printf, 1, 2)))
 
+
 #if AUTOSTART
 #  define STARTUP_HOOK __attribute__((constructor))
 #else
@@ -122,18 +133,15 @@
 
 // Enable VERBOSE(...) macro only when "Tools->Core Debug Level" is set to "Verbose"
 #if ARDUHAL_LOG_LEVEL == ARDUHAL_LOG_LEVEL_VERBOSE
-#   warning "VERBOSE macro is enabled"
-#  define VERBOSE( ... ) __VA_ARGS__
+#  define VERBOSE( ... ) __VA_ARGS__ 
 #else
 #  define VERBOSE( ... ) { /* Nothing here */ }
 #endif
 
 // gcc stringify which accepts macro names
-#define xstr(s) ystr(s)   
+#define xstr(s) ystr(s)
 #define ystr(s) #s
 
-#define xPRAGMA(string) _Pragma(#string)
-#define PRAGMA(string) xPRAGMA(string)
 
 #define BREAK_KEY 3    // Ctrl+C code
 
@@ -141,14 +149,12 @@
 #define BAD_PIN    255 // Don't change! Non-existing pin number. 
 #define UNUSED_PIN  -1 // Don't change! A constant which is used to initialize ESP-IDF structures field, a pin number, when 
                        // we want to tell ESP-IDF that we don't need / don't use this structure field. (see count.h)
-// Number of pins available: 0..NUM_PINS-1
+// Number of pins available
 #define NUM_PINS SOC_GPIO_PIN_COUNT
 
-// enable -Wformat warnings. Turned off by Arduino IDE by default.
-#pragma GCC diagnostic warning "-Wformat"  
-
-#define WE() PRAGMA(GCC diagnostic warning "-Wformat")
-#define WD() PRAGMA(GCC diagnostic ignored "-Wformat")
+//#define xPRAGMA(string) _Pragma(#string)
+//#define PRAGMA(string) xPRAGMA(string)
+//#define WD() PRAGMA(GCC diagnostic ignored "-Wformat")
 
 
 
@@ -192,19 +198,26 @@ void STARTUP_HOOK espshell_start();
 
 // Globals & string constants
 //
-// "Context": an user-defined value (a number) which is set by change_command_directory() when switching to new command subtree. 
+// "Context": an user-defined value (a number or a pointer) which is set by change_command_directory() when 
+// switching to new command subtree. 
 // This is how command "uart 1" passes its argument  (the number "1") to the subtree commands like "write" or "read". 
 // Used to store: sequence number, uart,i2c interface number, probably something else
-// TODO:2 make it to be an union of basic C-types
-static unsigned int Context = 0;
+// NOTE: every espshell task has its own copy of this variable: it is a thread-specific variable
+static __thread unsigned int Context = 0;
+
+// Macros to set/get Context values. Since it is a simple C typecast here, make sure that
+// arguments you pass are convertible to "unsigned int" (4 bytes)
+//
+#define context_get_uint() ((unsigned int)Context)
+#define context_get_ptr(_Tn) ((_Tn *)Context)
+#define context_set(_New) { Context = (__typeof__(Context))_New; }
+
 
 // Currently used prompt
 static const char * prompt = PROMPT; 
 
 // Common messages. 
 static const char *Failed = "% <e>Failed</>\r\n";
-
-static const char *Notset = "<i>not set</>\r\n";
 
 static const char *i2cIsDown = "%% I2C%u bus is not initialized. Use command \"up\" to initialize\r\n";
 
@@ -318,12 +331,21 @@ static void espshell_display_error(int ret, int argc, char **argv) {
 //
 // When user asks for a background execution of the command (by adding an "&" as the very argument to any command)
 // (e.g. "pin 8 up high &") then exec_in_background() is called instead. It starts a task 
-// (espshell_async_task()) which executes "real" command handler stored in aa->gpp.
+// (amp_helper_task()) which executes "real" command handler stored in aa->gpp.
 //
-static void espshell_async_task(void *arg) {
+static void amp_helper_task(void *arg) {
 
-  argcargv_t *aa = (argcargv_t *)arg;
   int ret = -1;
+  MUST_NOT_HAPPEN(arg == NULL);
+
+  struct helper_arg *ha = (struct helper_arg *)arg;
+  argcargv_t *aa = ha->aa;
+  //const char *old_prompt = ha->prompt;
+
+  // Context and keywords are __thread variables and must be set by the task
+  context_set(ha->context);
+  keywords_set_ptr(ha->keywords);
+  ha_put(ha);
 
   // aa->gpp points to actual command handler (e.g. cmd_pin for command "pin"); aa->gpp is set up
   // by command processor (espshell_command()) according to first keyword (argv[0])
@@ -347,38 +369,56 @@ static void espshell_async_task(void *arg) {
   // its ok to unref null pointer
   userinput_unref(aa);
 
-  // Redraw ESPShell command line prompt (yes we need it, because ESPShell has already printed its prompt out once)
-  // TODO: causes output glitches, need to dig it deeper
-  //userinput_redraw();
-
+  // TODO: For some unknown reason, adding a __thread to the /prompt/ causes infinite reboot
+  //       Must investigate and fix, may be - using FreeRTOS TLS API. Now it is a pure hack:
+  //       while alias is doing its job, the global prompt MAY change for a short period of time
+  //       before it will be restored here. The same bug exists in alias_helper_task()
+  // ADDED: Current fix is to not change prompt if task which requests that is not a main espshell task (i.e. not foreground task)
+  //prompt = old_prompt;
+  
   task_finished();
 }
 
 // Executes commands in a background (commands which names end with &).
+// Command is a parsed user input (argcargv_t)
+// It is done by starting a separate task which actually executes the command (amp_helper_task)
+// helper_arg is populated with per-task variables and passed to the task so task can initialize (inherit) its
+// per-task variables. The same mechanism is used in alias_helper_task() (see alias.h)
 //
 static int exec_in_background(argcargv_t *aa_current) {
 
-  task_t ignored;
+  task_t id;
+  struct helper_arg *ha = ha_get();
 
   MUST_NOT_HAPPEN(aa_current == NULL);
+
+  if (ha == NULL) {
+    q_print("% ha_get() failed. No memory?\r\n");
+    return 0;
+  }
 
   //increase refcount on argcargv because it will be used by async task and
   // we want this memory remain allocated after this command
   userinput_ref(aa_current);
 
   // Start async task. Pin to the same core where espshell is executed
+  ha->context = context_get_uint();
+  ha->keywords = keywords_get();
+  ha->aa = aa_current;
+  //ha->prompt = prompt;
   
-// TODO:3 make_task_name_from_aa()
-  if ((ignored = task_new(espshell_async_task, aa_current, aa_current->argv[0])) == NULL) {
+
+  if ((id = task_new(amp_helper_task, ha, aa_current->argv[0])) == NULL) {
     q_print("% <e>Can not start a new task. Resources low? Adjust STACKSIZE macro in \"espshell.h\"</>\r\n");
     userinput_unref(aa_current);
+    ha_put(ha);
   } else {
     // Update task priority if requested    
     if (aa_current->has_prio)
-      task_set_priority(ignored, aa_current->prio);
+      task_set_priority(id, aa_current->prio);
 
-    //Hint user on how to stop bg command
-    q_printf("%% Background task started\r\n%% Copy/paste \"<i>kill %p</>\" to abort\r\n", ignored);
+    //Hint user on how to stop bg command. If help is disabled, one have to "show tasks" to find ids
+    HELP(q_printf("%% Background task started\r\n%% Copy/paste \"<i>kill %p</>\" to abort\r\n", id));
   }
   return 0;
 }
@@ -519,25 +559,13 @@ static bool call_once = false;
 static  void espshell_initonce() {
 
   if (!call_once) {
+    prompt = PROMPT;
     call_once = true;
 
-    // These asserts are mostly for var.h module since it *assumes* that sizeof(int) is 4 and so on
-    // (as it should be on a 32bit cpu)
-    // There is a code which assumes sizeof(unsigned int) >= sizeof(void *) here and there (mostly in task.h)
-    // We do these asserts in the beginning so we can safely convert between 32-bit types and make safe our, 
-    // generally speaking unsafe code
-    //
-    // Shell often converts between pointers and integer types
     
-    static_assert(sizeof(unsigned long long) == 8,"Unexpected basic type size");
-    static_assert(sizeof(int) == 4,"Unexpected basic type size");
-    static_assert(sizeof(float) == 4,"Unexpected basic type size");
-    static_assert(sizeof(void *) == 4,"Unexpected basic type size");
-    static_assert(sizeof(short) == 2,"Unexpected basic type size");
-    static_assert(sizeof(char) == 1,"Unexpected basic type size");
-    static_assert(sizeof(task_t) == sizeof(uint32_t),"Unexpected basic type size");
 
     // Add internal shell variables
+#if 1    
     convar_add(ls_show_dir_size);  // enable/disable dir size counting for "ls" command
     convar_add(pcnt_unit);         // PCNT unit which is used by "count" command
     convar_add(bypass_qm);         // enable/disable "?" as a context help hotkey
@@ -548,8 +576,12 @@ static  void espshell_initonce() {
     convar_add(cam_ledc_chan);  // Avoiding interference: LEDC channels used by ESPCAM for generating XCLK
     convar_add(cam_ledc_timer);    // Avoiding interference: ESP32 TIMER used by ESPCAM
 #endif
+#endif
     // init subsystems
     seq_init();
+
+   // task_new(test1_task, NULL, "test1");
+   // task_new(test2_task, NULL, "test2");
   }
 }
 
@@ -561,6 +593,9 @@ static  void espshell_initonce() {
 //
 static void espshell_task(const void *arg) {
 
+    // Reset /prompt/ again.
+    prompt = PROMPT; 
+
   // arg is not NULL - first time call: start the task and return immediately
   if (arg) {
     MUST_NOT_HAPPEN (shell_task != NULL);
@@ -571,7 +606,7 @@ static void espshell_task(const void *arg) {
     shell_core = xPortGetCoreID();
     if (portNUM_PROCESSORS > 1)
       shell_core = shell_core ? 0 : 1;
-    
+
     if ((shell_task = task_new(espshell_task, NULL, "ESPShell")) == NULL)
       q_print("% ESPShell failed to start its task\r\n");
   } else {
@@ -585,12 +620,13 @@ static void espshell_task(const void *arg) {
     // it is ok to taskid_remember() the same number - it gets overwritten
     taskid_remember(loopTaskHandle);
 
+
     HELP(q_print(WelcomeBanner));
 
     // The main REPL : read & execute commands until "exit ex" is entered
     //
     while (!Exit) {
-      char *line = readline(prompt);
+      char *line = readline(prompt ? prompt : "<null>");
       if (line)
         espshell_command(line, NULL);
       else
@@ -620,6 +656,18 @@ static INLINE bool espshell_started() {
 // This function can be used to restart the shell which was terminated by command "exit ex"
 //
 void STARTUP_HOOK espshell_start() {
+
+static_assert(sizeof(unsigned long long) == 8);
+static_assert(sizeof(signed long long) == 8);
+static_assert(sizeof(unsigned short) == 2);
+static_assert(sizeof(unsigned char) == 1);
+static_assert(sizeof(signed short) == 2);
+static_assert(sizeof(unsigned int) == 4);
+static_assert(sizeof(signed char) == 1);
+static_assert(sizeof(signed int) == 4);
+static_assert(sizeof(void *) == 4);
+static_assert(sizeof(task_t) == sizeof(void *));
+static_assert(sizeof(float) == 4);
 
   espshell_initonce();
   if (espshell_started())

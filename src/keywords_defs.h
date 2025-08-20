@@ -93,6 +93,5 @@ static void keywords_register(const struct keywords_t *key, const char *name);
     keywords_register(keywords_ ## _Key, # _Key); \
   } \
 
-
 #endif // #if COMPILING_ESPSHELL
 

@@ -33,7 +33,7 @@ struct argcargv {
   short ref;             // reference counter. normally 1 but async commands can increase it. alias commands also increase this
   short argc;            // number of tokens after stripping "&" or alike
   uint8_t has_amp:1;     // command has "&" at the end?
-  uint8_t bg_exec:1;     // enforce background execution despite of "&" symbol
+  uint8_t unused:1;      
   uint8_t has_prio:1;
   uint8_t prio:5;        // task priority
   char **argv;           // tokenized input string (array of pointers to various locations withn /userinput/)
@@ -137,9 +137,10 @@ static argcargv_t *userinput_tokenize(char *userinput) {
         a->has_amp  = 0;
         a->has_prio = 0;
         a->prio = 0;
-        a->bg_exec  = 0;
+        a->unused  = 0;
 
       } else {
+        // Tokenization failed: either empty string or OOM event
         if (a->argv)
           q_free(a->argv);
         q_free(a);

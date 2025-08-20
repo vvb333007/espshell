@@ -10,7 +10,7 @@
  * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
-
+// TODO: IMPORTANT: when padding, use zero rmt item, so user input will not be altered
 //  -- RMT Sequences --
 //
 // THERMINOLOGY: A "level" : either logic 1 or logic 0 for a duration of X ticks
@@ -33,6 +33,7 @@
 
 #if COMPILING_ESPSHELL
 
+#define SEQUENCE_MAX (SEQUENCES_NUM - 1) // max number that can be used as sequence id 
 
 // structure holding a sequence description
 struct sequence {
@@ -42,21 +43,33 @@ struct sequence {
   unsigned int mod_freq : 30;  // modulator frequency
   unsigned int mod_high : 1;   // modulate "1"s or "0"s
   unsigned int eot : 1;        // end of transmission level
+#define SEQ_LOOP_INFINITE ((unsigned int )(-1))
+#define SEQ_LOOP_NONE     1
+  unsigned int loop_count;     // only used if >1, specifies loop count for the sequence
+                               // value of (unsigned int)(-1) means loop infinitely
   int seq_len;                 // how many rmt_data_t items is in "seq"
-  rmt_data_t *seq;             // array of rmt_data_t
+  rmt_data_t *seq;             // array of rmt_data_t TODO: preallocate +2 symbols for, possible, tail & head
   rmt_data_t alph[2];          // alphabet. representation of "0" and "1"
+  rmt_data_t ht[2];            // "head" [0] and "tail" [1]. TODO: make 2 members with proper names
   
   char *bits;                  // asciiz "100101101"
-  //unsigned char *bytes;        // TODO: use byte encoder for RMT
-  //unsigned char  bcount;       
+  char *bytes;                 // asciiz "2309 ab ffff" //TODO: make char *user_data instead which can keep bits or bytes
 };
+
+// Sets _Name pointer to the sequence being edited (struct sequence *)
+#define THIS_SEQUENCE(_Name) \
+  struct sequence * _Name = &sequences[context_get_uint()]; \
+  if (unlikely(context_get_uint() >= SEQUENCES_NUM)) { \
+    q_print("% THIS_SEQUENCE() : disrupted Context\r\n"); \
+    return CMD_FAILED; \
+  }
 
 // sequences
 static struct sequence sequences[SEQUENCES_NUM] = { 0 };
 
-// calculate frequency from tick length
+// calculate frequency from the tick length
 // 0.1uS = 10Mhz
-unsigned long __attribute__((const)) seq_tick2freq(float tick_us) {
+unsigned long __attribute__((const)) seq_tick2freq(const float tick_us) {
 
   return tick_us ? (unsigned long)((float)1000000 / tick_us) : 0;
 }
@@ -68,6 +81,10 @@ static void seq_freemem(int seq) {
   if (sequences[seq].bits) {
     q_free(sequences[seq].bits);
     sequences[seq].bits = NULL;
+  }
+  if (sequences[seq].bytes) {
+    q_free(sequences[seq].bytes);
+    sequences[seq].bytes = NULL;
   }
   if (sequences[seq].seq) {
     q_free(sequences[seq].seq);
@@ -84,11 +101,41 @@ static void seq_init() {
     seq_freemem(i);
     sequences[i].alph[0].duration0 = sequences[i].alph[0].duration1 = 0;
     sequences[i].alph[1].duration0 = sequences[i].alph[1].duration1 = 0;
+    sequences[i].ht[0].duration0 = sequences[i].ht[0].duration1 = 0;
+    sequences[i].ht[1].duration0 = sequences[i].ht[1].duration1 = 0;
+    sequences[i].loop_count = SEQ_LOOP_NONE;
   }
 }
 
+// used by "show" command, sends output to the user
+static void seq_show_rmt_symbol(rmt_data_t *sym) {
+  if (likely(sym)) {
+    if (sym->duration0) {
+      if (sym->duration1)
+        q_printf("%d/%d %d/%d", sym->level0, sym->duration0, sym->level1, sym->duration1);
+      else
+        q_printf("%d/%d", sym->level0, sym->duration0);
+      return ;
+    }
+  }
+  q_print("not set");
+}
+
+// Used by "save" command, sends output to the file
+// TODO: add count arg to fprintf arrays of rmt symbols
+static void seq_fprintf_rmt_symbol(FILE *fp, rmt_data_t *sym) {
+  if (likely(sym && fp))
+    if (sym->duration0) {
+      if (sym->duration1)
+        fprintf(fp,"%d/%d %d/%d", sym->level0, sym->duration0, sym->level1, sym->duration1);
+      else
+        fprintf(fp,"%d/%d", sym->level0, sym->duration0);
+    }
+}
+
+
 // dump sequence content
-static void seq_dump(unsigned int seq) {
+static void seq_show(unsigned int seq) {
 
   struct sequence *s;
 
@@ -99,12 +146,11 @@ static void seq_dump(unsigned int seq) {
 
   s = &sequences[seq];
 
-  q_printf("%%\r\n%% Sequence #%d:\r\n%% Resolution : %.4fuS  (Frequency: %lu Hz)\r\n", seq, s->tick, seq_tick2freq(s->tick));
-  q_print("% Levels are ");
+  q_printf("%%\r\n%% Sequence #%d:\r\n%% Resolution : %.4fuS per tick  (Frequency: %lu Hz)\r\n", seq, s->tick, seq_tick2freq(s->tick));
   if (s->seq) {
     int i;
     unsigned long total = 0;
-
+    q_print("% Levels are ");
     for (i = 0; i < s->seq_len; i++) {
       if (!(i & 3))
         q_print("\r\n% ");
@@ -113,7 +159,47 @@ static void seq_dump(unsigned int seq) {
     }
     q_printf("\r\n%% Total: %d levels, duration: %lu ticks, (~%lu uS)\r\n", s->seq_len * 2, total, (unsigned long)((float)total * s->tick));
   } else
-    q_print(Notset);
+    q_print("% <i>Incomplete</>: levels are not set. (use \"levels\", \"bits\" or \"bytes\")\r\n");
+
+  if (s->bits || s->bytes) {
+    if (s->bits)
+      q_printf("Bits sequence: (%d bits) \"%s\"\r\n", strlen(s->bits), s->bits);
+    else {
+      int tmp = strlen(s->bytes);
+      if (tmp & 1)
+        tmp++;
+      tmp >>= 1;
+      q_printf("%% Byte sequence: (%d byte%s) \"%s\"\r\n", PPA(tmp),s->bytes);
+    }
+
+    q_print("% Alphabet:\r\n");
+    q_print("%   Zero (\"0\") is <i>");
+    seq_show_rmt_symbol(&s->alph[0]);
+    q_print("</>\r\n");
+
+    q_print("%   One (\"1\") is <i>");
+    seq_show_rmt_symbol(&s->alph[1]);
+    q_print("</>\r\n");
+
+    if (!s->alph[0].duration0 || !s->alph[1].duration0)
+      q_print("% <i>Incomplete</>: alphabet is not defined (use \"zero\" and \"one\")\r\n");
+  }
+
+  q_print("% Optional header : <i>");
+  seq_show_rmt_symbol(&s->ht[0]);
+  q_print("</>\r\n");
+
+  q_print("% Optional trailer : <i>");
+  seq_show_rmt_symbol(&s->ht[1]);
+  q_print("</>\r\n");
+
+  q_print("% Looping : "); 
+  if (s->loop_count == SEQ_LOOP_INFINITE)
+    q_print("<i>yes, continuous</>\r\n"); 
+  else if (s->loop_count <= SEQ_LOOP_NONE)
+    q_print("disabled (no looping)\r\n"); 
+  else
+    q_printf("<i>enabled, %u repeats</>\r\n",s->loop_count); 
 
   q_print("% Modulation ");
   if (s->mod_freq)
@@ -121,32 +207,11 @@ static void seq_dump(unsigned int seq) {
   else
     q_print("is not used\r\n");
 
-  q_print("% Bit sequence is ");
-  if (s->bits) {
 
-    q_printf(": (%d bits) \"%s\"\r\n", strlen(s->bits), s->bits);
-    q_print("% Zero is ");
-    if (s->alph[0].duration0) {
-      if (s->alph[0].duration1)
-        q_printf("%d/%d %d/%d\r\n", s->alph[0].level0, s->alph[0].duration0, s->alph[0].level1, s->alph[0].duration1);
-      else
-        q_printf("%d/%d\r\n", s->alph[0].level0, s->alph[0].duration0);
-    } else
-      q_print(Notset);
-
-    q_print("% One is ");
-    if (s->alph[1].duration0) {
-      if (s->alph[1].duration1)
-        q_printf("%d/%d %d/%d\r\n", s->alph[1].level0, s->alph[1].duration0, s->alph[1].level1, s->alph[1].duration1);
-      else
-        q_printf("%d/%d\r\n", s->alph[1].level0, s->alph[1].duration0);
-    } else
-      q_print(Notset);
-  } else
-    q_print(Notset);
-
-  q_printf("%% Hold %s after transmission is done\r\n", s->eot ? "HIGH" : "LOW");
+  q_printf("%% End of transmission: <i>%s</>\r\n", s->eot ? "HIGH" : "LOW");
 }
+
+
 
 // convert a level string to numerical values:
 // "1/500" gets converted to level=1 and duration=500
@@ -288,22 +353,58 @@ static int seq_send(unsigned int pin, unsigned int seq) {
 
   struct sequence *s = &sequences[seq];
 
-  if (!rmtInit(pin, RMT_TX_MODE, RMT_MEM_NUM_BLOCKS_1, seq_tick2freq(s->tick)))
+  // S2 and C3 have only 2 TX blocks, others CPU have more
+  if (!rmtInit(pin, RMT_TX_MODE, RMT_MEM_NUM_BLOCKS_2, seq_tick2freq(s->tick))) {
+    HELP(q_print("% RMT failed to initialize\r\n"));
     return -1;
-  if (!rmtSetCarrier(pin, s->mod_freq ? true : false, s->mod_high == 1 ? false : true, s->mod_freq, s->mod_duty))
-    return -2;
+  }
+
+  if (!rmtSetCarrier(pin, s->mod_freq ? true : false,
+                          s->mod_high == 1 ? false : true,
+                          s->mod_freq,
+                          s->mod_duty)) {
+    HELP(q_print("% RMT failed to set carrier (bad frequency / duty range?)\r\n"));
+    return -1;
+  }
+
   if (!rmtSetEOT(pin, s->eot))
-    return -3;
-  if (!rmtWrite(pin, s->seq, s->seq_len, RMT_WAIT_FOR_EVER))
-    return -4;
+    return -1;
+
+  if (s->loop_count > 1) {
+    if (s->loop_count == SEQ_LOOP_INFINITE) {
+      if (!rmtWriteLooping(pin, s->seq, s->seq_len)) {
+        HELP(q_print("% RMT failed (rmtWriteLooping)\r\n"));
+        return -1;
+      }
+      // success!
+    } else {
+#if 0      
+      // Waiting for https://github.com/espressif/arduino-esp32/issues/11731
+       if (!rmtWriteLoopingCount(pin, s->seq, s->seq_len, seq->loop_count)) {
+         HELP(q_print("% RMT failed (rmtWriteLoopingCount)\r\n"));
+         return -1;
+       }
+#else       
+      q_print("% loop count is not implemented yet, wait for the new Arduino Core\r\n");
+      goto run_non_looping;
+#endif      
+    }
+    // success!
+  } else {
+run_non_looping:    
+    if (!rmtWrite(pin, s->seq, s->seq_len, RMT_WAIT_FOR_EVER)) {
+      HELP(q_print("% RMT failed (rmtWrite)\r\n"));
+      return -1;
+    }
+    // success!
+  }
 
   return 0;
 }
 
-
-//TAG:seq
-//"sequence X"
-// save context, switch command list, change the prompt
+// "sequence X"
+// Save context, switch command list, change the prompt
+//
 static int cmd_seq_if(int argc, char **argv) {
 
   unsigned char seq;
@@ -312,11 +413,11 @@ static int cmd_seq_if(int argc, char **argv) {
     return CMD_MISSING_ARG;
 
   if ((seq = q_atol(argv[1], SEQUENCES_NUM)) >= SEQUENCES_NUM) {
-    HELP(q_printf("%% <e>Sequence numbers are 0..%d</>\r\n", SEQUENCES_NUM - 1));
+    HELP(q_print("% <e>Sequence numbers are 0.." xstr(SEQUENCE_MAX) "</>\r\n"));
     return 1;
   }
 
-  // embed sequence number into prompt
+  // embed sequence number into the prompt
   sprintf(prom, PROMPT_SEQ, seq);
   change_command_directory(seq, keywords_sequence, prom, "pulse sequence");
   return 0;
@@ -332,13 +433,15 @@ static int cmd_seq_if(int argc, char **argv) {
 //
 static int cmd_seq_eot(int argc, char **argv) {
 
+  THIS_SEQUENCE(s);
+
   if (argc < 2)
     return CMD_MISSING_ARG;
 
   if (!q_strcmp(argv[1], "high") || argv[1][0] == '1')
-    sequences[Context].eot = 1;
+    s->eot = 1;
   else
-    sequences[Context].eot = 0;
+    s->eot = 0;
 
   return 0;
 }
@@ -352,16 +455,22 @@ static int cmd_seq_eot(int argc, char **argv) {
 static int cmd_seq_modulation(int argc, char **argv) {
 
   int high = 1;
-  float duty = 0.5;
+  float duty = 0.33;
   unsigned int freq;
+
+  THIS_SEQUENCE(s);
 
   // at least FREQ must be provided
   if (argc < 2)
     return CMD_MISSING_ARG;
 
+  // if first argument is a keyword ("off") then q_atol returns 0
+  // which means "modulation off" for the RMT peri
   freq = q_atol(argv[1], 0);
-  if (!freq || freq > SEQ_MODULATION_FREQ_MAX) {
-    HELP(q_print("% Frequency must be between 1 and " xstr(SEQ_MODULATION_FREQ_MAX) " Hz\r\n"));  
+  if (freq > SEQ_MODULATION_FREQ_MAX) {
+    HELP(q_print("% Modulation frequency must be between 0 and " xstr(SEQ_MODULATION_FREQ_MAX) " Hz\r\n"
+                 "% Most IR receivers use 38kHz, some use 56kHz\r\n"
+    ));  
     return 1;
   }
 
@@ -388,18 +497,21 @@ static int cmd_seq_modulation(int argc, char **argv) {
       return 3;  // 3rd argument was not understood
   }
 
-  sequences[Context].mod_freq = freq;
-  sequences[Context].mod_duty = duty;
-  sequences[Context].mod_high = high;
+  
+  s->mod_freq = freq;
+  s->mod_duty = duty;
+  s->mod_high = high;
 
   return 0;
 }
 
-//one 1/100 [0/10]
-//zero 1/100 [0/10]
+// one 1/100 [0/10]
+// zero 1/100 [0/10]
+// head 1/100 [0/10]
+// tail 1/100
 //
 // Setup the alphabet to be used when encoding "bits". there are
-// two symbols in alphabet: 0 and 1. Both of them can be defined
+// two symbols in the alphabet: 0 and 1. Both of them can be defined
 // as a level (short form) or a pulse (long form):
 //
 // short scheme example:
@@ -407,25 +519,34 @@ static int cmd_seq_modulation(int argc, char **argv) {
 // one RMT symbol is used to transmit 2 bits
 //
 // long scheme example:
-// one 1/50 0/10 , zero 1/100 0/10 : 1 is "HIGH/50ticks then LOW for 10 tiks"
+// one 1/50 0/10 , zero 1/100 0/10 : 1 is "HIGH/50ticks then LOW for 10 ticks"
 // and 0 is "HIGH for 100 ticks then LOW for 10 ticks"
 // one RMT symbol is used to transmit 1 bit.
 //
 static int cmd_seq_zeroone(int argc, char **argv) {
 
-  struct sequence *s = &sequences[Context];
-
-  int i = 0;
+  THIS_SEQUENCE(s);
+  
   int level, duration;
+  rmt_data_t *alph;
 
   // which alphabet entry to set?
   if (!q_strcmp(argv[0], "one"))
-    i = 1;
+    alph = &s->alph[1];
+  else if (!q_strcmp(argv[0], "zero"))
+    alph = &s->alph[0];
+  else if (!q_strcmp(argv[0], "head"))
+    alph = &s->ht[0];
+  else if (!q_strcmp(argv[0], "tail"))
+    alph = &s->ht[1];
+  else {
+    MUST_NOT_HAPPEN(true);
+  }
+
 
   //entry is short form by default
-  s->alph[i].level1 = 0;
-  s->alph[i].duration1 = 0;
-
+  alph->level1 = 0;
+  alph->duration1 = 0;
 
   switch (argc) {
     // two arguments = a pulse
@@ -433,8 +554,8 @@ static int cmd_seq_zeroone(int argc, char **argv) {
     case 3:
       if (seq_atol(&level, &duration, argv[2]) < 0)
         return 2;
-      s->alph[i].level1 = level;
-      s->alph[i].duration1 = duration;
+      alph->level1 = level;
+      alph->duration1 = duration;
 
 
     //FALLTHRU
@@ -443,20 +564,18 @@ static int cmd_seq_zeroone(int argc, char **argv) {
     case 2:
       if (seq_atol(&level, &duration, argv[1]) < 0)
         return 1;
-      s->alph[i].level0 = level;
-      s->alph[i].duration0 = duration;
+      alph->level0 = level;
+      alph->duration0 = duration;
       break;
-
 
     default:
       return CMD_MISSING_ARG;  // wrong number of arguments
   };
-  seq_compile(Context);
+  // Context == sequence ID. Try to compile the sequence
+  seq_compile(context_get_uint());
   return 0;
 }
 
-//TAG:tick
-//
 // tick TIME
 // sets resolution of a sequence:
 // the duration of pulses and levels are measured in 'ticks':
@@ -464,21 +583,29 @@ static int cmd_seq_zeroone(int argc, char **argv) {
 // ticks are measured in microseconds and can be <1: lower limit
 // is 0.0125 microsecond/tick which corresponds to RMT hardware
 // frequency of 80MHz
+//
+// TODO: calculate min/max values from the APB frequency, we definitely need a hook on APB_freq_change..
+//       
 static int cmd_seq_tick(int argc, char **argv) {
+  float tick;
+  THIS_SEQUENCE(s);
+
   if (argc < 2)
     return CMD_MISSING_ARG;
 
   if (!isfloat(argv[1]))
     return 1;
 
-  sequences[Context].tick = atof(argv[1]);
+  tick = q_atof(argv[1],-1.0f);
 
-  if (sequences[Context].tick < 0.0125 || sequences[Context].tick > 3.2f) {
+  if (tick < 0.0125 || tick > 3.2f) {
     HELP(q_print("% <e>Tick must be in range 0.0125..3.2 microseconds</>\r\n"));
     return 1;
   }
 
-  seq_compile(Context);
+  s->tick = tick;
+
+  seq_compile(context_get_uint());
 
   return 0;
 }
@@ -499,7 +626,7 @@ static int cmd_seq_tick(int argc, char **argv) {
 // complete pulses: going up AND down when transmitting one single bit
 static int cmd_seq_bits(int argc, char **argv) {
 
-  struct sequence *s = &sequences[Context];
+  THIS_SEQUENCE(s);
 
   if (argc < 2)
     return CMD_MISSING_ARG;
@@ -510,15 +637,15 @@ static int cmd_seq_bits(int argc, char **argv) {
     bits++;
 
   if (*bits != '\0')
-    return 1;
+    return 1; // first argument is bad binary number
 
-  seq_freemem(Context);
+  seq_freemem(context_get_uint());
   s->bits = q_strdup(argv[1], MEM_SEQUENCE);
 
   if (!s->bits)
     return CMD_FAILED;
 
-  seq_compile(Context);
+  seq_compile(context_get_uint());
 
   return 0;
 }
@@ -533,7 +660,7 @@ static int cmd_seq_bits(int argc, char **argv) {
 static int cmd_seq_levels(int argc, char **argv) {
 
   int i, j;
-  struct sequence *s = &sequences[Context];
+  THIS_SEQUENCE(s);
 
   if (argc < 2)
     return CMD_MISSING_ARG;
@@ -543,7 +670,7 @@ static int cmd_seq_levels(int argc, char **argv) {
     if (seq_atol(NULL, NULL, argv[i]) < 0)
       return i;
 
-  seq_freemem(Context);
+  seq_freemem(context_get_uint());
 
   i = argc - 1;
 
@@ -598,23 +725,135 @@ static int cmd_show_sequence(int argc, char **argv) {
 
   unsigned int seq;
 
-  // command executed as "show" within sequence
-  // command tree (no arguments)
+  // command executed as "show" within sequence command tree (no arguments)
   if (argc < 2) {
-    seq_dump(Context);
+    seq_show(context_get_uint());
     return 0;
   }
 
-  // command executaed as "show seq NUMBER".
-  // two arguments (argc=3)
+  // command executed as "show seq NUMBER", two arguments (argc=3)
   if (argc != 3)
     return CMD_MISSING_ARG;
 
   if ((seq = q_atol(argv[2], SEQUENCES_NUM)) >= SEQUENCES_NUM)
     return 2;
 
-  seq_dump(seq);
+  seq_show(seq);
   return 0;
 }
+
+static int cmd_seq_bytes(int argc, char **argv) {
+  q_print("% Not implemented\r\n");
+  return 0;
+}
+
+// "loop [NUM|none]"
+//
+static int cmd_seq_loop(int argc, char **argv) {
+  THIS_SEQUENCE(s);
+  s->loop_count = (argc < 2) ? SEQ_LOOP_INFINITE : q_atol(argv[1], 1);
+  return 0;
+}
+
+// Save *this* sequence configuration to a file
+//
+static int cmd_seq_save(int argc, char **argv) {
+
+  FILE *fp = NULL;
+
+  THIS_SEQUENCE(s);
+
+  // No arguments?
+  if (argc < 2) {
+    HELP(q_print("%% File name (and path) is expected (e.g. \"/ffat/My Downloads/config.txt\")\r\n"));
+    return CMD_MISSING_ARG;
+  }
+
+  // More than argument may mean the filename user entered contains spaces
+  if (argc > 2) {
+    HELP(q_print("%% If your path contain spaces, use quotes: (<i>save \"/ffat/My Dir/1.txt\"</>)\r\n"));
+    return CMD_FAILED;
+  }
+
+  // Touch the file. it will create all the required directories
+  // Fortunately, the "touch PATH" and "save PATH" have the PATH at the same position so
+  // we can call cmd_files_touch(argc, argv) directly. TODO: this is a hack. Must have separate APIs for files
+  // Note that "touch" accepts more than one argument so cut any extra arguments off
+  //
+  if (cmd_files_touch(2,argv) != 0) {
+failed_to_open_file:    
+    q_printf("%% Can not open \"%s\" for writing. Is filesystem mounted?\r\n", argv[1]);
+    return CMD_FAILED;
+  }
+
+  // Append to existing file or create new.
+  // By default we append, so every module can write its configuratuion into single config file
+  if ((fp = fopen(argv[1],"a")) == NULL)
+    goto failed_to_open_file;
+
+  fprintf(fp,"sequence %u\r\n",context_get_uint());
+  fprintf(fp,"  tick %f\r\n",s->tick);
+  if (s->bits)
+    fprintf(fp,"  bits %s\r\n",s->bits);
+  else if (s->bytes)
+    fprintf(fp,"  bytes %s\r\n",s->bytes);
+  else if (s->seq) {
+    fprintf(fp,"  levels");
+    for (int i = 0; i < s->seq_len; i++)
+      fprintf(fp," %d/%d %d/%d", s->seq[i].level0, s->seq[i].duration0, s->seq[i].level1, s->seq[i].duration1);
+      // seq_fprintf_rmt_symbol(fp,&s->seq[i]); TODO:
+    fprintf(fp,CRLF);
+  }
+  if (s->alph[0].duration0) {
+    fprintf(fp,"  zero ");
+    seq_fprintf_rmt_symbol(fp,&s->alph[0]);
+    fprintf(fp,CRLF);
+  }
+  if (s->alph[1].duration0) {
+    fprintf(fp,"  one ");
+    seq_fprintf_rmt_symbol(fp,&s->alph[1]);
+    fprintf(fp,CRLF);
+  }
+  if (s->ht[0].duration0) {
+    fprintf(fp,"  head ");
+    seq_fprintf_rmt_symbol(fp,&s->ht[0]);
+    fprintf(fp,CRLF);
+  }
+  if (s->ht[1].duration0) {
+    fprintf(fp,"  tail ");
+    seq_fprintf_rmt_symbol(fp,&s->ht[1]);
+    fprintf(fp,CRLF);
+  }
+
+  if (s->loop_count == SEQ_LOOP_INFINITE)
+    fprintf(fp,"  loop\r\n");
+  else if (s->loop_count > 1)
+    fprintf(fp,"  loop %u\r\n",s->loop_count);
+
+  if (s->mod_freq)
+    fprintf(fp,"  modulation %u %f %s\r\n",s->mod_freq, s->mod_duty, s->mod_high ? "high" : "low");
+  if (s->eot)
+    fprintf(fp,"  eot high\r\n");
+  fprintf(fp,"exit\r\n");  
+  if (fp)
+    fclose(fp);
+  return 0;
+}
+
+static int cmd_seq_decode(int argc, char **argv) {
+  q_print("% Not implemented\r\n");
+  return 0;
+}
+
+static int cmd_seq_capture(int argc, char **argv) {
+  q_print("% Not implemented\r\n");
+  return 0;
+}
+
+static int cmd_seq_profile(int argc, char **argv) {
+  q_print("% Not implemented\r\n");
+  return 0;
+}
+
 #endif
 

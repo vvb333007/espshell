@@ -419,14 +419,14 @@ static int convar_show_list() {
       if (convar_value_as_string(var, out, sizeof(out)) < 0)
         out[0] = '\0';
 
-      WD()
-      q_printf("%%<i>% 16s</> | % 9u | % 16s | % 16s \r\n",
+      
+      q_printf("%%<i>%16s</> | %9u | %16s | %16s \r\n",
                var->name,
                var->size,
                convar_typename(var),
                out);
 
-      WE()
+      
       var = var->next;
     }
     return 0;

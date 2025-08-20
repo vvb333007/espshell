@@ -171,7 +171,7 @@ static void count_claim_interrupt(pcnt_unit_t unit) {
   pcnt_event_enable(unit, PCNT_EVT_H_LIM);
   pcnt_event_disable(unit, PCNT_EVT_ZERO); // or you will get extra interrupts (x2)
 
-  // Install ISR service, and register an interr2upt handler. Don't use global PCNT interrupt here - it is buggy
+  // Install ISR service, and register an interrupt handler. Don't use global PCNT interrupt here - it is buggy
   if (pcnt_counters == 1)
     pcnt_isr_service_install(0);
 

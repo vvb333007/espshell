@@ -22,6 +22,8 @@
 
 #if COMPILING_ESPSHELL
 
+#define PIN_MAX (NUM_PINS - 1) // 
+
 // Structure which is used to save/load pin states by "pin X save"/"pin X load".
 // These are filled by pin_save() and applied by pin_load() (throughout docs it is called "internal register")
 // NOTE: internal register is only for physical pins. Virtual pins (0x38, 0x30, 0x34) are not saved here!
@@ -324,7 +326,7 @@ static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
 
   bool pd, pu, ie, oe, od, slp_sel;
   uint32_t drv, fun_sel, sig_out;
-  uint8_t start_pin = 0, stop_pin = NUM_PINS - 1;
+  uint8_t start_pin = 0, stop_pin = PIN_MAX;
 
   // Read optional "start from" pin number
   if (argc > 2)
@@ -334,7 +336,7 @@ static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
   if (argc > 3)
     stop_pin = q_atol(argv[3], stop_pin);
 
-  if (start_pin != 0 || stop_pin != NUM_PINS-1) 
+  if (start_pin != 0 || stop_pin != PIN_MAX) 
     HELP(q_printf( "%% NOTE: Displaying only pins <i>%u..%u</>. Use \"<i>show iomux</>\" to display all\r\n",start_pin,stop_pin));
   HELP(q_print( "% IO MUX has <i>" xstr(IOMUX_NFUNC) "</> functions for every pin. The mapping is as follows:\r\n"));
 
@@ -376,9 +378,9 @@ static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
       for (int i = 0; i < IOMUX_NFUNC; i++) {
         const char *pre = (i == fun_sel) ? "<r>" : "";    // gcc must fold two comparisions into one
         const char *post = (i == fun_sel) ? "*</>" : " ";
-        WD()
-        q_printf("|%s % 9s%s", pre, iomux_funame(pin, i), post);
-        WE()
+        
+        q_printf("|%s %9s%s", pre, iomux_funame(pin, i), post);
+        
       }
       q_print(CRLF);
     }
@@ -496,7 +498,8 @@ void pinForceMode(unsigned int pin, unsigned int flags) {
 static bool pin_not_exist_notice(unsigned char pin) {
 #if WITH_HELP
   
-  // dump pin numbers. if /invert/==0 then RESERVED pins are dumped. if /invert/ == 1 then UNUSED pins are printed
+  // dump pin numbers. if /invert/==0 then RESERVED pins are displayed, if /invert/ == 1
+  // then UNUSED pins are displayed
   void list_pins(unsigned char invert) {
     unsigned char p, res = 0;
     for (p = 0; p < NUM_PINS; p++) {
@@ -513,7 +516,7 @@ static bool pin_not_exist_notice(unsigned char pin) {
 
   
   if (pin >= NUM_PINS)
-    q_printf("%% Valid pin numbers are from <i>0</> to <i>%u</>, please note that\r\n%% ", NUM_PINS - 1);
+    q_print("% Valid pin numbers are from <i>0</> to <i>" xstr(PIN_MAX) "</>, please note that\r\n% ");
   else
     q_print("% Unfortunately ");
   q_printf("following pins do not exist: <i>  ");
@@ -522,6 +525,7 @@ static bool pin_not_exist_notice(unsigned char pin) {
   for (pin = 0; pin < NUM_PINS; pin++)
     if ((SOC_GPIO_VALID_GPIO_MASK & ((uint64_t)1 << pin)) == 0)
       q_printf("%u  ", pin);
+  
 
   // Dump RESERVED pins.
   q_print("</>\r\n"

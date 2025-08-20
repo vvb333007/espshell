@@ -31,6 +31,7 @@
 #if WITH_FS
 // Current working directory. Must start and end with "/". 
 static char *Cwd = NULL;  
+static const char *files_set_cwd(const char *cwd);
 
 // espshell allows for simultaneous mounting up to MOUNTPOINTS_NUM partitions.
 // mountpoints[] holds information about mounted filesystems.
@@ -55,6 +56,8 @@ static void __attribute__((constructor)) files_init_once() {
     mountpoints[i].wl_handle = WL_INVALID_HANDLE;
 #endif
   }
+  files_set_cwd("/");
+  prompt = PROMPT;
 }
 
 
@@ -173,7 +176,7 @@ static const char *files_set_cwd(const char *cwd) {
           len--;
           // append "/" if not there
           if (Cwd[len] != '/' && cwd[len] != '\\')
-            strcat(Cwd, "/"); // TDOO: Cwd[len] = '?' maybe?
+            strcat(Cwd, "/"); // TODO: Cwd[len] = '/' maybe?
         }
   }
 
@@ -183,6 +186,7 @@ static const char *files_set_cwd(const char *cwd) {
   const char *tmp = Cwd ? (const char *)Cwd : "/";
   sprintf(prom, PROMPT_FILES, (Color ? tag2ansi('i') : ""), tmp, (Color ? tag2ansi('n') : ""));
   prompt = prom;
+  //TODO: Change prompt via prompt_set(), which should filter out attempts made background tasks
 
   return tmp;
 }
@@ -720,19 +724,16 @@ static int files_cat_text(const char *path, unsigned int line, unsigned int coun
       if (line <= cline) {
         count--;
         if (device == (unsigned char)(-1)) {
-          if (numbers) {
-            WD()
-            q_printf("% 4u: ", cline);
-            WE()
-          }
+          if (numbers)
+            q_printf("%4u: ", cline);
           q_print(p);
           q_print(CRLF);
         } else {
           char tmp[16];
           if (numbers) {
-            WD()
-            sprintf(tmp, "% 4u: ", cline);
-            WE()
+
+            sprintf(tmp, "%4u: ", cline);
+
             uart_write_bytes(device, tmp, strlen(tmp));
           }
           uart_write_bytes(device, p, r);
@@ -970,13 +971,17 @@ static int sd_unmount(int mpi) {
 // SD card type 
 static const char *sd_type(int mpi) {
   sdmmc_card_t *card = (sdmmc_card_t *)mountpoints[mpi].gpp;
-  return  card == NULL ? "????" : (card->is_sdio ? "SDIO" : (card->is_mmc ? "eMMC" : "SDHC"));
+  return  card == NULL ? "????"
+                       : (card->is_sdio ? "SDIO"
+                                        : (card->is_mmc ? "eMMC"
+                                                        : "SDHC"));
 }
 
 // SD capacity in MB. TODO: files_total_size() does not work correctly for FAT on SDSPI. Probably sector size issue
 static unsigned int sd_capacity_mb(int mpi) {
   sdmmc_card_t *card = (sdmmc_card_t *)mountpoints[mpi].gpp;
-  return card ? (unsigned int)(((uint64_t) card->csd.capacity) * card->csd.sector_size / (1024 * 1024)) : 0;
+  return card ? (unsigned int)(((uint64_t) card->csd.capacity) * card->csd.sector_size / (1024 * 1024))
+              : 0;
 }
 
 #endif //WITH_SD
@@ -1009,7 +1014,8 @@ static int cmd_files_if(int argc, char **argv) {
   change_command_directory(0, keywords_files, PROMPT, "filesystem");
 
   //initialize CWD if not initialized previously. (updates user prompt)
-  files_set_cwd(files_get_cwd());
+  // NOTE: it is initialized in files_init_once()
+  //files_set_cwd(files_get_cwd());
   return 0;
 }
 
@@ -1404,7 +1410,7 @@ finalize_mount:
 // "mount"
 // Without arguments display currently mounted filesystems and partition table
 //
-WD()
+
 static int cmd_files_mount0(int argc, char **argv) {
 
   int usable = 0, i;
@@ -1434,11 +1440,11 @@ static int cmd_files_mount0(int argc, char **argv) {
         q_print("<i>");
 #endif
       //"label" "fs type" "partition size"
-      q_printf("%%% 16s|%s|%s| % 6uK | ", part->label, mountable ? "+" : " ", files_subtype2text(part->subtype), part->size / 1024);
+      q_printf("%%%16s|%s|%s| %6luK | ", part->label, mountable ? "+" : " ", files_subtype2text(part->subtype), part->size / 1024);
 
       if ((i = files_mountpoint_by_label(part->label)) >= 0)
         // "mountpoint" "total fs size" "available fs size"
-        q_printf("% 16s | % 6uK | % 6uK\r\n", mountpoints[i].mp, files_space_total(i) / 1024, files_space_free(i) / 1024);
+        q_printf("%16s | %6uK | %6uK\r\n", mountpoints[i].mp, files_space_total(i) / 1024, files_space_free(i) / 1024);
       else
         q_print("                 |         |\r\n");
 #if WITH_COLOR
@@ -1455,8 +1461,8 @@ static int cmd_files_mount0(int argc, char **argv) {
     if (files_mountpoint_is_sdspi(i)) {
       sdmmc_card_t *card = (sdmmc_card_t *)mountpoints[i].gpp;
       if (card) {
-        q_printf("%% %s: <i>% 9s|+|%s| % 6uM | ",sd_type(i), mountpoints[i].label, files_subtype2text(mountpoints[i].type), sd_capacity_mb(i));
-        q_printf("% 16s |   N/A   |  N/A </>\r\n", mountpoints[i].mp/*, files_space_total(i), files_space_free(i)*/);
+        q_printf("%% %s: <i>%9s|+|%s| %6uM | ",sd_type(i), mountpoints[i].label, files_subtype2text(mountpoints[i].type), sd_capacity_mb(i));
+        q_printf("%16s |   N/A   |  N/A </>\r\n", mountpoints[i].mp/*, files_space_total(i), files_space_free(i)*/);
         usable++;
       }
     }
@@ -1473,7 +1479,7 @@ static int cmd_files_mount0(int argc, char **argv) {
     esp_partition_iterator_release(it);
   return 0;
 }
-WE()
+
 
 // "show mount"
 // "show mount PATH"
@@ -1652,9 +1658,9 @@ static int cmd_files_ls(int argc, char **argv) {
           q_print("%-- USED --        *  Mounted on\r\n");
           found = true;
         }
-        WD()
-        q_printf("%% <b>% 9u</>       MP  [<i>%s</>]\r\n", files_space_used(i), mountpoints[i].mp);
-        WE()
+        
+        q_printf("%% <b>%9u</>       MP  [<i>%s</>]\r\n", files_space_used(i), mountpoints[i].mp);
+        
       }
     if (!found)
       q_printf("%% <i>Root (\"%s\") directory is empty</>: no fileystems mounted\r\n%% Use command \"mount\" to list & mount available partitions\r\n", path);
@@ -1695,15 +1701,15 @@ static int cmd_files_ls(int argc, char **argv) {
             unsigned int dir_size = ls_show_dir_size ? files_size(path0) : 0;
             total_d++;
             total_fsize += dir_size;
-            WD()
-            q_printf("%% % 9u  %s  DIR [<i>%s</>]\r\n", dir_size, files_time2text(st.st_mtime), ent->d_name);
-            WE()
+            
+            q_printf("%% %9u  %s  DIR [<i>%s</>]\r\n", dir_size, files_time2text(st.st_mtime), ent->d_name);
+            
           } else {
             total_f++;
             total_fsize += st.st_size;
-            WD()
-            q_printf("%% % 9u  %s      <g>%s</>\r\n", (unsigned int)st.st_size, files_time2text(st.st_mtime), ent->d_name);
-            WE()
+
+            q_printf("%% %9u  %s      <g>%s</>\r\n", (unsigned int)st.st_size, files_time2text(st.st_mtime), ent->d_name);
+
           }
         } else
           q_printf("<e>stat() : failed %d, name %s</>\r\n", errno, path0);
@@ -1944,9 +1950,10 @@ static int cmd_files_mkdir(int argc, char **argv) {
 //
 static int cmd_files_touch(int argc, char **argv) {
 
-  int fd, i;
+  int fd, i, err = 0;
 
-  if (argc < 2) return CMD_MISSING_ARG;
+  if (argc < 2)
+    return CMD_MISSING_ARG;
 
   if (argc > 2)
     HELP(q_print(MultipleEntries));
@@ -1956,7 +1963,7 @@ static int cmd_files_touch(int argc, char **argv) {
 
     if (files_create_dirs(argv[i], PATH_HAS_FILENAME) < 0) {
       q_print("%% <e>Failed to create path for a file</>\r\n");
-      return 0;
+      return CMD_FAILED;
     }
 
     argv[i] = files_full_path(argv[i], PROCESS_ASTERISK);
@@ -1965,10 +1972,12 @@ static int cmd_files_touch(int argc, char **argv) {
     if ((fd = open(argv[i], O_CREAT | O_WRONLY, 0666)) > 0) {
       close(fd);
       HELP(q_printf("%% Touched \"<g>%s</>\"\r\n", argv[i]));
-    } else
+    } else {
       q_printf("%% <e>Failed to create file \"%s\", error code is %d</>\r\n", argv[i], errno);
+      err++;
+    }
   }
-  return 0;
+  return err ? CMD_FAILED : 0;
 }
 
 // "format [LABEL]"
