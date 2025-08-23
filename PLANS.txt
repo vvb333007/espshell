@@ -1,52 +1,37 @@
-Core:
------
-1. Remove Arduino Core dependency: be able to compile & work in plain ESP-IDF
-
-Tasks:
-------
-
-1. implement "cpu [0|1|any] task TASK_ID|TASK_NAME" - set task affinity, move task from one core to another.
-   For this, however, I need to get single-core chip for testing
-
-Command processor:
-------------------
-
-1. Make command processor be able to expand "$" values: $1 is argv[1] and $VarName is a sketch variable
-
-GPIO:
------
+Before 1.0 can be released:
 
 
-PWM:
-----
+1. implement "cpu [0|1|any] task TASK_ID|TASK_NAME" - set task affinity, move 
+   task from one core to another. For this, however, I need to get single-core
+   chip for testing
 
+2. Make command processor be able to expand "$" values: $1 is argv[1] and 
+   $VarName is a sketch variable
 
-Sequence generator:
--------------------
+3. Sequences: add sequence capture (using RMT), captured sequence display and 
+   saving to a FS. (IR remote capture & playback) add sequence decode, based on
+   user-supplied alphabet ("one" & "zero")
 
-1. RX: add sequence capture (using RMT), captured sequence display and saving to a FS. (IR remote capture & playback)
-   add sequence decode, based on user-supplied alphabet ("one" & "zero")
+4. Sequences: add support for byte strings (currently only bitstrings are 
+   recognized)
 
-2. TX: add support for byte strings (currently only bitstrings are recognized)
+5. Frequency meter: add support for start/stop pin (i.e. hardware, externally
+   controlled start/stop). This can improve accuracy: setting GPIO high/low 
+   from an PCNT interrupt handler is much faster than sending TaskNotification.
 
+6. File manager: Implement "mv" command, make "cp" command to be able to copy 
+   directory structure
 
-Pulse counter / Frequency meter:
---------------------------------
-
-1. Add support for start/stop pin (i.e. hardware, externally controlled start/stop). 
-   This can improve accuracy: setting GPIO high/low from an PCNT interrupt handler
-   is much faster than sending TaskNotification.
-
-File Manager:
--------------
-
-1. Make "mv" and "cp" commands to be able to copy directory structure
-
-2. Port a single-user, single-threaded simple FTP server - to be able to 
+7. Port a single-user, single-threaded simple FTP server - to be able to 
    upload a premade filesystem (i.e. files and directories)
-3. Make a VFS, to access flash partitions from the file manager: e.g. bootloader.bin, nvs.bin etc
 
-UART, I2C, SPI
---------------
+8. Make a VFS, to access flash partitions from the file manager: e.g. 
+   bootloader.bin, nvs.bin etc, expose flash partitions as files (RW except
+   the main app partition, which is RO).
+   Expose "/sys" filesystem with various virtual character drivers: 
+   "/sys/gpio" "/sys/uarts" ..
 
-1. Implement "show uart|i2c|spi [NUM]" : dislpay current interface settings (pins, speed, data width, parity/stopbits where applicable)
+9. Implement "show uart|i2c|spi [NUM]" : dislpay current interface settings 
+   (pins, speed, data width, parity/stopbits where applicable)
+
+10. Because of [7], implement "wifi" command tree (up/down/etc logic)
