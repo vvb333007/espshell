@@ -597,13 +597,6 @@ static void espshell_task(const void *arg) {
   if (arg) {
     MUST_NOT_HAPPEN (shell_task != NULL);
 
-    // on multicore processors use another core: if Arduino uses Core1 then
-    // espshell will be on core 0 and vice versa. 
-    // Code below assumes that there either 1 or 2 cores available
-    shell_core = xPortGetCoreID();
-    if (portNUM_PROCESSORS > 1)
-      shell_core = shell_core ? 0 : 1;
-
     if ((shell_task = task_new(espshell_task, NULL, "ESPShell")) == NULL)
       q_print("% ESPShell failed to start its task\r\n");
   } else {

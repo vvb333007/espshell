@@ -31,9 +31,17 @@
 extern task_t  loopTaskHandle; // task handle of a task which calls Arduino's loop(). Defined somewhere in the ESP32 Arduino Core
 static task_t  shell_task = 0; // Main espshell task ID
 static uint8_t shell_prio = 0; // Default priority is IDLE. Inherited by spawned tasks
-static uint8_t shell_core = 0; // CPU core number ESPShell is running on. For single core systems it is always 0
-                               // Tasks, that are created by ESPShell are pinned to the "shell_core" core
-                               // TODO: make it a convar; add ability to set NO_AFFINITY value
+
+// CPU core number ESPShell is running on. For single core systems it is always 0
+// Tasks, that are created by ESPShell are pinned to the "shell_core" core
+// TODO: make it a convar; add ability to set NO_AFFINITY value
+//
+#if (portNUM_PROCESSORS > 1)
+static uint8_t shell_core = ARDUINO_RUNNING_CORE ^ 1;
+#else
+static uint8_t shell_core = 0;
+#endif
+
 
 // Signals for use in task_signal(), task_signal_from_isr() and task_wait_for_signal() functions
 //
@@ -95,7 +103,8 @@ static vsa_t *task_list = 0;            //  vsa to hold active tasks list
 
 // Start a new thread on the same core espshell is running, remember the task_id.
 // With trace facility enabled, this and other macros here have zero overhead comparing to plain FreeRTOS API
-// TODO: add "_Core" parameter?
+// TODO: add "_Core" parameter
+//
 #define task_new(_Func, _Arg, _Name) \
   ({ \
     task_t handle = NULL; \
@@ -297,8 +306,8 @@ static int cmd_show_tasks(int argc, char **argv) {
     // Creates a lag, because disables scheduling completely during information gathering
     uxTaskGetSystemState( tasks, nt, NULL);
 
-    q_print("%<r>  # |  Task  ID  |        Name      | Prio |   State   | Stack/(HighWM)   </>\r\n"
-            "%----+------------+------------------+------+-----------+------------------\r\n");
+    q_print("%<r>  # |  Task  ID  |        Name      | Prio |   State   | Stack/(HighWM)   | Core</>\r\n"
+            "%----+------------+------------------+------+-----------+------------------+-----\r\n");
 
     for (j = 0; j < nt; j++) {
       // just in case. you never know when they decide to update their eStatus enum
@@ -309,7 +318,7 @@ static int cmd_show_tasks(int argc, char **argv) {
       if (tasks[j].usStackHighWaterMark > 1023)
         warn = " ";
 
-      q_printf("%% %3u| %p | %16s |  %2u  | %s |%s%p (%u)</>\r\n",
+      q_printf("%% %3u| %p | %16s |  %2u  | %s |%s%p /%5u|</>",
         j + 1,
         tasks[j].xHandle,
         tasks[j].pcTaskName,
@@ -318,9 +327,22 @@ static int cmd_show_tasks(int argc, char **argv) {
         warn,
         tasks[j].pxStackBase,
         (unsigned int)tasks[j].usStackHighWaterMark);
+
+      const char *affinity = NULL;
+
+#if (( configNUMBER_OF_CORES > 1 ) && ( configTASKLIST_INCLUDE_COREID == 1 ))
+      if (tasks[j].xCoreID == 0)
+        affinity = " CPU0";
+      else if (tasks[j].xCoreID == 1)
+        affinity = " CPU1";
+      else
+        affinity = "  Any";
+#endif
+      q_print(affinity ? affinity : " Main");
+      q_print(CRLF);
     }
   }
-  q_printf("%%----+------------+------------------+------+-----------+------------------\r\n"
+  q_printf("%%----+------------+------------------+------+-----------+------------------+-----\r\n"
            "%% Total: %u tasks. <x>low HighWM</> values MAY indicate stack overflow risks\r\n",j);
   return 0;
 }
