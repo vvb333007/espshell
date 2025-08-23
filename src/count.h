@@ -33,6 +33,11 @@
  // "pcnt overflow interrupt" - an ISR which gets called each time counter reaches 20000 pulses
  // "GPIO anyedge interrupt" - an ISR which gets called on incoming pulse
  //
+ // TODO: 1.0: "trigger" counter must read timestamp & enable counting inside the ISR. Current implementation has a delay of tens
+ // of microseconds before 1st pulse and actual counting
+ //
+ // TODO: change type of all variables with task_id to task_t
+ //
 #if COMPILING_ESPSHELL
 
 #define TRIGGER_POLL    1000           // A keypress check interval, msec (better keep it >= PULSE_WAIT)
@@ -67,6 +72,7 @@ static volatile struct {
   unsigned int filter_enabled:1; // PCNT filter enabled?
 
   unsigned int filter_value:16;  // PCNT filter value, nanoseconds;
+  unsigned int reserved3:3;
 
   uint64_t tsta;           // q_micros() just before counting starts
   unsigned int   taskid;         // ID of the task responsible for counting

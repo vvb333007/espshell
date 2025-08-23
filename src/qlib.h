@@ -217,7 +217,7 @@ typedef struct {
 void rw_lockw(rwlock_t *rw) {
 
   // Set "Write Lock Request" flag before acquiring /rw->sem/: this will stop new readers to obtain the reader lock
-  rw->wreq++;
+  atomic_fetch_add(&rw->wreq,1);
 try_again:  
   // Grab main sync object. 
   // If it is held by readers or other writer then we simply block here
@@ -225,20 +225,20 @@ try_again:
 
   // Ok, we just acquired the semaphore; lets check if a
   // reader somehow sneaked in during the process: if it happened, then we retry whole procedure
-  if (rw->cnt != 0) {
+  if (atomic_load(&rw->cnt) != 0) {
     sem_unlock(rw->sem);
     q_yield();
     goto try_again;
   }
-  rw->cnt--; //  i.e. rw->cnt = -1, "active writer"
-  rw->wreq--;
+  atomic_fetch_sub(&rw->cnt,1); //  i.e. rw->cnt = -1, "active writer" TODO: replace with atomic_store(.., -1)
+  atomic_fetch_sub(&rw->wreq,1);
 }
 
 // WRITE unlock
 // /cnt/ is expected to be -1 (Write Lock). If it isn't then we have bugs in out RW code
 //
 void rw_unlockw(rwlock_t *rw) {
-  rw->cnt++; //same as rw->cnt = 0;
+  atomic_fetch_add(&rw->cnt,1); //same as rw->cnt = 0;
   sem_unlock(rw->sem);
 }
 
@@ -257,21 +257,12 @@ void rw_lockr(rwlock_t *rw) {
   // Wait until there are no readers and no writers and no writelock request is queued
   // Let "writer" task to do its job
   //
-#ifdef ALT_RW_VER
   while (atomic_load_explicit(&rw->cnt, memory_order_acquire) < 0 ||
          atomic_load_explicit(&rw->wreq, memory_order_acquire) > 0)
-#else
-  while ((cnt = rw->cnt) < 0  ||
-          rw->wreq)
-#endif
     q_yield(); 
 
   // Atomically increment READERS count
-#ifdef ALT_RW_VER
   cnt = atomic_fetch_add_explicit(&rw->cnt, 1, memory_order_acq_rel);
-#else
-  cnt = rw->cnt++; 
-#endif
 
   // First of readers acquires rw->sem, so subsequent rw_lockw() will block immediately
   // If concurrent wr_lockw() obtains /sem/ just after rw->cnt++ then we simply block here,
@@ -284,11 +275,7 @@ void rw_lockr(rwlock_t *rw) {
 // Reader unlock
 //
 void rw_unlockr(rwlock_t *rw) {
-#ifdef ALT_RW_VER
   if (atomic_fetch_sub(&rw->cnt, 1) == 1)
-#else
-  if (0 == --rw->cnt)
-#endif
     sem_unlock(rw->sem);
 }
 

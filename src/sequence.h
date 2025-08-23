@@ -419,7 +419,7 @@ static int cmd_seq_if(int argc, char **argv) {
 
   // embed sequence number into the prompt
   sprintf(prom, PROMPT_SEQ, seq);
-  change_command_directory(seq, keywords_sequence, prom, "pulse sequence");
+  change_command_directory(seq, KEYWORDS(sequence), prom, "pulse sequence");
   return 0;
 }
 
@@ -539,10 +539,8 @@ static int cmd_seq_zeroone(int argc, char **argv) {
     alph = &s->ht[0];
   else if (!q_strcmp(argv[0], "tail"))
     alph = &s->ht[1];
-  else {
-    MUST_NOT_HAPPEN(true);
-  }
-
+  else
+    return CMD_NOT_FOUND;
 
   //entry is short form by default
   alph->level1 = 0;
@@ -571,7 +569,7 @@ static int cmd_seq_zeroone(int argc, char **argv) {
     default:
       return CMD_MISSING_ARG;  // wrong number of arguments
   };
-  // Context == sequence ID. Try to compile the sequence
+
   seq_compile(context_get_uint());
   return 0;
 }

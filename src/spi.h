@@ -55,7 +55,7 @@ static int cmd_spi_if(int argc, char **argv) {
   
 
   sprintf(prom, PROMPT_SPI, spi);
-  change_command_directory(spi, keywords_spi, prom, "SPI bus");
+  change_command_directory(spi, KEYWORDS(spi), prom, "SPI bus");
   return 0;
 }
 

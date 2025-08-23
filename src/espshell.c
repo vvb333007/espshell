@@ -286,13 +286,13 @@ static int espshell_command(char *p, argcargv_t *aa);
 #include "spi.h"                // spi generic interface. Not functional, unused
 #include "uart.h"               // uart generic interface
 #include "misc.h"               // misc command handlers
+#include "filesystem.h"         // file manager
+#include "memory.h"             // memory component
+#include "espcam.h"             // Camera support
 #if WITH_ALIAS
 #  include "alias.h"
 #  include "ifcond.h"
 #endif
-#include "filesystem.h"         // file manager
-#include "memory.h"             // memory component
-#include "espcam.h"             // Camera support
 
 
 // 6. These two must be included last as they are supposed to call functions from every other module
@@ -312,7 +312,7 @@ static void espshell_display_error(int ret, int argc, char **argv) {
     q_printf("%% <e>Invalid %u%s argument (\"%s\")</>\r\n", NEE(ret), ret < argc ? argv[ret] : "Empty");
   else if (ret < 0) {
     if (ret == CMD_MISSING_ARG)
-      q_printf("%% <e>Wrong number of arguments (%d). Help page: \"? %s\" </>\r\n",argc - 1, argv[0]);
+      q_printf("%% <e>Wrong number of arguments. Help page: \"? %s\" </>\r\n", argv[0]);
     else if (ret == CMD_NOT_FOUND)
       q_printf("%% <e>\"%s\": command not found</>\r\n"
                "%% Type \"?\" to show the list of commands available\r\n", argv[0]);
@@ -359,10 +359,9 @@ static void amp_helper_task(void *arg) {
     userinput_show(aa); // display command name and arguments
     q_print("\"</>, ");
     
-    if (ret != 0) {
+    if (ret != 0)
       espshell_display_error(ret, aa->argc, aa->argv);
-      q_print("failed\r\n");
-    } else
+    else
       q_print("Ok!\r\n");
   }
   
@@ -374,8 +373,6 @@ static void amp_helper_task(void *arg) {
   //       while alias is doing its job, the global prompt MAY change for a short period of time
   //       before it will be restored here. The same bug exists in alias_helper_task()
   // ADDED: Current fix is to not change prompt if task which requests that is not a main espshell task (i.e. not foreground task)
-  //prompt = old_prompt;
-  
   task_finished();
 }
 
@@ -480,7 +477,7 @@ free_p_and_exit:
   if (aa->argv[aa->argc - 1][0] == '&') {
 #if WITH_ALIAS      
     // An "&" symbol within alias editing mode should not be stripped or be translated for background exec
-    if (keywords != keywords_alias)
+    if (keywords_get() != KEYWORDS(alias))
 #endif      
     {
       // Strip last "&" argument and store it in the AA flag.

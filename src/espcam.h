@@ -784,7 +784,7 @@ static int cmd_cam(int argc, char **argv) {
   }
 #endif  
 
-  if (!q_strcmp(argv[1], "settings")) change_command_directory(0, keywords_espcam, PROMPT_ESPCAM, "camera settings"); else
+  if (!q_strcmp(argv[1], "settings")) change_command_directory(0, KEYWORDS(espcam), PROMPT_ESPCAM, "camera settings"); else
   if (!q_strcmp(argv[1], "capture")) err = cmd_camera_capture(argc, argv); else
   if (!q_strcmp(argv[1], "filesize")) err = cmd_camera_filesize(argc, argv); else
   if (!q_strcmp(argv[1], "transfer")) err = cmd_camera_transfer(argc, argv); else

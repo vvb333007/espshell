@@ -77,6 +77,7 @@ static int OldPoint;
 static int Point;                   // Current cursor position(index) in Line[] 
 static int PushBack;
 static int Pushed;
+// TODO: get rid of it!
 static _Atomic (const char *) Input = "";  // "Artificial input queue". if non empty then symbols are
                                            // fed to TTYget as if it was user input. used by espshell_exec()
                                            // Must never be NULL!

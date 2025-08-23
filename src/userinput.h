@@ -189,9 +189,9 @@ static int userinput_find_handler(argcargv_t *aa) {
   int i;
   bool found = false; // a candidate found (name match)
 
-  // /keywords/ is an _Atomic  pointer to one of /keywords_main/, /keywords_uart/ ... etc keyword tables.
+  // /keywords/ is an __thread  pointer to one of /keywords_main/, /keywords_uart/ ... etc keyword tables.
   // It points at main tree at startup and then can be switched. 
-  const struct keywords_t *key = keywords;   
+  const struct keywords_t *key = keywords_get();
 
   MUST_NOT_HAPPEN(aa == NULL);
 
@@ -234,8 +234,8 @@ one_more_try: // we get here if we wasn't able to find any suitable handler in a
 
   // Reached the end of the list and didn't find any exact match?
   // Lets try to search in /keywords_main/ (if we are currently in a subdirectory)
-  if (key != keywords_main) {
-    key = keywords_main;
+  if (key != KEYWORDS(main)) {
+    key = KEYWORDS(main);
     goto one_more_try;
   }
 

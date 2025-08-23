@@ -24,10 +24,6 @@
 //
 // Command handlers names start with "cmd_files_...", utility & helper functions are all have names which start with "files_"
 //
-// TODO: 1.0: "cp" command can't copy folders
-// TODO: 1.0: "mv" command is not implemented
-// TODO: 1.0:  ftp file server, passive mode
-
 #if WITH_FS
 // Current working directory. Must start and end with "/". 
 static char *Cwd = NULL;  
@@ -118,6 +114,7 @@ static int files_getline(char **buf, unsigned int *size, FILE *fp) {
     }
 
     //skip Microsoft-style line endings and save byte to the buffer
+    // TODO: ??? must skip \n, not \r!
     if (c == '\r')
       continue;
     *wp++ = c;
@@ -424,6 +421,7 @@ static unsigned int files_space_total(int i) {
 //#warning "Developer reminder #1"
 
 #if 0 // Not yet in Arduino Core.
+      // TODO: UPDATE: looks like Arduino Core now has updated the ffat code
         vfs_fat_sd_ctx_t *ctx = get_vfs_fat_get_sd_ctx((sdmmc_card_t *)mountpoints[i].gpp);
         MUST_NOT_HAPPEN(ctx == NULL); // Or should we just return 0?
         pdrv = ctx->pdrv;
@@ -986,6 +984,32 @@ static unsigned int sd_capacity_mb(int mpi) {
 
 #endif //WITH_SD
 
+// Twin brother of alias_exec() but for files
+//
+static int files_exec(const char *name) {
+#if 0  
+  FILE *f;
+  char *p = NULL;
+  unsigned int plen = 0, cline = 0;
+  int r; 
+
+  if ((f = fopen(path, "rb")) != NULL) {
+    while (!feof(f) && (r = files_getline(&p, &plen, f)) >= 0) {
+      cline++;
+      if (r > 0 && p) {
+        espshell_exec(p)
+      }
+    }
+    if (p)
+      q_free(p);
+    fclose(f);
+  }
+#endif
+// option1: load whole file as is and pass it to espshell_exec()
+// option2: refactor espshell_exec() to not use TTYenqueue()  
+  
+  return 0;
+}
 
 // <TAB> (Ctrl+I) handler. Jump to next argument
 // until end of line is reached. start to jump back
@@ -1011,7 +1035,7 @@ static EL_STATUS tab_pressed() {
 static int cmd_files_if(int argc, char **argv) {
 
   // file manager actual prompt is set by files_set_cwd()
-  change_command_directory(0, keywords_files, PROMPT, "filesystem");
+  change_command_directory(0, KEYWORDS(files), PROMPT, "filesystem");
 
   //initialize CWD if not initialized previously. (updates user prompt)
   // NOTE: it is initialized in files_init_once()

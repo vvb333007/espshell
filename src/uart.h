@@ -102,7 +102,7 @@ static int cmd_uart_if(int argc, char **argv) {
     HELP(q_print("% <i>You are about to configure the Serial, espshell is running on. Be careful</>\r\n"));
 
   sprintf(prom, PROMPT_UART, u);
-  change_command_directory(u, keywords_uart, prom, "UART configuration");
+  change_command_directory(u, KEYWORDS(uart), prom, "UART configuration");
   return 0;
 }
 

@@ -28,29 +28,35 @@
 
 // Helper macro for handlers (cmd_... ) : get a pointer to currently edited alias
 // Pointer resides in the /Context/
-#define ALIAS(_X) \
+#define THIS_ALIAS(_X) \
   struct alias *_X = context_get_ptr(struct alias); \
   MUST_NOT_HAPPEN(_X == NULL)
 
 // Aliases database (a list):
+// Elements of the list are never deleted: one can not delete an alias, only its content can be deleted
+// As a result - we don't need any locking here. Insertion to the list are made "to the head", thats why
+// /Aliases/ is an _Atomic pointer
 //
-static struct alias {
+struct alias {
   struct alias *next;    // must be first field to be compatible with generic lists routines
   rwlock_t      rw;      // RW lock to protect /lines/ list
   argcargv_t   *lines;   // actual alias content (a list of argcargv_t *)
   char          name[0]; // asciiz alias name
-} *Aliases = NULL;
+};
+
+static _Atomic(struct alias *) Aliases = NULL;
 
 
-// Add a new "line" to the alias. By line we mean user input that was already processed to the form of argcargv_t
+// Add a new "line" (aa) to the alias. By line we mean user input that was already processed to the form of argcargv_t
 // We just store pointer to argcargv_t and increase its reference counter. We use internal argcargv's /->next/ field
-// to link argcargv_t structures together. 
+// to link argcargv_t structures within the alias together. 
 //
 static bool alias_add_line(argcargv_t **s,  argcargv_t *aa) {
   if (s && aa) {
     userinput_ref(aa);
     aa->next = NULL;
-    // add to the end
+    // add to the end, because we need all commands to be in the same
+    // order user entered them
     if (*s == NULL)
       *s = aa;
     else 
@@ -135,10 +141,12 @@ static int alias_show_lines(argcargv_t *s) {
 }
 
 // Find an alias descriptor by alias name
-//
+// Lockless version
 //
 struct alias *alias_by_name(const char *name) {
-  struct alias *al = Aliases;
+  struct alias *al = atomic_load(&Aliases);
+  // once al is loaded it is safe to walk through the list even if it is being modified: modification happens
+  // only to the /Aliases/ variable itself, no existing ->next pointers are modified
   if (likely(name && *name))
     for (; al; al = al->next)
       //if (!q_strcmp(name, al->name))
@@ -158,13 +166,16 @@ struct alias *alias_create_or_find(const char *name) {
 
   if ((al = alias_by_name(name)) == NULL) {
     size_t siz = strlen(name);
+    // allocate alias and its name buffer
     if ((al = (struct alias *)q_malloc(sizeof(struct alias) + siz + 1, MEM_ALIAS)) != NULL) {
       strlcpy(al->name, name, siz + 1);
       al->lines = NULL;
-      al->next = Aliases;
       rwlock_t tmp = RWLOCK_INIT;
       al->rw = tmp;
-      Aliases = al;
+      // insert into the list head, lockless version
+      do {
+        al->next = atomic_load(&Aliases);
+      } while(!atomic_compare_exchange_strong( &Aliases, &al->next, al));
     }
   }
 
@@ -181,16 +192,25 @@ static int cmd_alias_if(int argc, char **argv) {
 
   if (argc > 1) {
     if (argc < 3) {
-      
-        if ((al = alias_create_or_find(argv[1])) != NULL) {
-          // Use NULL as /text/ to supress standart banner: it is incorrect for /alias/ command directory
-          change_command_directory((typeof(Context))al, keywords_alias, PROMPT_ALIAS, NULL);
-          HELP(q_print("% Entering alias editing mode. \"quit\" to return\r\n"));
-          return 0;
-        } else q_print("% Failed to create / find alias\r\n");
-      
-    } else q_print("% Either remove spaces from the name or use quotes\r\n");
-  } else return CMD_MISSING_ARG;
+      // "exec" uses '/' to distinguish between alias names and file names, so '/' is forbidden
+      // in alias name (as a first symbol only. "/name" is not ok, "n/ame" is ok)
+      if (argv[1][0] == '/') {
+        HELP(q_print("% \"/\" is not allowed as a first symbol of the alias name\r\n"));
+        return CMD_FAILED;
+      }
+
+      if ((al = alias_create_or_find(argv[1])) != NULL) {
+        // Use NULL as /text/ to supress standart banner: it is incorrect for /alias/ command directory.
+        // Set /Context/ to be an alias pointer: alias pointers are peristent
+        change_command_directory((typeof(Context))al, KEYWORDS(alias), PROMPT_ALIAS, NULL);
+        HELP(q_print("% Entering alias editing mode. \"quit\" to return\r\n"));
+        return 0;
+      } else 
+        q_print("% Failed to create / find alias\r\n");
+    } else
+      q_print("% Either remove spaces from the name or use quotes\r\n");
+  } else
+    return CMD_MISSING_ARG;
 
   return CMD_FAILED;
 }
@@ -198,7 +218,7 @@ static int cmd_alias_if(int argc, char **argv) {
 // "quit" : replacement for "exit": command "exit" can belong to alias
 //
 static int cmd_alias_quit(int argc, char **argv) {
-  ALIAS(al);
+  THIS_ALIAS(al); // Fetch pointer to the alias we are editing
   if (!al->lines && (al->rw.sem != SEM_INIT)) {
     sem_destroy(al->rw.sem);
     al->rw.sem = SEM_INIT;
@@ -210,7 +230,7 @@ static int cmd_alias_quit(int argc, char **argv) {
 // "list"
 //
 static int cmd_alias_list(int argc, char **argv) {
-  ALIAS(al);
+  THIS_ALIAS(al); // Fetch pointer to the alias we are editing
   q_printf("%% Alias \"%s\":\r\n",al->name);
   rw_lockr(&al->rw);
   alias_show_lines(al->lines);
@@ -226,13 +246,13 @@ static int cmd_show_alias(int argc, char **argv) {
   int i;
 
   if (argc < 3) {
-    if (Aliases) {
+    if ((al = atomic_load(&Aliases)) != NULL) {
       q_print("% List of defined aliases:\r\n");
-      for (i = 1, al = Aliases; al ; ++i, al = al->next)
+      for (i = 1; al != NULL ; ++i, al = al->next)
         q_printf("%% %d. \"%s\"%s\r\n",i,al->name,al->lines ? "" : ", empty");
       HELP(q_print("% Use command \"<i>show alias NAME</>\" to display alias content\r\n"));
     } else
-      HELP(q_print("% No aliases defined. Use \"<i>alias NAME</>\" to create one\r\n"));
+      HELP(q_print("% No aliases defined. (\"<i>alias NAME</>\" to create one)\r\n"));
     return 0;
   } else {
     al = alias_by_name(argv[2]);
@@ -242,7 +262,7 @@ static int cmd_show_alias(int argc, char **argv) {
       rw_unlockr(&al->rw);
     }
     else
-      q_printf("%% Unknown alias \"%s\" (\"show alias\" to list names)\r\n",argv[2]);
+      q_printf("%% Unknown alias \"%s\" (\"<i>show alias</>\" to list names)\r\n",argv[2]);
     return CMD_FAILED;
   }
 
@@ -254,7 +274,7 @@ static int cmd_show_alias(int argc, char **argv) {
 // "delete [all|NUMBER]"
 //
 static int cmd_alias_delete(int argc, char **argv) {
-  ALIAS(al);
+  THIS_ALIAS(al); // Fetch pointer to the alias we are editing
   rw_lockw(&al->rw);
   alias_delete_line(&al->lines, argc > 1 ? q_atoi(argv[1],-1)
                                          : 0);
@@ -267,9 +287,8 @@ static int cmd_alias_delete(int argc, char **argv) {
 // The only commands which are not stored, but processed instead are "list", "quit", "delete"
 //
 static int cmd_alias_asterisk(int argc, char **argv) {
-
-  // Fetch pointer to the alias we are editing
-  ALIAS(al);
+  
+  THIS_ALIAS(al); // Fetch pointer to the alias we are editing
 
   MUST_NOT_HAPPEN(argc < 1);
   MUST_NOT_HAPPEN(AA == NULL); // Set by espshell_command()
@@ -296,12 +315,11 @@ static int cmd_alias_asterisk(int argc, char **argv) {
   // subdirectory: we don't track directories. In such cases command handler is not precached and will be found on
   // a first alias use
   //
-  // TODO:1 refactor, probably a racecond. Add a parameter to userinput_find_handler() 
-  //       to specify search directories, don't modify global /keywords/ variable!
-  const struct keywords_t *tmp = keywords;
-  keywords = keywords_main;
+  // TODO: Add a parameter to userinput_find_handler() to specify search directories
+  const struct keywords_t *tmp = keywords_get();
+  keywords_set(main);
   userinput_find_handler(AA);
-  keywords = tmp;
+  keywords_set_ptr(tmp);
 
   //q_printf("\r\nPrecached handler %p\r\n",AA->gpp);
 
@@ -310,7 +328,7 @@ static int cmd_alias_asterisk(int argc, char **argv) {
   rw_unlockw(&al->rw);
 
   if (res)
-    return 0;
+    return 0; // Success
 
   q_print("% Failed to save command (out of memory?)\r\n");
   return CMD_FAILED;
@@ -360,7 +378,7 @@ static void alias_helper_task(void *arg) {
     ha_put(ha);
   }
   // prompt must be unchanged at this point, because change_command_directory() changes prompt
-  // for foreground tasks only. Background commands can not change prompt.
+  // for foreground tasks only, background commands (including this one) can not change prompt.
 
   task_finished();
 }
@@ -390,9 +408,9 @@ static int alias_exec_in_background_delayed(struct alias *al, uint32_t delay_ms)
   return CMD_FAILED;
 }
 
-// "exec ALIAS_NAME [ NAME2 NAME3 ... NAMEn]"
-// Main command directory
-// TODO: "exec /file_name"
+// "exec NAME [ NAME2 NAME3 ... NAMEn]"
+// Execute files or/and aliases. Filenames start from "/".
+
 static int cmd_exec(int argc, char **argv) {
 
   struct alias *al;
@@ -400,11 +418,20 @@ static int cmd_exec(int argc, char **argv) {
   if (argc < 2)
     return CMD_MISSING_ARG;
 
-  for (int i = 1; i < argc; i++)
-    if ((al = alias_by_name(argv[i])) != NULL)
-      alias_exec(al);
-    else
-      q_printf("%% \"%s\" : no such alias\r\n",argv[i]);
+  for (int i = 1; i < argc; i++) {
+    // file starts with /, aliases - not.
+    if (argv[i][0] == '/') {
+      if (files_path_exist_file(argv[i]))
+        files_exec(argv[i]);
+      else
+        q_printf("%% File \"<i>%s</>\" does not exist. Is filesystem mounted?\r\n",argv[i]);
+    } else {
+      if ((al = alias_by_name(argv[i])) != NULL)
+        alias_exec(al);
+      else
+        q_printf("%% \"%s\" : no such alias\r\n",argv[i]);
+    }
+  }
   
   return 0;
 }

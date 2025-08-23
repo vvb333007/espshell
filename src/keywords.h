@@ -1545,14 +1545,19 @@ KEYWORDS_DECL(espcam) {
 KEYWORDS_REG(espcam);
 #endif // WITH_ESPCAM
 
-//current keywords list in use
+// Current keywords list in use, 
 // It is an thread-specific variable (every task has its own copy of this variable)
-// Background commands obtain a copy of this variable and initialize their own
+// Background commands obtain a copy of this variable and initialize their own (see struct helper_arg and its use)
+//
 static __thread const struct keywords_t *keywords = keywords_main;
 
-// TODO: replace direct access to /keywords/ variable with these macros
+// KEYWORDS(main), KEYWORDS(files) ...
+#define KEYWORDS(_Key) \
+  keywords_ ## _Key
+
+// keywords_set(main), keywords_set(files) ...
 #define keywords_set(_Key) \
-  keywords = keywords_ ## _Key
+  keywords = KEYWORDS(_Key)
 
 #define keywords_set_ptr(_Ptr) \
   keywords = _Ptr
@@ -1576,8 +1581,8 @@ static const struct keywords_t *change_command_directory(
   // Only change prompt for foreground tasks
   if (is_foreground_task())
     prompt = prom;
-  else
-    VERBOSE(q_print("% Prompt is not changed for a background command\r\n"));
+//  else
+//    VERBOSE(q_print("% Prompt is not changed for a background command\r\n"));
 
   if (text) {
     HELP(q_printf("%% Entering %s mode. Ctrl+Z or \"exit\" to return\r\n"
@@ -1590,12 +1595,12 @@ static const struct keywords_t *change_command_directory(
 
 //"exit"
 //"exit exit"
-// exits from a command subderictory or closes the shell ("exit exit")
+// exits from a command subdirectory or closes the shell ("exit exit")
 //
 static int cmd_exit(int argc, char **argv) {
   // Change directory to main, leave Context untouched, restore main prompt
   // If "exit" was executed from the main tree, then either exit the shell or display a hint
-  if (change_command_directory(context_get_uint(), keywords_main, PROMPT, NULL) == keywords_main) {
+  if (change_command_directory(context_get_uint(), KEYWORDS(main), PROMPT, NULL) == KEYWORDS(main)) {
     if (argc > 1 && !q_strcmp(argv[1], "exit"))
       Exit = true;
     else {
