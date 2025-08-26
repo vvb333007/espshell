@@ -21,6 +21,12 @@
 // 3. Bunch of number->string and string->number conversion functions
 // 4. Core functions like q_printf(), core variables etc
 //
+// TODO: find every place where pointers are assumed to be uint32_t in size and refactor using intptr_t.
+//       Most of them are in var.h and task.h tho
+// TODO: implement "static intptr_t hex2pointer(const char *hex_string, intptr_t def)". Now we use 
+//       hex2uint32 to convert pointers (user input, e.g. TASK_ID) to uint32_t which is not portable
+//       across 32/64 bit architectures.
+//
 #if COMPILING_ESPSHELL
 
 #include <stdatomic.h>
@@ -35,9 +41,11 @@
 #define unlikely(_X)   __builtin_expect(!!(_X), 0)
 #define likely(_X)     __builtin_expect(!!(_X), 1)
 
-// Memory type: a number from 0 to 15 to identify newly allocated memory block usage. 
-// Newly allocated memory is assigned one of the types below. Command "sh mem" invokes
-// q_memleaks() function to dump memory allocation information. Only works #if MEMTEST == 1
+// Memory type: a number from 0 to 15 to identify newly allocated memory block usage; 
+// Used as a second argument of q_malloc() 
+// Newly allocated memory is assigned one of the types below. Command "show memory" invokes
+// q_memleaks() function to dump memory allocation information. Leak detection requires #define MEMTEST 1
+// in espshell.h
 
 enum {
   MEM_TMP = 0,   // tmp buffer. must not appear on q_memleaks() report
@@ -52,8 +60,8 @@ enum {
   MEM_GETLINE,   // memory allocated by files_getline()
   MEM_SEQUENCE,  // sequence-related allocations
   MEM_TASKID,    // Task remap entry
-  MEM_ALIAS,     // Aliases and related allocation (see struct helper_arg)
-  MEM_IFCOND,
+  MEM_ALIAS,     // Aliases and related allocation
+  MEM_IFCOND,    // "if" and "every" conditions
   MEM_UNUSED14,
   MEM_UNUSED15
   // NOTE: only values 0..15 are allowed, do not add more!
@@ -82,22 +90,24 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
 
 
 // inlined version of millis() & delay() for better accuracy on small intervals
-// (because of decreased overhead). q_millis vs millis shows 196 vs 286 CPU cycles on ESP32
+// (because of the decreased overhead). q_millis vs millis shows 196 vs 286 CPU cycles on ESP32
 //
 #define q_delay(_Delay) vTaskDelay(_Delay / portTICK_PERIOD_MS);
 #define q_micros()      esp_timer_get_time()
 #define q_millis()      ((unsigned long )(q_micros() / 1000ULL))
 
 
-// Context switch requests
-#define q_yield() vPortYield()
-#define q_yield_from_isr() portYIELD_FROM_ISR()
+// Scheduler "task-switch" requests
+//
+#define q_yield() vPortYield()                    // run next task
+#define q_yield_from_isr() portYIELD_FROM_ISR()   // reschedule tasks
 
 
 //  -- Mutexes and Semaphores--
 
 // Mutexes and semaphores are initialized on first use (i.e. on first mutex_lock() / sem_lock() call)
-// These are fail-safe: mutex_lock() will continue to create a mutex if it was not created; it ensures stability in OOM scenarios
+// These are fail-safe: mutex_lock() will continue to create a mutex if it was not created; it ensures
+// stability in OOM scenarios
 
 // Mutex type. Mutex is a semaphore on FreeRTOS
 #define mutex_t SemaphoreHandle_t
@@ -134,7 +144,7 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
 #define SEM_INIT NULL
 
 // Binary semaphore.
-// Similar to mutex, but **any** task can sem_unlock(), not just the task
+// Similar to a mutex, but **any** task can sem_unlock(), not just the task
 // which called sem_lock(): no ownership tracking. These are used in RW-locking
 // code
 //
@@ -170,21 +180,22 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
 
 // -- Memory access barrier --
 //
-// (AKA critical section AKA spinlock. we use "barrier" instead of "spinlock" to not 
-// confuse with FreeRTOS functions and types)
-//
 // Code behind the barrier (i.e. the code between barrier_lock() / barrier_unlock()) must be kept small and linear.
 // Defenitely not call q_printf() or q_delay() while in the barrier, or watchdog will bark (interruptas are disabled!)
 //
 // Barrier lock is the only way to guarantee exclusive access both from tasks and interrupts on a multicore system
+//
+// TODO: refactor to use spinlock_t 
+//
 #define barrier_t portMUX_TYPE
 
 // Initializer: barrier_t mux = BARRIER_INIT;
 #define BARRIER_INIT portMUX_INITIALIZER_UNLOCKED
  
-// Enter/Exit critical sections
+// Enter/Exit critical sections. On ESP32 these can be called from both ISR and TASK context.
 #define barrier_lock(_Name) portENTER_CRITICAL(&_Name)
 #define barrier_unlock(_Name) portEXIT_CRITICAL(&_Name)
+
 
 // -- Readers/Writer lock --
 //
@@ -1262,7 +1273,7 @@ static void q_printtable(const unsigned char *p, unsigned int count, unsigned ch
       while (count) {
         q_printf("%% %p : ", p);
         if (isp) {
-          q_printf("0x%08x\r\n", *((unsigned int *)p));
+          q_printf("%p\r\n", (void *)(*((intptr_t *)p)));
         } else if (isf) {
           q_printf("%ff\r\n", *((float *)p));
         } else {

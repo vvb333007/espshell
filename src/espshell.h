@@ -23,7 +23,7 @@
 
 // -- Compile-time settings BEGIN --
 //
-#define ESPSHELL_VERSION "0.99.11" // Code version
+#define ESPSHELL_VERSION "0.99.12-dev" // Code version
 
 //#define MEMTEST 1              // Enable memory logger (extra output on "show memory"). For shell self-diagnostics
 #define WITH_ALIAS 1             // Set to 0 to disable alias support (commands "alias", "if", "every" and "exec")
@@ -83,9 +83,9 @@
 #  warning "Shell command history is DISABLED because of MEMTEST (== 1)"  
 #endif
 
-
-#define ALT_RW_VER        // experimental RWLock with atomic_exchange
-//#define MPIPE_USES_MSGBUF // experimental MessagePipes using FreeRTOS MessageBuffers
+// Developers section
+//#define MPIPE_USES_MSGBUF // experimental MessagePipes using FreeRTOS MessageBuffers instead of Queues
+#define LOCKLESS // experimental: use lockless atomic code instead of traditional mutex/critical section
 
 // -- ESPShell public API --
 

@@ -218,19 +218,27 @@ struct helper_arg {
   struct alias             *al;
   argcargv_t               *aa;
   uint32_t                  delay_ms;
-  __typeof__(Context)       context;
-  const struct keywords_t  *keywords;
+  __typeof__(Context)       context;   // task copies this to the /Context/ thread variable
+  const struct keywords_t  *keywords;  // task copies this to the /keywords/ thread variable
 };
 
 
-// Once allocated, structures never freed. Instead they are put on the "unused" list
-// Since alias_exec_in_background() is called everytime condition is triggered, we want our alloc/free
-// to be as fast as possible - thats why ha_get() and ha_put(). 
+// Once allocated, structures never freed.
+//
+// Instead they are put on the "unused" list. Since alias_exec_in_background() is called everytime condition 
+// is triggered, we want our alloc/free to be as fast as possible - thats why ha_get() and ha_put() instead 
+// of malloc() and free(). Under load espshell simply preallocates as many entries on its "unused" as needed 
+// reducing suffering from OOM events
+//
 // Second reason is to keep pointers persistent - so any stored pointer always points 
 // to a valid memory region
 //
-static struct helper_arg *ha_unused = NULL;
+static _Atomic(struct helper_arg *) ha_unused = NULL;
+#ifndef LOCKLESS
 static mutex_t ha_mux = MUTEX_INIT;
+#endif
+
+
 
 // Allocate / Reuse
 //
@@ -238,10 +246,17 @@ static struct helper_arg *ha_get() {
 
   struct helper_arg *ret;
 
+#ifndef LOCKLESS
   mutex_lock(ha_mux);
   if ((ret = ha_unused) != NULL)
     ha_unused = ha_unused->next;
   mutex_unlock(ha_mux);
+#else
+  do {
+    if ((ret = atomic_load(&ha_unused)) == NULL)
+      break;
+  } while(!atomic_compare_exchange_strong( &ha_unused, &ret, ret->next));
+#endif
 
   return ret ? ret : (struct helper_arg *)q_malloc(sizeof(struct helper_arg ), MEM_TMP);
 }
@@ -250,10 +265,16 @@ static struct helper_arg *ha_get() {
 //
 static void ha_put(struct helper_arg *ha) {
   if (ha != NULL) {
+#ifndef LOCKLESS
     mutex_lock(ha_mux);
     ha->next = ha_unused;
     ha_unused = ha;
     mutex_unlock(ha_mux);
+#else
+    do {
+      ha->next = atomic_load(&ha_unused);
+    } while(!atomic_compare_exchange_strong( &ha_unused, &ha->next, ha));
+#endif    
   }
 }
 

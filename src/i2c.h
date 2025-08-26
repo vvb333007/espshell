@@ -10,9 +10,11 @@
  * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
-
+// TODO: support 10 bit address
+//
 #if COMPILING_ESPSHELL
 
+#define NUM_I2C SOC_I2C_NUM
 
 // unfortunately this one is not in header files
 extern bool i2cIsInit(uint8_t i2c_num);
@@ -22,26 +24,28 @@ extern bool i2cIsInit(uint8_t i2c_num);
 // TODO: this is bad. need more low level call. esp32cams i2c is not detected as "up"
 //
 static inline bool i2c_isup(unsigned char iic) {
-  return (iic >= SOC_I2C_NUM) ? false : i2cIsInit(iic);
+  return (iic >= NUM_I2C) ? false : i2cIsInit(iic);
 }
 
-//"iic X"
-// save context, switch command list, change the prompt
+//"iic NUM"
+//"i2c NUM"
+// Save context, switch command list, change the prompt
+//
 static int cmd_i2c_if(int argc, char **argv) {
 
-  unsigned int iic;
+  unsigned int i;
   static char prom[MAX_PROMPT_LEN];
 
   if (argc < 2)
     return CMD_MISSING_ARG;
 
-  if ((iic = q_atol(argv[1], SOC_I2C_NUM)) >= SOC_I2C_NUM) {
-    HELP(q_printf("%% <e>Valid I2C interface numbers are 0..%d</>\r\n", SOC_I2C_NUM - 1));
+  if ((i = q_atol(argv[1], NUM_I2C)) >= NUM_I2C) {
+    HELP(q_printf("%% <e>Valid I2C interface numbers are 0..%d</>\r\n", NUM_I2C - 1));
     return 1;
   }
 
-  sprintf(prom, PROMPT_I2C, iic);
-  change_command_directory(iic, KEYWORDS(iic), prom, "I2C configuration");
+  sprintf(prom, PROMPT_I2C, i);
+  change_command_directory(i, KEYWORDS(iic), prom, "I2C configuration");
   return 0;
 }
 
@@ -119,7 +123,7 @@ static int cmd_i2c_read(int argc, char **argv) {
   unsigned char data[size];
 
   if (i2c_isup(iic)) {
-    if (i2cRead(iic, addr, data, size, 2000, &got) != ESP_OK)
+    if (i2cRead(iic, addr, data, size, 2000, &got) != ESP_OK) // TODO: no magic numbers
       q_print(Failed);
     else {
       if (got != size) {

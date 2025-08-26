@@ -33,7 +33,7 @@ static struct {
   bool value;        // digital value
   uint16_t sig_out;  // SIG_IN & SIG_OUT for GPIO Matrix mode
   uint16_t fun_sel;  // IO_MUX function selector
-  int bus_type;      // PeriMan bus type. (see ArdionoCore *periman*.c)
+  int bus_type;      // PeriMan bus type. (see ArduionoCore *periman*.c)
 
 } Pins[NUM_PINS];
 

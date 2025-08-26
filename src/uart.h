@@ -16,6 +16,8 @@
 
 #if COMPILING_ESPSHELL
 
+#define NUM_UARTS SOC_UART_NUM
+
 
 // Create a 32-bit number which stores UART configuration. Arduino Core passes it directly to the ESP-IDF UART driver.
 //  bits   - 5,6,7 or 8
@@ -79,7 +81,7 @@ uart_tap(int remote) {
 
 //check if UART has its driver installed
 static inline bool uart_isup(unsigned char u) {
-  return u >= SOC_UART_NUM ? false : uart_is_driver_installed(u);
+  return u >= NUM_UARTS ? false : uart_is_driver_installed(u);
 }
 
 // "uart X"
@@ -93,8 +95,8 @@ static int cmd_uart_if(int argc, char **argv) {
   if (argc < 2)
     return CMD_MISSING_ARG;
 
-  if ((u = q_atol(argv[1], SOC_UART_NUM)) >= SOC_UART_NUM) {
-    HELP(q_printf("%% <e>Valid UART interface numbers are 0..%d</>\r\n", SOC_UART_NUM - 1));
+  if ((u = q_atol(argv[1], NUM_UARTS)) >= NUM_UARTS) {
+    HELP(q_printf("%% <e>Valid UART interface numbers are 0..%d</>\r\n", NUM_UARTS - 1));
     return 1;
   }
 

@@ -184,9 +184,7 @@ static const KEYMAP MetaMap[] = {
 // "read" from this string first.
 static inline void
 TTYqueue(const char *input) {
-  //barrier_lock(Input_mux);
   Input = input;
-  //barrier_unlock(Input_mux);
 }
 
 // Print buffered (by TTYputc/TTYputs) data. editline uses buffered IO
@@ -339,42 +337,29 @@ ring_bell() {
   return CSstay;
 }
 
-// TODO: move SeenCR logic to TTYqueue()
+static int cmd_exit(int, char **);
+static int cmd_suspend(int, char **);
+
 // Ctrl+C handler: sends "suspend", disabled echo
+//
 static EL_STATUS
 ctrlc_pressed() {
-
-  // Why not just send "@suspend\r\n"? If we do, then ESPShell will see bith "\r" and "\n" and will assume that
-  // user terminal sends CRLF, which may be not true.
-  //
-  static char cmd[] = {'@','s','u','s','p','e','n','d','\n','\0'};
-
-  // mimic user terminal line-endings
-  if (SeenCR)
-    cmd[8] = '\r'; 
-
-  // flush Screen buffer
-  TTYflush();
-
-  // cancel and delete all user input
-  Line[0] = '\0';
-  
-  // Inject our "@suspend" command
-  TTYqueue(cmd);
-
-  return CSstay;
+  const char *foo[] = { "suspend" };
+  cmd_suspend(1, (char **)foo);
+  // We do redisplay here, because terminal window may be flooded with messages
+  // (which flood was the reason to press Ctrl+C), and user wants to see clear command line
+  return redisplay();
 }
 
 // Ctrl+Z hanlder: send "exit" command, disabled echo
+//
 static EL_STATUS
 ctrlz_pressed() {
-  static char cmd[] = {'@','e','x','i','t','\n','\0'};
-  if (SeenCR)
-    cmd[5] = '\r';
-  TTYflush();
+  const char *foo[] = { "exit" };
+  cmd_exit(1, (char **)foo);
+  //redisplay();
   Line[0] = '\0';
-  TTYqueue(cmd);
-  return CSstay;
+  return CSdone;
 }
 
 

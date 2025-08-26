@@ -262,9 +262,13 @@ static const char *VarOops = "<e>% Oops :-(\r\n"
 #include "qlib.h"
 
 // 4. Really old (but refactored) version of editline. Probably from 80's. Works well, rock solid :)
-#include "editline.h"           // editline library
-#include "keywords.h"           // all command trees
-#include "userinput.h"          // userinput tokenizer and reference counter
+#include "editline.h"
+
+// 5. All command trees
+#include "keywords.h"
+
+// 6. Userinput tokenizer and reference counter
+#include "userinput.h"          
 
 static argcargv_t *AA = NULL;   // only valid for foreground commands; used to access to raw user input, mainly by alias code
 static int espshell_command(char *p, argcargv_t *aa);
@@ -342,10 +346,10 @@ static void amp_helper_task(void *arg) {
   argcargv_t *aa = ha->aa;
   //const char *old_prompt = ha->prompt;
 
-  // Context and keywords are __thread variables and must be set by the task
-  context_set(ha->context);
-  keywords_set_ptr(ha->keywords);
-  ha_put(ha);
+  // Context and keywords are __thread variables and must be inherited, i.e. set by the task:
+  context_set(ha->context);        // sets "global" Context
+  keywords_set_ptr(ha->keywords);  // sets "global" keywords
+  ha_put(ha);                      // return helper_arg to the pool
 
   // aa->gpp points to actual command handler (e.g. cmd_pin for command "pin"); aa->gpp is set up
   // by command processor (espshell_command()) according to first keyword (argv[0])
@@ -451,16 +455,21 @@ espshell_command(char *p, argcargv_t *aa) {
   //
   // if we got only /p/ and /aa/ is NULL then /aa/ is created from /p/, and history is updated:
   if (p) {
+
+    userinput_strip(p);
+
+    // Empty command
+    if (p[0] == '\0')
+      goto free_p_and_exit;
+
+    // Skip strings starting with "//" - these are comments. Comments can only occupy whole line,
+    // and can not be added at the end of a command.
+    if (p[0] == '/' && p[1] == '/')
+      goto free_p_and_exit;
+
     // Make a history entry, if history is enabled (default)
-    // Do a simple empty-string check to avoid unnecessary calls to the userinput_tokenize()
-    //
-    if (History) {
-      userinput_strip(p);
-      if (*p)
-        history_add_entry(p);
-      else
-        goto free_p_and_exit;
-    }
+    if (History)
+      history_add_entry(p);
 
     // Tokenize user input, create /aa/. 
     // This will destroy contents of /p/ : its whitespace will be replaced with '\0's
@@ -468,19 +477,26 @@ espshell_command(char *p, argcargv_t *aa) {
     if ((aa = userinput_tokenize(p)) == NULL) {
 free_p_and_exit:
       q_free(p);
-      return -1;
+      return 0;
     }
   }
 
-  // Foreground or background?
-  // If aa is executed for the first time it may have "&XX" at the end. Strip it and set appropriate flags in aa.
+  // Process an "&" keyword ("background exec") at the end of the command (if any)
+  // Example command: "esp32#>pin 2 high delay 100 low delay 100 loop infinite &"
+  // So this & keyword is stripped, and corresponding command is run in a background
+  //
+  // NOTE: One exception: commands entered while in alias editing mode ("esp32-alias>") are NOT stripped
+  //       and are NOT executed in a background regardless of "&": in alias editor all user input is just 
+  // saved to be processed later (when that alias is executed)
+  //
   if (aa->argv[aa->argc - 1][0] == '&') {
 #if WITH_ALIAS      
-    // An "&" symbol within alias editing mode should not be stripped or be translated for background exec
+    // An "&" symbol in alias editing mode should not be stripped or be translated for background exec:
+    // it is done by alias code
     if (keywords_get() != KEYWORDS(alias))
 #endif      
     {
-      // Strip last "&" argument and store it in the AA flag.
+      
       // Accept priority value if extended &-syntax was used: ("&10" - set priority to 10)
       // If priority value is out of range, then behave like no priority was read at all
       if (aa->argv[aa->argc - 1][1]) {
@@ -492,7 +508,7 @@ free_p_and_exit:
         }
       }
       aa->has_amp = 1;
-      aa->argc--;
+      aa->argc--; // remove "&XX"
     }
   } // if "&"
 

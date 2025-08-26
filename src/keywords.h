@@ -1395,7 +1395,7 @@ KEYWORDS_DECL(main) {
           "%   <i>every 5 sec exec alias my_alias</>\r\n"
           "%   <i>every 5 sec delay 50000 exec alias my_alias</>\r\n"
           "%   <i>every 5 sec delay 50000 max-exec 7 exec alias my_alias</>"
-          ), "Conditional GPIO events" },
+          ), "Periodic events" },
 
   { "every", cmd_if, 3,
     HELPK("% \"<b>every delete</> <i>NUM</>\"\r\n"
@@ -1434,7 +1434,7 @@ KEYWORDS_DECL(main) {
           "% Filesystem must be mounted and /FILE_NAME must start with \"/\"\r\n"
           "%\r\n"
           "% <u>Examples</>>\r\n"
-          "%   <i>exec /ffat/Desktop/New Folder(1)/script.cfg</>"), NULL },
+          "%   <i>exec \"/ffat/Desktop/New Folder(1)/script.cfg\"</>"), NULL },
 
 
 #if WITH_HISTORY
