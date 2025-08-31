@@ -225,7 +225,7 @@ static int help_command_list(int argc, char **argv) {
         int clen;
         spaces = ((clen = strlen(keywords[i].cmd)) < ESPSHELL_MAX_CNLEN) ? &indent[clen] : &indent[ESPSHELL_MAX_CNLEN];
         // "COMMAND" PADDING_SPACES : DESCRIPTION
-        q_printf("%% \"<i>%s</>\"%s : %s\r\n", keywords[i].cmd, spaces, brief);
+        q_printf("%% \"<%c><i>%s</>\"%s : %s\r\n", is_command_directory(keywords[i].cmd) ? 'u' : 'b', keywords[i].cmd, spaces, brief);
       }
     }
 

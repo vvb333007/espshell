@@ -10,6 +10,11 @@
  * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
+// TODO: implement deep sleep
+// TODO: implement deep sleep wakeup counter
+// TODO: implement wakeup by GPIO edge transition
+// TODO: implement wakeup by a touch pad
+
 #if COMPILING_ESPSHELL
 
 #include <esp_rom_spiflash.h>
@@ -304,7 +309,6 @@ static int NORETURN cmd_reload(UNUSED int argc, UNUSED char **argv) {
 
 
 //"nap [deep] [NUM seconds|minutes|hours|days]"
-// TODO: "nap deep" 
 // Put cpu into light or deep sleep
 //
 static int cmd_nap(int argc, char **argv) {

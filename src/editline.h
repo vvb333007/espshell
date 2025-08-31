@@ -64,7 +64,7 @@ static const char *CRLF = "\r\n";
 static unsigned char *Line = NULL;  // Raw user input
 
 static const char *Prompt = NULL;   // Current prompt to use
-static const char *PromptID = "";   // Tag, displayed before prompt: "myhost@esp32#>"
+static char PromptID[16] = { 0 };   // Tag, displayed before prompt: "myhost@esp32#>"
 
 static char *Screen = NULL;         // Output buffer. TTYput, TTYshow etc all write to that buffer; it is displayed by TTYfluh()
 static unsigned int ScreenCount;
@@ -292,19 +292,28 @@ TTYbackn(int n) {
     TTYback();
 }
 
+
+// Displays espshell prompt
+//
+static void draw_prompt(bool r, bool n) {
+  if (r) TTYput('\r');
+  if (n) TTYput('\n');
+  if (PromptID[0]) {
+    TTYputs((const unsigned char *)PromptID);
+    TTYput('@');
+  }
+  TTYputs((const unsigned char *)Prompt);
+}
+
+
+
 // redraw current input line
 static void
 reposition() {
   int i;
   unsigned char *p;
 
-  TTYput('\r');
-
-  if (*PromptID) {
-    TTYputs((const unsigned char *)PromptID);
-    TTYput('@');
-  }
-  TTYputs((const unsigned char *)Prompt);
+  draw_prompt(true, false);
 
   for (i = Point, p = Line; --i >= 0; p++)
     TTYshow(*p);
@@ -355,11 +364,13 @@ ctrlc_pressed() {
 //
 static EL_STATUS
 ctrlz_pressed() {
+
+  // Simulate "exit" command by direct call of the corresponding handler
   const char *foo[] = { "exit" };
   cmd_exit(1, (char **)foo);
-  //redisplay();
-  Line[0] = '\0';
-  return CSdone;
+  
+  Line[0] = '\0'; // delete user input
+  return CSdone;  // simulate pressed <Enter>
 }
 
 
@@ -387,7 +398,7 @@ do_forward(EL_STATUS move) {
   return CSstay;
 }
 
-//tab_pressed() was moved down
+
 
 static void
 ceol() {
@@ -452,16 +463,7 @@ insert_string(unsigned char *p) {
 
 static EL_STATUS
 redisplay() {
-  const unsigned char *nl = (const unsigned char *)"\r\n";
-  TTYputs(nl);
-
-  if (*PromptID) {
-    TTYputs((const unsigned char *)PromptID);
-    TTYput('@');
-  }
-
-  TTYputs((const unsigned char *)Prompt);
-
+  draw_prompt(true, true); // both \r and \n are printed before prompt
   TTYstring(Line);
   return CSmove;
 }
@@ -902,19 +904,16 @@ readline(const char *pro) {
     if ((Screen = NEW(char, ScreenSize, MEM_EDITLINE)) == NULL)
       return NULL;
   }
-// TODO: make draw_prompt()
-  if (*PromptID) {
-    TTYputs((const unsigned char *)PromptID);
-    TTYput('@');
-  }
 
-  TTYputs((const unsigned char *)(Prompt = pro));
+  Prompt = pro;
+  draw_prompt(false, false);
   TTYflush();
 
   if ((line = editinput()) != NULL) {
-    const unsigned char *nl = (const unsigned char *)"\r\n"; // TODO: 
+
     line = (unsigned char *)q_strdup((char *)line, MEM_EDITLINE);
-    TTYputs(nl);
+    TTYput('\r');
+    TTYput('\n');
     TTYflush();
   }
 

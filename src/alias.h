@@ -12,19 +12,24 @@
 
 // -- Command Aliases --
 //
-// A sequence of shell commands with assigned name to it called a "command alias", It is a shortcut to execute 
-// multiple commands by entering one new command.
+// A "command alias" is a named sequence of shell commands. 
+// It acts as a shortcut that lets you run multiple commands by entering a single new command.
 //
-// Aliases are created but never destroyed: user can remove alias content, but alias descriptor itself will live
-// forever. Reason for this is to keep pointers to aliases valid all the time. Other options (use sync objects, 
-// mutexes) is not viable - we want FAST access to aliases, we want a pointer to the alias, not its name, nor we want mess
-// with locking. Since alias' primary use is to be executed as part of "if" and "every" commands (interrupts!), its 
-// processing must have minimal overhead
+// Aliases are created but never destroyed: a user can clear the contents of an alias, but the alias 
+// descriptor itself will remain permanently. 
+
+// This ensures that pointers to aliases always stay valid. 
+// Alternative approaches (such as using synchronization objects or mutexes) are not suitable here, 
+// because we need FAST access to aliases. We want direct pointers to the alias structures, 
+// not just their names, and we want to avoid the overhead of locking. 
+// Since aliases are primarily used within "if" and "every" commands (interrupt-driven execution), 
+// their handling must be as lightweight as possible.
 //
-// Once created, aliases can be executed either with command "exec" or, as a part of an event 
-// (see commands "if" and "every", ifcond.h)
+// Once created, aliases can be executed either with the "exec" command 
+// or as part of an event (see "if" and "every" in ifcond.h).
 
 #if COMPILING_ESPSHELL
+#if  WITH_ALIAS
 
 // Helper macro for handlers (cmd_... ) : get a pointer to currently edited alias
 // Pointer resides in the /Context/
@@ -47,9 +52,10 @@ struct alias {
 static _Atomic(struct alias *) Aliases = NULL;
 
 
-// Add a new "line" (aa) to the alias. By line we mean user input that was already processed to the form of argcargv_t
-// We just store pointer to argcargv_t and increase its reference counter. We use internal argcargv's /->next/ field
-// to link argcargv_t structures within the alias together. 
+// Add a new "line" (aa) to the alias. 
+// Here, a "line" refers to user input that has already been processed into an argcargv_t structure. 
+// We simply store a pointer to the argcargv_t and increment its reference counter. 
+// The internal argcargv->next field is used to link multiple argcargv_t structures together within the alias.
 //
 static bool alias_add_line(argcargv_t **s,  argcargv_t *aa) {
   if (s && aa) {
@@ -125,10 +131,6 @@ static int alias_show_lines(argcargv_t *s) {
     q_print(CRLF);
 
     // Indent commands inside subdirectories. Only one level. Indent is restored on "exit" command
-    // TODO:2
-    // "camera settings" is not indented because is_command_directory() only pays attention to the first element (i.e. "camera")
-    // Plus to that, keywords are named "keywords_espcam", not "keywords_camera"
-    // SOLUTION: rename keywords_espcam to keywords_camera and move all camera commands under the "camera" directory
     if (!q_strcmp(s->argv[0],"exit"))
       pre = "";
     else if (is_command_directory(s->argv[0]))
@@ -407,13 +409,14 @@ static int alias_exec_in_background_delayed(struct alias *al, uint32_t delay_ms)
   }
   return CMD_FAILED;
 }
+#endif // WITH_ALIAS
 
 // "exec NAME [ NAME2 NAME3 ... NAMEn]"
 // Execute files or/and aliases. Filenames start from "/".
 
 static int cmd_exec(int argc, char **argv) {
 
-  struct alias *al;
+  int errors = 0;
 
   if (argc < 2)
     return CMD_MISSING_ARG;
@@ -421,19 +424,33 @@ static int cmd_exec(int argc, char **argv) {
   for (int i = 1; i < argc; i++) {
     // file starts with /, aliases - not.
     if (argv[i][0] == '/') {
-      if (files_path_exist_file(argv[i]))
-        files_exec(argv[i]);
-      else
-        q_printf("%% File \"<i>%s</>\" does not exist. Is filesystem mounted?\r\n",argv[i]);
+#if WITH_FS      
+      if (files_path_exist_file(argv[i])) {
+        if (files_exec(argv[i]) != 0)
+          errors++;
+      } else {
+        q_printf("%% \"<i>%s</>\" file not found. Is filesystem mounted?\r\n",argv[i]);
+        errors++;
+      }
+#else
+      q_print("% No support for filesystems was compiled in\r\n");
+#endif      
     } else {
-      if ((al = alias_by_name(argv[i])) != NULL)
-        alias_exec(al);
-      else
+#if WITH_ALIAS      
+      struct alias *al;
+      if ((al = alias_by_name(argv[i])) != NULL) {
+        if (alias_exec(al) != 0)
+          errors++;
+      } else {
         q_printf("%% \"%s\" : no such alias\r\n",argv[i]);
+        errors++;
+      }
+#else
+      q_print("% No support for aliases was compiled in\r\n");
+#endif      
     }
   }
   
-  return 0;
+  return errors ? CMD_FAILED : 0;
 }
 #endif // #if COMPILING_ESPSHELL
-

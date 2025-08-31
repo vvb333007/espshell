@@ -61,7 +61,7 @@ static int cmd_show_memory_address(int argc, char **argv) {
   unsigned char length = 1;
 
   // read the address. NULL will be returned if address is 0 or has incorrect syntax.
-  address = (unsigned char *)hex2uint32(argv[2]);
+  address = (unsigned char *)hex2uintptr(argv[2]);
 
   // read the rest of arguments if specified
   int i = 3;

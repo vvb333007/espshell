@@ -250,24 +250,6 @@ static int cmd_colors(int argc, char **argv) {
 }
 #endif  //WITH_COLOR
 
-//"hostname"
-//
-// Hidden command, to add a hostname to the prompt.
-//
-static int cmd_hostname(int argc, char **argv) {
-  static char buf[32];
-  if (argc < 2) {
-    if (*PromptID)
-      q_printf("%% Host name is \"%s\"\r\n", PromptID);
-    else
-      q_print("% Host name is not set. Use \"hostname Name\" to set\r\n");
-  } else {
-    // Copy user input.
-    strlcpy(buf,argv[1],sizeof(buf));
-    PromptID = buf;
-  }
-  return 0;
-}
 
 
 // Used in MUST_NOT_HAPPEN() macro. Declared here because of conflicts in include files
@@ -297,5 +279,106 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
   while(1)
     q_delay(1);
 }
+
+
+
+
+#include <nvs_flash.h>
+#include <nvs.h>
+
+//extern const char *PromptID, defined in editline.h
+
+static bool nv_init = false;
+
+static void nv_init_once() {
+
+  if (nv_init)
+    return ;
+
+  esp_err_t err = nvs_flash_init();
+  if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+      nvs_flash_erase();
+      err = nvs_flash_init();
+  }
+  if (err != ESP_OK) {
+    q_print("% NV flash init failed\r\n");
+    return ;
+  }
+
+  nv_init = true;
+}
+
+
+// Save some vital configuration parameters to the NV storage.
+// Right now it is just one parameter: a host id.
+//
+static bool nv_save_config(const char *nspace) {
+
+    nvs_handle_t handle;
+    esp_err_t err;
+
+    if (!nspace)
+      nspace = "espshell";
+
+    nv_init_once();
+
+    // Open NVS storage
+    if ((err = nvs_open(nspace, NVS_READWRITE, &handle)) != ESP_OK) {
+        q_printf("%% Error opening NVS, namespace \"%s\": code %s",nspace, esp_err_to_name(err));
+        return false;
+    }
+
+    // Write values
+    if ((err = nvs_set_str(handle, "hostid", PromptID)) == ESP_OK)
+      if ((err = nvs_commit(handle)) != ESP_OK)
+        q_printf("%% NVS commit failed: %s", esp_err_to_name(err));
+
+    nvs_close(handle);
+    return err == ESP_OK;
+}
+
+// Load some espshell parameters from the NV storage
+//
+static bool nv_load_config(const char *nspace) {
+
+    nvs_handle_t handle;
+    esp_err_t err;
+    size_t length = sizeof(PromptID);
+
+    if (!nspace)
+      nspace = "espshell";
+
+    nv_init_once(); 
+    
+    if ((err = nvs_open(nspace, NVS_READONLY, &handle)) != ESP_OK) {
+        q_printf("%% Error opening NVS: %s", esp_err_to_name(err));
+        return false;
+    }
+
+    // Read hostname
+    err = nvs_get_str(handle, "hostid", PromptID, &length);
+    nvs_close(handle);
+    return err == ESP_OK;
+}
+
+//"hostid [NAME]"
+//
+// Hidden command, to add a hostid to the prompt.
+//
+static int cmd_hostid(int argc, char **argv) {
+
+  if (argc < 2) {
+    if (PromptID[0])
+      q_printf("%% Host ID is \"%s\"\r\n", PromptID);
+    else
+      q_print("% Host ID is not set. (\"<i>hostid</> Name\" to set)\r\n");
+  } else {
+    // Copy user input.
+    strlcpy(PromptID,argv[1],sizeof(PromptID)); // TODO: unprotected
+    nv_save_config("espshell");
+  }
+  return 0;
+}
+
 
 #endif // #if COMPILING_ESPSHELL

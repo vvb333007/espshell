@@ -23,7 +23,7 @@
 //
 // TODO: find every place where pointers are assumed to be uint32_t in size and refactor using intptr_t.
 //       Most of them are in var.h and task.h tho
-// TODO: implement "static intptr_t hex2pointer(const char *hex_string, intptr_t def)". Now we use 
+// TODO: implement "static uintptr_t hex2uintptr(const char *hex_string, uintptr_t def)". Now we use 
 //       hex2uint32 to convert pointers (user input, e.g. TASK_ID) to uint32_t which is not portable
 //       across 32/64 bit architectures.
 //
@@ -1052,9 +1052,39 @@ static unsigned int hex2uint32(const char *p) {
   return value;
 }
 
+// Used to read pointer/address values
+//
+static uintptr_t hex2uintptr(const char *p) {
+
+  uintptr_t value = 0;
+  unsigned int four = 0;
+  char c;
+
+  // skip leading "0x" if present
+  if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X'))
+    p += 2;
+
+  // scan /p/ till the end, convert 4 bits at a time
+  while ((c = *p) != '\0') {
+      
+    // turn to lowercase.
+    if (unlikely(c >= 'A' && c <= 'Z'))
+      c |= 1 << 5;
+
+    if (c >= '0' && c <= '9') four = c - '0'; else 
+    if (c >= 'a' && c <= 'f') four = c - 'a' + 10; else
+      break; // stop scanning on first "bad" symbol, return what was read 
+
+    value = (value << 4) | four;
+    p++;
+  }
+  return value;
+
+}
+
 // Same as above but for octal numbers (e.g. "012346773" with leading 0)
 // If string has symbols outside of the allowed range (`0`..`7`) then this
-// function return zero. Empty strings ("") gets converted to zero as well
+// function return what was read. Empty strings ("") gets converted to zero
 //
 static unsigned int octal2uint32(const char *p) {
   unsigned int value = 0;
@@ -1277,17 +1307,17 @@ static void q_printtable(const unsigned char *p, unsigned int count, unsigned ch
         } else if (isf) {
           q_printf("%ff\r\n", *((float *)p));
         } else {
-          if (length == 4) {
+          if (length == sizeof(unsigned int)) {
             if (isu)
               q_printf("%u (0x%x)\r\n",*((unsigned int *)p),*((unsigned int *)p));
             else
               q_printf("%i\r\n",*((signed int *)p));
-          } else if (length == 2) {
+          } else if (length == sizeof(unsigned short)) {
             if (isu)
               q_printf("%u (0x%x)\r\n",*((unsigned short *)p),*((unsigned short *)p));
             else
               q_printf("%i\r\n",*((signed short *)p));
-          } else if (length == 1) {
+          } else if (length == sizeof(unsigned char)) {
             if (isu)
               q_printf("%u (0x%x)\r\n",*((unsigned char *)p),*((unsigned char *)p));
             else
@@ -1424,7 +1454,7 @@ static int text2buf(int argc, char **argv, int i /* START */, char **out) {
             default:
               if (ishex2(p)) {
                 c = hex2uint8(p);
-                if (p[0] == '0' && p[1] == 'x')
+                if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X'))
                   p += 2;
                 p++;
                 if (*p) 
@@ -1444,6 +1474,7 @@ static int text2buf(int argc, char **argv, int i /* START */, char **out) {
         size++;
       }
       // input line length limiting. just in case. normally editline() must not accept lines which are too long
+      // TODO: editline() does not care
       if (size > ESPSHELL_MAX_INPUT_LENGTH)
         break;
     } while (i < argc);

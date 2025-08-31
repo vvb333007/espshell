@@ -181,7 +181,7 @@ static bool task_wait_for_signal(uint32_t *sig, uint32_t timeout_ms) {
 // Can we perform commands on this taskid?
 // The task must be not the espshell's main task AND taskid must be in a valid address range
 //
-static bool is_taskid_good(unsigned int taskid) {
+static bool is_taskid_good(task_t taskid) {
 
   if (!is_valid_address((void *)taskid,sizeof(task_t))) {
     HELP(q_print("% Task ID you entered seems to be invalid\r\n"
@@ -190,8 +190,8 @@ static bool is_taskid_good(unsigned int taskid) {
   }
   
   // Ignore attempts to manipulate the main espshell task
-  if (shell_task == (task_t )taskid) {
-    HELP(q_printf("%% Task <i>0x%x</> is the main espshell task, access denied :)\r\n",taskid));
+  if (shell_task == taskid) {
+    HELP(q_printf("%% Task <i>%p</> is the main espshell task, access denied :)\r\n",taskid));
     return false;
   }
 
@@ -199,7 +199,7 @@ static bool is_taskid_good(unsigned int taskid) {
 }
 
 // check if *this* task (a caller) is executed as separate (background) task
-// or it is executed in context of ESPShell
+// or it is executed in ESPShell's task context
 //
 static INLINE bool is_foreground_task() {
   return shell_task == taskid_self();
@@ -210,11 +210,13 @@ static INLINE bool is_background_task() {
 }
 
 
-// A task argument for the ..._helper_task(). We can only have 1 argument 
-// to the function so we use this temporary struct
+// A task argument, which is passed to newly started tasks (i.e. amp_helper_task(void *arg) or alias_helper_task(void * arg).
+// Depending on the task different fields are used:
+// amp_helper_task() uses ->aa, ->context,->keywords while alias helper task uses ->al, ->delay_ms, ->context and ->keywords.
+// These members are NOT stored as union (to save space) because it will break the idea of "permanent pointers"
 //
 struct helper_arg {
-  struct helper_arg        *next;     // TODO: make a union of these 3 pointers?
+  struct helper_arg        *next;     // Only makes sence for items on "unused" list
   struct alias             *al;
   argcargv_t               *aa;
   uint32_t                  delay_ms;
@@ -234,11 +236,6 @@ struct helper_arg {
 // to a valid memory region
 //
 static _Atomic(struct helper_arg *) ha_unused = NULL;
-#ifndef LOCKLESS
-static mutex_t ha_mux = MUTEX_INIT;
-#endif
-
-
 
 // Allocate / Reuse
 //
@@ -246,17 +243,10 @@ static struct helper_arg *ha_get() {
 
   struct helper_arg *ret;
 
-#ifndef LOCKLESS
-  mutex_lock(ha_mux);
-  if ((ret = ha_unused) != NULL)
-    ha_unused = ha_unused->next;
-  mutex_unlock(ha_mux);
-#else
   do {
     if ((ret = atomic_load(&ha_unused)) == NULL)
       break;
   } while(!atomic_compare_exchange_strong( &ha_unused, &ret, ret->next));
-#endif
 
   return ret ? ret : (struct helper_arg *)q_malloc(sizeof(struct helper_arg ), MEM_TMP);
 }
@@ -264,18 +254,13 @@ static struct helper_arg *ha_get() {
 // Deallocate / Put on the unused list
 //
 static void ha_put(struct helper_arg *ha) {
-  if (ha != NULL) {
-#ifndef LOCKLESS
-    mutex_lock(ha_mux);
-    ha->next = ha_unused;
-    ha_unused = ha;
-    mutex_unlock(ha_mux);
-#else
+  // code below does this:
+  //   ha->next = ha_unused;
+  //   ha_unused = ha;
+  if (ha != NULL)
     do {
       ha->next = atomic_load(&ha_unused);
     } while(!atomic_compare_exchange_strong( &ha_unused, &ha->next, ha));
-#endif    
-  }
 }
 
 // Older versions of  ESP-IDF had FreeRTOS Trace Facility disabled, so we had to use an ugly workaround 
@@ -398,7 +383,7 @@ static int cmd_show_tasks(int argc, char **argv) {
 
 
 
-//"suspend"
+//"suspend [TASK_ID | TASK_NAME]"
 // suspends main Arduino task (i.e loop()) or any other task
 //
 static int cmd_suspend(int argc, char **argv) {
@@ -407,10 +392,10 @@ static int cmd_suspend(int argc, char **argv) {
   task_t sus = loopTaskHandle;
   if (argc > 1) {
     if (q_isnumeric(argv[1]))
-      taskid = (task_t)hex2uint32(argv[1]);
+      taskid = (task_t)hex2uintptr(argv[1]);
     else
       taskid = task_by_name(argv[1]);
-    if (is_taskid_good((uint32_t)taskid)) 
+    if (is_taskid_good(taskid))
       sus = taskid; 
     else 
       return 1;
@@ -428,10 +413,10 @@ static int cmd_resume(int argc, char **argv) {
   task_t sus = loopTaskHandle;
   if (argc > 1) {
     if (q_isnumeric(argv[1]))
-      taskid = (task_t)hex2uint32(argv[1]);
+      taskid = (task_t)hex2uintptr(argv[1]);
     else
       taskid = task_by_name(argv[1]);
-    if (is_taskid_good((uint32_t )taskid))
+    if (is_taskid_good(taskid))
       sus = taskid;
     else
       return 1;
@@ -469,11 +454,11 @@ static int cmd_kill(int argc, char **argv) {
     return CMD_MISSING_ARG;
 
   if (q_isnumeric(argv[i]))
-    taskid = (task_t)hex2uint32(argv[i]);
+    taskid = (task_t)hex2uintptr(argv[i]);
   else
     taskid = task_by_name(argv[i]);
 
-  if (is_taskid_good((uint32_t)taskid)) {
+  if (is_taskid_good(taskid)) {
     // SIGNAL_KILL is never sent to a task. Instead, task is deleted.
     if (sig == SIGNAL_KILL) {
       task_suspend((task_t )taskid);
@@ -512,11 +497,11 @@ static int cmd_priority(int argc, char **argv) {
   if (argc > 2) {
 
     if (q_isnumeric(argv[2]))
-      taskid = (task_t)hex2uint32(argv[2]);
+      taskid = (task_t)hex2uintptr(argv[2]);
     else
       taskid = task_by_name(argv[2]);
 
-    if (!is_taskid_good((uint32_t )taskid))
+    if (!is_taskid_good(taskid))
       return 2;
   } else
     taskid = NULL; // self

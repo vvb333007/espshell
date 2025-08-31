@@ -53,6 +53,9 @@ static void __attribute__((constructor)) files_init_once() {
 #endif
   }
   files_set_cwd("/");
+  // files_set_cwd() changes user prompt, we dont want it now.
+  // restore the prompt
+  // TODO: add "change_command_directory(.. main ..)" at startup, remove this code & comments
   prompt = PROMPT;
 }
 
@@ -152,7 +155,7 @@ static char *files_time2text(time_t t) {
   return buf;
 }
 
-// Set current working directory (CWD)
+// Set current working directory (CWD). NOTE: changes user prompt, if called from the main task.
 // /cwd/ - absolute path (starts with "/")
 //
 static const char *files_set_cwd(const char *cwd) {
@@ -182,8 +185,8 @@ static const char *files_set_cwd(const char *cwd) {
   // So instead we inject ASCII color sequences directly to the prompt
   const char *tmp = Cwd ? (const char *)Cwd : "/";
   sprintf(prom, PROMPT_FILES, (Color ? tag2ansi('i') : ""), tmp, (Color ? tag2ansi('n') : ""));
-  prompt = prom;
-  //TODO: Change prompt via prompt_set(), which should filter out attempts made background tasks
+  prompt_set(prom);
+  
 
   return tmp;
 }
@@ -196,8 +199,10 @@ static inline const char *files_get_cwd() {
 
 // Convert "*" to spaces in paths. Spaces in paths are entered as asterisk
 // "path" must be writeable memory.
-//"Program*Files*(x64)" gets converted to "Program Files (x64)"
+// "Program*Files*(x64)" gets converted to "Program Files (x64)"
 //
+// This is the old code. Now, filenames with spaces can be enclosed in double quotes
+// but I keep this code here for compatibility
 static void files_asterisk2spaces(char *path) {
   if (path) {
     while (*path != '\0') {
@@ -420,8 +425,8 @@ static unsigned int files_space_total(int i) {
       if (files_mountpoint_is_sdspi(i)) {
 //#warning "Developer reminder #1"
 
-#if 0 // Not yet in Arduino Core.
-      // TODO: UPDATE: looks like Arduino Core now has updated the ffat code
+#if 1 // Set to 0 if it does not compile. This code works with newer versions of ESP-IDF
+      // 
         vfs_fat_sd_ctx_t *ctx = get_vfs_fat_get_sd_ctx((sdmmc_card_t *)mountpoints[i].gpp);
         MUST_NOT_HAPPEN(ctx == NULL); // Or should we just return 0?
         pdrv = ctx->pdrv;
@@ -467,8 +472,7 @@ static unsigned int files_space_free(int i) {
       BYTE pdrv = 0;
 
       if (files_mountpoint_is_sdspi(i)) {
-//#warning "Developer reminder #2"
-#if 0 // Not yet in Arduino Core.
+#if 1 // Set to 0 if it does not compile. TODO: #if (ESP_VERSION...)
         vfs_fat_sd_ctx_t *ctx = get_vfs_fat_get_sd_ctx((sdmmc_card_t *)mountpoints[i].gpp);
         MUST_NOT_HAPPEN(ctx == NULL);
         pdrv = ctx->pdrv;
@@ -984,31 +988,39 @@ static unsigned int sd_capacity_mb(int mpi) {
 
 #endif //WITH_SD
 
-// Twin brother of alias_exec() but for files
+// Twin brother of alias_exec() but for files.
+// Supposed to be called by the shell handlers. If called directly, then will have no effect on user prompt
+//
+// Return codes: 0 on success, <0 if file is not accessible, >0 number of errors during execution
 //
 static int files_exec(const char *name) {
-#if 0  
-  FILE *f;
-  char *p = NULL;
-  unsigned int plen = 0, cline = 0;
-  int r; 
 
+  FILE *f;
+  char *p = NULL, *path;
+  unsigned int plen = 0, cline = 0;
+  int r, errors = 0;
+
+  path = files_full_path(name, PROCESS_ASTERISK); 
+
+  // Open the file. Read it line by line and execute. Count lines and errors
   if ((f = fopen(path, "rb")) != NULL) {
     while (!feof(f) && (r = files_getline(&p, &plen, f)) >= 0) {
       cline++;
-      if (r > 0 && p) {
-        espshell_exec(p)
+      if (r > 0 && p && *p) {
+        char *pp = strdup(p); //espshell_command frees the buffer
+        if (pp && espshell_command(pp, NULL) != 0)
+          errors++;
       }
     }
     if (p)
       q_free(p);
     fclose(f);
-  }
-#endif
-// option1: load whole file as is and pass it to espshell_exec()
-// option2: refactor espshell_exec() to not use TTYenqueue()  
-  
-  return 0;
+    q_printf("%% file %s:, %d lines, %d errors\r\n",name,cline,errors);
+  } else
+    q_printf("%% file %s: failed to open\r\n",name);
+
+  return f ? errors  // 0 == "Success" or >0 == "number of errors"
+           : -1;     // "File is not accessible"
 }
 
 // <TAB> (Ctrl+I) handler. Jump to next argument
@@ -1037,9 +1049,9 @@ static int cmd_files_if(int argc, char **argv) {
   // file manager actual prompt is set by files_set_cwd()
   change_command_directory(0, KEYWORDS(files), PROMPT, "filesystem");
 
-  //initialize CWD if not initialized previously. (updates user prompt)
-  // NOTE: it is initialized in files_init_once()
-  //files_set_cwd(files_get_cwd());
+  // Initialize CWD if not initialized previously.
+  // Update user prompt.
+  files_set_cwd(files_get_cwd());
   return 0;
 }
 

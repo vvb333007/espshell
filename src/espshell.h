@@ -85,7 +85,7 @@
 
 // Developers section
 //#define MPIPE_USES_MSGBUF // experimental MessagePipes using FreeRTOS MessageBuffers instead of Queues
-#define LOCKLESS // experimental: use lockless atomic code instead of traditional mutex/critical section
+
 
 // -- ESPShell public API --
 

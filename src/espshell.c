@@ -15,14 +15,6 @@
 
 #define COMPILING_ESPSHELL 1
 
-// These asserts are mostly for var.h module since it *assumes* that sizeof(int) == sizeof(void *) == 4
-// (as it should be on a 32bit CPU). Problem will arise when porting this code to 64 bit system (i.e. sizeof(void *) > sizeof(int))
-//
-// Affected code is related to task ID (task.h module) and to variables (var.h)
-//
-// We do these asserts in the beginning so we can safely convert between 32-bit types and make safe our, 
-// generally speaking unsafe code
-//
 
 // enable -Wformat warnings. Turned off by Arduino IDE by default.
 #pragma GCC diagnostic warning "-Wformat"  
@@ -213,8 +205,19 @@ static __thread unsigned int Context = 0;
 #define context_set(_New) { Context = (__typeof__(Context))_New; }
 
 
-// Currently used prompt
-static const char * prompt = PROMPT; 
+// Currently used prompt.
+// Prompts are locally maintained by modules, usually as a static buffer declared on a stack. As a result we don't have
+// to allocate/free memory for the prompt but it also creates problems when multiple threads try to set their prompts.
+// Fortunately, background tasks are NOT allowed to change the prompt
+//
+static const char * prompt = PROMPT;
+
+static void prompt_set(const char *new_prompt) {
+  if (is_foreground_task())
+    prompt = new_prompt ? new_prompt : PROMPT;
+  else
+    VERBOSE(q_print("% Ignored attempt to change the prompt\r\n"));
+}
 
 // Common messages. 
 static const char *Failed = "% <e>Failed</>\r\n";
@@ -293,10 +296,8 @@ static int espshell_command(char *p, argcargv_t *aa);
 #include "filesystem.h"         // file manager
 #include "memory.h"             // memory component
 #include "espcam.h"             // Camera support
-#if WITH_ALIAS
-#  include "alias.h"
-#  include "ifcond.h"
-#endif
+#include "alias.h"
+#include "ifcond.h"
 
 
 // 6. These two must be included last as they are supposed to call functions from every other module
@@ -565,7 +566,8 @@ bool espshell_exec_finished() {
 
 
 // This function may be called multiple times despite its name:
-// Call functions which are intended to be called once, things like convars & memory allocations.
+// Calls functions which are intended to be called once, things like 
+// convars & memory allocations, but can not be called as a __constructor__ function
 //
 static bool call_once = false;
 
@@ -575,10 +577,7 @@ static  void espshell_initonce() {
     prompt = PROMPT;
     call_once = true;
 
-    
-
     // Add internal shell variables
-#if 1    
     convar_add(ls_show_dir_size);  // enable/disable dir size counting for "ls" command
     convar_add(pcnt_unit);         // PCNT unit which is used by "count" command
     convar_add(bypass_qm);         // enable/disable "?" as a context help hotkey
@@ -588,7 +587,6 @@ static  void espshell_initonce() {
 #if WITH_ESPCAM
     convar_add(cam_ledc_chan);  // Avoiding interference: LEDC channels used by ESPCAM for generating XCLK
     convar_add(cam_ledc_timer);    // Avoiding interference: ESP32 TIMER used by ESPCAM
-#endif
 #endif
     // init subsystems
     seq_init();
@@ -627,6 +625,9 @@ static void espshell_task(const void *arg) {
     taskid_remember(loopTaskHandle);
 
 
+    // Read some startup data from nvram (if available)
+    nv_load_config("espshell");
+
     HELP(q_print(WelcomeBanner));
 
     // The main REPL : read & execute commands until "exit ex" is entered
@@ -637,6 +638,8 @@ static void espshell_task(const void *arg) {
         espshell_command(line, NULL);
       else
         // if readline() starts to fail, we risk to end up in a spinloop, starving IDLE0 or IDLE1 tasks
+        // TODO: make exponential delay, with a cutoff at 10 seconds instead of callid q_yield(). 
+        // TODO: Keep displaying messages "console problems"
         q_yield();  
     }
     HELP(q_print(Bye));
@@ -644,6 +647,8 @@ static void espshell_task(const void *arg) {
     // Make espshell restart possible
     Exit = false;
     shell_task = NULL;
+
+    // Sayonara
     task_finished();
   }
 }
@@ -663,18 +668,30 @@ static INLINE bool espshell_started() {
 //
 void STARTUP_HOOK espshell_start() {
 
-static_assert(sizeof(unsigned long long) == 8);
-static_assert(sizeof(signed long long) == 8);
-static_assert(sizeof(unsigned short) == 2);
-static_assert(sizeof(unsigned char) == 1);
-static_assert(sizeof(signed short) == 2);
-static_assert(sizeof(unsigned int) == 4);
-static_assert(sizeof(signed char) == 1);
-static_assert(sizeof(signed int) == 4);
-static_assert(sizeof(void *) == 4);
-static_assert(sizeof(task_t) == sizeof(void *));
-static_assert(sizeof(float) == 4);
 
+// These static assertions primarily apply to the var.h module, 
+// which *assumes* sizeof(int) == sizeof(void*) == 4 
+// (as is true on 32-bit CPUs). 
+// Problems will arise when porting this code to a 64-bit system 
+// (i.e., sizeof(void*) > sizeof(int)).
+//
+// The affected code relates to task IDs (task.h) and variables (var.h).
+//
+// We perform these assertions at the start so that we can safely convert 
+// between 32-bit types and protect otherwise unsafe code.
+
+  static_assert(sizeof(unsigned long long) == 8);
+  static_assert(sizeof(signed long long) == 8);
+  static_assert(sizeof(unsigned short) == 2);
+  static_assert(sizeof(unsigned char) == 1);
+  static_assert(sizeof(signed short) == 2);
+  static_assert(sizeof(unsigned int) == 4);
+  static_assert(sizeof(signed char) == 1);
+  static_assert(sizeof(signed int) == 4);
+  static_assert(sizeof(void *) == 4);
+  //static_assert(sizeof(task_t) == sizeof(void *)); fixed.
+  static_assert(sizeof(float) == 4);
+  
   espshell_initonce();
   if (espshell_started())
     HELP(q_print("% ESPShell is started already, exiting\r\n"));

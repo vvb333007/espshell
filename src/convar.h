@@ -14,22 +14,23 @@
 
 // -- Console Variables --
 //
-// User sketch can **register** global or static variables to be accessible (for reading/writing)
-// from ESPShell. Once registered, variables can be manipulated by "var" command: see "extra/espshell.h"
-// for convar_add() definition, and example_blink.ino for example of use
+// A user sketch can **register** global or static variables to make them accessible 
+// for reading and writing from ESPShell. Once registered, variables can be manipulated 
+// using the "var" command. See "espshell.h" for the convar_add() definition, 
+// and led_blink_var_example.ino for usage examples.
 //
-// Sketch variables then can be accessible through "var" command:
-// "var VARIABLE_NAME" - display variable (for arrays it also displays its elements)
-// "var VARIABLE_NAME VALUE" - set variable to a new value
-// Individual array elements (real array or a pointer) can be referred to as VARIABLE_NAME[INDEX]
-
-// TODO: This code needs a review. There may be buffer overflows because of strcpy and sprintf. These should be changed to strlcpy & snprintf
-// TODO: Verify that no variables with names longer than CONVAR_NAMELEN_MAX-1 can be registered
-
-// "Console Variable" (convar) descriptor. These are created by convar_add() and linked into SL list
-// The head of the list is "var_head". 
-// Entries are created once and never deleted
+// Registered variables are accessible through the "var" command:
+//   "var VARIABLE_NAME"           - display the variable (or an array element)
+//   "var VARIABLE_NAME VALUE"     - set the variable to a new value
+// Individual array elements (whether real arrays or pointers) can be accessed as VARIABLE_NAME[INDEX].
 //
+// TODO: Review this code. Possible buffer overflows may occur due to use of strcpy and sprintf. 
+//       These should be replaced with strlcpy and snprintf.
+// TODO: Verify that variables with names longer than CONVAR_NAMELEN_MAX - 1 cannot be registered.
+//
+// "Console Variable" (convar) descriptors are created by convar_add() 
+// and linked into a singly linked list (head is "var_head"). 
+// Entries are created once and never deleted.
 
 struct convar {
   struct convar *next;     // next var in list
@@ -46,7 +47,9 @@ struct convar {
     
   unsigned int size:  3;    // variable size (1,2 or 4 bytes)
   unsigned int sizea: 22;   // if variable is a pointer (or an array) then this field contains sizeof(array_element)
-  unsigned int counta;      //              --                                                 sizeof(array)/sizeof(array_element, i.e. nnumber of elements in the array)
+                            // if, however, it is 0, then this means a generic pointer (memory size is unknown)
+                            // this happens when accessing array elements, due to implementation. Fixing it requires too much effort.
+  unsigned int counta;      // sizeof(array)/sizeof(array_element, i.e. nnumber of elements in the array)
 };
 
 // Composite variable value .
@@ -74,7 +77,9 @@ typedef union composite_u {
 
 
 // Single-linked list of all registered variables. 
-// NOTE: Access to the list is not protected (no mutexes nor semaphores)
+// NOTE: Access to the list is not protected (no mutexes nor semaphores). All convar_addX() must be made from the same
+//       task context
+//       
 static struct convar *var_head = NULL;
 
 // Helper constants which are used by convar_typenameX() to construct type names like "char" or "unsigned int"
@@ -87,7 +92,7 @@ static const char *__uina = "unsigned int *";
 
 // Check if variable has supported type. ESPShell supports only basic C types
 // which can fit 1,2 or 4 bytes
-//
+// TODO: support "long long" and stdint types (uint32_t etc)
 static bool variable_type_is_ok(unsigned int size) {
   if (size != sizeof(char) && size != sizeof(short) && size != sizeof(int) && size != sizeof(float)) {
     q_printf("%% Variable was not registered (unsupported size: %u)\r\n",size);
@@ -177,7 +182,7 @@ void espshell_varadda(const char *name, void *ptr, int size,int count, bool isf,
       var->size = sizeof( void * );     // size of a pointer is a constant
       var->sizea = size;                // size of array element
       var->counta = count;              // number of elements in the array
-      var->isfa = isf;                  // is?a is a twin brothers of their is? counterparts but related to the array element
+      var->isfa = isf;                  // isXa is a twin brothers of their isX counterparts but related to the array element
       var->isua = isu;
       var->ispa = isp;
       var_head = var;
@@ -370,8 +375,12 @@ static int convar_show_var(char *name) {
     q_printf("%% %s <i>%s</> = <g>%s</>;  ", convar_typename(var), var->name, out);
     // In case of a pointer or array, print its content
     if (var->isp) {
-      if (var->counta == 1) // arrays of 1 element are treated as plain pointers
-        q_printf("// Pointer a to %u-byte memory region", var->sizea);
+      if (var->counta == 1) { // arrays of 1 element are treated as plain pointers
+        if (var->sizea > 0)
+          q_printf("// A pointer to %u-byte memory region", var->sizea);
+        else
+          q_printf("// A pointer (variable size memory region)");
+      }
       else
         q_printf("// Array of %u elements, (%u bytes per element)", var->counta, var->sizea);
       if (var->counta < ARRAY_TOO_BIG) {

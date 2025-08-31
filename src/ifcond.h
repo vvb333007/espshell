@@ -36,6 +36,7 @@
 // That means these pointers always point to valid memory region
 //
 #ifdef COMPILING_ESPSHELL
+#if WITH_ALIAS
 
 // ifcond: this is what "if rising 5 low 6 high 10 ..." or "every 1 day ..." commands are parsed into.
 //
@@ -694,10 +695,6 @@ static void ifc_show_all() {
 
 #define MULTIPLE_IFCONDS ((num <= 0) || all) // have to process multiple ifconds or just one?
 
-#ifndef LOCKLESS
-static barrier_t ifc_mux = BARRIER_INIT;  // a critical section to protect ifc_unused.
-#endif
-
 static _Atomic(struct ifcond *) ifc_unused = NULL;  // list of free entries. entries are reused, ID is retained
 
 // Allocate an ifcond.
@@ -709,19 +706,10 @@ static struct ifcond *ifc_get() {
 
   static _Atomic uint16_t id = 1;
   struct ifcond *ret = NULL;
-#ifndef LOCKLESS
-  barrier_lock(ifc_mux);
-  if (ifc_unused) {
-    ret = ifc_unused;
-    ifc_unused = ret->next;
-  }
-  barrier_unlock(ifc_mux);
-#else
   do {
     if ((ret = atomic_load(&ifc_unused)) == NULL)
       break;
   } while(!atomic_compare_exchange_strong( &ifc_unused, &ret, ret->next));
-#endif
 
   // New entries get new ID; Reused entries must use their previously assigned ID.
   // ifc_get() only guarantees that /->id/ and /->alive/ fields are initialized, while 
@@ -759,16 +747,9 @@ static void ifc_put(struct ifcond *ifc) {
     // entry is removed, because corresponding timers are removed also. It is an extra layer of safety
     ifc->alive = 0;
     ifc->disabled = 1;
-#ifndef LOCKLESS
-    barrier_lock(ifc_mux);
-    ifc->next = ifc_unused;
-    ifc_unused = ifc;
-    barrier_unlock(ifc_mux);
-#else
     do {
       ifc->next = atomic_load(&ifc_unused);
     } while(!atomic_compare_exchange_strong( &ifc_unused, &ifc->next, ifc));
-#endif    
   }
 }
 
@@ -1368,4 +1349,5 @@ static int cmd_show_ifs(int argc, char **argv) {
   }
   return 0;
 }
+#endif // WITH_ALIAS
 #endif // COMPILING_ESPSHELL

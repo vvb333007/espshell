@@ -74,6 +74,14 @@ unsigned long __attribute__((const)) seq_tick2freq(const float tick_us) {
   return tick_us ? (unsigned long)((float)1000000 / tick_us) : 0;
 }
 
+static void seq_drop_levels(int seq) {
+  if (seq >= 0 && seq < SEQUENCES_NUM)
+    if (sequences[seq].seq) {
+      q_free(sequences[seq].seq);
+      sequences[seq].seq = NULL;
+    }
+}
+
 // free memory buffers associated with the sequence:
 // ->"bits" and ->"seq"
 static void seq_freemem(int seq) {
@@ -94,7 +102,7 @@ static void seq_freemem(int seq) {
 
 // initialize/reset sequences to default values
 //
-static void seq_init() {
+static void __attribute__((constructor)) seq_init() {
 
   for (int i = 0; i < SEQUENCES_NUM; i++) {
     sequences[i].tick = 1;
@@ -163,7 +171,7 @@ static void seq_show(unsigned int seq) {
 
   if (s->bits || s->bytes) {
     if (s->bits)
-      q_printf("Bits sequence: (%d bits) \"%s\"\r\n", strlen(s->bits), s->bits);
+      q_printf("%% Bits sequence: (%d bits) \"%s\"\r\n", strlen(s->bits), s->bits);
     else {
       int tmp = strlen(s->bytes);
       if (tmp & 1)
@@ -249,18 +257,32 @@ static inline bool seq_isready(unsigned int seq) {
           (sequences[seq].tick != 0.0f);
 }
 
-// compile 'bits' to 'seq'
+// compile 'bits' or 'bytes' to 'seq'
 // compilation is done when following conditions are met:
 //   1. both 'zero' and 'one' are set. Both must be of the
 //      same type: either pulse (long form) or level (short form)
-//   2. 'bits' are set
+//   2. 'bits' or 'bytes' are set
 //   3. 'seq' is NULL : i.e. is not compiled yet
+//
+// 'head' and 'tail' are optional
+//
 static int seq_compile(int seq) {
 
   struct sequence *s = &sequences[seq];
+  int ht = 0; // how many extra RMT symbols we need to add Head and Tail?
 
   if (s->seq)  //already compiled
     return 0;
+
+  // If used, both 'tail' and 'head' are expected to be set
+  //
+  if ((s->ht[0].duration0 && !s->ht[1].duration0) ||
+      (!s->ht[0].duration0 && s->ht[1].duration0))
+      return -7;
+
+  // Add extra 2 RMT symbols if we have head/tail
+  if (s->ht[0].duration0)
+    ht = 2;
 
   if (s->alph[0].duration0 && s->alph[1].duration0 && s->bits) {
 
@@ -279,25 +301,40 @@ static int seq_compile(int seq) {
         return -1;
       }
 
-      int j, i = strlen(s->bits);
+      int j = 0, i = strlen(s->bits) + ht, k = 0;
+
       if (!i)
         return -2;
+
       if ((s->seq = (rmt_data_t *)q_malloc(sizeof(rmt_data_t) * i, MEM_SEQUENCE)) == NULL)
         return -3;
-      for (s->seq_len = i, j = 0; j < i; j++)
-        s->seq[j] = s->alph[s->bits[j] - '0'];  // s->seq[j] = s->alph[0] or s->alph[1], depending on s->bits[j] value ('0' or '1')
+
+      // first element is a 'head' symbol
+      if (ht)
+        s->seq[j++] = s->ht[0];  
+
+      // s->seq[j] = s->alph[0] or s->alph[1], depending on s->bits[j] value ('0' or '1')
+      for (s->seq_len = i; s->bits[k] != 0; j++, k++)
+        s->seq[j] = s->alph[s->bits[k] - '0'];  
+
+      // last element is a 'tail' symbol
+      if (ht)
+        s->seq[j++] = s->ht[1];  
+
     } else {
       // short form (1 rmt symbol carry 2 bits of data)
       if (s->alph[1].duration1) {
         q_print("% <e>\"One\" is defined as a pulse, but \"Zero\" is a level</>\r\n");
         return -4;
       }
-
       int k, j, i = strlen(s->bits);
 
       // 1 rmt symbol can carry 2 bits so we want our "bits" string to be of even size.
-      // if number of bits user had entered is not divisible by 2 then the last bit of a string gets duplicated:
-      // if user enters "101" it will be padded with one extra "1"
+      // if number of bits user had entered is not divisible by 2 then:
+      //     TODO: if there is "tail" set, then we just add tail (always 1 level) to the bitstring
+      //     TODO: if not - then pad with 0/0 0/0 rmt symbol
+      if (ht)
+        HELP(q_print("% \"head\" and \"tail\" are ignored for a short-form level sequence\r\n"));
 
       if (i & 1) {
         char *r = (char *)q_realloc(s->bits, i + 2, MEM_SEQUENCE);
@@ -306,9 +343,11 @@ static int seq_compile(int seq) {
         s->bits = r;
         s->bits[i + 0] = s->bits[i - 1];
         s->bits[i + 1] = '\0';
+        // TODO: must be padded with 0/0 RMT symbol!!!
         q_printf("%% Bit string was padded with one extra \"%c\" (must be even number of bits)\r\n", s->bits[i]);
         i++;
       }
+
       s->seq_len = i / 2;
       s->seq = (rmt_data_t *)q_malloc(sizeof(rmt_data_t) * s->seq_len, MEM_SEQUENCE);
 
@@ -525,21 +564,36 @@ static int cmd_seq_modulation(int argc, char **argv) {
 //
 static int cmd_seq_zeroone(int argc, char **argv) {
 
-  THIS_SEQUENCE(s);
-  
+  THIS_SEQUENCE(s);                      // s is the pointer to the sequence
+
+  bool recompile = false;                // should we drop old levels and recompile the sequence?
   int level, duration;
   rmt_data_t *alph;
+  unsigned int seq = context_get_uint(); // seq is the sequence ID
 
-  // which alphabet entry to set?
-  if (!q_strcmp(argv[0], "one"))
+  // which alphabet entry to set? should we recompile?
+  // Head and Tail are implemented as the alphabet symbols, just like "one" and "zero"
+  // Changing Head or Tail always lead to recompilation, while One and Zero only trigger
+  // recompilation if sequence was successfully compiled before. 
+  //
+  // If there are only levels set (i.e. manually), then changing One and Zero will not 
+  // lead to recompilation
+  //
+  if (!q_strcmp(argv[0], "one")) {
     alph = &s->alph[1];
-  else if (!q_strcmp(argv[0], "zero"))
+    if (s->bits != NULL || s->bytes != NULL)
+      recompile = true;
+  } else if (!q_strcmp(argv[0], "zero")) {
     alph = &s->alph[0];
-  else if (!q_strcmp(argv[0], "head"))
+    if (s->bits != NULL || s->bytes != NULL)
+      recompile = true;
+  } else if (!q_strcmp(argv[0], "head")) {
     alph = &s->ht[0];
-  else if (!q_strcmp(argv[0], "tail"))
+    recompile = true;
+  } else if (!q_strcmp(argv[0], "tail")) {
     alph = &s->ht[1];
-  else
+    recompile = true;
+  } else
     return CMD_NOT_FOUND;
 
   //entry is short form by default
@@ -554,8 +608,6 @@ static int cmd_seq_zeroone(int argc, char **argv) {
         return 2;
       alph->level1 = level;
       alph->duration1 = duration;
-
-
     //FALLTHRU
     // single value = a level
     // (short form)
@@ -570,7 +622,11 @@ static int cmd_seq_zeroone(int argc, char **argv) {
       return CMD_MISSING_ARG;  // wrong number of arguments
   };
 
-  seq_compile(context_get_uint());
+  if (recompile && seq_isready(seq)) {
+    VERBOSE(q_print("%% Recompilation triggered, clearing levels\r\n"));
+    seq_drop_levels(seq);
+  }
+  seq_compile(seq);
   return 0;
 }
 
@@ -741,7 +797,7 @@ static int cmd_show_sequence(int argc, char **argv) {
 }
 
 static int cmd_seq_bytes(int argc, char **argv) {
-  q_print("% Not implemented\r\n");
+  q_print("% Not implemented yet, use \"bits\"\r\n");
   return 0;
 }
 
@@ -784,13 +840,17 @@ failed_to_open_file:
     return CMD_FAILED;
   }
 
+  // TODO: full_path is not reentrant! must fix it first!
+  // path = files_full_path(argv[1], PROCESS_ASTERISK); 
+
   // Append to existing file or create new.
   // By default we append, so every module can write its configuratuion into single config file
   if ((fp = fopen(argv[1],"a")) == NULL)
     goto failed_to_open_file;
 
+  fprintf(fp,"\r\n// Sequence configuration\r\n");
   fprintf(fp,"sequence %u\r\n",context_get_uint());
-  fprintf(fp,"  tick %f\r\n",s->tick);
+  fprintf(fp,"  tick %.4f\r\n",s->tick);
   if (s->bits)
     fprintf(fp,"  bits %s\r\n",s->bits);
   else if (s->bytes)
@@ -799,7 +859,7 @@ failed_to_open_file:
     fprintf(fp,"  levels");
     for (int i = 0; i < s->seq_len; i++)
       fprintf(fp," %d/%d %d/%d", s->seq[i].level0, s->seq[i].duration0, s->seq[i].level1, s->seq[i].duration1);
-      // seq_fprintf_rmt_symbol(fp,&s->seq[i]); TODO:
+      // TODO: use seq_fprintf_rmt_symbol(fp,&s->seq[i]); 
     fprintf(fp,CRLF);
   }
   if (s->alph[0].duration0) {
@@ -839,17 +899,17 @@ failed_to_open_file:
 }
 
 static int cmd_seq_decode(int argc, char **argv) {
-  q_print("% Not implemented\r\n");
+  q_print("% RTM-RX: Not implemented yet, wait for the next version\r\n");
   return 0;
 }
 
 static int cmd_seq_capture(int argc, char **argv) {
-  q_print("% Not implemented\r\n");
+  q_print("% RTM-RX: Not implemented yet, wait for the next version\r\n");
   return 0;
 }
 
 static int cmd_seq_profile(int argc, char **argv) {
-  q_print("% Not implemented\r\n");
+  q_print("% RTM-RX: Not implemented yet, wait for the next version\r\n");
   return 0;
 }
 

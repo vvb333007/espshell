@@ -10,6 +10,10 @@
  * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
+// TODO: make it work. recent command move (all were moved under the "camera" subdir)
+//       broke code logic
+// TODO: use new syntax (camera.txt)
+
 #if COMPILING_ESPSHELL && WITH_ESPCAM
 
 #  define ESPCAM_XCLK_DEF 16000000 // 16MHz default
@@ -22,7 +26,8 @@
 // 1) is to be able to check if camera attached to your ESP32 is actually working
 // 2) access to camera's I2C for sending raw camera commands or reading internal camera registers
 // 3) change camera modes/settings/resolution on the fly while sketch is running
-// 4) remote sensing: suing shell commands one can capture a frame and send it over UART to another
+// 4) Make a photo and save it to the file (optional)
+// 4) remote sensing: using shell commands one can capture a frame and send it over UART to another
 //    ESP32 or to a SIM7600 LTE modem's filesystem for sending it over LTE later
 
 static camera_config_t config;      // camera config TODO: rename
@@ -37,6 +42,14 @@ static bool cam_good = false;       // initialized or not?
 //
 static int8_t cam_ledc_chan = LEDC_CHANNEL_0;
 static int8_t cam_ledc_timer = LEDC_TIMER_0;
+
+// Camera settings, which can not be set immediately are stored here:
+// We can not set any camera parameters if camera is down, but we store those required for "up"
+//
+static uint8_t camera_mode = PIXFORMAT_JPEG;
+static uint8_t camera_size = FRAMESIZE_QVGA;
+static uint8_t camera_buffers = 1;
+
 
 // Known camera/board models: pins database
 // This one must be kept in sync with ESP-IDF camera driver
@@ -78,7 +91,7 @@ static const struct campins {
 
 // This entry is for "custom" camera model. It must be initialized with "camera pinout" before "camera up custom"
 // command can be used
-//
+// TODO: a command to copy existing camera entry to "custom" entry
 static struct campins Custom = {"custom", {0,0,      0,    0,0,    0,0,0,0,0,0,0,0,           0,0,0}, "User defined pinout"};
 
 static const char * const Camres[] = {
@@ -109,7 +122,7 @@ static const char * const Camres[] = {
   [FRAMESIZE_5MP] = "2592x1944"
 };
 
-static inline const char *cam_resolution(int i) {
+static const char *cam_resolution(int i) {
   return ( i>= 0 && i < FRAMESIZE_INVALID) ? Camres[i] : "unknown";
 }
 
@@ -319,10 +332,10 @@ initialize_camera_first:
 
 // TODO: "show camera resolution" -> display all possible resolutions supported and their nicknames (e.g. qxga, vga, etc)
 
-//"camera pinout PWDN RESET XCLK SDA SCL D7 D6 D5 D4 D3 D2 D1 D0 VSYNC HREF PCLK"
-static int cmd_cam_pinout(int argc, char **argv) {
+//"pinout PWDN RESET XCLK SDA SCL D7 D6 D5 D4 D3 D2 D1 D0 VSYNC HREF PCLK"
+static int cmd_camera_pinout(int argc, char **argv) {
 
-  if (argc < 18) {
+  if (argc < 17) {
 
     HELP(q_print( "% Syntax is:\r\n"
                   "% <b>camera pinout</> <o>PWDN RESET</> <i>XCLK</> <o>SDA SCL</> <g>D7 D6 D5 D4 D3 D2 D1 D0</> <i>VSYNC HREF PCLK</>\r\n"
@@ -332,9 +345,9 @@ static int cmd_cam_pinout(int argc, char **argv) {
   }
 
   int i;
-  // read pin numbers (starting from 3rd argument: "0:camera 1:pinout 2:NUM")
-  for (i = 2; i < 18; i++)
-    Custom.pins[i - 2] = q_atoi(argv[i],-1); // -1 means "don't use this pin", so it is safe choice for the default value
+  // read pin numbers (starting from 2nd argument: "0:pinout 1:NUM")
+  for (i = 1; i < 17; i++)
+    Custom.pins[i - 1] = q_atoi(argv[i],-1); // -1 means "don't use this pin", so it is safe choice for the default value
 
   if (i < argc)
     q_print("% Trailing arguments were ignored\r\n");
@@ -344,7 +357,7 @@ static int cmd_cam_pinout(int argc, char **argv) {
 
 //"gain auto"
 //"gain 0..30"
-static int cmd_camera_set_gain(int argc, char **argv) {
+static int cmd_camera_gain(int argc, char **argv) {
 
   sensor_t *cam;
 
@@ -374,7 +387,7 @@ static int cmd_camera_set_gain(int argc, char **argv) {
 
 
 //"balance auto|sunny|cloudy|office|home|none"
-static int cmd_camera_set_balance(int argc, char **argv) {
+static int cmd_camera_balance(int argc, char **argv) {
 
   sensor_t *cam;
 
@@ -410,7 +423,7 @@ static int cmd_camera_set_balance(int argc, char **argv) {
 //"exposure auto -2..2"
 //"exposure 0..1200"
 //
-static int cmd_camera_set_exposure(int argc, char **argv) {
+static int cmd_camera_exposure(int argc, char **argv) {
 
   int exposure, ae_shift = 0;
   sensor_t *cam;
@@ -460,7 +473,7 @@ static int cmd_camera_set_exposure(int argc, char **argv) {
 //"brightness|saturation|constrast?sharpness -2..2"
 //"compression 2..63"
 //
-static int cmd_camera_set_qbcss(int argc, char **argv) {
+static int cmd_camera_qbcss(int argc, char **argv) {
 
   int val;
   sensor_t *cam;
@@ -504,18 +517,13 @@ static int cmd_camera_set_qbcss(int argc, char **argv) {
 
 //"size vga|svga|xga|uxga|hd|sxga"
 //
-static int cmd_camera_set_size(int argc, char **argv) {
+static int cmd_camera_size(int argc, char **argv) {
 
   sensor_t *cam;
   int size;
 
   if (argc < 2)
     return CMD_MISSING_ARG;
-
-  if ((cam = esp_camera_sensor_get()) == NULL) {
-    q_print(Failed);
-    return 0;
-  }
 
   switch (argv[1][0]) {
     case 'f' : size = FRAMESIZE_FHD; break;
@@ -533,6 +541,15 @@ static int cmd_camera_set_size(int argc, char **argv) {
               return 1;
   };
 
+  // set global camera variable
+  camera_size = size;
+
+  if ((cam = esp_camera_sensor_get()) == NULL) {
+    q_printf("%% Camera is down. Command \"%s\" will be applied later\r\n", argv[0]);
+    return 0;
+  }
+
+
   VERBOSE(int err = )cam->set_framesize(cam, size);
   VERBOSE(q_printf("Err code: %d\r\n",err));
 
@@ -547,16 +564,39 @@ static int cmd_camera_set_size(int argc, char **argv) {
 //good idea or not. May be should make a copy and
 //return the fb asap.
 //
-static int cmd_camera_capture(int argc, char **argv) {
+static int cmd_camera_capture(UNUSED int argc, UNUSED char **argv) {
 
   if (cam_fb)
     esp_camera_fb_return(cam_fb);
 
   if ((cam_fb = esp_camera_fb_get()) == NULL)
-    q_print(Failed);
+    q_print("% Failed to take a picture\r\n");
 
   return 0;
 }
+
+// "mode jpeg|grayscale|555|565"
+//
+static int cmd_camera_mode( int argc,  char **argv) {
+
+  if (argc < 2)
+    return CMD_MISSING_ARG;
+
+  if (argv[1][0] == 'j')
+    camera_mode = PIXFORMAT_JPEG; else
+  if (argv[1][0] == 'g')
+    camera_mode = PIXFORMAT_GRAYSCALE; else
+  if (argv[1][0] == '5')
+    camera_mode = (argv[1][1] == '5') ? PIXFORMAT_RGB555 : PIXFORMAT_RGB565; else {
+    q_print("% Unknown/unsupported mode. (\"<i>? mode</>\" for help)\r\n");
+    return 1;
+  }
+
+  q_print("% To apply changes, restart your camera (see \"down\" / \"up\")\r\n");
+
+  return 0;
+}
+
 
 //"filesize"
 //
@@ -572,12 +612,12 @@ static int cmd_camera_filesize(int argc, char **argv) {
   return 0;
 }
 
-//"camera transfer"
+//"save"
 //
 // really slow byte-by-bute sender: we dont want
 // reciever fifo overrun
 //
-static int cmd_camera_transfer(int argc, char **argv) {
+static int cmd_camera_save(int argc, char **argv) {
 
   unsigned char *p;
   //cmd_camera_filesize(argc, argv);
@@ -589,11 +629,9 @@ static int cmd_camera_transfer(int argc, char **argv) {
   return 0;
 }
 
-//"camera down"
+//"down"
 //
 // camera deinit. framebuffers are freed.
-// POWERDOWN must be performed separately
-// using "pin" commands
 // POWERDOWN pin of ESP32Cam is GPIO32:
 //
 static int cmd_camera_down(int argc, char **argv) {
@@ -616,24 +654,26 @@ static int cmd_camera_down(int argc, char **argv) {
   return 0;
 }
 
-//"camera up [MODEL|custom] [clock FREQ] [i2c NUM]"
+//"up [MODEL|custom] [clock FREQ] [i2c NUM]"
 // powerup & initialize the camera.
 // If no arguments were supplied, then ESPShells assumes that camera is initialized somewhere else
 // in user sketch, and tries to access camera using camera API. 
 //
-static int cmd_cam_up(int argc, char **argv) {
+static int cmd_camera_up(int argc, char **argv) {
 
   esp_err_t err;
   const char *model = NULL;
-  unsigned int xclk = 16000000,i = 2; //TODO: DEF_CAMERA_XCLOCK
-  signed char i2c = -1;
+  unsigned int xclk = ESPCAM_XCLK_DEF,
+                  i = 1;                // index in argv[] where optional parameters starts (if any)
+  signed char     i2c = -1;             // i2c bus number to use (if sda/scl pins are not provided)
+
   bool has_psram = heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0;
 
   if (cam_good)  // already initialized
     return 0;
 
-  // No arguments to "camera up": special case
-  if (argc < 3) {
+  // No arguments to "up": a special case
+  if (argc < 2) {
     sensor_t *cam;
     q_print("% Assuming that camera is initialized by sketch, verifying...");
     if ((cam = esp_camera_sensor_get()) != NULL) {
@@ -656,9 +696,10 @@ static int cmd_cam_up(int argc, char **argv) {
       i++;
 
       xclk = q_atol(argv[i],xclk);
-      // xclk given in MHz? undocumented
+      // xclk given in MHz? TODO: undocumented
       if (xclk <= 100)
         xclk *= 1000000;
+
       if (xclk > ESPCAM_XCLK_MAX) {
         xclk = ESPCAM_XCLK_MAX;
         q_print("%% XCLK is adjusted to its maxumum, " xstr(ESPCAM_XCLK_MAX) );
@@ -670,6 +711,7 @@ static int cmd_cam_up(int argc, char **argv) {
       }
       i++;
       i2c = q_atoi(argv[i],-1); 
+      // TODO: check if i2c bus number is sane
     } else
       model = argv[i];
     i++;
@@ -687,7 +729,7 @@ static int cmd_cam_up(int argc, char **argv) {
     return -1;
 #endif
     HELP(q_printf("%% Auto-selected camera pinout: \"%s\"\n\r"
-                  "%% Wrong model? use \"camera up MODEL\"\r\n",model));
+                  "%% Wrong model? use \"up MODEL\"\r\n",model));
   }
   
   if (!cam_config_fill_pins(&config, model)) {
@@ -711,21 +753,13 @@ static int cmd_cam_up(int argc, char **argv) {
   config.xclk_freq_hz = xclk;  //20MHz or 10MHz for OV2640 double FPS, 16MHz for S2/S3 EDMA experimental mode
 
   
-  if (has_psram) {
-    config.pixel_format = PIXFORMAT_JPEG; // TODO: support RGB modes also
-    config.frame_size = FRAMESIZE_UXGA; // fits both OV2 & OV5
-    config.jpeg_quality = 4;
-    config.fb_count = 2;  // if more than one, i2s runs in continuous mode. Use only with JPEG
-    config.fb_location = CAMERA_FB_IN_PSRAM;
-    config.grab_mode = CAMERA_GRAB_LATEST;
-  } else {
-    config.pixel_format = PIXFORMAT_JPEG; // TODO: support RGB modes also
-    config.frame_size = FRAMESIZE_VGA;
-    config.jpeg_quality = 12;
-    config.fb_count = 1;
-    config.fb_location = CAMERA_FB_IN_DRAM;
-    config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
-  }
+  
+    config.pixel_format = camera_mode;
+    config.frame_size = camera_size;
+    config.jpeg_quality = has_psram ? 4 : 12; //TODO: camera_compression
+    config.fb_count = camera_buffers;  // if more than one, i2s runs in continuous mode. Use only with JPEG
+    config.fb_location = has_psram ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM;
+    config.grab_mode = has_psram ? CAMERA_GRAB_LATEST : CAMERA_GRAB_WHEN_EMPTY;
 
   q_printf("%% Selected resolution:%s, JPEG comp:%u, (uses %u fbuffer%s in %s), grab: %s\r\n", 
             cam_resolution(config.frame_size),
@@ -747,50 +781,25 @@ static int cmd_cam_up(int argc, char **argv) {
     if ((s = esp_camera_sensor_get()) != NULL) {
       s->set_gain_ctrl(s, 1);      // auto gain on
       s->set_exposure_ctrl(s, 1);  // auto exposure on
-      s->set_awb_gain(s, 1);       // Auto White Balance enable (0 or 1)
-      HELP(q_printf("%% Camera is on; Gain=auto, exposure=auto, white balance=auto\n\r"));
+      s->set_awb_gain(s, 1);       // auto white balance on
+      HELP(q_print("% Camera is on; Gain=auto, exposure=auto, white balance=auto\n\r"));
       return 0;
     } else
-      HELP(q_printf("%% Camera is on\n\r"));
+      HELP(q_print("% Camera is on\n\r"));
   }
 
   q_printf( "%% Camera init failed (error code %x)\n\r"
-            "%% Check if selected camera model (\"%s\") matches your board\r\n ",err, model);
+            "%% Check if selected camera model (\"%s\") matches your board\r\n",err, model);
   return 0;
 }
 
-
-//"camera ARG1 ARG2 ... ARGn"
-// All camera commands are processed here, except for the "show camera"
-static int cmd_cam(int argc, char **argv) {
-
-  int err = 0;
-
-  if (argc < 2)
-    return CMD_MISSING_ARG;
-
-  if (!q_strcmp(argv[1], "pinout"))
-    return cmd_cam_pinout(argc, argv);
-
-
-  if (!q_strcmp(argv[1], "up"))
-    return cmd_cam_up(argc, argv);
-
-#if 0
-  // any other camera commands require camera to be initialized
-  if (!cam_good) {
-    q_print("% Initialize camera first (\"camera up\" command)\n\r");
-    return 0;
-  }
-#endif  
-
-  if (!q_strcmp(argv[1], "settings")) change_command_directory(0, KEYWORDS(espcam), PROMPT_ESPCAM, "camera settings"); else
-  if (!q_strcmp(argv[1], "capture")) err = cmd_camera_capture(argc, argv); else
-  if (!q_strcmp(argv[1], "filesize")) err = cmd_camera_filesize(argc, argv); else
-  if (!q_strcmp(argv[1], "transfer")) err = cmd_camera_transfer(argc, argv); else
-  if (!q_strcmp(argv[1], "down")) err = cmd_camera_down(argc, argv);  else err = 1;  // unrecoginzed argument
-
-  return err;
+// "camera"
+// Enter camera mode
+//
+static int cmd_camera_if(int argc, char **argv) {
+  change_command_directory(0, KEYWORDS(camera), PROMPT_ESPCAM, "camera settings");
+  return 0;
 }
+
 #endif // #if COMPILING_ESPSHELL
 

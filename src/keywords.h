@@ -28,16 +28,19 @@
 
 // Camera commands
 #if WITH_ESPCAM
-static int cmd_cam(int, char **);
-static int cmd_camera_set_gain(int argc, char **argv);
-static int cmd_camera_set_balance(int argc, char **argv);
-static int cmd_camera_set_exposure(int argc, char **argv);
-static int cmd_camera_set_qbcss(int argc, char **argv);
-static int cmd_camera_set_size(int argc, char **argv);
-static int cmd_camera_capture(int argc, char **argv);
-static int cmd_camera_filesize(int argc, char **argv);
-static int cmd_camera_transfer(int argc, char **argv);
-static int cmd_camera_down(int argc, char **argv);
+static int cmd_camera_if(int, char **);
+static int cmd_camera_gain(int, char **);
+static int cmd_camera_balance(int, char **);
+static int cmd_camera_exposure(int, char **);
+static int cmd_camera_qbcss(int, char **);
+static int cmd_camera_size(int, char **);
+static int cmd_camera_mode(int, char **);
+static int cmd_camera_capture(int, char **);
+static int cmd_camera_filesize(int, char **);
+static int cmd_camera_save(int, char **);
+static int cmd_camera_down(int, char **);
+static int cmd_camera_up(int, char **);
+static int cmd_camera_pinout(int, char **);
 #endif // WITH_ESPCAM
 
 //i2c commands
@@ -126,10 +129,10 @@ static int cmd_seq_profile(int argc, char **argv);
 static int cmd_var(int, char **);
 static int cmd_var_show(int, char **);
 
-#if WITH_ALIAS
-// alias execution
+// alias/file execution
 static int cmd_exec(int, char **);
-// ifconds
+// if/every
+#if WITH_ALIAS
 static int cmd_if(int, char **);
 static int cmd_show_ifs(int, char **);
 #endif
@@ -150,7 +153,7 @@ static int cmd_history(int, char **);
 static int cmd_colors(int, char **);
 #endif
 static int cmd_tty(int, char **);
-static int cmd_hostname(int, char **);
+static int cmd_hostid(int, char **);
 
 
 #if WITH_ALIAS
@@ -177,7 +180,7 @@ static int cmd_alias_asterisk(int, char **);
 // keywords_sequence : Pulse generator commands
 // keywords_files    : Filesystem commands
 // keywords_main     : Main command directory
-// keywords_espcam   : ESP Camera commands
+// keywords_camera   : ESP Camera commands
 // 
 // Switching between arrays is possible via change_command_directory() function
 //
@@ -189,7 +192,6 @@ KEYWORDS_DECL(alias) {
   KEYWORDS_BEGIN
 
   // These entries go first, to avoid matching against "*"
-  // NOTE: there is one more "delete" command under "files" command directory, which differs in number of mandatory parameters
   { "delete", cmd_alias_delete, 1,
     HELPK("% \"<b>delete</> [all | LINE]\"\r\n" 
           "%\r\n"
@@ -219,7 +221,7 @@ KEYWORDS_DECL(alias) {
 
   // Special entry. Matches any command just as MANY_ARGS matches any number of arguments
   // The first "*" is what actually matches while "TEXT*" is just a hint for the user
-  { "* TEXT *", cmd_alias_asterisk, MANY_ARGS,
+  { "*TEXT*", cmd_alias_asterisk, MANY_ARGS,
     HELPK("% \"<b>COMMAND ARG1 ARG2 ... ARGn</>\"\r\n" 
           "%\r\n"
           "% Any command with any number of arguments"),
@@ -554,7 +556,7 @@ KEYWORDS_DECL(sequence) {
           "% its content is loaded back (see global \"exec\" command), or copy/pasted to the\r\n"
           "% command line. Captured sequences (see \"capture\") also can be saved"), 
     HELPK("Save sequence to a file") },
-
+#if NOT_YET
   { "decode", cmd_seq_decode, 1,
     HELPK("% \"<b>decode [TOLERANCE]</>\"\r\n"
           "%\r\n"
@@ -589,6 +591,7 @@ KEYWORDS_DECL(sequence) {
           "% and \"zero\" definitions, tick rate"
           ),
     HELPK("Timing profiles") },
+#endif
 
   KEYWORDS_END
 };
@@ -1085,7 +1088,8 @@ KEYWORDS_DECL(main) {
 
 #endif
 
-  { "hostname", cmd_hostname, MANY_ARGS, HIDDEN_KEYWORD },
+  { "hostid", cmd_hostid, MANY_ARGS, HIDDEN_KEYWORD },
+
   // Switch espshell's input to another UART
   { "tty", cmd_tty, MANY_ARGS, HIDDEN_KEYWORD },
 
@@ -1212,57 +1216,11 @@ KEYWORDS_DECL(main) {
           "%   <i>count 4 clear</> - Clear all counters associated with GPIO4\r\n"), NULL },
     
 #if WITH_ESPCAM
-  { "camera", cmd_cam, MANY_ARGS, 
-    HELPK("% \"<b>camera</> <i>up</> [<o>MODEL | custom | clock HZ | i2c NUMBER</>]*\r\n"
+  { "camera", cmd_camera_if, MANY_ARGS, 
+    HELPK("% \"<b>camera</>\r\n"
           "%\r\n"
-          "% Detect & initialize the camera\n\r"
-          "%\n\r"
-          "% <i>MODEL</>    - The camera model; Supported models list is here: \"show camera models\"\n\r"
-          "%            Use word \"custom\" to specify custom camera model. (see \"camera pinout\")\r\n"
-          "% <i>clock HZ</> - Set XCLK frequency, Hertz. Default value is 16000000 (16Mhz)\n\r"
-          "% <i>i2c NUM</>  - Use existing i2c interface, ignore SDA & SCL pins\r\n%\r\n"
-          "%\r\n"
-          "% <u>Examples:</>\r\n"
-          "%   <i>camera up ai-thinker</> - Initialize Ai-Thinker ESP32Cam\r\n"
-          "%   <i>camera up</>            - Camera assumed to be initialized by sketch, and used as is\r\n"
-          "%   <i>camera up custom clock <i>20000000</>  - Initialize custom pinout camera at 20Mhz"),
-    HELPK("Camera commands")
-  },
-
-  { "camera", HELP_ONLY,
-    HELPK("% \"<b>camera</> <i>down|settings|capture|filesize|transfer</>\" - Camera commands:\n\r"
-          "%\n\r"
-          "% <b>settings</> - Enter camera setting\n\r"
-          "% <b>capture</>  - Capture a single shot\n\r"
-          "% <b>filesize</> - Display last captured shot file size\n\r"
-          "% <b>transfer</> - Transmit last picture taken (over UART)\n\r"
-          "% <b>down</>     - Camera shutdown & power-off"
-    ), NULL },
-
-
-  { "camera", HELP_ONLY,
-    HELPK("% \"<b>camera pinout</> <o>PWDN RESET</> XCLK <o>SDA SCL</> <i>D7 D6 D5 D4 D3 D2 D1 D0 VSYNC HREF PCLK</>\r\n"
-          "%\r\n"
-          "% Set custom pinout for the camera model \"<i>custom</>\"\r\n"
-          "% Later it can be used with \"camera up custom\"\n\r"
-          "%\n\r"
-          "% Command requires 16 arguments (GPIO numbers): i2c bus, data pins, etc\r\n"
-          "% If your board don't have / don't use certain pins then use \"-\" (minus sign)\r\n"
-          "% instead of pin number to disable it (or \"-1\" - it also works).\r\n"
-          "%   <i>PWDN</>  - Power down GPIO# (set LOW to power up)\r\n"
-          "%   <i>RESET</> - Camera reset GPIO\r\n"
-          "%   <i>XCLK</>  - High frequency source GPIO, camera clock\r\n"
-          "%   <i>SDA, SCL</> - Pins, where camera's I2C interface is connected\r\n"
-          "%   <i>D7..D0</> (or <i>Y9..Y2</>) - Pins where camera data bus is connected\r\n"
-          "%   <i>VSYNC HREF PCLK</> - GPIOs, where standart CMOS camera signals are connected\t\n"
-          "%\r\n"
-          "% <u>Example:</>\r\n"
-          "%   <b>camera pinout</> <i>- - 1 2 3 4 5 6 7 8 9 10 11 12 13 14</>\r\n"
-          "%\r\n"
-          "% In example above, pins PWDN & RESET are not used and thus set to \"-\"\r\n"
-          "%\r\n"
-          "% This custom pinout can be activated via <i>camera up custom</>"
-    ), NULL},
+          "% Enter camera configuration mode"),
+    HELPK("Camera commands") },
 
 #endif //WITH_ESPCAM
   
@@ -1458,21 +1416,105 @@ KEYWORDS_REG(main);
 //
 // Handlers are implemented in espcam.h
 //
-KEYWORDS_DECL(espcam) {
+KEYWORDS_DECL(camera) {
 
   KEYWORDS_BEGIN
 
-  { "gain", cmd_camera_set_gain, 1, 
+  { "up", cmd_camera_up, MANY_ARGS, 
+    HELPK("% \"<b>camera</> <i>up</> [<o>MODEL | custom | clock HZ | i2c NUMBER</>]*\r\n"
+          "%\r\n"
+          "% Detect & initialize the camera\n\r"
+          "%\n\r"
+          "% <i>MODEL</>    - The camera model; Supported models list is here: \"show camera models\"\n\r"
+          "%            Use word \"custom\" to specify custom camera model. (see \"camera pinout\")\r\n"
+          "% <i>clock HZ</> - Set XCLK frequency, Hertz. Default value is 16000000 (16Mhz)\n\r"
+          "% <i>i2c NUM</>  - Use existing i2c interface, ignore SDA & SCL pins\r\n%\r\n"
+          "%\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>camera up ai-thinker</> - Initialize Ai-Thinker ESP32Cam\r\n"
+          "%   <i>camera up</>            - Camera assumed to be initialized by sketch, and used as is\r\n"
+          "%   <i>camera up custom clock <i>20000000</>  - Initialize custom pinout camera at 20Mhz"),
+    HELPK("Camera commands")
+  },
+
+  { "mode", cmd_camera_mode, 1,
+    HELPK("% \"<b>mode</> jpeg|grayscale|555|565\"\n\r"
+          "%\n\r"
+          "% Set capture mode. Must be set before camera is \"up\""), "Capture mode" },
+
+  { "down", cmd_camera_down, NO_ARGS,
+    HELPK("% \"<b>down</>\"\n\r"
+          "%\n\r"
+          "% Deinitialize & reset (and/or power-off)"), "Shutdown camera" },
+
+  { "capture", cmd_camera_capture, NO_ARGS,
+    HELPK("% \"<b>capture</>\"\n\r"
+          "%\n\r"
+          "% Capture a frame"), "Capture a frame" },
+
+  { "filesize", cmd_camera_filesize, NO_ARGS,
+    HELPK("% \"<b>filesize</>\"\n\r"
+          "%\n\r"
+          "% Display the size of latest captured frame, in bytes"
+    ), "Frame file size" },
+
+  { "save", cmd_camera_save, 1,
+    HELPK("% \"<b>save</> <i>/FILENAME</> [<o>base64 | ascii-hex</>]\"\n\r"
+          "% \"<b>save</> <i>uart NUM</> [<o>base64 | ascii-hex</>]\"\n\r"
+          "%\n\r"
+          "% Transmit the last captured frame over specified UART or save it to a file\n\r"
+          "% Filesystem must be mounted before attempting to save a file\n\r"
+          "% UART must be initialized before attempting to transmit any data\r\n"
+          "%\n\r"
+          "% Optional flags ascii-hex and base64 are for converting images to the ASCII text\r\n"
+          "%   <o>ascii-hex</> is a stream of hex bytes: \"AB07876A...\"\r\n"
+          "%   <o>base64</> is a base 64 encoding as its name implies\r\n"
+          "%\n\r"
+          "% Dollar sign (\"$\") in filenames gets expanded to a sequental, random number\n\r"
+          "% Its main use is to automate saving of multiple frames\n\r"
+          "% <u>Examples:</>\n\r"
+          "%   <i>transfer</> /ffat/pix/12.jpg      : save to the file\n\r"
+          "%   <i>transfer uart</> 1                : transmit as is over uart1\n\r"
+          "%   <i>transfer</> /ffat/pix/file$.jpg   : save file0, file1, .. etc\n\r"
+          "%   <i>transfer uart</> 1 <o>ascii-hex</>: convert to ascii before transmit\n\r"
+    ), "Save / transfer captured data" },
+
+  { "pinout", cmd_camera_pinout, MANY_ARGS,
+    HELPK("% \"<b>pinout</> <o>PWDN RESET</> XCLK <o>SDA SCL</> <i>D7 D6 D5 D4 D3 D2 D1 D0 VSYNC HREF PCLK</>\r\n"
+          "%\r\n"
+          "% Set custom pinout for the camera model \"<i>custom</>\"\r\n"
+          "% Later it can be used with \"camera up custom\"\n\r"
+          "%\n\r"
+          "% Command requires 16 arguments (GPIO numbers): i2c bus, data pins, etc\r\n"
+          "% If your board don't have / don't use certain pins then use \"-\" (minus sign)\r\n"
+          "% instead of pin number to disable it (or \"-1\" - it also works).\r\n"
+          "%   <i>PWDN</>  - Power down GPIO# (set LOW to power up)\r\n"
+          "%   <i>RESET</> - Camera reset GPIO\r\n"
+          "%   <i>XCLK</>  - High frequency source GPIO, camera clock\r\n"
+          "%   <i>SDA, SCL</> - Pins, where camera's I2C interface is connected\r\n"
+          "%   <i>D7..D0</> (or <i>Y9..Y2</>) - Pins where camera data bus is connected\r\n"
+          "%   <i>VSYNC HREF PCLK</> - GPIOs, where standart CMOS camera signals are connected\t\n"
+          "%\r\n"
+          "% <u>Example:</>\r\n"
+          "%   <b>camera pinout</> <i>- - 1 2 3 4 5 6 7 8 9 10 11 12 13 14</>\r\n"
+          "%\r\n"
+          "% In example above, pins PWDN & RESET are not used and thus set to \"-\"\r\n"
+          "%\r\n"
+          "% This custom pinout can be activated via <i>camera up custom</>"
+    ), "Set custom camera pinout"},
+
+
+  { "gain", cmd_camera_gain, 1, 
     HELPK("% \"<b>gain</> <i>auto</>|(0..30)\"\n\r"
           "%\r\n"
           "% Set camera sensetivity (auto or 0..30)"), "Gain" },
 
-  { "balance", cmd_camera_set_balance, 1, 
+  { "balance", cmd_camera_balance, 1, 
     HELPK("% <b>balance</> <i>none</>|<i>auto</>|<i>sunny</>|<i>cloudy</>|<i>office</>|<i>home</>\n\r"
           "%\r\n"
           "% Set camera White Balance correction"),  "White balance" },
 
-  { "exposure", cmd_camera_set_exposure, 2, 
+  { "exposure", cmd_camera_exposure, 2, 
     HELPK("% <b>exposure</> <i>auto</> [<o>-2..2</>]\n\r"
           "% \n\r"
           "% Set camera exposure mode to auto & optional AE shift:\r\n"
@@ -1480,7 +1522,7 @@ KEYWORDS_DECL(espcam) {
           "%   exposure auto     - set exposure to auto\r\n"
           "%   exposure auto -2  - same as above + correction factor of -2"), "Exposure" },
 
-  { "exposure", cmd_camera_set_exposure, 1, 
+  { "exposure", cmd_camera_exposure, 1, 
     HELPK("% <b>exposure</> (<i>0..1200</>)\n\r"
           "%\n\r"
           "% Set manual camera exposure:\r\n"
@@ -1488,42 +1530,42 @@ KEYWORDS_DECL(espcam) {
           "%   exposure 800 - Set exposure parameter to 800"),"Exposure" },
 
 
-  { "brightness", cmd_camera_set_qbcss, 1,
+  { "brightness", cmd_camera_qbcss, 1,
       HELPK("% <b>brightness</> (<i>-2..2</>)\n\r"
           "%\n\r"
           "% Set brightness correction (gamma):\r\n"
           "% Example:\r\n"
           "%   exposure -1 - Make things darker"), "Brightness" },
 
-  { "saturation", cmd_camera_set_qbcss, 1,
+  { "saturation", cmd_camera_qbcss, 1,
       HELPK("% <b>saturation</> (<i>-2..2</>)\n\r"
           "%\n\r"
           "% Set saturation correction (vivid colors):\r\n"
           "% Example:\r\n"
           "%   saturation 2 - Set saturation to its maximum"), "Saturation" },
 
-  { "contrast", cmd_camera_set_qbcss, 1,
+  { "contrast", cmd_camera_qbcss, 1,
       HELPK("% <b>contrast</> (<i>-2..2</>)\n\r"
           "%\n\r"
           "% Set contrast correction:\r\n"
           "% Example:\r\n"
           "%   contrast 2 - Set contrast parameter to its maximum"), "Contrast" },
 
-  { "sharpness", cmd_camera_set_qbcss, 1,
+  { "sharpness", cmd_camera_qbcss, 1,
       HELPK("% <b>sharpness</> (<i>-2..2</>)\n\r"
           "%\n\r"
           "% Set image sharpness correction:\r\n"
           "% Example:\r\n"
           "%   sharpness -2 - Decrease sharpness to its minimum"), "Sharpness" },
 
-  { "compress", cmd_camera_set_qbcss, 1,
+  { "compress", cmd_camera_qbcss, 1,
       HELPK("% <b>compression</> (<i>2..63</>)\n\r"
           "%\n\r"
           "% Set JPEG compression factor (2 - best quality, 63 - smallest size)\r\n"
           "% Example:\r\n"
           "%   compression 4 - Higher picture quality, larger file"), "JPEG compression settings" },
 
-  { "size", cmd_camera_set_size, 1, 
+  { "size", cmd_camera_size, 1, 
     HELPK("% \"size vga|svga|xga|hd|sxga|uxga...\"\n\r"
           "%\n\r"
           "% Set picture size:\n\r"
@@ -1532,7 +1574,7 @@ KEYWORDS_DECL(espcam) {
           "% xga   - 1024x768\n\r"
           "% hd    - 1280x720\n\r"
           "% sxga  - 1280x1024\n\r"
-          "% uxga  - 1600x1200 (Default)\r\n"
+          "% uxga  - 1600x1200\r\n"
           "% fhd   - 1920x1080\r\n"
           "% qxga  - 2048x1536\r\n"
           "% qhd   - 2560x1440\r\n"
@@ -1542,7 +1584,7 @@ KEYWORDS_DECL(espcam) {
 
   KEYWORDS_END
 };
-KEYWORDS_REG(espcam);
+KEYWORDS_REG(camera);
 #endif // WITH_ESPCAM
 
 // Current keywords list in use, 
@@ -1578,11 +1620,7 @@ static const struct keywords_t *change_command_directory(
   context_set(context);
   old_dir = keywords_get();
   keywords_set_ptr(dir);
-  // Only change prompt for foreground tasks
-  if (is_foreground_task())
-    prompt = prom;
-//  else
-//    VERBOSE(q_print("% Prompt is not changed for a background command\r\n"));
+  prompt_set(prom);
 
   if (text) {
     HELP(q_printf("%% Entering %s mode. Ctrl+Z or \"exit\" to return\r\n"
