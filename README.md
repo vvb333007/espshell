@@ -3,6 +3,9 @@
 
 Лицензионное соглашение на русском, [находится тут](https://github.com/vvb333007/espshell/blob/main/LICENSE.ru.txt)
 
+
+![Main window](docs/html/i/espshell.jpg)
+
 # WHAT IS THIS
 
 This is a debugging and development tool (a library for the Arduino framework) intended for use with **ESP32 hardware**.
@@ -103,3 +106,4 @@ The code is generally simple and linear. Non-obvious parts are well documented.
 Please note that the author is not a native English speaker, so some in-code comments may contain minor language mistakes.
 
 [![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/x-radio/EEBoom/total?color=66FFFF)](https://github.com/vvb333007/espshell/)
+
