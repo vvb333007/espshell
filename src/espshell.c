@@ -203,10 +203,11 @@ static __thread unsigned int Context = 0;
 // Macros to set/get Context values. Since it is a simple C typecast here, make sure that
 // arguments you pass are convertible to "unsigned int" (4 bytes)
 //
-    
-#define context_get_uint() ((unsigned int)Context)
+
+#define context_get()         (Context)    
+#define context_get_uint()   ((unsigned int)Context)
 #define context_get_ptr(_Tn) ((_Tn *)Context)
-#define context_set(_New) { Context = (__typeof__(Context))_New; }
+#define context_set(_New)    { Context = (__typeof__(Context))_New; }
 
 
 // Currently used prompt.
@@ -351,9 +352,10 @@ static void amp_helper_task(void *arg) {
   argcargv_t *aa = ha->aa;
   //const char *old_prompt = ha->prompt;
 
-  // Context and keywords are __thread variables and must be inherited, i.e. set by the task:
-  context_set(ha->context);        // sets "global" Context
-  keywords_set_ptr(ha->keywords);  // sets "global" keywords
+  // /Context/, /Cwd/ and /keywords/ are __thread variables and must be inherited, i.e. set by the task:
+  context_set(ha->context);
+  keywords_set_ptr(ha->keywords);
+  files_set_cwd(ha->cwd);          // sets /Cwd/ but does not set prompt (bg task!) 
   ha_put(ha);                      // return helper_arg to the pool
 
   // aa->gpp points to actual command handler (e.g. cmd_pin for command "pin"); aa->gpp is set up
@@ -406,14 +408,13 @@ static int exec_in_background(argcargv_t *aa_current) {
   //increase refcount on argcargv because it will be used by async task and
   // we want this memory remain allocated after this command
   userinput_ref(aa_current);
-
-  // Start async task. Pin to the same core where espshell is executed
-  ha->context = context_get_uint();
-  ha->keywords = keywords_get();
   ha->aa = aa_current;
-  //ha->prompt = prompt;
+ 
+  //ha->context = context_get_uint();
+  //ha->keywords = keywords_get();
+  //ha->cwd = files_cwd_get();
   
-
+  // Start async task. Pin to the same core where espshell is executed
   if ((id = task_new(amp_helper_task, ha, aa_current->argv[0])) == NULL) {
     q_print("% <e>Can not start a new task. Resources low? Adjust STACKSIZE macro in \"espshell.h\"</>\r\n");
     userinput_unref(aa_current);

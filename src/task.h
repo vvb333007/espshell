@@ -220,8 +220,9 @@ struct helper_arg {
   struct alias             *al;
   argcargv_t               *aa;
   uint32_t                  delay_ms;
-  __typeof__(Context)       context;   // task copies this to the /Context/ thread variable
-  const struct keywords_t  *keywords;  // task copies this to the /keywords/ thread variable
+  __typeof__(Context)       context;   // task must copy this to the /Context/ thread variable
+  const struct keywords_t  *keywords;  // task must copy this to the /keywords/ thread variable
+  const char               *cwd;       // .. /Cwd/ thread variable
 };
 
 
@@ -237,6 +238,8 @@ struct helper_arg {
 //
 static _Atomic(struct helper_arg *) ha_unused = NULL;
 
+static inline const char *files_get_cwd();
+
 // Allocate / Reuse
 //
 static struct helper_arg *ha_get() {
@@ -248,7 +251,18 @@ static struct helper_arg *ha_get() {
       break;
   } while(!atomic_compare_exchange_strong( &ha_unused, &ret, ret->next));
 
-  return ret ? ret : (struct helper_arg *)q_malloc(sizeof(struct helper_arg ), MEM_TMP);
+  if (!ret)
+    ret = (struct helper_arg *)q_malloc(sizeof(struct helper_arg ), MEM_TMP);
+
+  // Fill common fields: /Context/, /keywords/ and /Cwd/. These fields will be used by a spawned task,
+  // to set corresponding "global" (actually, __thread) variables.
+  if (ret) {
+    ret->context = context_get();
+    ret->keywords = keywords_get();
+    ret->cwd = files_get_cwd();
+  }
+
+  return ret;
 }
 
 // Deallocate / Put on the unused list

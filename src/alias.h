@@ -391,6 +391,7 @@ static void alias_helper_task(void *arg) {
     // set our "global" variables (inherited from the spawning task)
     context_set(ha->context);
     keywords_set_ptr(ha->keywords);
+    files_set_cwd(ha->cwd);
 
     // delay, if required (see alias_exec_in_background_delayed())
     if (ha->delay_ms)
@@ -415,11 +416,9 @@ static int alias_exec_in_background_delayed(struct alias *al, uint32_t delay_ms)
 
     ha->al = al;
     ha->delay_ms = delay_ms;
-    // Make local copy of the context & keywords values. Spawned task will initialize its
-    // own Context and keywords variables from these values. (global, the Context and Keywords are __thread variables)
-    //
-    ha->context = context_get_uint();
-    ha->keywords = keywords_get();
+    //ha->context = context_get_uint();
+    //ha->keywords = keywords_get();
+    //ha->cwd = files_cwd_get();
 
     return task_new(alias_helper_task,
                     ha,

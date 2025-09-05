@@ -28,7 +28,7 @@
 //
 #if WITH_FS
 // Current working directory. Must start and end with "/". 
-static char *Cwd = NULL;  
+static __thread char *Cwd = NULL;  
 static const char *files_set_cwd(const char *cwd);
 
 // espshell allows for simultaneous mounting up to MOUNTPOINTS_NUM partitions.
@@ -47,18 +47,14 @@ static struct {
 
 
 // initialize mountpoints[] array
-static void __attribute__((constructor)) files_init_once() {
+// NOTE: /Cwd/ MUST NOT be accessed from within this function or whole thing will crash
+static void __attribute__((constructor)) _files_init() {
   int i;
   for (i = 0; i < MOUNTPOINTS_NUM; i++) {
 #if WITH_FAT
     mountpoints[i].wl_handle = WL_INVALID_HANDLE;
 #endif
   }
-  files_set_cwd("/");
-  // files_set_cwd() changes user prompt, we dont want it now.
-  // restore the prompt
-  // TODO: add "change_command_directory(.. main ..)" at startup, remove this code & comments
-  prompt = PROMPT;
 }
 
 
