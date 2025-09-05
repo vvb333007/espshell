@@ -150,7 +150,7 @@
 
 
 
-// -- Miscellaneous forwards. These can not be resolved by rearranging of "#include"'s :-/
+// -- Miscellaneous forwards.
 
 // block current task, wait for signal from another task or from an ISR.
 // Timeout value less than 1 means infinite timeout. Declared in task.h
@@ -168,6 +168,9 @@ bool __attribute__((const)) is_valid_address(const void *addr, unsigned int coun
 static int q_strcmp(const char *, const char *);     // loose strcmp
 static int PRINTF_LIKE q_printf(const char *, ...);  // printf()
 static int q_print(const char *);                    // puts()
+
+static int   q_touch(const char *);                  // see filesystem.h
+static FILE *files_fopen(const char *, const char *);// ..
 
 static bool pin_is_input_only_pin(int pin);
 static bool pin_exist(unsigned char pin);
@@ -200,6 +203,7 @@ static __thread unsigned int Context = 0;
 // Macros to set/get Context values. Since it is a simple C typecast here, make sure that
 // arguments you pass are convertible to "unsigned int" (4 bytes)
 //
+    
 #define context_get_uint() ((unsigned int)Context)
 #define context_get_ptr(_Tn) ((_Tn *)Context)
 #define context_set(_New) { Context = (__typeof__(Context))_New; }
@@ -548,20 +552,22 @@ unref_and_exit:
 }
 
 
-// Execute an arbitrary shell command (\n is allowed for multiline).
-// Call returns immediately, but /p/ must remain valid memory until actual command finishes its execution.
+// Execute an arbitrary shell command
 //
-// One can use espshell_exec_finished() to check when it is a time for another espshell_exec()
-// Currently used by editline hotkey processing to inject various shell commands in user input.
-
-void espshell_exec(const char *p) {
-  TTYqueue(p);
+int espshell_exec(const char *p) {
+  char *p0;
+  int ret = -1;
+  if (likely((p0 = q_strdup(p, MEM_TMP)) != NULL)) {
+    ret = espshell_command(p0, NULL);
+    free(p0);
+  }
+  return ret;
 }
 
 // check if last espshell_exec() call has completed its
 // execution
 bool espshell_exec_finished() {
-  return (*Input == '\0');
+  return true;
 }
 
 

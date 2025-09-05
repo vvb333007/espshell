@@ -137,10 +137,11 @@ static int cmd_if(int, char **);
 static int cmd_show_ifs(int, char **);
 #endif
 
-// "show" commands
+// some "show" commands
 static int cmd_show(int, char **);
 static int cmd_show_pin(int, char **);
 static int cmd_show_sequence(int argc, char **argv);
+static int cmd_show_uart(int argc, char **argv);
 // common entries
 static int cmd_exit(int, char **);
 #if WITH_HELP
@@ -275,6 +276,12 @@ KEYWORDS_DECL(uart) {
           "%\r\n"
           "% Shutdown interface, detach pins"),
     HELPK("Shutdown") },
+
+  { "show", cmd_show_uart, NO_ARGS,
+    HELPK("% \"<b>show</>\"\r\n"
+          "%\r\n"
+          "% Display UART parameters"),
+    HELPK("Show settings") },
 
   { "read", cmd_uart_read, NO_ARGS,
     HELPK("% \"<b>read</>\"\r\n"
@@ -542,10 +549,11 @@ KEYWORDS_DECL(sequence) {
           "%\r\n"
           "% Display <u>this</> sequence; Shortcut for \"show sequence NUM\""), HELPK("Show sequence") },
 
-  // we have "save" but we don't have "load" here: the "load" command is a global command which simply
+  // we have "save" but we don't have "load" here: the "load" command is a global command "exec" which simply
   // reads text files line by line and executes them until any errors are detected
   // This allows for modules (e.g. sequence, alias, ifcond, ...) to save their current configuration to a
   // text file for later execution. Saved files is a shell script.
+#if WITH_FS  
   { "save", cmd_seq_save, 1,
     HELPK("% \"<b>save /FILE_NAME</>\"\r\n"
           "%\r\n"
@@ -556,6 +564,7 @@ KEYWORDS_DECL(sequence) {
           "% its content is loaded back (see global \"exec\" command), or copy/pasted to the\r\n"
           "% command line. Captured sequences (see \"capture\") also can be saved"), 
     HELPK("Save sequence to a file") },
+#endif // WITH_FS    
 #if NOT_YET
   { "decode", cmd_seq_decode, 1,
     HELPK("% \"<b>decode [TOLERANCE]</>\"\r\n"
@@ -986,6 +995,10 @@ KEYWORDS_DECL(main) {
           "% Displays an IO_MUX function currently assigned for every pin"),"Display system information"},
 
   // Entries below are only for the /full/ help line (/brief/ line is copied from the first "show" entry 
+  { "show", HELP_ONLY,
+    HELPK("% \"<b>show <i>uart</> NUM\"\r\n"
+          "%\r\n"
+          "% Display UART settings & parameters"),NULL},
 
   { "show", HELP_ONLY,
     HELPK("% \"<b>show <i>tasks</>\"\r\n"
@@ -1262,6 +1275,7 @@ KEYWORDS_DECL(main) {
           "% <u>Examples:</>\r\n"
           "%   <i>var</> - Display variables list\r\n"), NULL },
 #if WITH_ALIAS
+
   { "if", cmd_if, MANY_ARGS,
     HELPK("% \"<b>if <i>rising|falling</> PIN [<o>low|high PIN</>]* [<o>max-exec NUM</>] [<o>rate-limit NUM</>] <i>exec</> ALIAS</>\"\r\n"
           "%\r\n"
@@ -1285,7 +1299,7 @@ KEYWORDS_DECL(main) {
           "% NOTE: if alias does not exist - it is created automatically (empty)"
           ), "Conditional GPIO events" },
 
-  { "if", cmd_if, MANY_ARGS,
+  { "if", HELP_ONLY,
     HELPK("% \"<b>if <i>low|high</> PIN [<o>low|high PIN</>]* [<o>max-exec NUM</>] [<o>poll NUM</>] <i>exec</> ALIAS</>\"\r\n"
           "%\r\n"
           "% Create a condition which is checked periodically (polling)\r\n"
@@ -1299,7 +1313,7 @@ KEYWORDS_DECL(main) {
           "%   <i>if low 5 high 10 high 11 exec Comm</> : if GPIO5 is low and GPIO10,11 are high\r\n"
           "%   <i>if low 5 max-exec 5 poll 1 exec Comm</> : .. five times max,"), NULL },
 
-  { "if", cmd_if, 3,
+  { "if", HELP_ONLY,
     HELPK("% \"<b>if delete NUM\"\r\n"
           "% \"<b>if delete all\"\r\n"
           "% \"<b>if delete gpio</> NUM\"\r\n"
@@ -1312,7 +1326,7 @@ KEYWORDS_DECL(main) {
           "%   <b>if delete <i>all</>      : delete all conditions (all, means ALL)\r\n"
           "%   <b>if delete <i>gpio 7</>   : delete rising/falling conditions assigned to GPIO 7"), NULL },
 
-  { "if", cmd_if, 3,
+  { "if", HELP_ONLY,
     HELPK("% \"<b>if clear [<o>gpio</>] NUM\"\r\n"
           "% \"<b>if clear all\"\r\n"
           "%\r\n"
@@ -1326,7 +1340,7 @@ KEYWORDS_DECL(main) {
           "%   <i>if clear all</>      : Clear all conditions (all, means ALL)\r\n"
           "%   <i>if clear gpio 7</>   : Clear rising/falling conditions assigned to GPIO 7"), NULL },
 
-  { "if", cmd_if, 3,
+  { "if", HELP_ONLY,
     HELPK("% \"<b>if <i>disable</>|<i>enable</> NUM|<i>all</>\"\r\n"
           "% \"<b>every <i>disable</>|<i>enable</> NUM|<i>all</>\"\r\n"
           "%\r\n"
@@ -1338,7 +1352,15 @@ KEYWORDS_DECL(main) {
           "%   <b>every disable <i>all</> : disable all \"every\" conditions\r\n"
           "%   <b>if enable <i>all</>     : Enable processing of all \"if\" conditions"), NULL },
 
-
+  { "if", HELP_ONLY,
+    HELPK("% \"<b>if save <i>ID</>|<i>*</> /FILENAME\"\r\n"
+          "% \"<b>every save <i>ID</>|<i>*</> /FILENAME\"\r\n"
+          "%\r\n"
+          "% Save if/every statements to a file\r\n"
+          "%\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <b>if save <i>* /ffat/test.txt</> : Save all entries\r\n"
+          "%   <b>if save <i>1 /ffat/test2</>    : Save \"if\" entry #1"), NULL },
 
   { "every", cmd_if, MANY_ARGS,
     HELPK("% \"<b>every <i>TIME</> [<o>delay MILLIS</>] [<o>max-exec NUM</>] exec <i>ALIAS</>\"\r\n"
@@ -1351,11 +1373,11 @@ KEYWORDS_DECL(main) {
           "%\r\n"
           "% <u>Examples</>\r\n"
           "%   <i>every 5 sec exec alias my_alias</>\r\n"
-          "%   <i>every 5 sec delay 50000 exec alias my_alias</>\r\n"
-          "%   <i>every 5 sec delay 50000 max-exec 7 exec alias my_alias</>"
+          "%   <i>every 5 sec delay 50000 exec my_alias</>\r\n"
+          "%   <i>every 5 sec delay 50000 max-exec 7 exec my_alias</>"
           ), "Periodic events" },
 
-  { "every", cmd_if, 3,
+  { "every", HELP_ONLY,
     HELPK("% \"<b>every delete</> <i>NUM</>\"\r\n"
           "%\r\n"
           "% Delete \"every\" condition by its ID\r\n"
@@ -1364,7 +1386,7 @@ KEYWORDS_DECL(main) {
           "% <u>Examples:</>\r\n"
           "%   <b>every delete <i>6</>        : delete condition #6"), NULL },
 
-  { "every", cmd_if, 3,
+  { "every", HELP_ONLY,
     HELPK("% \"<b>every clear</> <i>NUM</>\"\r\n"
           "%\r\n"
           "% Clear counters : (hits count & timestamp) for given \"every\" condition\r\n"
@@ -1421,19 +1443,19 @@ KEYWORDS_DECL(camera) {
   KEYWORDS_BEGIN
 
   { "up", cmd_camera_up, MANY_ARGS, 
-    HELPK("% \"<b>camera</> <i>up</> [<o>MODEL | custom | clock HZ | i2c NUMBER</>]*\r\n"
+    HELPK("% \"<b>up</> [<o>MODEL | custom | clock HZ | i2c NUMBER</>]*\r\n"
           "%\r\n"
           "% Detect & initialize the camera\n\r"
           "%\n\r"
           "% <i>MODEL</>    - The camera model; Supported models list is here: \"show camera models\"\n\r"
-          "%            Use word \"custom\" to specify custom camera model. (see \"camera pinout\")\r\n"
+          "%            Use word \"custom\" to specify custom camera model. (see \"pinout\")\r\n"
           "% <i>clock HZ</> - Set XCLK frequency, Hertz. Default value is 16000000 (16Mhz)\n\r"
           "% <i>i2c NUM</>  - Use existing i2c interface, ignore SDA & SCL pins\r\n%\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <i>camera up ai-thinker</> - Initialize Ai-Thinker ESP32Cam\r\n"
-          "%   <i>camera up</>            - Camera assumed to be initialized by sketch, and used as is\r\n"
-          "%   <i>camera up custom clock <i>20000000</>  - Initialize custom pinout camera at 20Mhz"),
+          "%   <i>up ai-thinker</> - Initialize Ai-Thinker ESP32Cam\r\n"
+          "%   <i>up</>            - Camera assumed to be initialized by sketch, and used as is\r\n"
+          "%   <i>up custom clock <i>20000000</>  - Initialize custom pinout camera at 20Mhz"),
     HELPK("Camera commands")
   },
 
@@ -1479,7 +1501,7 @@ KEYWORDS_DECL(camera) {
           "%   <i>transfer uart</> 1 <o>ascii-hex</>: convert to ascii before transmit\n\r"
     ), "Save / transfer captured data" },
 
-  { "pinout", cmd_camera_pinout, MANY_ARGS,
+  { "pinout", cmd_camera_pinout, 16,
     HELPK("% \"<b>pinout</> <o>PWDN RESET</> XCLK <o>SDA SCL</> <i>D7 D6 D5 D4 D3 D2 D1 D0 VSYNC HREF PCLK</>\r\n"
           "%\r\n"
           "% Set custom pinout for the camera model \"<i>custom</>\"\r\n"
@@ -1496,12 +1518,38 @@ KEYWORDS_DECL(camera) {
           "%   <i>VSYNC HREF PCLK</> - GPIOs, where standart CMOS camera signals are connected\t\n"
           "%\r\n"
           "% <u>Example:</>\r\n"
-          "%   <b>camera pinout</> <i>- - 1 2 3 4 5 6 7 8 9 10 11 12 13 14</>\r\n"
+          "%   <b>pinout</> <i>- - 1 2 3 4 5 6 7 8 9 10 11 12 13 14</>\r\n"
           "%\r\n"
           "% In example above, pins PWDN & RESET are not used and thus set to \"-\"\r\n"
           "%\r\n"
           "% This custom pinout can be activated via <i>camera up custom</>"
     ), "Set custom camera pinout"},
+
+  { "pinout", HELP_ONLY,
+    HELPK("% \"<b>pinout</> <i>KEYWORD</> <o>VALUE1 VALUE2 ... VALUEn</>\r\n"
+          "%\r\n"
+          "% Set custom pinout for the camera model \"<i>custom</>\"\r\n"
+          "% Same as the command above, but sets individual pins using different KEYWORDs:\n\r"
+          "%\n\r"
+          "%   <i>power PWDN RST</> : Set PWDN and RST pins. Use \"-\" if N/A\r\n"
+          "%   <i>xclk NUM</>       : Set GPIO number where XCLK is connected\r\n"
+          "%   <i>i2c SDA SCL</>    : I2C/SCCB bus pins\r\n"
+          "%   <i>data D7 D6 D5 D4 D3 D2 D1 D0</> (or <i>Y9..Y2</>) : Data bus pins\r\n"
+          "%   <i>vsync NUM</>      : GPIO number where VSYNC is connected\r\n"
+          "%   <i>href NUM</>       : GPIO number where HREF is connected\r\n"
+          "%   <i>pclk NUM</>       : GPIO number where PCLK is connected\r\n"
+          "%\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <b>pinout</> <i>power 32 -</> : PWDN is GPIO32, RST is not connected\r\n"
+          "%   <b>pinout</> <i>i2c 10 11</>  : SDA=GPIO10, SCL=GPIO11, camera control bus\r\n"
+          "%   <b>pinout</> <i>data 0 1 2 3 4 5 6 7</>  : GPIO0..7 is the data bus\r\n"
+          "% This custom pinout can be activated via <i>camera up custom</>"
+    ), "Set custom camera pinout"},
+
+
+  { "pinout", cmd_camera_pinout, 2, HIDDEN_KEYWORD }, // "pinout KEY VALUE"
+  { "pinout", cmd_camera_pinout, 3, HIDDEN_KEYWORD }, // "pinout KEY VALUE1 VALUE2"
+  { "pinout", cmd_camera_pinout, 9, HIDDEN_KEYWORD }, // "pinout KEY D7 D6 D5 D4 D3 D2 D1 D0"
 
 
   { "gain", cmd_camera_gain, 1, 
@@ -1587,25 +1635,29 @@ KEYWORDS_DECL(camera) {
 KEYWORDS_REG(camera);
 #endif // WITH_ESPCAM
 
+
+// Pointer to a keywords array by its "name": KEYWORDS(main), KEYWORDS(files) ...
+#define KEYWORDS(_Key) \
+  keywords_ ## _Key
+
+// Set keywords list by its name: keywords_set(main), keywords_set(files) ...
+#define keywords_set(_Key) \
+  keywords = KEYWORDS(_Key)
+
+// Set keywords list by ptr: keywords_set_ptr(KEYWORDS(main))
+#define keywords_set_ptr(_Ptr) \
+  keywords = _Ptr
+
+// Pointer to a keywords array currently active
+#define keywords_get() \
+  keywords
+
 // Current keywords list in use, 
 // It is an thread-specific variable (every task has its own copy of this variable)
 // Background commands obtain a copy of this variable and initialize their own (see struct helper_arg and its use)
 //
-static __thread const struct keywords_t *keywords = keywords_main;
+static __thread const struct keywords_t *keywords = KEYWORDS(main);
 
-// KEYWORDS(main), KEYWORDS(files) ...
-#define KEYWORDS(_Key) \
-  keywords_ ## _Key
-
-// keywords_set(main), keywords_set(files) ...
-#define keywords_set(_Key) \
-  keywords = KEYWORDS(_Key)
-
-#define keywords_set_ptr(_Ptr) \
-  keywords = _Ptr
-
-#define keywords_get() \
-  keywords
 
 // Called from cmd_uart_if(), cmd_i2c_if(),cmd_seq_if() and cmd_files_if and others to set a new command list (command directory); 
 // displays user supplied text,  returns a pointer to the keywords tree used before
@@ -1615,6 +1667,7 @@ static const struct keywords_t *change_command_directory(
                                     const struct keywords_t *dir, // New command list 
                                     const char *prom,             // New prompt
                                     const char *text) {           // User-defined text which will be displayed after entering new directory
+  static uint8_t count = 0;                                    
   const struct keywords_t *old_dir;
 
   context_set(context);
@@ -1622,7 +1675,8 @@ static const struct keywords_t *change_command_directory(
   keywords_set_ptr(dir);
   prompt_set(prom);
 
-  if (text) {
+  if (text && count < 3) {
+    count++;
     HELP(q_printf("%% Entering %s mode. Ctrl+Z or \"exit\" to return\r\n"
                   "%% Main commands are still available (but not visible in \"?\" command list)\r\n", text));
   }

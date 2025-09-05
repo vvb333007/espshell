@@ -27,6 +27,11 @@
 //
 // Once created, aliases can be executed either with the "exec" command 
 // or as part of an event (see "if" and "every" in ifcond.h).
+//
+// THREAD SAFETY:
+// 1. Pointers to aliases are persistent, and whole list of aliases is an _Atomic pointer
+// 2. Pointer to lines (alias->lines) is not persistent and must be checked for NULL value. Access to lines
+//    is protected by alias' RWlock (see e.g. alias_is_empty() )
 
 #if COMPILING_ESPSHELL
 #if  WITH_ALIAS
@@ -45,13 +50,24 @@
 struct alias {
   struct alias *next;    // must be first field to be compatible with generic lists routines
   rwlock_t      rw;      // RW lock to protect /lines/ list
-  argcargv_t   *lines;   // actual alias content (a list of argcargv_t *)
+  argcargv_t   *lines;   // actual alias content (a list of argcargv_t *) TODO: make it _Atomic to simplify alias_is_empty()
   char          name[0]; // asciiz alias name
 };
 
 static _Atomic(struct alias *) Aliases = NULL;
 
-
+// Check if alias is empty.
+// NOTE: calls rw_lock/unlock
+//
+static bool alias_is_empty(struct alias *al) {
+  bool is_empty = true;
+  if (likely(al != NULL)) {
+    rw_lockr(&al->rw);
+    is_empty = al->lines == NULL; // TODO: replace with atomic_load() once al->lines become _Atomic
+    rw_unlockr(&al->rw);
+  }
+  return is_empty;
+}
 // Add a new "line" (aa) to the alias. 
 // Here, a "line" refers to user input that has already been processed into an argcargv_t structure. 
 // We simply store a pointer to the argcargv_t and increment its reference counter. 
@@ -319,7 +335,7 @@ static int cmd_alias_asterisk(int argc, char **argv) {
   //
   // TODO: Add a parameter to userinput_find_handler() to specify search directories
   const struct keywords_t *tmp = keywords_get();
-  keywords_set(main);
+  keywords_set(main); // sets thread-specific copy, thread-safe
   userinput_find_handler(AA);
   keywords_set_ptr(tmp);
 
@@ -335,6 +351,9 @@ static int cmd_alias_asterisk(int argc, char **argv) {
   q_print("% Failed to save command (out of memory?)\r\n");
   return CMD_FAILED;
 }
+
+// TODO:"esp32-alias>save /FILENAME"
+// TODO: "esp32>alias NAME|* save /FILENAME"
 
 // Execute an alias: lock it for reading, go  through stored argcargv_t lists
 // and send them to the command processor. We do increment line's refcount before calling espshell_command()
@@ -396,12 +415,11 @@ static int alias_exec_in_background_delayed(struct alias *al, uint32_t delay_ms)
 
     ha->al = al;
     ha->delay_ms = delay_ms;
-    // Context & Keywords are per-thread variables!
     // Make local copy of the context & keywords values. Spawned task will initialize its
-    // own Context and keywords variables from these values.
+    // own Context and keywords variables from these values. (global, the Context and Keywords are __thread variables)
+    //
     ha->context = context_get_uint();
     ha->keywords = keywords_get();
-    //ha->prompt = prompt;
 
     return task_new(alias_helper_task,
                     ha,

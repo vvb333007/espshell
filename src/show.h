@@ -31,6 +31,7 @@ static const struct {
 #if WITH_ALIAS
   { "alias", cmd_show_alias },
 #endif
+  { "uart", cmd_show_uart },
   { "ifs", cmd_show_ifs },
   { "tasks", cmd_show_tasks },
   { "pwm", cmd_show_pwm },

@@ -59,7 +59,7 @@ static const struct campins {
   signed char pins[16];  // PWDN,RESET,  XCLK,  SIOD,SIOC,  D7,D6,D5,D4,D3,D2,D1,D0,  VSYNC,HREF,PCLK
   const char *comment;
 } Campins[ ] = {
-  {"ai-thinker",         {32,-1,    0,   26,27,   35,34,39,36,21,19,18,5,   25,23,22}, "Ai-Thinker ESP-CAM, LEDs on GPIO4 and GPIO33"}, // hi power led on gpio4, ordinary led on gpio33(red)
+  {"ai-thinker",         {-1,-1,    0,   26,27,   35,34,39,36,21,19,18,5,   25,23,22}, "Ai-Thinker ESP-CAM, LEDs on GPIO4 and GPIO33"}, // hi power led on gpio4, ordinary led on gpio33(red)
 
   {"xiao-s3",            {-1,-1,   10,   40,39,   48,11,12,14,16,18,17,15,  38,47,13}, "Xiao ESP32-S3 camera"}, //TODO: Seeeed Studio S3 camera pins?
 
@@ -305,7 +305,7 @@ static int cmd_show_camera(int argc, char **argv) {
     if ((cam = esp_camera_sensor_get()) != NULL) {
       q_printf(" %% <r>Camera module information:           </>\r\n"
                 "%% Camera ID (MIDH=%x, MIDL=%x, PID=%x, VER=%x\r\n)"
-                "%% I2C slave address: %x; Main clock (XCLK) is %.1f MHz\r\n",
+                "%% I2C/SSCB slave address: %x; Main clock (XCLK) is %.1f MHz\r\n",
                     cam->id.MIDH, cam->id.MIDL, cam->id.PID, cam->id.VER,
                     cam->slv_addr, (float)cam->xclk_freq_hz / 1000000.0f);
 
@@ -325,8 +325,9 @@ static int cmd_show_camera(int argc, char **argv) {
   return 2;
 
 initialize_camera_first:
-  q_print("%% Use \"<b>camera up MODEL</>\" command to initialize camera MODEL\r\n"
-          "%% Use \"camera up\" if camera is already initialized by user sketch");
+  q_print("%% Camera is down!\r\n"
+          "%% Use \"<i>camera up MODEL</>\" command to initialize camera MODEL\r\n"
+          "%% Use \"<i>camera up</>\" if camera is already initialized by the user sketch\r\n");
   return CMD_FAILED;
 }
 
@@ -335,6 +336,7 @@ initialize_camera_first:
 //"pinout PWDN RESET XCLK SDA SCL D7 D6 D5 D4 D3 D2 D1 D0 VSYNC HREF PCLK"
 static int cmd_camera_pinout(int argc, char **argv) {
 
+#if 0
   if (argc < 17) {
 
     HELP(q_print( "% Syntax is:\r\n"
@@ -343,14 +345,50 @@ static int cmd_camera_pinout(int argc, char **argv) {
                   "% <b>camera pinout</> <o>PWDN RESET</> <i>XCLK</> <o>SDA SCL</> <g>Y9 Y8 Y7 Y6 Y5 Y4 Y3 Y2</> <i>VSYNC HREF PCLK</>\r\n"));
     return CMD_MISSING_ARG;
   }
+#endif
 
-  int i;
-  // read pin numbers (starting from 2nd argument: "0:pinout 1:NUM")
-  for (i = 1; i < 17; i++)
-    Custom.pins[i - 1] = q_atoi(argv[i],-1); // -1 means "don't use this pin", so it is safe choice for the default value
+  // 17 arguments: all pin numbers in a sequence
+  if (argc >= 17) {
+    int i;
+    // read pin numbers (starting from 2nd argument: "0:pinout 1:NUM")
+    for (i = 1; i < 17; i++)
+      Custom.pins[i - 1] = q_atoi(argv[i],-1); // -1 means "don't use this pin", so it is safe choice for the default value
 
-  if (i < argc)
-    q_print("% Trailing arguments were ignored\r\n");
+    if (i < argc)
+      q_print("% Trailing arguments were ignored\r\n");
+  } else if (argc >= 3) {
+ 
+    if (!q_strcmp(argv[1],"power")) Custom.pins[0] = q_atoi(argv[2], UNUSED_PIN); else
+    if (!q_strcmp(argv[1],"reset")) Custom.pins[1] = q_atoi(argv[2], UNUSED_PIN); else
+    if (!q_strcmp(argv[1],"xclk"))  Custom.pins[2] = q_atoi(argv[2], UNUSED_PIN); else
+    if (!q_strcmp(argv[1],"i2c"))   { 
+      if (!q_strcmp(argv[2],"none")) {
+        Custom.pins[3] = UNUSED_PIN;
+        Custom.pins[4] = UNUSED_PIN;
+      } else {
+        if (argc < 4) {
+          q_print("% Keyword \"none\" or SDA and SCL pin numbers are expected after \"i2c\"\r\n");
+          return CMD_MISSING_ARG;
+        }
+        Custom.pins[3] = q_atoi(argv[2],UNUSED_PIN);
+        Custom.pins[4] = q_atoi(argv[3],UNUSED_PIN);
+      }
+    } else
+    if (!q_strcmp(argv[1],"vsync")) Custom.pins[13] = q_atoi(argv[2], UNUSED_PIN); else
+    if (!q_strcmp(argv[1],"href"))  Custom.pins[14] = q_atoi(argv[2], UNUSED_PIN); else
+    if (!q_strcmp(argv[1],"pclk"))  Custom.pins[15] = q_atoi(argv[2], UNUSED_PIN); else
+    if (!q_strcmp(argv[1],"data")) {
+      if (argc < 10) {
+        q_print("% 8 pin numbers are expected after \"data\": D7 D6 ... D0\r\n"
+                "% Or, using Y-names: Y9 Y8 .. Y2\r\n");
+        return CMD_MISSING_ARG;
+      }
+      for (int j = 0; j < 8; j++)
+        Custom.pins[j + 5] = q_atoi(argv[j + 2], UNUSED_PIN);
+    } else
+      return 1;
+  } else
+    return CMD_MISSING_ARG;
 
   return 0;
 }
@@ -756,10 +794,10 @@ static int cmd_camera_up(int argc, char **argv) {
   
     config.pixel_format = camera_mode;
     config.frame_size = camera_size;
-    config.jpeg_quality = has_psram ? 4 : 12; //TODO: camera_compression
+    config.jpeg_quality = has_psram ? 20 : 25; //TODO: camera_compression
     config.fb_count = camera_buffers;  // if more than one, i2s runs in continuous mode. Use only with JPEG
     config.fb_location = has_psram ? CAMERA_FB_IN_PSRAM : CAMERA_FB_IN_DRAM;
-    config.grab_mode = has_psram ? CAMERA_GRAB_LATEST : CAMERA_GRAB_WHEN_EMPTY;
+    config.grab_mode = camera_buffers > 1 ? CAMERA_GRAB_LATEST : CAMERA_GRAB_WHEN_EMPTY;
 
   q_printf("%% Selected resolution:%s, JPEG comp:%u, (uses %u fbuffer%s in %s), grab: %s\r\n", 
             cam_resolution(config.frame_size),
@@ -772,7 +810,7 @@ static int cmd_camera_up(int argc, char **argv) {
     //pinForceMode(config.pin_pwdn, OUTPUT);
     digitalForceWrite(config.pin_pwdn, LOW);
     HELP(q_printf("%% Camera power up (GPIO%d is LOW)\n\r", config.pin_pwdn));
-    q_delay(100);
+    q_delay(1000);
   }
 
   sensor_t *s = NULL;

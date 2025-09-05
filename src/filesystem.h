@@ -24,6 +24,8 @@
 //
 // Command handlers names start with "cmd_files_...", utility & helper functions are all have names which start with "files_"
 //
+// TODO: fix non-reentrant code. specifically: files_full_path(), may be use __thread variables
+//
 #if WITH_FS
 // Current working directory. Must start and end with "/". 
 static char *Cwd = NULL;  
@@ -1981,12 +1983,56 @@ static int cmd_files_mkdir(int argc, char **argv) {
   return 0;
 }
 
+
+// Create file if does not exist. If it does - update the timestamp
+//
+static int q_touch(const char *name) {
+
+  int fd;
+
+  if (files_create_dirs(name, PATH_HAS_FILENAME) < 0) {
+    q_print("% <e>Failed to create path for a file</>\r\n");
+    return -1;
+  }
+
+  name = files_full_path(name, PROCESS_ASTERISK); // TODO: not reentrant!
+
+  // try to open the file, creating it if it doesn't exist
+  if ((fd = open(name, O_CREAT | O_WRONLY, 0666)) > 0) {
+    close(fd);
+    return 0;
+  }
+  q_printf("%% <e>Can't touch \"%s\"</>\r\n", name);
+  return -1;
+}
+
+// Open file for reading and/or writing. Create file if does not exist. Create
+// all directories in the path
+//
+static FILE *files_fopen(const char *name, const char *mode) {
+
+  FILE *fp;
+
+  if (*mode == 'a' || *mode == 'w')
+    if (files_create_dirs(name, PATH_HAS_FILENAME) < 0) {
+      q_print("% <e>Failed to create path for a file</>\r\n");
+      return NULL;
+    }
+
+  name = files_full_path(name, PROCESS_ASTERISK); // TODO: not reentrant!
+  if ((fp = fopen(name,mode)) == NULL)
+    q_printf("%% Failed to open \"%s\"\r\n",name);
+  return fp;
+}
+
+
+
 // "touch PATH1 [PATH2 ... PATHn]"
 // Create new files or update existing's timestamp
 //
 static int cmd_files_touch(int argc, char **argv) {
 
-  int fd, i, err = 0;
+  int i, err = 0;
 
   if (argc < 2)
     return CMD_MISSING_ARG;
@@ -1994,24 +2040,11 @@ static int cmd_files_touch(int argc, char **argv) {
   if (argc > 2)
     HELP(q_print(MultipleEntries));
 
-
   for (i = 1; i < argc; i++) {
-
-    if (files_create_dirs(argv[i], PATH_HAS_FILENAME) < 0) {
-      q_print("%% <e>Failed to create path for a file</>\r\n");
-      return CMD_FAILED;
-    }
-
-    argv[i] = files_full_path(argv[i], PROCESS_ASTERISK);
-
-    // try to open file, creating it if it doesn't exist
-    if ((fd = open(argv[i], O_CREAT | O_WRONLY, 0666)) > 0) {
-      close(fd);
-      HELP(q_printf("%% Touched \"<g>%s</>\"\r\n", argv[i]));
-    } else {
-      q_printf("%% <e>Failed to create file \"%s\", error code is %d</>\r\n", argv[i], errno);
+    if (q_touch(argv[i]) < 0)
       err++;
-    }
+    else
+      q_printf("%% Touched: \"%s\"\r\n",argv[i]);
   }
   return err ? CMD_FAILED : 0;
 }

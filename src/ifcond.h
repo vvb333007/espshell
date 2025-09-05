@@ -10,30 +10,34 @@
  * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
-// -- "If" and "Every" : GPIO and/or Timer events --
-// WELL-COMMENTED BIG MESS. Has to be refactored.
+// -- "If" and "Every": GPIO and/or Timer events --
+// WELL-COMMENTED BIG MESS. Needs refactoring.
 //
-// "ifcond" or "if conditional" is a data structure that holds information about: 
-// a GPIO event or a timer, an action that should be done in response to the event 
-// and some extra statistics information - number of "hits" and a timestamp of "last use"
+// An "ifcond" (short for "if condition") is a data structure that holds:
+// - a GPIO event or a timer event
+// - the action to perform in response
+// - extra statistics (number of "hits" and timestamp of last use)
 //
-// ifconds are created with "if" and "every" shell commands and are added to a global array of ifconds
-// (see ifconds[] below). Deletion is done with the same "if delete" or "every delete" commands
+// ifconds are created by the "if" and "every" shell commands and added to a global
+// array (see ifconds[] below). Deletion is done with "if delete" or "every delete".
 //
-// When displayed (see ifc_show_all() ) every ifcond appears assigned a number (ID) which can be used
-// to manipulate that ifcond: delete it, clear timestamp ,clear hit count
+// When displayed (see ifc_show_all()), each ifcond is assigned an ID number,
+// which can be used to manipulate it: delete, clear timestamp, or reset hit count.
 //
-// When a GPIO interrupt happens, ifconds belonging to that GPIO are checked, 
-// and associated aliases are executed. Timed events are governed by esp_timer.
+// When a GPIO interrupt occurs, ifconds bound to that GPIO are checked,
+// and the associated aliases are executed. Timed events are managed by esp_timer.
 //
 // Thread safety:
-// ifcond lists are protected by a global rwlock (ifc_rw) AND by disabling GPIO interrupts: userspace tasks
-// acquire "reader" lock, ISR does not use locking at all, and actual editing of ifconds which is done by
-// "if" and "every" shell commands ensures that "writer" lock is obtained and GPIO interrupts are disabled
-//  (see ifc_delete0(...) on how to properly lock to modify lists)
+// The ifcond list is protected by a global rwlock (ifc_rw) AND by disabling GPIO interrupts.
+// Userspace tasks acquire the "reader" lock. The ISR does not use locks at all.  
+// Any modification of the ifcond list (performed by the "if" and "every" commands)
+// ensures that the "writer" lock is acquired and GPIO interrupts are disabled.
+// (See ifc_delete0(...) for details on proper locking.)
 //
-// Extra layer of safety comes from the fact that struct ifcond as well as struct alias are *persistent pointers*
-// That means these pointers always point to valid memory region
+// An extra layer of safety comes from the fact that both struct ifcond and struct alias
+// are *persistent pointers*. This guarantees they always point to valid memory.
+//
+// TODO: if var_name1|imm    eq|lt|gt|le|ge|ne    imm|var_name2 poll NUM ... exec
 //
 #ifdef COMPILING_ESPSHELL
 #if WITH_ALIAS
@@ -42,8 +46,8 @@
 //
 // There are lists of ifconds per every pin: ifconds[0..NUM_PINS-1]) and these  are for "if rising|falling X ... "
 //       ifconds on a list are always belong to the same pin
-// There are list of "polled" ifconds: ifconds[NO_TRIGGER], and these are for "if low|high X ... poll ..."
-// There are list of "every" ifconds: ifconds[EVERY_IDX], and these are for "every ..."
+// There is a list of "polled" ifconds: ifconds[NO_TRIGGER], and these are for "if low|high X ... poll ..."
+// There is a list of "every" ifconds: ifconds[EVERY_IDX], and these are for "every ..."
 //
 struct ifcond {
 
@@ -96,23 +100,25 @@ struct ifcond {
 // in the ifconds[NO_TRIGGER]
 static struct ifcond *ifconds[NUM_PINS + 2] = { 0 };   // plus 1 for the NO_TRIGGER entry and plus 1 for "every" entries
 
-// RWLock to protect lists of ifconds. Lists are modified only by "if" and "if delete" commands.
+// RWLock to protect lists of ifconds. Lists are modified only by "if/every" and "if/every delete" commands ("writers").
 // Others are "readers", including the GPIO ISR (which traverses these lists). Obtaining a writer lock
 // thus is not enough: interrupts for the GPIO must be disabled (ISR does not have any locking mechanism at all).
 //
 static rwlock_t ifc_rw = RWLOCK_INIT;
 
-// Defines the size of a message pipe. If the ISR below will match more than MPIPE_CAPACITY
-// ifconds, it will drop any extra. For example, you have 17 "if" statements which were triggered at once:
-// 17th message from the ISR to ifc_task() will be dropped. Don't make it too small.
+// Defines the size of the message pipe. If the ISR below matches more than MPIPE_CAPACITY
+// ifconds, any additional ones will be dropped. For example, if you have 17 "if" statements
+// triggered at once, the 17th message from the ISR to ifc_task() will be discarded.
+// Don’t set this too small.
 //
-// If it is too big, then no events will be missed but at cost of higher RAM usage. Don't make it too big
+// If it’s too large, no events will be missed, but it will consume more RAM.
+// Don’t set this too large either.
 
 #define MPIPE_CAPACITY 16
 
 static void ifc_task(void *arg);
 
-// message pipe (from the ifc_anyedge_interrupt() to ifc_task())
+// message pipe (from the ifc_anyedge_interrupt() and esp_timer to ifc_task())
 static mpipe_t ifc_mp = MPIPE_INIT;
 static unsigned int ifc_mp_drops = 0;
 
@@ -124,7 +130,7 @@ static unsigned int ifc_mp_drops = 0;
 // Create message pipe and start a daemon task
 // Daemon priority set is just below system tasks priority
 //
-static __attribute__((constructor)) void ifc_init_once() {
+static __attribute__((constructor)) void __ifc_init() {
 
   task_t ifc_handle = NULL; // daemon task id
 
@@ -174,11 +180,11 @@ static uint64_t isr_enabled = 0;
 #define ifc_isr_is_registered(_Gpio) \
   (isr_enabled & (1ULL << (_Gpio)))
 
-// Set "ISR Installed" falg for pin _Gpio
+// Set "ISR Installed" flag for pin _Gpio
 #define ifc_set_isr_registered(_Gpio) \
   (isr_enabled |= (1ULL << (_Gpio)))
 
-// Clear "ISR Installed" falg for pin _Gpio
+// Clear "ISR Installed" flag for pin _Gpio
 #define ifc_clear_isr_registered(_Gpio) \
   (isr_enabled &= ~(1ULL << (_Gpio)))
 
@@ -215,18 +221,19 @@ static void IRAM_ATTR ifc_anyedge_interrupt(void *arg) {
                     : (in1 & (1UL << (pin - 32)));
 
 
-  // Go through "if" clauses. (all that are associated with the /pin/)
-  // We do not use any locking mechanism here (RWLock is what we should use here): the only code which modifies 
-  // ifconds lists is the "if" shell command: lists are modified on addition of a new ifcond or on deletion 
-  // (via "if delete").
-  //
-  // Instead, when user enters "if" command, for the short period of time GPIO interrupts are disabled 
-  // to keep ifc_anyedge_interrupt() from traversing lists being modified
-  //
-  // List are traversed in ISR, please keep them short
-  //
-  // gotos were added in attempt to optimize execution time
-  //
+// Go through the "if" clauses (all associated with the /pin/).
+// No locking is used here (though ideally an RWLock should be).
+// The ifcond list is only modified by the "if" shell command:
+// either when adding a new ifcond or deleting one (via "if delete").
+//
+// Instead of locking, GPIO interrupts are temporarily disabled
+// while the "if" command runs, preventing ifc_anyedge_interrupt()
+// from traversing a list that is being modified.
+//
+// The list is traversed in the ISR, so keep it short.
+//
+// Gotos were added as an attempt to optimize execution time.
+
   bool force_yield = false;
 
   while (ifc) {
@@ -272,7 +279,9 @@ next_ifc:
 static void ifc_disable_periodic_timers() {}
 static void ifc_enable_periodic_timers() {}
 
-static void ifc_claim_timer(struct ifcond *ifc);
+// Allocate timer for polled events (if ... poll and every ...poll)
+//
+static void ifc_claim_timer(struct ifcond *ifc, bool delayed_already);
 
 // Timer callback for polled entries (e.g., "if low 5 poll ..." or "every ...").
 // Called periodically by the esp_timer system task.
@@ -326,8 +335,8 @@ static void ifc_callback(void *arg) {
   ifc->drops++;
 }
 
-// When entry has "delay" keyword we must postpone first execution hence the
-// name
+// When an entry has the "delay" keyword, its first execution is postponed - hence the name.
+//
 static void ifc_callback_delayed(void *arg) {
   struct ifcond *ifc = (struct ifcond *)arg;
   if (ifc) {
@@ -346,65 +355,60 @@ static void ifc_callback_delayed(void *arg) {
     esp_timer_delete(ifc->timer);
     ifc->timer = TIMER_INIT;
 
-  // Temporarily set has_delay to 0 so that ifc_claim_timer() selects the correct callback
-  // (ifc_callback instead of ifc_callback_delayed). The same ifc cannot be executed from
-  // two different tasks, so it is safe to temporarily change ifc->has_delay: all executions
-  // are handled by ifc_task().
-
-    ifc->has_delay = 0;
-    ifc_claim_timer(ifc);
-    ifc->has_delay = 1;
+    ifc_claim_timer(ifc, true);
   }
 }
 
-// Allocate a timer for polled events, either periodic or single-shot.
-// The mode is determined by ifc.has_delay:
-// If the ifcond includes the "delay" option, the timer callback is set up in two steps:
+// Allocate a timer for polled events, either periodic or one-shot.
+// The mode depends on ifc.has_delay:
+// If the ifcond specifies the "delay" option, the timer is set up in two steps:
 //
-//   1. Create a one-shot timer with a duration of ifc.delay_ms.
-//   2. Once it fires, schedule a periodic timer.
+//   1. Start a one-shot timer with duration ifc.delay_ms.
+//   2. When it expires, schedule a periodic timer.
 //
-static void ifc_claim_timer(struct ifcond *ifc) {
+// This function may also be called from the one-shot timer itself to set up
+// the periodic events. That is the purpose of the second argument:
+// - Normally, it should be set to /false/.
+// - It is set to /true/ only when invoked from the one-shot timer callback.
+static void ifc_claim_timer(struct ifcond *ifc, bool delayed_already) {
 
-  if (likely(ifc != NULL)) {
+  timer_t handle = TIMER_INIT;
 
-    timer_t handle = TIMER_INIT;
+  MUST_NOT_HAPPEN(ifc == NULL);
+  MUST_NOT_HAPPEN(ifc->exec == NULL);
 
-    esp_timer_create_args_t timer_args = {
+  // Default timer callback is ifc_callback
+  esp_timer_create_args_t timer_args = {
       .callback = &ifc_callback,
       .dispatch_method = ESP_TIMER_TASK,
       .arg = ifc,
-      .name = ifc->exec ? ifc->exec->name : "unnamed",
-    };
+      .name = ifc->exec->name,
+  };
 
-    // 2 stage-setup for delayed events
-    if (ifc->has_delay)
-      timer_args.callback = &ifc_callback_delayed;
+  // 2 stage-setup for delayed events
+  if (ifc->has_delay && !delayed_already)
+    timer_args.callback = &ifc_callback_delayed;
 
-    if (ESP_OK == esp_timer_create(&timer_args, &handle)) {
-      ifc->timer = handle;
-      if (ifc->has_delay)
-        esp_timer_start_once(handle, 1000ULL * ifc->delay_ms);
-      else {
-        // First executions is right now, subsequent - after a delay
+  if (ESP_OK == esp_timer_create(&timer_args, &handle)) {
+    ifc->timer = handle;
+    if (ifc->has_delay && !delayed_already)
+      esp_timer_start_once(handle, 1000ULL * ifc->delay_ms);
+    else {
+      // First executions is right now, subsequent - after a delay
+      if (!delayed_already)
         ifc_callback(ifc);
-        esp_timer_start_periodic(handle, 1000ULL * ifc->poll_interval);
-      }
+      esp_timer_start_periodic(handle, 1000ULL * ifc->poll_interval);
     }
-  } else {
-    VERBOSE(q_print("% ifc_claim_timer() : ifc == NULL !\r\n"));
   }
 }
 
-// Release timer
+// Release timer, delete callbacks
 //
 static void ifc_release_timer(struct ifcond *ifc) {
-  if (ifc && ifc->timer) {
+  if (likely(ifc != NULL && ifc->timer != NULL)) {
     esp_timer_stop(ifc->timer);
     esp_timer_delete(ifc->timer);
-    ifc->timer = NULL;
-  } else {
-    VERBOSE(q_print("% ifc_release_timer() : ifc == NULL !\r\n"));
+    ifc->timer = TIMER_INIT;
   }
 }
 
@@ -412,22 +416,21 @@ static void ifc_release_timer(struct ifcond *ifc) {
 // Otherwise, install a GPIO ANYEDGE interrupt handler and enable interrupts on the pin.
 //
 static void ifc_claim_interrupt(uint8_t pin) {
-  if (pin_exist_silent(pin)) {
-    if (!ifc_isr_is_registered(pin)) {
-      ifc_set_isr_registered(pin);
 
-      // gpio_install_isr_service can be called multiple times — if it's already installed, it just returns with a warning.
-      // Since the shell must coexist with the user sketch, which may call gpio_isr_service_uninstall, we should restore
-      // our interrupt logic whenever possible.
-      //
-      gpio_install_isr_service((int)ARDUINO_ISR_FLAG);
-      gpio_set_intr_type(pin, GPIO_INTR_ANYEDGE);
-      gpio_isr_handler_add(pin, ifc_anyedge_interrupt, (void *)(unsigned int)pin);
-      gpio_intr_enable(pin);
-    }
-  } else {
-    // pin existence must be checked before calling ifc_claim_interrupt!
-    MUST_NOT_HAPPEN( true );
+  // pin existence must be checked before calling ifc_claim_interrupt!
+  MUST_NOT_HAPPEN( pin_exist_silent(pin) == false );
+
+  if (!ifc_isr_is_registered(pin)) {
+    ifc_set_isr_registered(pin);
+
+    // gpio_install_isr_service can be called multiple times — if it's already installed, it just returns with a warning.
+    // Since the shell must coexist with the user sketch, which may call gpio_isr_service_uninstall, we should restore
+    // our interrupt logic whenever possible.
+    //
+    gpio_install_isr_service((int)ARDUINO_ISR_FLAG);
+    gpio_set_intr_type(pin, GPIO_INTR_ANYEDGE);
+    gpio_isr_handler_add(pin, ifc_anyedge_interrupt, (void *)(unsigned int)pin);
+    gpio_intr_enable(pin);
   }
 }
 
@@ -510,7 +513,7 @@ static void ifc_show(struct ifcond *ifc) {
 
     // Normally, only EVERY entries can have delays, but we let it be for the "future extensions (c)"
     if (ifc->has_delay)
-      q_printf("delay %lu",ifc->delay_ms);
+      q_printf("delay %lu ",ifc->delay_ms);
 
     // shortened to save screen space
     if (ifc->has_limit)
@@ -538,7 +541,7 @@ static void ifc_show_single(unsigned int num) {
   int i,j;
 
   rw_lockr(&ifc_rw);
-  for (i = j = 0; i < NUM_PINS + 2; i++) {
+  for (i = j = 0; i < NUM_PINS + 2; i++) { // NUM_PINS+2 is the size of ifconds array: GPIOs+Polling+Every events
     struct ifcond *ifc = ifconds[i];
     while (ifc) {
       if (ifc->id == num) {
@@ -675,8 +678,6 @@ static void ifc_show_all() {
   else
     q_print("%---+-------+------+------+----------------------------------------------------\r\n");
 }
-
-
 
 // Delete/Clear ifcond entry/entries
 //
@@ -1026,6 +1027,73 @@ static void ifc_task(void *arg) {
   /* UNREACHED */
 }
 
+// Variant of ifc_show() which is fullform and outputs to a file stream.
+// This one is used to save espshell configuration
+//
+static void ifc_show_fp(FILE *fp, struct ifcond *ifc) {
+
+  if (ifc) {
+    uint8_t i;
+
+    if (ifc->trigger_pin == EVERY_IDX)
+      fprintf(fp, "every ");
+    else if (ifc->trigger_pin != NO_TRIGGER)
+      fprintf(fp, "if %s %u ", ifc->trigger_rising ? "rising" : "falling", ifc->trigger_pin);
+    else
+      fprintf(fp, "if ");
+
+    if (ifc->has_high)
+      for (i = 0; i <32; i++) {
+        if (ifc->high & (1UL << i))  fprintf(fp, "high %u ",i);
+        if (ifc->high1 & (1UL << i)) fprintf(fp, "high %u ",i + 32);
+      }
+
+    if (ifc->has_low)
+      for (i = 0; i <32; i++) {
+        if (ifc->low & (1UL << i))  fprintf(fp, "low %u ",i);
+        if (ifc->low1 & (1UL << i)) fprintf(fp, "low %u ",i + 32);
+      }
+
+    // poll_interval is either poll interval for the "if" statement
+    // or a frequency of an "every" statement. Measured in milliseconds (49 days max interval)
+    if (ifc->poll_interval) {
+      if (ifc->trigger_pin == EVERY_IDX) {
+        // Some heuristics for "every" variant, to save screen space in table view:
+        //   For times below 10 sec  display "XXXX millis"
+        //   Anything above 120 sec is displayed in minutes
+        //   Anything in between is displayed as seconds
+        if (ifc->poll_interval < 10000)
+          fprintf(fp, "%lu millis ",ifc->poll_interval);
+        else if (ifc->poll_interval > 120*1000)
+          fprintf(fp, "%lu min ",ifc->poll_interval / (1000 * 60));
+        else
+          fprintf(fp, "%lu sec ",ifc->poll_interval / 1000);
+      } else
+        fprintf(fp, "poll %lu ",ifc->poll_interval);
+    }
+
+    // Normally, only EVERY entries can have delays, but we let it be for the "future extensions (c)"
+    if (ifc->has_delay)
+      fprintf(fp, "delay %lu ",ifc->delay_ms);
+
+    // shortened to save screen space
+    if (ifc->has_limit)
+      fprintf(fp, "max-exec %lu ",ifc->limit);
+
+    // shortened to save screen space
+    if (ifc->has_rlimit)
+      fprintf(fp, "rate-limit %u ",ifc->rlimit);
+
+    // Use quotes: aliases could have spaces in their names and we want to generate
+    // "executable" output, which can be simply copy/pasted to the espshell prompt again
+    if (ifc->exec)
+      fprintf(fp, "exec \"%s\"",ifc->exec->name);
+
+    fprintf(fp, CRLF);
+  }
+}
+
+
 
 
 // "if disable NUM|all"
@@ -1117,6 +1185,47 @@ bad_gpio_number:
     return 0;
 }
 
+// "if|every save ID|* /FILENAME"
+//
+static int cmd_if_save(int argc, char **argv) {
+
+  FILE *fp = NULL;
+  int id;
+  struct ifcond *ifc;
+
+  if (argc < 4)
+    return CMD_MISSING_ARG;
+
+  if (q_touch(argv[3]) < 0) {
+    q_print("% Is filesystem mounted?\r\n");
+    return CMD_FAILED;
+  }
+  // Append to existing file or create new.
+  // By default we append, so every module can write its configuratuion into single config file
+  if ((fp = files_fopen(argv[3],"a")) == NULL)
+    return CMD_FAILED;
+
+  id = q_atoi(argv[1],-1);
+  
+  fprintf(fp,"\r\n// \"if\" and \"every\" statements:\r\n//\r\n");
+
+  rw_lockr(&ifc_rw);
+  for (int i=0; i < NUM_PINS+2; i++) {
+    ifc = ifconds[i];
+    while (ifc) {
+      if (id < 0 || ifc->id == id)
+        ifc_show_fp(fp,ifc);
+      ifc = ifc->next;
+    }
+  }
+
+  rw_unlockr(&ifc_rw);
+  fclose(fp);
+
+  return 0;
+}
+
+
 // Create an "if" condition
 //
 // if rising|falling NUM [low|high NUM]* [max-exec NUM] [rate-limit MSEC] exec ALIAS_NAME
@@ -1137,6 +1246,12 @@ static int cmd_if(int argc, char **argv) {
     return CMD_MISSING_ARG;
 
   //////////////////////////////////////////////
+  // "if|every save"
+  //////////////////////////////////////////////
+  if (!q_strcmp(argv[1],"save"))
+    return cmd_if_save(argc, argv);
+
+  //////////////////////////////////////////////
   // "disable" and "enable"
   //////////////////////////////////////////////
   if (!q_strcmp(argv[1],"disable") || !q_strcmp(argv[1],"enable"))
@@ -1147,7 +1262,6 @@ static int cmd_if(int argc, char **argv) {
   //////////////////////////////////////////////
   if (!q_strcmp(argv[1],"delete") || !q_strcmp(argv[1],"clear"))
     return cmd_if_delete_clear(argc, argv);
-
 
   if (argc < 5)
     return CMD_MISSING_ARG;
@@ -1257,7 +1371,6 @@ static int cmd_if(int argc, char **argv) {
 
     } else if ( !q_strcmp(argv[cond_idx],"exec")) {
       exec = argv[++cond_idx];
-      // Check if alias exist and show a warning if it doesn't: it helps to catch typos when writing "if" shell clauses
     } else {
       q_print("% <e>\"max-exec\", \"poll\", \"rate-limit\", \"delay\" or \"exec\" keywords are expected</>\r\n");
       return cond_idx;
@@ -1269,6 +1382,14 @@ static int cmd_if(int argc, char **argv) {
     q_print("<e>% \"exec ALIAS_NAME\" keyword expected</>\r\n");
     return 0;
   }
+
+  // Check if alias exist and show a warning if it doesn't: it helps 
+  // catching typos in alias names when writing "if" shell clauses
+  struct alias *al;
+  if ((al = alias_by_name(exec)) == NULL)
+    q_printf("%% <i>Warning</>: alias \"%s\" does not exist, will be created (empty)\r\n", exec);
+  else if (alias_is_empty(al))
+    q_printf("%% <i>Warning</>: alias \"%s\" exists but it is empty\r\n", exec);
 
   struct ifcond *ifc = ifc_create(trigger_pin,
                                   rising, 
@@ -1299,9 +1420,10 @@ static int cmd_if(int argc, char **argv) {
     }
   }
 
-  // Rate limit can be anything from 0 to 65535 milliseconds.
-  // 16 bit is choosen to save memory. The sole purpose of this limiter is not to get flooded by
-  // interrupts, so values greater than 1 sec are meaningless
+ // The rate limit can range from 0 to 65 535 milliseconds.
+// A 16-bit field is chosen to save memory.
+// This limiter’s only purpose is to prevent interrupt flooding, so values above 1 second are questionable.
+
   if (rate_limit) {
     if (rate_limit > 0xffff) {
       q_print("% \"rate-limit\" is set to maximum of 65.5 seconds\r\n");
@@ -1322,7 +1444,7 @@ static int cmd_if(int argc, char **argv) {
   if (trigger_pin < NO_TRIGGER)
     ifc_claim_interrupt(trigger_pin);
   else
-    ifc_claim_timer(ifc);
+    ifc_claim_timer(ifc, false);
   
 
   return 0;
@@ -1340,14 +1462,19 @@ static int cmd_show_ifs(int argc, char **argv) {
   // show specified rule
     ifc_show_single(q_atol(argv[2], 0)); // no rule with ID0 exist
 
-  // Display queue drops. 
-  // Drops happen when more than MPIPE_CAPACITY "if"s fire together: it results in more items flowing to the pipe,
-  // but ifc_task daemon is suspended (we are in the ISR!), so nobody unloads messages from the pipe and it eventually overflows
+// Display the number of queue drops.
+// A drop occurs when more than MPIPE_CAPACITY "if" events trigger at the same time.
+// This pushes excess items into the pipe while the ifc_task daemon is suspended
+// (because we are inside the ISR), so no one is unloading messages and the pipe eventually overflows.
   if (ifc_mp_drops) {
     q_printf("%% <e>Dropped events (more than %u conds at once): %u</>\r\n", MPIPE_CAPACITY, ifc_mp_drops);
     q_print("% <e>Use \"rate-limit\" or increase MPIPE_CAPACITY</>\r\n");
   }
   return 0;
 }
+
+
+
+
 #endif // WITH_ALIAS
 #endif // COMPILING_ESPSHELL

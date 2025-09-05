@@ -516,7 +516,7 @@ static bool pin_not_exist_notice(unsigned char pin) {
 
   
   if (pin >= NUM_PINS)
-    q_print("% Valid pin numbers are from <i>0</> to <i>" xstr(PIN_MAX) "</>, please note that\r\n% ");
+    q_printf("%% Valid pin numbers are from <i>0</> to <i>%u</>, please note that\r\n%% ", PIN_MAX);
   else
     q_print("% Unfortunately ");
   q_printf("following pins do not exist: <i>  ");

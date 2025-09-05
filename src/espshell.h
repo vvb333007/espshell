@@ -102,13 +102,10 @@ extern "C" {
 void espshell_start();
 #endif
 
-// 2) Execute an arbitrary shell command (\n and \r are allowed for multiline, i.e. multiple commands at once).
-// This function injects its argument to espshell's input stream as if it was typed by the user. 
-// It is an async call, returns immediately. Next call can be done only after espshell_exec_finished() returns /true/
+// 2) Execute an arbitrary shell command
+// /p/ - A pointer to a valid asciiz string.
 //
-// /p/ - A pointer to a valid asciiz string. String must remain a valid memory until espshell finishes its processing!
-//
-void espshell_exec(const char *p);
+int espshell_exec(const char *p);
 
 
 // 3) Check if ESPShell has finished processing of last espshell_exec() call and is ready for new espshell_exec()

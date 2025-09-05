@@ -85,7 +85,6 @@ static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
   q_printf("%% Reset reason: \"%s</>\"\r\n", rr[i]);
 
   // "Bootloader-style" reset reason (for each core):
-  // TODO: is this legit? should we call IDF api to query number of cores?
   for (core = 0; core < portNUM_PROCESSORS; core++)
     if ((i = esp_rom_get_reset_reason(core)) < sizeof(rr2) / sizeof(rr2[0]))
       q_printf("%%    CPU%u: %s\r\n",core, rr2[i]);
@@ -97,6 +96,9 @@ static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
 //"tty NUM"
 //
 // Set UART (or USBCDC) to use by this shell.
+// Use this command to "pass the shell" to another UART. This allows for various "chain" configurations
+// of multiple ESP32 together: UART1 is IN, UART2 is OUT. By using UART's "tap" command along with "tty"
+// one can "login" to every device in the chain
 //
 static int cmd_tty(int argc, char **argv) {
 
@@ -175,7 +177,11 @@ static int cmd_echo(int argc, char **argv) {
 }
 
 
-// enable/disable history saving. mostly for memory leaks detection
+// enable/disable history saving. mostly for memory leaks detection:
+// disabling history fixes "free memory" value ("show memory") so one can 
+// execute commands and recheck remaining memory amount. With history enabled, every "show memory" will change the
+// remaining memory value
+//
 static void
 history_enable(bool enable) {
   if (!enable) {
@@ -204,18 +210,16 @@ history_enable(bool enable) {
 // disable/enable/show status for command history
 //
 static int cmd_history(int argc, char **argv) {
-  if (argc < 2)
-    // no arguments? display history status
-    q_printf("%% History is %s\r\n", History ? "enabled" : "disabled");
+
+  if (argc < 2)                       // no arguments? display history status
+    q_printf("%% History is %sabled\r\n", History ? "en" : "dis");
+  else if (!q_strcmp(argv[1], "off")) // history off: disable history and free all memory associated with history
+    history_enable(false);
+  else if (!q_strcmp(argv[1], "on"))  // history on: enable history
+    history_enable(true);
   else
-    // history off: disable history and free all memory associated with history
-    if (!q_strcmp(argv[1], "off"))
-      history_enable(false);
-    else
-      // history on: enable history
-      if (!q_strcmp(argv[1], "on"))
-        history_enable(true);
-      else return 1;
+    return 1; // arg1 is bad
+
   return 0;
 }
 
@@ -236,16 +240,11 @@ static int cmd_colors(int argc, char **argv) {
   // "colors on" : enable color sequences
   if (!q_strcmp(argv[1], "on")) { ColorAuto = false; Color = true; } else
   // "color test" : hidden developers command
-  if (!q_strcmp(argv[1], "test")) {
-    int i;
-    for (i = 0; i < 8; i++)
-      q_printf("3%d: \e[3%dmLorem Ipsum Dolor 1234567890 @#\e[0m 9%d\e[9%dmLorem Ipsum Dolor 1234567890 @#\e[0m\r\n", i, i, i, i);
-    for (i = 0; i < 108; i++)
+  if (!q_strcmp(argv[1], "test"))
+    for (int i = 0; i < 108; i++)
       q_printf("%d: \e[%dmLorem Ipsum Dolor 1234567890 @#\e[0m\r\n", i, i);
-  } else
-  // "color ????"
+  else
     return 1;
-
   return 0;
 }
 #endif  //WITH_COLOR
@@ -259,11 +258,13 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
 
   // Print location & cause of this MUST NOT HAPPEN event
   q_printf("%% ESPShell internal error: \"<i>%s</>\"\r\n"
-           "%% in %s:%u, ESPShell is stopped\r\n",
+           "%% in %s:%u, ESPShell is stopped, sketch is resumed\r\n",
            message,
            file,  
            line);
-
+  // resume sketch (it may be paused)
+  if (loopTaskHandle != NULL)
+    task_resume(loopTaskHandle);
   // forcefully kill our parent task (the shell command processor) if we are running in a background
   if (is_background_task()) {
     task_suspend((task_t)shell_task);
@@ -273,7 +274,6 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
   // foreground: kill ESPShell task
   // background: kill background command task, shell was killed before
   task_finished();
-  
   
   // UNREACHABLE CODE:
   while(1)
@@ -363,7 +363,9 @@ static bool nv_load_config(const char *nspace) {
 
 //"hostid [NAME]"
 //
-// Hidden command, to add a hostid to the prompt.
+// Hidden command, to add a hostid to the prompt. hostid is saved in NVS and retained between power cycles
+// This one may be useful when dealing with big number of devices it allows you to give a name to a particular board
+// which will be displayed as part of the prompt.
 //
 static int cmd_hostid(int argc, char **argv) {
 
@@ -372,7 +374,14 @@ static int cmd_hostid(int argc, char **argv) {
       q_printf("%% Host ID is \"%s\"\r\n", PromptID);
     else
       q_print("% Host ID is not set. (\"<i>hostid</> Name\" to set)\r\n");
-  } else {
+  } else if (is_foreground_task()) {
+    // only alphanumerics are allowed in prompt id: bad symbols (e.g. ANSI escape sequences) can screw 
+    // the terminal up making shell IO not possible 
+    for (int i = 0; argv[1][i]; i++)
+      if (!isalnum((int)(argv[1][i]))) {
+        HELP(q_print("%% Only alpha-numeric symbols are allowed\r\n"));
+        return 1;
+      }
     // Copy user input.
     strlcpy(PromptID,argv[1],sizeof(PromptID)); // TODO: unprotected
     nv_save_config("espshell");

@@ -84,6 +84,67 @@ static inline bool uart_isup(unsigned char u) {
   return u >= NUM_UARTS ? false : uart_is_driver_installed(u);
 }
 
+// TODO: cmd_uart_save()
+// esp32#>show uart NUM
+// esp32-uart1#>show
+//
+static int cmd_show_uart(int argc, char **argv) {
+
+  uint8_t u;
+
+  uart_word_length_t data_bit;
+  uart_stop_bits_t   stop_bits;
+  uart_parity_t      parity_mode;
+  uint32_t           baudrate;
+  uart_hw_flowcontrol_t flow_ctrl;
+  int                wakeup_threshold;
+
+  // called as "show" within the uart subdirectory
+  if (argc < 2)
+    u = context_get_uint();
+  else 
+  // called as "show uart NUM" as a global command
+  if (argc > 2) {
+    if ((u = q_atol(argv[2], NUM_UARTS)) >= NUM_UARTS) {
+      HELP(q_print("% UART number is out of range\r\n"));
+      return CMD_FAILED;
+    }
+  } else
+    return CMD_MISSING_ARG;
+
+  if (!uart_isup(u)) {
+    q_printf("%% UART%d is down, nothing to see\r\n",u);
+    return 0;
+  }
+
+  uart_get_word_length(u,&data_bit);
+  uart_get_stop_bits(u, &stop_bits);
+  uart_get_parity(u, &parity_mode);
+  
+  uart_get_baudrate(u, &baudrate);
+  uart_get_hw_flow_ctrl(u, &flow_ctrl);
+  uart_get_wakeup_threshold(u, &wakeup_threshold);
+
+  q_printf( "%% -- UART#%u is up --\r\n"
+            "%% Data bits: <i>%u</>, Stop bits: <i>%s</>, Parity: <i>%s</>\r\n"
+            "%% Baud rate: <i>%lu</> (real)\r\n"
+            "%% Hardware flow control: <i>%s</>\r\n"
+            "%% Sleep wakeup threshold: <i>%d</> positive edges\r\n",
+            u,
+            data_bit + 5,
+            stop_bits == UART_STOP_BITS_1 ? "1"
+                                          : (stop_bits == UART_STOP_BITS_2 ? "2"
+                                                                           : "1.5"),
+            parity_mode ? (parity_mode & 1 ? "odd"
+                                           : "even")
+                        : "none",
+            baudrate,
+            flow_ctrl ? "enabled" : "disabled",
+            wakeup_threshold);
+
+  return 0;
+}
+
 // "uart X"
 // Change to uart command tree
 //
@@ -103,6 +164,8 @@ static int cmd_uart_if(int argc, char **argv) {
   if (uart == u)
     HELP(q_print("% <i>You are about to configure the Serial, espshell is running on. Be careful</>\r\n"));
 
+  // create esp32-uartX> prompt and change command directory to "uart"
+  // save /u/ in Context
   sprintf(prom, PROMPT_UART, u);
   change_command_directory(u, KEYWORDS(uart), prom, "UART configuration");
   return 0;

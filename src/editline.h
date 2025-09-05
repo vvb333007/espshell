@@ -77,10 +77,7 @@ static int OldPoint;
 static int Point;                   // Current cursor position(index) in Line[] 
 static int PushBack;
 static int Pushed;
-// TODO: get rid of it!
-static _Atomic (const char *) Input = "";  // "Artificial input queue". if non empty then symbols are
-                                           // fed to TTYget as if it was user input. used by espshell_exec()
-                                           // Must never be NULL!
+
 static unsigned int Length;
 static bool History = true;
 
@@ -179,13 +176,6 @@ static const KEYMAP MetaMap[] = {
 };
 
 
-// Queue an arbitrary asciiz string to simulate user input.
-// String queued has higher priority than user input so console_read() would
-// "read" from this string first.
-static inline void
-TTYqueue(const char *input) {
-  Input = input;
-}
 
 // Print buffered (by TTYputc/TTYputs) data. editline uses buffered IO
 // so no actual data is printed until TTYflush() is called
@@ -252,24 +242,19 @@ TTYget() {
     Pushed = 0;
     return PushBack;
   }
-what_else_we_can_do:
-  do {
-    // read byte from a priority queue if any.
-    if (*Input)
-      c = *Input++;
-    if (c)
-      return c;
 
+  while( true ) {
     // read 1 byte from user.
     // if returned value is < 1, that means either "timeout" or "console down"
-  } while (console_read_bytes(&c, 1, pdMS_TO_TICKS(500)) < 1);
-
-  // EOF symbol must not enter espshell command pipeline. We can get EOF only if we have problems
-  // with transport layer (uart down or USB down)
-  if (c == 0) {
-    q_delay(1000);
+    while (console_read_bytes(&c, 1, portMAX_DELAY) < 1)
+      q_yield();
+    
+    if (likely(c != 0))
+      break;
+    // EOF symbol must not enter espshell command pipeline. We can get EOF only if we have problems
+    // with transport layer (uart down or USB down)
     q_print("% ESPShell failed to read serial port\r\n");
-    goto what_else_we_can_do;
+    q_delay(1000);
   }
 
 #if WITH_COLOR
@@ -279,6 +264,7 @@ what_else_we_can_do:
   if (!Color && ColorAuto && c < ' ' && c != '\n' && c != '\r' && c != '\t')
       Color = true;
 #endif
+
   return c;
 }
 

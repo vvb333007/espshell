@@ -809,6 +809,7 @@ static int cmd_seq_loop(int argc, char **argv) {
   return 0;
 }
 
+#if WITH_FS
 // Save *this* sequence configuration to a file
 //
 static int cmd_seq_save(int argc, char **argv) {
@@ -834,19 +835,14 @@ static int cmd_seq_save(int argc, char **argv) {
   // we can call cmd_files_touch(argc, argv) directly. TODO: this is a hack. Must have separate APIs for files
   // Note that "touch" accepts more than one argument so cut any extra arguments off
   //
-  if (cmd_files_touch(2,argv) != 0) {
-failed_to_open_file:    
-    q_printf("%% Can not open \"%s\" for writing. Is filesystem mounted?\r\n", argv[1]);
+  if (q_touch(argv[1]) < 0) {
+    q_print("% Is filesystem mounted?\r\n");
     return CMD_FAILED;
   }
-
-  // TODO: full_path is not reentrant! must fix it first!
-  // path = files_full_path(argv[1], PROCESS_ASTERISK); 
-
   // Append to existing file or create new.
   // By default we append, so every module can write its configuratuion into single config file
-  if ((fp = fopen(argv[1],"a")) == NULL)
-    goto failed_to_open_file;
+  if ((fp = files_fopen(argv[1],"a")) == NULL)
+    return CMD_FAILED;
 
   fprintf(fp,"\r\n// Sequence configuration\r\n");
   fprintf(fp,"sequence %u\r\n",context_get_uint());
@@ -893,22 +889,25 @@ failed_to_open_file:
   if (s->eot)
     fprintf(fp,"  eot high\r\n");
   fprintf(fp,"exit\r\n");  
+
   if (fp)
     fclose(fp);
+
   return 0;
 }
+#endif // WITH_FS
 
-static int cmd_seq_decode(int argc, char **argv) {
+static UNUSED int cmd_seq_decode(int argc, char **argv) {
   q_print("% RTM-RX: Not implemented yet, wait for the next version\r\n");
   return 0;
 }
 
-static int cmd_seq_capture(int argc, char **argv) {
+static UNUSED int cmd_seq_capture(int argc, char **argv) {
   q_print("% RTM-RX: Not implemented yet, wait for the next version\r\n");
   return 0;
 }
 
-static int cmd_seq_profile(int argc, char **argv) {
+static UNUSED int cmd_seq_profile(int argc, char **argv) {
   q_print("% RTM-RX: Not implemented yet, wait for the next version\r\n");
   return 0;
 }

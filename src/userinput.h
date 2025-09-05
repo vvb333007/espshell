@@ -199,7 +199,7 @@ one_more_try: // we get here if we wasn't able to find any suitable handler in a
 
   i = 0;                  // start from keyword #0
   
-  // Find a keywords[] entry for a given command (argv[0])
+  // Find a key[] entry for a given command (argv[0])
   //
   // 1. Go through the keywords array till the end
   while (key[i].cmd) {
@@ -229,8 +229,8 @@ one_more_try: // we get here if we wasn't able to find any suitable handler in a
         }  // if callback is provided
       }    // if argc matched
     }      // if name matched
-    i++;   // process next entry in keywords[]
-  }        // until all keywords[] are processed
+    i++;   // process next entry in key[]
+  }        // until all key[] are processed
 
   // Reached the end of the list and didn't find any exact match?
   // Lets try to search in /keywords_main/ (if we are currently in a subdirectory)

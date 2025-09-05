@@ -141,20 +141,24 @@ static const char Spaces[41] = {
 //
 static int help_command(int argc, char **argv) {
 
-  int i = 0;
+  int i;
   int found = 0;
   const char *brief = ""; 
+  const struct keywords_t *key = keywords_get();
 
   MUST_NOT_HAPPEN(argc < 2);
 
+try_one_more_time:
+
+  i = 0;
   // go through all matched commands (only name is matched) and print their
   // help lines. hidden commands are ignored
-  while (keywords[i].cmd) {
-    if (keywords[i].help || keywords[i].brief) {
-      if (!q_strcmp(argv[1], keywords[i].cmd)) {
+  while (key[i].cmd) {
+    if (key[i].help || key[i].brief) {
+      if (!q_strcmp(argv[1], key[i].cmd)) {
 
-        if (keywords[i].brief)
-          brief = keywords[i].brief;
+        if (key[i].brief)
+          brief = key[i].brief;
 
         unsigned int spaces_idx = strlen(brief);
           
@@ -168,9 +172,9 @@ static int help_command(int argc, char **argv) {
                   &Spaces[spaces_idx]); // Padding with spaces, so our "<r>everse video" tag will be visible on the screen
 
         // Print help page
-        q_printf("%s\r\n\r\n",keywords[i].help ? keywords[i].help                        // use /.help/ if it is exists
-                                               : (keywords[i].brief ? keywords[i].brief  // otherwise use /.brief/
-        /* This one can not happen --------------> */               : "Help page is missing. Please report it to the author"));
+        q_printf("%s\r\n\r\n",key[i].help ? key[i].help                        // use /.help/ if it is exists
+                                          : (key[i].brief ? key[i].brief  // otherwise use /.brief/
+        /* This one can not happen --------------> */     : "Help page is missing. Please report it to the author"));
         
         found++;
       }
@@ -179,6 +183,10 @@ static int help_command(int argc, char **argv) {
   }
   
   if (!found) {
+    if (key != KEYWORDS(main)) {
+      key = KEYWORDS(main);
+      goto try_one_more_time;
+    }
     q_printf("%% Sorry, no manual entry for \"%s\"\r\n"
              "%% Type \"<i>?</>\" and press <Enter> to see what is available\r\n" ,argv[1]);
     return CMD_FAILED;
@@ -200,36 +208,37 @@ static int help_command_list(int argc, char **argv) {
   const char *prev = "", *spaces;
   // TODO: use /Spaces/ array, get rid of this one
   const char indent[ESPSHELL_MAX_CNLEN + 1] = {' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','\0'};
+  const struct keywords_t *key = keywords_get();
 
   q_print("% Enter \"<b>?</> <i>COMMAND</>\" to view details about a specific command.\r\n"
           "% Enter \"<b>? <i>keys</>\" to display the ESPShell keyboard help page.\r\n"
           "%\r\n");
 
-  //run through the keywords[] and print brief info for every entry
+  //run through the key[] and print brief info for every entry
   // 1. for repeating entries (same command name) only the first entry's description
-  //    used. Such entries in keywords[] must be grouped to avoid undefined bahaviour
+  //    used. Such entries in key[] must be grouped to avoid undefined bahaviour
   //    Ex.: see "count" command entries
   // 2. entries with both help lines (help and brief) set to NULL are hidden commands
   //    and are not displayed (but are executed if requested).
-  while (keywords[i].cmd) {
+  while (key[i].cmd) {
 
-    if (keywords[i].help || keywords[i].brief) {
-      if (strcmp(prev, keywords[i].cmd)) {  // skip entry if its command name is the same as previous
+    if (key[i].help || key[i].brief) {
+      if (strcmp(prev, key[i].cmd)) {  // skip entry if its command name is the same as previous
         const char *brief;
-        if (!(brief = keywords[i].brief))  //use "brief" or fallback to "help"
-          if (!(brief = keywords[i].help))
+        if (!(brief = key[i].brief))  //use "brief" or fallback to "help"
+          if (!(brief = key[i].help))
             brief = "No description";
 
         // indent: commands with short names are padded with spaces so
         // total length is always INDENT bytes. Longer commands are not padded
         int clen;
-        spaces = ((clen = strlen(keywords[i].cmd)) < ESPSHELL_MAX_CNLEN) ? &indent[clen] : &indent[ESPSHELL_MAX_CNLEN];
+        spaces = ((clen = strlen(key[i].cmd)) < ESPSHELL_MAX_CNLEN) ? &indent[clen] : &indent[ESPSHELL_MAX_CNLEN];
         // "COMMAND" PADDING_SPACES : DESCRIPTION
-        q_printf("%% \"<%c><i>%s</>\"%s : %s\r\n", is_command_directory(keywords[i].cmd) ? 'u' : 'b', keywords[i].cmd, spaces, brief);
+        q_printf("%% \"<%c><i>%s</>\"%s : %s\r\n", is_command_directory(key[i].cmd) ? 'u' : 'b', key[i].cmd, spaces, brief);
       }
     }
 
-    prev = keywords[i].cmd;
+    prev = key[i].cmd;
     i++;
   }
 
