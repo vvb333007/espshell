@@ -28,6 +28,8 @@
 #define TASK_MAX_PRIO 24 // use macro from IDF/FreeRTOS
 #define TASK_MIN_PRIO 0
 
+static const char *files_set_cwd(const char *);
+
 extern task_t  loopTaskHandle; // task handle of a task which calls Arduino's loop(). Defined somewhere in the ESP32 Arduino Core
 static task_t  shell_task = 0; // Main espshell task ID
 static uint8_t shell_prio = 0; // Default priority is IDLE. Inherited by spawned tasks
@@ -124,6 +126,7 @@ static vsa_t *task_list = 0;            //  vsa to hold active tasks list
 //
 #define task_finished() \
   { \
+    files_set_cwd(NULL); \
     taskid_forget(taskid_self()); \
     task_kill_self(); \
   }
