@@ -1023,8 +1023,10 @@ static void ifc_task(void *arg) {
         ifc->drops++;
     }
   }
-  task_finished();
   /* UNREACHED */
+  files_set_cwd(NULL); // Free memory used for CWD
+  task_finished();
+  
 }
 
 // Variant of ifc_show() which is fullform and outputs to a file stream.

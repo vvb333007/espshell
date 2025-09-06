@@ -254,6 +254,8 @@ static int cmd_colors(int argc, char **argv) {
 // Used in MUST_NOT_HAPPEN() macro. Declared here because of conflicts in include files
 // (can not be declared in qlib.h so let it be here)
 //
+// NOTE: this function creates a memory leak: Cwd thread-local variable may be allocated and thus will be lost.
+//
 static NORETURN void must_not_happen(const char *message, const char *file, int line) {
 
   // Print location & cause of this MUST NOT HAPPEN event

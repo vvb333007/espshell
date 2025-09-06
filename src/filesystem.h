@@ -178,21 +178,25 @@ static const char *files_set_cwd(const char *cwd) {
         }
   }
 
-  // Regenerate prompt, return CWD or "/" if there is no CWD
-  // No we can't use "<i>" and "</>" here to colorize path in the prompt: this prompt is displayed by TTYshow() which doesn't process cikir tags.
-  // So instead we inject ASCII color sequences directly to the prompt
-  const char *tmp = Cwd ? (const char *)Cwd : "/";
-  sprintf(prom, PROMPT_FILES, (Color ? tag2ansi('i') : ""), tmp, (Color ? tag2ansi('n') : ""));
+  // Regenerate prompt
+  // No we can't use "<i>" and "</>" here to colorize path in the prompt: this prompt is displayed by TTYshow()
+  //
+  const char *ret = files_get_cwd();
+  snprintf(prom, sizeof(prom), PROMPT_FILES,
+                (Color ? tag2ansi('i') : ""),
+                ret,
+                (Color ? tag2ansi('n') : ""));
+
   prompt_set(prom);
   
 
-  return tmp;
+  return ret;
 }
 
 // return current working directory or "/" if there were memory allocation errors
 // pointer returned is always valid.
 static inline const char *files_get_cwd() {
-  return Cwd ? Cwd : files_set_cwd("/");
+  return Cwd ? Cwd : "/";
 }
 
 // Convert "*" to spaces in paths. Spaces in paths are entered as asterisk
@@ -1047,9 +1051,9 @@ static int cmd_files_if(int argc, char **argv) {
   // file manager actual prompt is set by files_set_cwd()
   change_command_directory(0, KEYWORDS(files), PROMPT, "filesystem");
 
-  // Initialize CWD if not initialized previously.
-  // Update user prompt.
-  files_set_cwd(files_get_cwd());
+  // Initialize CWD if not initialized previously, update user prompt.
+  if (Cwd == NULL)
+    files_set_cwd("/");
   return 0;
 }
 

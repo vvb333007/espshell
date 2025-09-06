@@ -1661,7 +1661,7 @@ static __thread const struct keywords_t *keywords = KEYWORDS(main);
 
 // Called from cmd_uart_if(), cmd_i2c_if(),cmd_seq_if() and cmd_files_if and others to set a new command list (command directory); 
 // displays user supplied text,  returns a pointer to the keywords tree used before
-//
+// TODO: make Context to be of "void *" type. Change all functions accordingly. This is for planned 64 bit
 static const struct keywords_t *change_command_directory(
                                     unsigned int context,         // An arbitrary number which will be stored until next directory change
                                     const struct keywords_t *dir, // New command list 
@@ -1690,9 +1690,9 @@ static const struct keywords_t *change_command_directory(
 // exits from a command subdirectory or closes the shell ("exit exit")
 //
 static int cmd_exit(int argc, char **argv) {
-  // Change directory to main, leave Context untouched, restore main prompt
+  // Change directory to main, restore main prompt
   // If "exit" was executed from the main tree, then either exit the shell or display a hint
-  if (change_command_directory(context_get_uint(), KEYWORDS(main), PROMPT, NULL) == KEYWORDS(main)) {
+  if (change_command_directory(0, KEYWORDS(main), PROMPT, NULL) == KEYWORDS(main)) {
     if (argc > 1 && !q_strcmp(argv[1], "exit"))
       Exit = true;
     else {

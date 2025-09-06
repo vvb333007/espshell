@@ -218,18 +218,20 @@ static __thread unsigned int Context = 0;
 static const char * prompt = PROMPT;
 
 static void prompt_set(const char *new_prompt) {
-  if (is_foreground_task())
+  if (is_foreground_task()) {
+    //VERBOSE(q_printf("%% Changing prompt from %s to %s\r\n", prompt, new_prompt));
     prompt = new_prompt ? new_prompt : PROMPT;
-  else
-    VERBOSE(q_print("% Ignored attempt to change the prompt\r\n"));
+  }
+  //else
+  //  VERBOSE(q_printf("%% Ignored attempt to change the prompt from %s to %s\r\n", prompt, new_prompt));
 }
 
 // Common messages. 
 static const char *Failed = "% <e>Failed</>\r\n";
 
-static const char *i2cIsDown = "%% I2C%u bus is not initialized. Use command \"up\" to initialize\r\n";
+static const char *i2cIsDown = "%% I2C%u is down. Use command \"up\" to initialize\r\n";
 
-static const char *uartIsDown = "%% UART%u is down. Use command \"up\" to initialize it\r\n";
+static const char *uartIsDown = "%% UART%u is down. Use command \"up\" to initialize\r\n";
 
 static const char *WelcomeBanner = "\033[H\033[2J%\r\n"
                                    "% ESPShell " ESPSHELL_VERSION "\r\n"
@@ -311,7 +313,7 @@ static int espshell_command(char *p, argcargv_t *aa);
 
 
 
-// Moved to a function, because it is called both from asyn shell command and command processor
+// Display espshell error code in human-readable form
 //
 static void espshell_display_error(int ret, int argc, char **argv) {
     
@@ -379,11 +381,7 @@ static void amp_helper_task(void *arg) {
   // its ok to unref null pointer
   userinput_unref(aa);
 
-  // TODO: For some unknown reason, adding a __thread to the /prompt/ causes infinite reboot
-  //       Must investigate and fix, may be - using FreeRTOS TLS API. Now it is a pure hack:
-  //       while alias is doing its job, the global prompt MAY change for a short period of time
-  //       before it will be restored here. The same bug exists in alias_helper_task()
-  // ADDED: Current fix is to not change prompt if task which requests that is not a main espshell task (i.e. not foreground task)
+  files_set_cwd(NULL); // Free memory used for CWD
   task_finished();
 }
 
@@ -410,10 +408,6 @@ static int exec_in_background(argcargv_t *aa_current) {
   userinput_ref(aa_current);
   ha->aa = aa_current;
  
-  //ha->context = context_get_uint();
-  //ha->keywords = keywords_get();
-  //ha->cwd = files_cwd_get();
-  
   // Start async task. Pin to the same core where espshell is executed
   if ((id = task_new(amp_helper_task, ha, aa_current->argv[0])) == NULL) {
     q_print("% <e>Can not start a new task. Resources low? Adjust STACKSIZE macro in \"espshell.h\"</>\r\n");
@@ -656,6 +650,7 @@ static void espshell_task(const void *arg) {
     shell_task = NULL;
 
     // Sayonara
+    files_set_cwd(NULL); // Free memory used for CWD
     task_finished();
   }
 }

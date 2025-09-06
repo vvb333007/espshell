@@ -399,9 +399,8 @@ static void alias_helper_task(void *arg) {
     alias_exec(ha->al);
     ha_put(ha);
   }
-  // prompt must be unchanged at this point, because change_command_directory() changes prompt
-  // for foreground tasks only, background commands (including this one) can not change prompt.
-
+  
+  files_set_cwd(NULL); // Free memory used for CWD
   task_finished();
 }
 
@@ -412,18 +411,15 @@ static void alias_helper_task(void *arg) {
 static int alias_exec_in_background_delayed(struct alias *al, uint32_t delay_ms) {
   struct helper_arg *ha;
 
-  if ((ha = ha_get()) != NULL) {
-
-    ha->al = al;
-    ha->delay_ms = delay_ms;
-    //ha->context = context_get_uint();
-    //ha->keywords = keywords_get();
-    //ha->cwd = files_cwd_get();
-
-    return task_new(alias_helper_task,
-                    ha,
-                    al->name) == NULL ? CMD_FAILED : 0;
-  }
+  if (likely(al != NULL))
+    if ((ha = ha_get()) != NULL) {
+      // ha->aa = NULL; maybe?
+      ha->al = al;
+      ha->delay_ms = delay_ms;
+      return task_new(alias_helper_task,
+                      ha,
+                      al->name) == NULL ? CMD_FAILED : 0;
+    }
   return CMD_FAILED;
 }
 #endif // WITH_ALIAS
