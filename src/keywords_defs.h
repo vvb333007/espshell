@@ -18,14 +18,15 @@
 struct keywords_t {
   const char *cmd;               // Command keyword or "*"
 
-#define HELP_ONLY NULL,0             // Used for entries whose sole purpose is to carry help lines: so-called /full/  and /brief/
+#define HELP_ONLY NULL,0             // keywords.h: used for entries whose sole purpose is to carry help lines: so-called /full/  and /brief/
   int (*cb)(int argc, char **argv);  // Callback to call (one of cmd_xxx functions)
 
-#define MANY_ARGS -1             // many or none
-#define NO_ARGS 0
-  signed char argc;              // Number of arguments required (a NUMBER or /MANY_ARGS/ or /NO_ARGS/)
+#define MANY_ARGS -1                 // command accepts any number of arguments including zero
+#define NO_ARGS 0                    // command accepts no arguments
+  signed char argc;                  // Number of arguments required (a number, MANY_ARGS or NO_ARGS)
 
-#define HIDDEN_KEYWORD NULL, NULL// /help/ and /brief/ initializer which is used to hide command from the commands list
+#define HIDDEN_KEYWORD NULL, NULL    // keywords.h: /help/ and /brief/ initializer which is used to hide command from the commands list
+
   const char *help;              // Help text displayed on "? command"
   const char *brief;             // Brief text displayed on "?". NULL means "use help text, not brief"
 };
@@ -82,10 +83,11 @@ struct keywords_t {
 //  {} , {} ...
 // };
 //
-static void keywords_register(const struct keywords_t *key, const char *name);
 
 #define KEYWORDS_DECL(_Key) \
   static const struct keywords_t keywords_ ## _Key [] =
+
+static void keywords_register(const struct keywords_t *key, const char *name);
 
 #define KEYWORDS_REG(_Key) \
  /* Each keywords array has its own constructor which registers this particular array */ \

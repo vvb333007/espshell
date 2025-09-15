@@ -104,6 +104,7 @@ static int cmd_cpu(int, char **);
 static int cmd_uptime(int, char **);
 static int NORETURN cmd_reload(int, char **);
 static int cmd_nap(int, char **);
+static int cmd_nap_alarm(int, char **);
 
 // pin-realated commands: pwm, pulse counter and pin
 static int cmd_pwm(int, char **);
@@ -140,8 +141,11 @@ static int cmd_show_ifs(int, char **);
 // some "show" commands
 static int cmd_show(int, char **);
 static int cmd_show_pin(int, char **);
-static int cmd_show_sequence(int argc, char **argv);
-static int cmd_show_uart(int argc, char **argv);
+#if WITH_TIME
+static int cmd_show_time(int, char **);
+#endif
+static int cmd_show_sequence(int, char **);
+static int cmd_show_uart(int, char **);
 // common entries
 static int cmd_exit(int, char **);
 #if WITH_HELP
@@ -165,6 +169,11 @@ static int cmd_alias_delete(int, char **);
 static int cmd_alias_asterisk(int, char **);
 #endif
 
+#if WITH_TIME
+static int cmd_time(int, char **);
+#endif
+
+
 // -- Shell Commands --
 //
 // ESPShell commands are entries to /keywords_.../ arrays. Each entry starts and ends with "{" and "}" brackets.
@@ -183,16 +192,15 @@ static int cmd_alias_asterisk(int, char **);
 // keywords_main     : Main command directory
 // keywords_camera   : ESP Camera commands
 // 
-// Switching between arrays is possible via change_command_directory() function
-//
+// Switching between arrays is possible via change_command_directory() function.
+// To create new commands tree use "uart" keywords below as a template. There are comments explaining the syntax.
 
 #if WITH_ALIAS
 
 KEYWORDS_DECL(alias) {
 
   KEYWORDS_BEGIN
-
-  // These entries go first, to avoid matching against "*"
+    
   { "delete", cmd_alias_delete, 1,
     HELPK("% \"<b>delete</> [all | LINE]\"\r\n" 
           "%\r\n"
@@ -232,17 +240,32 @@ KEYWORDS_DECL(alias) {
     NULL, NULL, 0, NULL, NULL
   }
 };
+
+// Register "alias" command directory (global variable keywords_alias)
 KEYWORDS_REG(alias)
+
 #endif //WITH_ALIAS
 
 
 // UART commands.
 // These are available after executing "uart 2" (or any other uart interface)
+// This subdirectory is a preferred template to create other command trees
 //
-KEYWORDS_DECL(uart) {
+KEYWORDS_DECL(uart) {   // Declares the "uart" command directory.
+                        // Creates global (thread-local) variable /keywords_alias/
 
-  KEYWORDS_BEGIN // defined in keywords_defs.h, contains common entries, like "exit" or "?"
+  KEYWORDS_BEGIN        // Optional. Inserts common commands like "?" or "help"
+  // Normal commands:
+  // { "command_name", handler_func, number_of_arguments, HELPK("Full help"), HELPK("Brief description") },
+  //
+  // Help pages only, no action:
+  // { "command_name", HELP_ONLY, HELPK("Full help"), HELPK("Brief description") },
+  //
+  // Command is hidden from "?" but can be executed (action only, no help pages):
+  // { "command_name", handler_func, HIDDEN_KEYWORD },
+  //
 
+  // Command "up", requires 3 arguments:
   { "up", cmd_uart_up, 3,
     HELPK("% \"<b>up</> <i>RX TX SPEED</> <o>[BITS] [no|even|odd] [1|1.5|2]</>\"\r\n" 
           "%\r\n"
@@ -251,14 +274,16 @@ KEYWORDS_DECL(uart) {
           "% <i>TX</>    - Pin to use as TX\r\n"
           "% <i>SPEED</> - 9600, 115200 or any other standart baudrate\r\n"
           "% Three optional parameters are:\r\n"
-          "% <o>BITS</>      - Number of data bits: 5,6,7 or 8. Default is 8\r\n"
-          "% Parity    - \"<o>no</>\", \"<o>even</>\" or \"<o>odd</>\"\r\n"
-          "% Stop bits - 1,2 or 1.5 stop bits\r\n"
+          "%  <o>BITS</>      - Number of data bits: 5,6,7 or 8. Default is 8\r\n"
+          "%  Parity    - \"<o>no</>\", \"<o>even</>\" or \"<o>odd</>\"\r\n"
+          "%  Stop bits - 1,2 or 1.5 stop bits\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <i>up 18 19 115200</> - Setup uart on pins rx=18, tx=19, at speed 115200\r\n"
+          "%   <i>up 18 19 115200</> - Setup an UART on pins rx=18, tx=19, 115200 baud\r\n"
           "%   <i>up 18 19 115200 <i>8 even 1.5</> - Eight bits, 1.5 stopbits, even parity" ),
     HELPK("Initialize uart (pins/speed)") },
+
+    // Variants of "up" with 4,5 and 6 arguments
     { "up", cmd_uart_up, 4, HIDDEN_KEYWORD },
     { "up", cmd_uart_up, 5, HIDDEN_KEYWORD },
     { "up", cmd_uart_up, 6, HIDDEN_KEYWORD },
@@ -271,6 +296,7 @@ KEYWORDS_DECL(uart) {
           "%   <i>baud 115200</> - Set uart baud rate to 115200"),
     HELPK("Set baudrate") },
 
+  // Command with no arguments:
   { "down", cmd_uart_down, NO_ARGS,
     HELPK("% \"<b>down</>\"\r\n"
           "%\r\n"
@@ -297,6 +323,14 @@ KEYWORDS_DECL(uart) {
           "% Anything UART X sends back will be forwarded to the user"),
     HELPK("Talk to connected device") },
 
+  // Command that accepts any number of arguments, including zero.
+  // If you have several entries with the same command name, which only differs in their required arguments number,
+  // then MANY_ARGS must be the last entry in the group:
+  //
+  // {"write", ... , 1,
+  // {"write", ... , 3,
+  // {"write", ... , MANY_ARGS,  <---- last entry in the "write" group
+  //
   { "write", cmd_uart_write, MANY_ARGS,
     HELPK("% \"<b>write</> <i>TEXT</>\"\r\n"
           "%\r\n"
@@ -308,9 +342,12 @@ KEYWORDS_DECL(uart) {
           "%   <i>write ATI\\n\\rMixed\\20Text and \\20\\21\\ff</>"),
     HELPK("Send bytes over this UART") },
 
-  // contains common entries and a NULL entry at the end
+  // Contains common entries (like "exit") and a NULL entry at the very end
+  // If this part is omitted  then NULL entry must be declared manually (see alias subdirectory at the beghinning of this file)
   KEYWORDS_END
 };
+
+// Final step: register our command tree. Skipping of this step does not affect espshell operation.
 KEYWORDS_REG(uart);
 
 //I2C subderictory keywords
@@ -823,7 +860,60 @@ KEYWORDS_REG(files)
 KEYWORDS_DECL(main) {  
 
   KEYWORDS_BEGIN
+#if WITH_TIME  
+  { "time", cmd_time, MANY_ARGS,
+    HELPK("% \"<b>time</>\" <i>set</> (<i>YEAR</>|<i>MONTH</>|<i>DAY</>|<i>TIME</>|<b>am|pm</>)*\r\n"
+          "%\r\n"
+          "% Set system time, and optionally update attached RTC clock\r\n"
+          "% <u>Examples</>:\r\n"
+          "% Note that order of arguments is not important. Omitted values are not set\r\n"
+          "%   <i>time set 23874682763</>    : set time as a UNIX timestamp\r\n"
+          "%   <i>time set 2025 april</>     : change year+month\r\n"
+          "%   <i>time set 20 sep 11:20</>   : a month, a date and the time\r\n"
+          "%   <i>time set 1:2:23 am 2025</> : the time and a year, 12-hour format"
+    ), "Set system time" },
 
+  { "time", HELP_ONLY,
+    HELPK("% \"<b>time</>\" <i>format</> 12|24\r\n"
+          "%\r\n"
+          "% Set output time format (input accepts both 12 and 24 format)\r\n"
+          "% <u>Examples</>:\r\n"
+          "%   <i>time format 24</> : use 24-hour format for output"
+    ), NULL },
+
+  { "time", HELP_ONLY,
+    HELPK("% \"<b>time</>\" <i>zone TIMESPEC</>|none\r\n"
+          "%\r\n"
+          "% Set time zone (time offset) or reset it to default value\r\n"
+          "% TIMESPEC consist of numbers and time specifiers:\r\n"
+          "% e.g.: \"1 day 480 hours 5 minutes\" or "-45 minutes 5 hours"\r\n"
+          "%\r\n"
+          "% <u>Examples</>:\r\n"
+          "%   <i>time zone 1</>             : time zone is +0100 UTC\r\n"
+          "%   <i>time zone 1 hour 45 min</> : time zone is +0145 UTC\r\n"
+          "%   <i>time zone none</>          : No time offset"
+    ), NULL },
+
+  { "time", HELP_ONLY,
+    HELPK("% \"<b>time</>\" source manual\r\n"
+          "% \"<b>time</>\" source rtc [<o>I2C_BUS I2C_ADDR [base-reg NUM] [no-sync] [read-only]</>]\r\n"
+          "% \"<b>time</>\" source ntp [<o>IP_ADDR</>|<o>HOST_NAME</>] \r\n"
+          "%\r\n"
+          "% Set time source to sync with:\r\n"
+          "%   <i>manual</> - do not sync. CPU keeps track of time\r\n"
+          "%   <i>rtc</>    - sync with RTC chip\r\n"
+          "%   <i>ntp</>    - sync with NTP server\r\n"
+          "% <u>Examples</>:\r\n"
+          "%   <i>time source rtc 0 0x68</>            : Typical DS3231,DS13.. setup (I2C0)\r\n"
+          "%   <i>time source rtc 1 0x51 base-reg 2</> : Typical PCF8563 setup (I2C1)\r\n"
+          "%   <i>time source rtc 0 0x68 no-sync</>    : Do not update local time\r\n"
+          "%   <i>time source rtc 0 0x68 read-only</>  : Do not update RTC time\r\n"
+          "%   <i>time source rtc</>                   : Update local time from the chip\r\n"
+          "%\r\n"
+          "%   <i>time source ntp pool.ntp.org</>      : Set NTP time server\r\n"
+          "%   <i>time source ntp</>                   : Sync again"
+    ), NULL },
+#endif //WITH_TIME
   { "uptime", cmd_uptime, NO_ARGS,
     HELPK("% \"<b>uptime</>\"\r\n"
           "%\r\n"
@@ -905,20 +995,43 @@ KEYWORDS_DECL(main) {
           "% Restarts CPU, performs a software reboot"), "Restarts CPU" },
 
   { "nap", cmd_nap, NO_ARGS,
-    HELPK("% \"<b>nap</>\"\r\n"
+    HELPK("% \"<b>nap</> [<o>deep</>]\"\r\n"
           "%\r\n"
-          "% Put the CPU into light sleep mode, wakeup by console activity"), "CPU sleep" },
+          "% Put the CPU into light/deep sleep mode\r\n"
+          "% CPU resumes after specified alarm (see <i>\"nap alarm\"</>)"
+          ), "CPU sleep and alarms" },
 
-  { "nap", cmd_nap, 1,
-    HELPK("% \"<b>nap</> <i>TIME</> [<o>seconds|minutes|hours</>]\"\r\n"
+  { "nap", cmd_nap, 1, HIDDEN_KEYWORD },
+
+  { "nap", cmd_nap_alarm, MANY_ARGS,
+    HELPK("% \"<b>nap alarm</> <i>uart</> NUM [<o>THRESHOLD</>]\"\r\n"
+          "% \"<b>nap alarm</> TIMESPEC\"\r\n"
+          "% \"<b>nap alarm</> <i>low</>|<i>high</> NUM1 [ NUM2 NUM3 .. NUMn]\"\r\n"
+          "% \"<b>nap alarm</> <i>disable-all</>\"\r\n"
           "%\r\n"
-          "% Put the CPU into light sleep mode specified amount of time\r\n"
+          "% Set/reset CPU sleep wakeup source and/or sleep duration\r\n"
+          "% Note that multiple alarm sources can be used by executing this command\r\n"
+          "% multiple times: e.g. combined UART and TIMER alarms are allowed\r\n"
+          "% To disable all wakeup alarms use \"disable-all\".\r\n"
+          "%\r\n"
+          "% TIMESPEC is a string, that defines a time interval, consisting of days,\r\n"
+          "% hours, minutes, seconds and milliseconds:\r\n"
+          "% <i>4 days 1 hour 666 minutes ....</>\r\n"
+          "\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <i>nap 10</>     - Sleep for 10 seconds\r\n"
-          "%   <i>nap 10 min</> - Sleep for 10 minutes\r\n"
-          "%   <i>nap 10 h</>   - Sleep for 10 hours"), NULL },
-
-  { "nap", cmd_nap, 2, HIDDEN_KEYWORD },
+          "%   <i>nap alarm dis</>       : Disable all alarms\r\n"
+          "%   <i>nap alarm uart 1</>    : Wakeup by UART, 3 pos edges on RX line\r\n"
+          "%   <i>nap alarm uart 1 10</> : Wakeup by UART, set RX threshold to 10 pos edges\r\n"
+          "%   <i>nap alarm 1 day 1 hour 6 sec</> : wakeup after 25 hours and 6 seconds\r\n"
+          "%   <i>nap alarm low 1</>     : Wakeup if GPIO#1 is LOW (level)\r\n"
+          "%   <i>nap alarm high 2</>    : Wakeup if GPIO#2 is HIGH (level)\r\n"
+#if CONFIG_IDF_TARGET_ESP32
+          "%   <i>nap alarm low 1 2 3</> : Wakeup when ALL of GPIOs 1, 2 and 3 are LOW\r\n"
+#else          
+          "%   <i>nap alarm low 1 2 3</> : Wakeup when any of GPIOs 1, 2 or 3 are LOW\r\n"
+#endif
+          "%  <i>nap alarm high 1 2 3</> : Wakeup when any of GPIOs 1, 2 or 3 are HIGH\r\n"
+          ), NULL },
 
   // Interfaces (UART,I2C, RMT, FileSystem..)
   { "iic", cmd_i2c_if, 1,

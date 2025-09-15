@@ -1295,14 +1295,14 @@ static int cmd_files_mount(int argc, char **argv) {
   } else {
     // mountpoint is not specified: use partition label and "/"
     // to make a mountpoint
-    if (strlen(argv[1]) >= sizeof(mp0)) {
+    if (strlen(argv[1]) > ESP_VFS_PATH_MAX) {
       HELP(q_print("% <e>Invalid partition name (too long)</>\r\n"));
       return 1;
     }
 
     // following is wrong for cases when user enters incomplete label name. it is
     // fixed later
-    sprintf(mp0, "/%s", argv[1]);
+    snprintf(mp0,sizeof(mp0), "/%s", argv[1]);
     mp = mp0;
   }
 

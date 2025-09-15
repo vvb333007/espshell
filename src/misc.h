@@ -15,6 +15,18 @@
 
 
 #if COMPILING_ESPSHELL
+// TODO: save/restore certain variables before/after deep sleep. E.g. /keywords/, /Context/ and /Cwd/
+// TODO: register a callback on deep sleep start to save values
+// TODO: use __update_rtcmem_vars() to restore saved variables
+
+RTC_DATA_ATTR static uint32_t Sleep_count = 0;
+
+// Update variables located in RTC SLOW_MEM
+//
+static void __attribute__((constructor)) __update_rtcmem_vars() {
+  if (esp_reset_reason() == ESP_RST_DEEPSLEEP)
+    Sleep_count++;
+}
 
 // "uptime"
 //
@@ -23,8 +35,18 @@
 //
 static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
 
-  // Restart Reason (or Reset Reason)
+  unsigned char i,
+                core;
+  
+  unsigned int cause,
+               val,
+               sec = q_millis() / 1000,
+               div = 60 * 60 * 24;
 
+  static_assert(ESP_RST_CPU_LOCKUP == 15, "Code review is required");
+  static_assert(ESP_SLEEP_WAKEUP_VBAT_UNDER_VOLT == 14, "Code review is required");
+
+  // Restart Reason (or Reset Reason)
   const char *rr[] = {
     "<w>reason can not be determined",   "<g>board power-on",                   "<g>external (pin) reset",   "<g>reload command",
     "<e>exception and/or kernel panic",  "<e>interrupt watchdog",               "<e>task watchdog",          "<e>other watchdog",
@@ -32,6 +54,7 @@ static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
     "<i>reset by JTAG",                  "<e>reset due to eFuse error",         "<w>power glitch detected",  "<e>CPU lock up (double exception)"
   };
 
+  // Reset reason (per-core, ROM)
   const char *rr2[] = { 
     "",
     "Power on reset",
@@ -52,11 +75,26 @@ static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
     "RTC watch dog resets digital core and RTC module"
   };
 
-
-  unsigned int val, sec = q_millis() / 1000, div = 60 * 60 * 24;
-
-  // lets check if esp_reset_reason_t is still what we think it is: RST_CPU_LOCKUP must be the last entry (entry #15)
-  static_assert(ESP_RST_CPU_LOCKUP == 15, "Code review is required");
+  // Deep-sleep wakeup source. Entries containing "(light sleep)" should never appear
+  const char *wakeup_source[] = {
+    "<w>an undefined event",
+    "",
+    "EXT0 (external signal using RTC_IO)",
+    "EXT1 (external signal using RTC_CNTL)",
+    "a timer",
+    "a touchpad",
+    "the ULP co-processor/microcode",
+    "a GPIO (light sleep)",
+    "an UART (light sleep)",
+    "the WIFI (light sleep)",
+    "the CO-CPU (INT)",
+    "the CO-CPU (TRIG)",
+    "Bluetooth (light sleep)",
+    "<w>VAD",
+    "<w>VDD_BAT under voltage",
+  };
+  
+  
 
 #define XX(_Text, _Divider) do {\
   if (sec >= div) { \
@@ -73,15 +111,14 @@ static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
   XX(hour,60);
   XX(minute,60);
 
-  q_printf( "%u second%s ago\r\n",PPA(sec));
+#undef XX
 
-
-  // Reset Reason.
-  unsigned char i, core;
+  q_printf("%u second%s ago\r\n",PPA(sec));
 
   // "Classic" ESP-IDF reset reason:
   if ((i = esp_reset_reason()) > ESP_RST_CPU_LOCKUP)
     i = 0;
+
   q_printf("%% Reset reason: \"%s</>\"\r\n", rr[i]);
 
   // "Bootloader-style" reset reason (for each core):
@@ -89,6 +126,23 @@ static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
     if ((i = esp_rom_get_reset_reason(core)) < sizeof(rr2) / sizeof(rr2[0]))
       q_printf("%%    CPU%u: %s\r\n",core, rr2[i]);
 
+  // Retreive and display deep sleep wakeup source
+  // Sleep_count is non-zero ONLY when we are returning from a deep sleep.
+  if (Sleep_count) {
+
+    if ((cause = (unsigned int )esp_sleep_get_wakeup_cause()) >= sizeof(wakeup_source)/sizeof(char *))
+      cause = 0;
+
+    q_printf("%% Returned from a deep sleep: <i>%lu time%s</>\r\n%% Wakeup was caused by <g>%s</>\r\n",
+              PPA(Sleep_count),
+              wakeup_source[cause]);
+
+    // Nap_alarm_time resides in RTC_SLOW_MEMORY, which is 
+    // not cleared after waking up from deep sleep
+    if ((cause == ESP_SLEEP_WAKEUP_TIMER) && (Nap_alarm_time != 0))
+      q_printf("%% Slept for %llu seconds\r\n",Nap_alarm_time / 1000000ULL);
+  }
+  // TODO: details for EXT0 and EXT1 causes - i.e. which GPIO woke CPU up
   return 0;
 }
 

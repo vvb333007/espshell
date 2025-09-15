@@ -11,13 +11,15 @@
  */
 
 // HELLO DEAR RANDOM PROGRAMMER!
-// ACTUAL SOURCE CODE IS IN .H FILES. THIS FILE JUST JOINS ALL MODULES TOGETHER
+// ACTUAL SOURCE CODE IS IN .H FILES. 
+// THIS FILE JUST JOINS ALL MODULES TOGETHER
 
 #define COMPILING_ESPSHELL 1
 
 
 // enable -Wformat warnings. Turned off by Arduino IDE by default.
 #pragma GCC diagnostic warning "-Wformat"  
+#pragma GCC optimize ("O2")
 
 // Limits
 #define CONSOLE_UP_POLL_DELAY 1000     // 1000ms. How often to check if Serial is up
@@ -141,8 +143,11 @@
 #define BAD_PIN    255 // Don't change! Non-existing pin number. 
 #define UNUSED_PIN  -1 // Don't change! A constant which is used to initialize ESP-IDF structures field, a pin number, when 
                        // we want to tell ESP-IDF that we don't need / don't use this structure field. (see count.h)
+
 // Number of pins available
 #define NUM_PINS SOC_GPIO_PIN_COUNT
+
+
 
 //#define xPRAGMA(string) _Pragma(#string)
 //#define PRAGMA(string) xPRAGMA(string)
@@ -159,7 +164,9 @@ static bool task_wait_for_signal(uint32_t *sig, uint32_t timeout_ms);
 // are we running in espshell task context? (task.h)
 static INLINE bool is_foreground_task();             
 
-// check if UART u is up and operationg (is driver installed?). Declared in uart.h
+// check if UART u is up
+
+#define NUM_UARTS SOC_UART_NUM
 static inline bool uart_isup(unsigned char u);       
 
 // check if address is in range 0x20000000 .. 0x80000000. Declared in qlib.h
@@ -176,6 +183,7 @@ static bool pin_is_input_only_pin(int pin);
 static bool pin_exist(unsigned char pin);
 static bool pin_exist_silent(unsigned char pin);
 static bool pin_is_reserved(unsigned char pin);
+static bool pin_can_wakeup(uint8_t pin);
 
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 3, 0)
 extern bool esp_gpio_is_pin_reserved(unsigned int gpio);
@@ -305,6 +313,9 @@ static int espshell_command(char *p, argcargv_t *aa);
 #include "espcam.h"             // Camera support
 #include "alias.h"
 #include "ifcond.h"
+#if WITH_TIME
+#include "time0.h"
+#endif
 
 
 // 6. These two must be included last as they are supposed to call functions from every other module

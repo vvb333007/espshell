@@ -246,6 +246,166 @@ one_more_try: // we get here if we wasn't able to find any suitable handler in a
                : CMD_NOT_FOUND;
 }
 
+
+
+// Convert argc/argv e.g {10,seconds,20,days,48,hours" to microseconds by adding up all timespecs
+// Any negative value turn whole result negative: "-1 hour 45 min" is "-105 min",   "1 hour -45 min" is the same
+// In:
+// /start/ is the index in argv of the first element to process (must be numeric)
+// /stop/  is the pointer to the index, where to stop (index /stop/ is not processed).
+//         value of -1 means (process till the end). Pointer can be NULL which implies processing till the end
+//
+// Out: /stop/ is populated with new index (in case of error new index is set to failed element)
+//      Returned value is in microseconds.
+//      Returned value of 0 must be treated as error.
+//
+// TODO: refactor "if", "nap" and "every" commands to use read_timespec
+// TODO: rename to userinput_timespec
+//
+static int64_t read_timespec(int argc, char **argv, int start, int *stop) {
+
+  int32_t t;
+  uint64_t val = 0;
+  int stop0 = -1;
+  bool minus = false;
+
+  if (!stop)
+    stop = &stop0;
+
+  for (; (start < argc) && (start != *stop); start++) {
+
+    if (!q_isnumeric(argv[start])) {
+      q_printf("%% Numeric value expected instead of \"%s\"\r\n",argv[start]);
+      val = 0; //TODO: autostop on unknown token may be?
+      break;
+    }
+
+    t = q_atoi(argv[start++],0);
+    if (t < 0) {
+      minus = true;
+      t = -t;
+    }
+
+    if ((start >= argc) || (start == *stop)) {
+      val += 1000000ULL * (uint64_t)t;
+      break;
+    }
+
+    if (!q_strcmp(argv[start],"milliseconds"))
+      val += 1000ULL * (uint64_t)t;
+    else if (!q_strcmp(argv[start],"seconds"))
+      val += 1000000ULL * (uint64_t)t;
+    else if (!q_strcmp(argv[start],"minutes"))
+      val += 1000000ULL * 60ULL * (uint64_t)t;
+    else if (!q_strcmp(argv[start],"hours"))
+      val += 1000000ULL * 60ULL * 60ULL * (uint64_t)t;
+    else if (!q_strcmp(argv[start],"days"))
+      val += 1000000ULL * 24ULL * 60ULL * 60ULL * (uint64_t)t;
+    else {
+      q_printf("%% Time specifier expected (e.g. \"days\", \"minutes\", \"millis\" ...)\r\n");
+      val = 0;
+      break;
+    }
+  }
+  *stop = start;
+  return minus ? -((int64_t)val) : (int64_t)val;
+}
+
+#if WITH_TIME
+// time set 983745938743
+// time set 1978
+// time set 31
+// time set 1978 31 april
+// time set 11:31:31 am
+// time set 21:31 april 25
+//
+// TODO: move to userinput.h
+//
+static time_t read_datime(int argc, char **argv, int start, int *stop) {
+
+  uint32_t t;
+  time_t val = 0;
+  int stop0 = -1,v;
+  int8_t am = -1; //1 = am, 0 = pm, -1 = n/a
+  int8_t month;
+  bool time_seen = false; // did we see HH:MM:SS already?
+
+  struct tm t = { 0 };
+
+  if (!stop)
+    stop = &stop0;
+
+  // Get local time and split it to /struct tm/
+  now = time_local();
+  gmtime_r(&now, &t);
+
+  // Reset some fields
+  t.tm_wday = -1;
+  t.tm_yday = -1;
+  t.tm_isdst = -1;
+
+  // Scan through arguments, read values and populate /struct tm/
+  for (; (start < argc) && (start != *stop); start++) {
+    // Numeric argument: either a day-of-the-month or a year
+    if (isnum(argv[start])) {
+      // Read the number. No number can be less than 1.
+      // Day number is in range [1..31] while year number is >1970
+      if ((v = q_atoi(argv[start], -1)) < 1) {
+        q_printf("%% Bad number, must be either [1..31] or [1970..9999]. (argument #%d)\r\n",start);
+        goto bad;
+      }
+      if (v > 31 && v < 1970) {
+        q_printf("%% Unrecognized number (argument #%d)\r\n",start);
+        goto bad;
+      }
+      if (v < 32)
+        t.tm_mday = v;
+      else
+        t.tm_year = v - 1900;
+    } else 
+    // No month has 'm' as its second letter, must be "am" or "pm"
+    if (argv[start][1] == 'm') {
+      
+        if (argv[start][0] == 'a')
+          am = 1;
+        else if (argv[start][0] == 'p')
+          am = 0;
+        else {
+          q_printf("%% Unknown token at position %d, expected \"am\" or \"pm\"\r\n",start);
+          goto bad;
+        }
+    } else
+    // a time? time can be in forms: hh:mm or hh:mm:ss
+    if (argv[start][0] >= '0' && argv[start][0] <= '9') {
+      int8_t h,m,s;
+      if (read_hms(argv[start],&h,&m,&s)) {
+        t.tm_hour = h;
+        t.tm_min = m;
+        t.tm_sec = s;
+      } else {
+        q_print("% Time is bad. Must be hh:mm or hh:mm:ss\r\n");
+        goto bad;
+      }
+    } else
+    // may be a month?
+    if ((month = time_month_by_name(argv[start])) > 0) {
+      tm.tm_mon = month - 1;
+    } else 
+    // unrecognized keyword
+    {
+      q_printf("%% Unrecognized keyword at position %d\r\n",start);
+      goto bad;
+    }
+  }
+  
+  val = mktime(&tm);
+bad:
+  *stop = start;
+  return val;
+}
+#endif
+
+
 #endif //#if COMPILING_ESPSHELL
 
 

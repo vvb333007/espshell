@@ -564,7 +564,32 @@ static inline bool pin_exist_silent(unsigned char pin) {
         ((pin < NUM_PINS) && (((uint64_t)1 << pin) & SOC_GPIO_VALID_GPIO_MASK));
 }
 
+// Check if pin can be used as a wakeup sorce in command "nap alarm"
+static bool pin_can_wakeup(uint8_t pin) {
 
+  uint8_t printed = 0;
+
+  if (pin_exist(pin) &&
+      esp_sleep_is_valid_wakeup_gpio(pin))
+    return true;
+
+  q_printf("%% GPIO#%u is not capable of \"CPU wake up\"\r\n"
+           "%% Following GPIOs can be used to wake up CPU from sleep:\r\n"
+           "%%", pin);
+
+  for (int i = 0; i < 64; i++)
+    if (pin_exist_silent(i)) 
+      if (esp_sleep_is_valid_wakeup_gpio(i)) {
+        q_printf(" %u",i);
+        // insert crlf after every 16 pins
+        if (!((++printed)%16))
+          q_print("\r\n%%");
+      }
+    
+  
+  q_printf(" (%d pins)\r\n",printed);
+  return false;
+}
 
 // save pin state.
 // there is an array Pins[] which is used for that. Subsequent saves rewrite previous save.

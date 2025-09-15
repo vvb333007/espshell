@@ -1150,33 +1150,41 @@ static inline float q_atof(const char *p, float def) {
 
 
 // Loose strcmp() which performs a **partial** match. It is used to match commands and parameters which are shortened:
-// e.g. user typed "seq" instead of "sequence" or "m w" instead of "mount wwwroot"
+// e.g. user typed "seq" instead of "sequence" or "m w" instead of "mount wwwroot".
 //
-// /partial/ - string which expected to be incomplete/shortened. Can be NULL or empty string
-// /full/    - full string to compare against. Can be null or empty string
+// In:
+// /partial/ - string which may to be incomplete/shortened, usually user input (i.e. argv[X]).
+// /full/    - "full" string to compare against.
 //
-// BIG FAT WARNING: If **both** /partial/ and /full/ are empty strings (i.e. strings containing only '\0')
-//                  then behaviour of this function will be undefined. 
+// Out:
+//  0 - match (full or partial)
+//  1 - mismatch
+// Examples:
+//   q_strcmp("seq","sequence") == 0, match
+//   q_strcmp("sequence","seq") == 1, no match
+//   q_strcmp("seq","aseq") == 1, no match
 //
-// q_strcmp("seq","sequence") == 0
-// q_strcmp("sequence","seq") == 1
-//
-// It is implemented as byte-by-byte compare which is very efficient way to compare **short** strings
-// Longer strings are better to be compared as 32 bit chunks but this requires some calculation, string 
-// length measurement and so on making this approach very slow for typical 2-4 letter strings
+// Optimized for short (0..10 symbols) strings.
 //
 static int IRAM_ATTR q_strcmp(const char *partial, const char *full) {
 
-  // quick reject: first symbols must match. if both are \0 then we will read beyound string buffers.
-  if (partial && full && (*partial++ == *full++)) {
-    // Run through every character of the /partial/ and compare them to characters of /full/
-    while(*partial)
-      if (*partial++ != *full++)
-        return 1;
-    return 0;
-  }
-  return 1;
+  // Quick reject
+  if (unlikely(partial == NULL &&
+               full    == NULL &&
+              *partial == '\0'))
+    return 1;
 
+  // Quick reject 2
+  if (*partial++ != *full++)
+    return 1;
+
+  // Run through every character of the /partial/ and compare them to characters of /full/
+  // If /partial/ is longer than /full/, then matching will fail on /full's/ zero byte
+  while(*partial)
+    if (*partial++ != *full++)
+      return 1;
+
+  return 0;
 }
 
 // 

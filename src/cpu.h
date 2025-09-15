@@ -10,9 +10,6 @@
  * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
-// TODO: implement deep sleep
-// TODO: implement deep sleep wakeup counter
-// TODO: implement wakeup by GPIO edge transition
 // TODO: implement wakeup by a touch pad
 
 #if COMPILING_ESPSHELL
@@ -308,57 +305,217 @@ static int NORETURN cmd_reload(UNUSED int argc, UNUSED char **argv) {
 }
 
 
+// The main purpose of this global variable is to attract user attention to "nap alarm" command.
+// Thats why there is no default wakeup source nor default wakeup interval
+static int Nap_alarm_set = 0;
+
+// Located in RTC SLOW_MEM so after deep sleep one can query sleep duration
+static RTC_DATA_ATTR uint64_t Nap_alarm_time = 0;
+
+static bool is_alarm_set(bool deep) {
+
+  if ((Nap_alarm_set & (1<<ESP_SLEEP_WAKEUP_EXT0)) ||
+      (Nap_alarm_set & (1<<ESP_SLEEP_WAKEUP_EXT1)) ||
+      (Nap_alarm_set & (1<<ESP_SLEEP_WAKEUP_TIMER)) ||
+      (Nap_alarm_set & (1<<ESP_SLEEP_WAKEUP_TOUCHPAD)))
+      return true;
+  
+  if ((Nap_alarm_set & (1 << ESP_SLEEP_WAKEUP_UART))) {
+    if (deep) {
+      q_print("% Your current wakeup source is \"UART\" which works for light sleep only\r\n");
+      return false;
+    }
+    return true;
+  }
+  q_print("% Wakeup source is not properly set, use \"<i>nap alarm</>\" to set one\r\n");
+  return false;
+}
+
+//
+//
+static int cmd_show_nap(int argc, char **argv) {
+  if (Nap_alarm_set == 0)
+    q_print("% There are no sleep alarms set\r\n");
+  else {
+    if (Nap_alarm_set & (1<<ESP_SLEEP_WAKEUP_TIMER))
+      q_printf("%% Enabled wakeup source: TIMER, duration: %llu sec\r\n", Nap_alarm_time / 1000000ULL);
+
+    if (Nap_alarm_set & (1<<ESP_SLEEP_WAKEUP_EXT0))
+      q_printf("%% Enabled wakeup source: EXT0 (single GPIO)\r\n");
+
+    if (Nap_alarm_set & (1<<ESP_SLEEP_WAKEUP_EXT1))
+      q_printf("%% Enabled wakeup source: EXT1 (multiple GPIOs)\r\n");
+
+    if (Nap_alarm_set & (1<<ESP_SLEEP_WAKEUP_TOUCHPAD))
+      q_printf("%% Enabled wakeup source: Touch sensor\r\n");
+
+    if (Nap_alarm_set & (1<<ESP_SLEEP_WAKEUP_UART))
+      q_printf("%% Enabled wakeup source: UART RX\r\n");
+  }
+  return 0;
+}
+
+// Set sleep wakeup source and wakeup parameters.
+//
+// nap alarm uart NUM [THRESHOLD]
+// nap alarm low|high|touch NUM1 [NUM2 NUM3 ... NUMn]
+// nap alarm <TIME> [<TIME> <TIME> .. <TIME>]
+// nap alarm disable-all
+//
+static int cmd_nap_alarm(int argc, char **argv) {
+
+  if (argc < 3)
+    return CMD_MISSING_ARG;
+  
+  //"nap alarm disable-all"
+  if (!q_strcmp(argv[2],"disable-all")) {
+    esp_err_t err = esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
+    q_printf("%% All sleep wakeup sources %s disabled\r\n", err == ESP_OK ? "were" : "are already");
+    Nap_alarm_set = 0;
+    return 0;
+  }
+  
+  if (argc < 4)
+    return CMD_MISSING_ARG;
+
+  // "nap alarm low 1 2 3 4"
+  if (!q_strcmp(argv[2],"low") || 
+      !q_strcmp(argv[2],"high")) {
+
+    uint64_t pins = 0;
+    uint8_t pin;
+    int level;
+
+    if (argc < 4) {
+      HELP(q_print("% Pin number expected\r\n"));
+      return CMD_MISSING_ARG;
+    }
+
+    if (argv[2][0] == 'h')
+      level = 1;
+    else
+      level = 0;
+
+    for (int i = 3; i < argc; i++) {
+      if ((pin = q_atol(argv[i],BAD_PIN)) == BAD_PIN)
+        return i;
+      if (!pin_can_wakeup(pin))
+        return CMD_FAILED;
+      pins |= pin;
+    }
+
+#if SOC_PM_SUPPORT_EXT1_WAKEUP && SOC_PM_SUPPORT_EXT0_WAKEUP && SOC_RTCIO_PIN_COUNT > 0
+    if (argc < 5) {
+      // only one pin. Its value is in the /pin/ variable
+      if (ESP_OK == esp_sleep_enable_ext0_wakeup(pin, level))
+        Nap_alarm_set |= 1 << ESP_SLEEP_WAKEUP_EXT0;
+      else {
+        q_print("% Can not set EXT0 wakeup source\r\n");
+        return CMD_FAILED;
+      }
+    } else {
+      // Multiple pins. 
+      if (ESP_OK == esp_sleep_enable_ext1_wakeup(pins, level))
+        Nap_alarm_set |= 1 << ESP_SLEEP_WAKEUP_EXT1;
+      else {
+        q_print("% Can not set EXT1 wakeup source\r\n");
+        return CMD_FAILED;
+      }
+    }
+    VERBOSE(q_printf("%% Sleep wakeup source: EXT%d\r\n",(argc > 4)));
+#else
+    q_print("% Target is not supported yet\r\n");
+    return CMD_FAILED;
+#endif
+  } else if (!q_strcmp(argv[2],"touch")) {
+
+    q_print("% Not implemented yet");
+    //Nap_alarm_set |= 1 << ESP_SLEEP_WAKEUP_TOUCHPAD;
+    return CMD_FAILED;
+
+  } else if (!q_strcmp(argv[2],"uart")) {
+
+    int threshold = 3;   // 3 positive edges on UART_RX pin to wake up ('spacebar' key two times or 'enter' once)
+    int u;
+
+    if (argc < 4) {
+      HELP(q_print("% UART number expected\r\n"));
+      return CMD_MISSING_ARG;
+    }
+
+    u = q_atoi(argv[3], -1);
+    if (u < 0 || u >= NUM_UARTS) {
+      HELP(q_printf("%% UART number is out of range. Valid numbers are 0..%u\r\n",NUM_UARTS - 1));
+      return 3;
+    }
+
+    if (ESP_OK != esp_sleep_enable_uart_wakeup(u)) {
+      HELP(q_print("% Failed to set UART%u as a wakeup source\r\n"));
+      return CMD_FAILED;
+    }
+
+    VERBOSE(q_printf("%% Sleep wakeup source: uart%d\r\n",u));
+
+    Nap_alarm_set |= 1 << ESP_SLEEP_WAKEUP_UART;
+    
+    if (argc > 4) {
+      if ((threshold = q_atoi(argv[4], -1)) < 0) {
+        HELP(q_print("% Number of rising edges is expected (default is 3)\r\n"));
+        return 4;
+      }
+    }
+      
+    if (ESP_OK != uart_set_wakeup_threshold(u, threshold))
+      HELP(q_print("% UART threshold value was not changed\r\n"));
+
+  } else if (q_isnumeric(argv[2])) {
+
+    int64_t tim = read_timespec(argc, argv, 2, NULL);
+    if (tim <= 0)
+      return CMD_FAILED;
+
+    if (ESP_OK == esp_sleep_enable_timer_wakeup(tim)) {
+      Nap_alarm_set |= 1 << ESP_SLEEP_WAKEUP_TIMER;
+      Nap_alarm_time = tim;
+    }
+    else {
+      HELP(q_print("% Failed to set wakeup alarm timer\r\n"));
+      return CMD_FAILED;
+    }
+
+    VERBOSE(q_printf("%% Sleep wakeup timer: %llu usec\r\n",tim));
+  }
+
+  return 0;
+}
+
 //"nap [deep] [NUM seconds|minutes|hours|days]"
 // Put cpu into light or deep sleep
 //
 static int cmd_nap(int argc, char **argv) {
 
-  static bool isen = false;
-  uint64_t multiplier = 1000000ULL; // Conversion multiplier (default value is "seconds")
+  bool deep = false;
 
-  if (argc < 2) {
-    // no args: light sleep until 3 positive edges received by uart (i.e. wake up is by pressing <Enter>)
-    // Both TeraTerm and Arduino Serial Monitor are capable of sending <Enter>
-    esp_sleep_enable_uart_wakeup(uart);
-    isen = true;
-    uart_set_wakeup_threshold(uart, 3);  // 3 positive edges on RX pin to wake up ('spacebar' key two times or 'enter' once)
-  } else {
-    // "nap NUMBER [time_unit]":  "nap 10", "nap 10 seconds|minutes|hours"
-    uint64_t sleep;
-
-    // Disable "wakeup-by-uart" if it was enabled before
-    if (isen) {
-      esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_UART);  //disable wakeup by uart
-      isen = false;
-    }
-
-    // Read sleep duration
-    if ((sleep = q_atol(argv[1], DEF_BAD)) == DEF_BAD) {
-      HELP(q_printf("%% <e>Sleep time expected, instead of \"%s\"</>\r\n", argv[1]));
-      return 1;
-    }
-
-    // if there is a time unit we change /multiplier/ accordingly
-    if (argc > 2) {
-      if (!q_strcmp(argv[2],"minutes"))
-        multiplier *= 60ULL;
-      else if (!q_strcmp(argv[2],"hours"))
-        multiplier *= 3600ULL;
-      else if (!q_strcmp(argv[2],"seconds"))
-        multiplier *= 1ULL;
-      else {
-        q_printf("%% Expected \"minutes\", \"seconds\" or \"hours\" instead of \"%s\"\r\n",argv[2]);
-        return CMD_FAILED;
-      }
-    }
-    VERBOSE(q_printf("%% Sleep duration is %llu\r\n",(unsigned long long)(multiplier * sleep)));
-    esp_sleep_enable_timer_wakeup(multiplier * sleep);
+  if (argc > 1) {
+    if (!q_strcmp(argv[1],"deep"))
+      deep = true;
   }
-  
-  HELP(q_print("% Entering light sleep\r\n"));
+
+  if (!is_alarm_set(deep)) {
+    HELP(q_printf("%% When should we wakeup? (set \"<i>nap alarm</>\" first)\r\n"));
+    return CMD_FAILED;
+  }
+
+  HELP(q_printf("%% Entering %s sleep\r\n", deep ? "deep" : "light"));
   HELP(q_delay(100));  // give a chance to the q_print above to do its job
-  esp_light_sleep_start();
-  HELP(q_print("% Resuming\r\n"));
+
+  if (deep)
+    esp_deep_sleep_start();
+  else 
+    esp_light_sleep_start();
+
+  HELP(q_print("% Returning from the sleep\r\n"));
+
   return 0;
 }
 #endif // #if COMPILING_ESPSHELL

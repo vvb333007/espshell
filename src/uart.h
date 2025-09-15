@@ -16,9 +16,6 @@
 
 #if COMPILING_ESPSHELL
 
-#define NUM_UARTS SOC_UART_NUM
-
-
 // Create a 32-bit number which stores UART configuration. Arduino Core passes it directly to the ESP-IDF UART driver.
 //  bits   - 5,6,7 or 8
 //  parity - 0,2 or 3  (no-parity, even or odd)
