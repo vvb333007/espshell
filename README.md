@@ -10,7 +10,7 @@
 
 This is a debugging and development tool (a library for the Arduino framework) intended for use with **ESP32 hardware**.
 
-It provides a command-line interface (CLI) over the serial port (UART or USB), running in parallel with your Arduino sketch. This is **not** a standalone program — the tool integrates into your sketch at compile time and enhances any sketch (even an empty one) with a shell. ESPShell also allows you to pause and resume sketch execution.
+It provides a command-line interface (CLI, UTF-8 transparent) over the serial port (UART or USB), running in parallel with your Arduino sketch. This is **not** a standalone program — the tool integrates into your sketch at compile time and enhances any sketch (even an empty one) with a shell. ESPShell also allows you to pause and resume sketch execution.
 
 Users can enter and execute commands (including many built-in ones) in a manner similar to a Linux shell, all while their sketch continues to run. ESPShell works with the Arduino IDE Serial Monitor or any other terminal software like *PuTTY* or *Tera Term*. Linux users have a wide variety of terminal options — even the `cu` utility will do the job.
 
