@@ -1,16 +1,19 @@
 Before 1.0 can be released:
 
+0. Documentation is a bit outdated: new commands are missing, some screenshots are
+   too old and do not match real command output
 
-1. implement "cpu [0|1|any] task TASK_ID|TASK_NAME" - set task affinity, move 
-   task from one core to another. For this, however, I need to get single-core
-   chip for testing
+1. Support for $variables and wifi/ip events in command "if":
+    esp32#>if $ByteCounter gt 1000 exec SomeCommand
+    esp32#>if got|lost ip exec SomeCommand
+    esp32#>if got|lost ip exec SomeCommand
 
 2. Make command processor be able to expand "$" values: $1 is argv[1] and 
    $VarName is a sketch variable
 
 3. Sequences: add sequence capture (using RMT), captured sequence display and 
    saving to a FS. (IR remote capture & playback) add sequence decode, based on
-   user-supplied alphabet ("one" & "zero")
+   user-supplied alphabet ("one","zero","head" and "tail")
 
 4. Sequences: add support for byte strings (currently only bitstrings are 
    recognized)
@@ -25,13 +28,7 @@ Before 1.0 can be released:
 7. Port a single-user, single-threaded simple FTP server - to be able to 
    upload a premade filesystem (i.e. files and directories)
 
-8. Make a VFS, to access flash partitions from the file manager: e.g. 
-   bootloader.bin, nvs.bin etc, expose flash partitions as files (RW except
-   the main app partition, which is RO).
-   Expose "/sys" filesystem with various virtual character drivers: 
-   "/sys/gpio" "/sys/uarts" ..
+8. Expose flash partitions when accessed via FTP as binary files in /flash
+   bootloader.bin, nvs.bin, firmware.bin etc, (RW except the main app partition, which is RO).
 
-9. Implement "show uart|i2c|spi [NUM]" : dislpay current interface settings 
-   (pins, speed, data width, parity/stopbits where applicable)
-
-10. Because of [7], implement "wifi" command tree (up/down/etc logic)
+9. Basic WiFi support (Ap, STA and AP+STA)
