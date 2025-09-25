@@ -126,7 +126,7 @@ static int help_keys(UNUSED int argc, UNUSED char **argv) {
   return 0;
 }
 
-
+#if 0
 // 40 spaces asciiz string, used in formatting. It is located in PROGMEM 
 static const char Spaces[41] = {
   ' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',
@@ -135,7 +135,7 @@ static const char Spaces[41] = {
   ' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',
   '\0'
 };
-
+#endif
 // "? NAME"
 // Displays a manual page for NAME (e.g. "? pin")
 //
@@ -157,19 +157,10 @@ try_one_more_time:
     if (key[i].help || key[i].brief) {
       if (!q_strcmp(argv[1], key[i].cmd)) {
 
+        // Print header
         if (key[i].brief)
           brief = key[i].brief;
-
-        unsigned int spaces_idx = strlen(brief);
-          
-        // sizeof("% --  --") == 8
-        // strlen( brief ) + 8 must be < 40 so we have room for padding.
-        // calculate index to Spaces to get our padding string
-        spaces_idx = (spaces_idx + 8 >= sizeof(Spaces) - 1) ? sizeof(Spaces) - 1 // index points to '\0', i.e. empty padding string
-                                                              : spaces_idx + 8;    
-        q_printf("\r\n%%<r> -- %s --%s</>\r\n", 
-                  brief,    // Header text is derived from /.brief/
-                  &Spaces[spaces_idx]); // Padding with spaces, so our "<r>everse video" tag will be visible on the screen
+        q_printf("\r\n%%<r> -- %40.40s --</>\r\n", brief);
 
         // Print help page
         q_printf("%s\r\n\r\n",key[i].help ? key[i].help                        // use /.help/ if it is exists
@@ -205,9 +196,8 @@ try_one_more_time:
 static int help_command_list(int argc, char **argv) {
 
   int i = 0;
-  const char *prev = "", *spaces;
-  // TODO: use /Spaces/ array, get rid of this one
-  const char indent[ESPSHELL_MAX_CNLEN + 1] = {' ',' ',' ',' ',' ',' ',' ',' ',' ',' ','\0'};
+  const char *prev = "";
+
   const struct keywords_t *key = keywords_get();
 
   q_print("% Enter \"<b>?</> <i>COMMAND</>\" to view details about a specific command.\r\n"
@@ -228,13 +218,8 @@ static int help_command_list(int argc, char **argv) {
         if (!(brief = key[i].brief))  //use "brief" or fallback to "help"
           if (!(brief = key[i].help))
             brief = "No description";
-
-        // indent: commands with short names are padded with spaces so
-        // total length is always INDENT bytes. Longer commands are not padded
-        int clen;
-        spaces = ((clen = strlen(key[i].cmd)) < ESPSHELL_MAX_CNLEN) ? &indent[clen] : &indent[ESPSHELL_MAX_CNLEN];
-        // "COMMAND" PADDING_SPACES : DESCRIPTION
-        q_printf("%% \"<%c><i>%s</>\"%s : %s\r\n", is_command_directory(key[i].cmd) ? 'u' : 'b', key[i].cmd, spaces, brief);
+        // command : description
+        q_printf("%% <%c>%-11.11s</> : %s\r\n", is_command_directory(key[i].cmd) ? 'b' : 'i', key[i].cmd, brief);
       }
     }
 

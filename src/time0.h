@@ -59,9 +59,9 @@ static struct {
 static int8_t time_month_by_name(const char *name) {
 
   int8_t month = -1,   // month number, 1..12.
-         len = 1;    
+         len = 1;      // number of characters present in /name/ ("not less than", not strlen(name))
 
-  if (name && name[0]) {
+  if (likely(name && name[0])) {
 
     if (name[1]) {
       len++;
@@ -132,32 +132,6 @@ static bool time_zone2ascii(char *buf, int size) {
   return false;
 }
 
-// "12:3" "01:02:33" "1:1:1"
-// TODO: move to userinput.h
-//
-static bool read_hms(const char *p, int8_t *h, int8_t *m, int8_t *s) {
-
-  int8_t hms[3] = { 0 }, i = 0;
-
-  while (*p) {
-    if (*p == ':') {
-      if (++i > 2)
-        return false;
-    } else if (*p >= '0' && *p <= '9')
-      hms[i] = hms[i] * 10 + (*p - '0');
-    else
-      return false;
-    ++p;
-  }
-
-  if (h) *h = &hms[0];
-  if (m) *m = &hms[1];
-  if (s) *s = &hms[2];
-
-  return true;
-}
-
-
 
 #define XX(_Local, _Ntp, _Rtc) do { \
     Time.src_internal = _Local; \
@@ -166,8 +140,16 @@ static bool read_hms(const char *p, int8_t *h, int8_t *m, int8_t *s) {
 } while( 0 );
 
 
-// "time source ntp|rtc|internal ... "
-//
+// "time source rtc ... "
+static int cmd_time_source_rtc(int argc, char **argv) {
+  return 0;
+}
+
+// "time source ntp ... "
+static int cmd_time_source_ntp(int argc, char **argv) {
+  return 0;
+}
+
 static int cmd_time_source(int argc, char **argv) {
 
   if (argc < 3)
@@ -219,8 +201,14 @@ static int cmd_time_zone(int argc, char **argv) {
 
   if (!q_strcmp(argv[2],"none"))
     val = 0;
-  else
+  else {
     val = read_timespec(argc, argv, 2, NULL) / 1000000ULL; // convert to seconds
+    if (val < 60) {
+      //timespec without a time specifier defaults to seconds but we assume hours
+      // i.e. "time zone 1" will read as 1 second
+      val = val * 3600ULL;
+    }
+  }
 
   if (val > 12*60*60 || val < -12*60*60) {
     HELP(q_print("% Time zone value is out of range (>12 hours), time zone not set\r\n"));
@@ -236,6 +224,9 @@ static int cmd_time_zone(int argc, char **argv) {
 static int cmd_time_set(int argc, char **argv) {
 
   struct timeval tv;
+
+  if (argc < 3)
+    return CMD_MISSING_ARG;
   
   tv.tv_sec = read_datime(argc,argv,2,NULL);
   tv.tv_usec = 0;
@@ -318,7 +309,6 @@ static int cmd_show_time(int argc, char **argv) {
 
   return 0;
 }
-
 
 #undef XX
 

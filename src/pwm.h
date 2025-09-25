@@ -141,7 +141,7 @@ static int pwm_enable_channel(unsigned int pin, unsigned int freq, float duty, s
   if (chan >= 0)
     channel = chan;
 
-  if (!pin_exist(pin))
+  if (!pin_exist(pin) || pin_isvirtual(pin))
     return -1;
 
   if (freq) {

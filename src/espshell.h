@@ -212,7 +212,7 @@ void pinForceMode(unsigned int pin, unsigned int flags);
 //    convar_add(some_variable);     // add a simple type variable
 //    convar_add(another_variable);  // add a simple type variable
 //    convar_addpp(bb);              // add pointer to a pointer
-//    convar_addpp(arr2);            // add an array of pointers
+//    convar_addap(arr2);            // add an array of pointers
 //
 //
 #if WITH_VAR

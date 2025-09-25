@@ -27,8 +27,14 @@
 // TODO: fix non-reentrant code. specifically: files_full_path(), may be use __thread variables
 //
 #if WITH_FS
-// Current working directory. Must start and end with "/". 
+
+// Current working directory. Must start and end with "/".
+// It is a per-thread local variable, which must be free() before task exits (just before task_finished())
+// TODO: add files_set_cwd(NULL) to task_finished()?
+//
 static __thread char *Cwd = NULL;  
+
+// Forwards
 static const char *files_set_cwd(const char *cwd);
 
 // espshell allows for simultaneous mounting up to MOUNTPOINTS_NUM partitions.
@@ -48,6 +54,7 @@ static struct {
 
 // initialize mountpoints[] array
 // NOTE: /Cwd/ MUST NOT be accessed from within this function or whole thing will crash
+//
 static void __attribute__((constructor)) _files_init() {
   int i;
   for (i = 0; i < MOUNTPOINTS_NUM; i++) {
@@ -115,7 +122,7 @@ static int files_getline(char **buf, unsigned int *size, FILE *fp) {
     }
 
     //skip Microsoft-style line endings and save byte to the buffer
-    // TODO: ??? must skip \n, not \r!
+
     if (c == '\r')
       continue;
     *wp++ = c;
@@ -203,7 +210,7 @@ static inline const char *files_get_cwd() {
 // "path" must be writeable memory.
 // "Program*Files*(x64)" gets converted to "Program Files (x64)"
 //
-// This is the old code. Now, filenames with spaces can be enclosed in double quotes
+// This is an old code. Now, filenames with spaces can be enclosed in double quotes
 // but I keep this code here for compatibility
 static void files_asterisk2spaces(char *path) {
   if (path) {
@@ -542,7 +549,7 @@ static unsigned int files_dirwalk(const char *path0, files_walker_t files_cb, fi
         path[len] = '\0';
       }
 
-      // Walk through the directory, entering all subdirs in recursive way
+      // Walk through the directory, entering all subdirs in a recursive way
       if ((dir = opendir(path)) != NULL) {
         struct dirent *de;
         while ((de = readdir(dir)) != NULL) {
@@ -571,8 +578,9 @@ static unsigned int files_dirwalk(const char *path0, files_walker_t files_cb, fi
   return processed;
 }
 
-// Callback to be used by files_remove() when it calls to files_dirwalk()
-// This callback gets called for every FILE that needs to be removed
+// Callback to be used by files_remove() when it calls files_dirwalk()
+// This callback gets called for every file that needs to be removed
+//
 static int remove_file_callback(const char *path, UNUSED void *aux) {
   if (0 != unlink(path)) {
     HELP(q_printf("%% <e>Failed to delete: \"%s\"</>\r\n", path));
@@ -584,6 +592,7 @@ static int remove_file_callback(const char *path, UNUSED void *aux) {
 
 // Callback to be used by files_remove() when it calls to files_dirwalk()
 // This callback gets called for every DIRECTORY that needs to be removed
+//
 static int remove_dir_callback(const char *path, UNUSED void *aux) {
   if (rmdir(path) == 0) {
     HELP(q_printf("%% Directory removed: \"<i>%s</>\"\r\n", path));
@@ -769,7 +778,7 @@ static int files_create_dirs(const char *path0, bool last_is_file) {
   char buf[MAX_PATH + 16] = { 0 };
 
   // don't process asterisk now: this will interfere with argify() as argify() uses spaces
-  // as toen separator. Convert asterisk later.
+  // as token separator. Convert asterisks later.
   if ((len = strlen((path = files_full_path(path0, IGNORE_ASTERISK)))) > 0) {
 
     // replace all path separators with spaces: this way we can use argify()
@@ -861,7 +870,8 @@ static bool files_copy(const char *src, const char *dst) {
               if ((rd = read(s, buf, blen)) > 0)
                 if (rd == (wr = write(d, buf, rd))) {
                   // TODO: update_copy_progress()
-                  // TODO: ctrlc_pressed()
+                  // TODO: ctrlc_pressed() 
+                  // TODO: kill 
                   q_yield();  //make WDT happy
                   continue;
                 }

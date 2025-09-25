@@ -13,47 +13,43 @@
 
 // -- pin (GPIO) manipulation --
 // Pin is the synonym of GPIO throughout the espshell code & docs. There is no support for pin remapping simply because
-// I don't have an appropriate board
+// I don't have an appropriate board, so Pin==GPIO
 //
-// Main command here is "pin"
+// Main command here is "pin":
 //
 // Command "pin" is a tiny command processor itself: one can enter multiple arguments
-// to the "pin" command to form a sort of a microcode program which gets executed.
+// to the "pin" command to form a sort of a microcode program which gets executed:
+//
+// "esp32#>pin 2 high delay 100 low delay 100 loop infinite"
+
+// TODO: join flags together if there are no other commands except pinMode:
+// TODO: "pin 2 in out up open" should be converted to single pinForceMode(), not 4
+// TODO: looped commands with no delays must be killable without -9
 
 #if COMPILING_ESPSHELL
 
-#define PIN_MAX (NUM_PINS - 1) // 
+#define PIN_MAX (NUM_PINS - 1)
 
-// Structure which is used to save/load pin states by "pin X save"/"pin X load".
-// These are filled by pin_save() and applied by pin_load() (throughout docs it is called "internal register")
-// NOTE: internal register is only for physical pins. Virtual pins (0x38, 0x30, 0x34) are not saved here!
+
+// -- GPIO Internal Save Register --
+// Structure which is used to save/load pin states by "pin X save"/"pin X load": (throughout docs it is 
+// called "pin internal register")
+//
+// Entries are populated by pin_save() and applied by pin_load(), consequent pin_save overwrites previous save.
+// NOTE: Internal register exists only for physical pins. Virtual pins (CONST_1 and CONST_0) are not saved here!
+//
 static struct {
 
-  uint8_t flags;     // INPUT,PULLUP,... Arduino pin flags (as per pinMode() )
-  bool value;        // digital value
-  uint16_t sig_out;  // SIG_IN & SIG_OUT for GPIO Matrix mode
-  uint16_t fun_sel;  // IO_MUX function selector
-  int bus_type;      // PeriMan bus type. (see ArduionoCore *periman*.c)
+  uint8_t  flags;    // Saved INPUT,PULLUP,... Arduino pin flags (as per pinMode() )
+  bool     value;    // Saved digital value
+  uint16_t sig_out;  // Signal connected (GPIO_Matrix mode)
+  uint16_t fun_sel;  // Function selector (IO_MUX mode)
+  int      bus_type; // PeriMan bus type, we need it to keep data in sync with Arduino Core
 
 } Pins[NUM_PINS];
 
 
-// IO_MUX function code --> human readable text mapping
-// Each ESP32 variant has its own mapping but I made tables
-// only for ESP32 and ESP32S3/2 simply because I have these boards
-//
-// Each pin of ESP32 can carry a function: be either a GPIO or be an periferial pin:
-// SD_DATA0 or UART_TX etc.
-//
-// Values like "0", "15" means GPIO function. E.g. "7" means "GPIO7"
-// Values of zero mean this function is undefined/unused
-//
-//TODO: add support for other Espressif ESP32 variants (namely C3, C6, C61, H2, and P4)
-//
-
-
-
-// Number of available function in IO_MUX for given pin
+// Number of available functions in IO_MUX
 // Classic ESP32 has 6 functions per pin. Function 0 selects IO_MUX GPIO mode, function 2 selects GPIO_MATRIX GPIO mode
 // All other ESP32 variants have only 5 functions with function 1 being GPIO_MATRIX selector
 //
@@ -63,9 +59,17 @@ static struct {
 #  define IOMUX_NFUNC 5
 #endif
 
-// Each pin can be switched to one of 5 or 6 functions numbered from 0 to 4 (or 5)
-// Array entries consist of names of functions available.
-// Non-existent pins are those with all zeros {0,0,0,0,0}
+// -- IO_MUX function code --> human readable text mapping --
+// Each ESP32 variant has its own mapping but I made tables only for ESP32 and ESP32S3/2 simply because I 
+// do have these boards
+//
+// Each pin of ESP32 carries one (out of 5 or 6) function: it can be either a "Simple GPIO" or be a periferial pin:
+// e.g. SD_DATA0 or UART_TX etc.
+//
+// Values like "0", "15" means GPIO function. E.g. "7" means Function="GPIO7"
+// Values of zero mean this function is undefined/unused
+//
+//TODO: add support for other Espressif ESP32 variants (namely C3, C6, C61, H2, and P4)
 //
 static const char *io_mux_func_name[NUM_PINS][IOMUX_NFUNC] = {
 
@@ -217,43 +221,59 @@ static const char *io_mux_func_name[NUM_PINS][IOMUX_NFUNC] = {
   { "46", "46", 0, 0, 0 },
 #else
 #  warning "Unsupported target, using dummy IO_MUX function name table"
+#  warning "Command [show iomux] will not be functional :("
   0 // all zeros
 #endif  // CONFIG_IDF_TARGET...
 }; //iomux function table
 
-// Long story short: as of Arduino Core 3.2.0, the uart & i2c ESP-IDF code has bug which 
-// was fixed quite ago but still not merged into Arduino Core libs: GPIOs that are reserved for UART are never revoked
-//
-// Run at startup to fetch true RESERVED pins. Since RESERVED pins logic is broken on this version of ESP-IDF
-// we want to precache pin numbers. There will be FLASH SPI pins but not UART0 - as it gets initialized later
-//
+// -- Forwards --
 static void pin_save(int pin);
+
+
+// -- Startup: RESERVED pins number prefetch --
+//
+// Since RESERVED pins logic is broken on this version of ESP-IDF (since 3.2.0) we want to precache 
+// reserved pin numbers on startup: there will be FLASH SPI pins but not UART0 - as UART gets initialized later.
+//
+// These are truly **reserved** pins: accessing them will likely crash your system. Pins, which were "reserved" later
+// by drivers are NOT considered **reserved**
+//
 static uint64_t Reserved = 0;
 
-static void __attribute__((constructor)) pin_cache_gpios() {
-    for (unsigned char p = 0; p < NUM_PINS; p++) {
-      if (pin_exist_silent(p)) {
-        unsigned char reserved = esp_gpio_is_pin_reserved(p) & 1;
-        // TODO: this is a hack
-#if CONFIG_IDF_TARGET_ESP32
-        if (p > 33)
-          reserved = 0;
-#endif
-        // On ESP32S3 with PSRAM pins 33..37 are usually used to access OPI PSRAM        
-        // However, at the time of pin_cache_gpios() these pins are not yet allocated, so we mark them manually.
-        // It works in most but not all cases. Anyway it is all JFYI only: you can use reserved pins as you wish
-        // TODO: add other targets
-#if CONFIG_IDF_TARGET_ESP32S3
-        if (p > 32 && p < 38)
-          reserved = 1;
-#endif
-        if (reserved)
-          Reserved |= 1ULL << p;
+static void __attribute__((constructor)) _pin_cache_gpios() {
 
-        // Save all GPIO states so subsequent "pin X load" will load valid data, not all-zeros
-        pin_save(p);
-      }
+  for (unsigned char p = 0; p < NUM_PINS; p++) 
+    if (pin_exist_silent(p)) {
+      unsigned char reserved = esp_gpio_is_pin_reserved(p) & 1;
+      // TODO: this is a hack
+#if CONFIG_IDF_TARGET_ESP32
+      if (p > 33)
+        reserved = 0;
+#endif
+      // On ESP32S3 with PSRAM pins 33..37 are usually used to access OPI PSRAM        
+      // However, at the time of pin_cache_gpios() these pins are not yet allocated, so we mark them manually.
+      // It works in most but not all cases. Anyway it is all JFYI only: you can use reserved pins as you wish
+      // TODO: add other targets
+#if CONFIG_IDF_TARGET_ESP32S3
+      if (p > 32 && p < 38)
+        reserved = 1;
+#endif
+      if (reserved)
+        Reserved |= 1ULL << p;
+
+      // Save GPIO state so first "pin X load" will load valid data, not all-zeros
+      pin_save(p);
     }
+}
+
+
+//
+static bool inline __attribute__((const)) pin_isreal(uint8_t const pin) {
+  return pin != GPIO_MATRIX_CONST_ZERO_INPUT && pin != GPIO_MATRIX_CONST_ONE_INPUT;
+}
+//
+static bool inline __attribute__((const)) pin_isvirtual(uint8_t const pin) {
+  return pin == GPIO_MATRIX_CONST_ZERO_INPUT || pin == GPIO_MATRIX_CONST_ONE_INPUT;
 }
 
 // TODO: display runtime-reserved flags also: waiting for new ESP-IDF
@@ -302,11 +322,8 @@ static void pin_get_io_config(uint8_t pin,
 static const char *iomux_funame(unsigned char pin, unsigned char func) {
   static char gpio[8] = {'G','P','I','O',0}; 
   
-  if (pin == GPIO_MATRIX_CONST_ONE_INPUT)
-    return "CONST_1";
-
-  if (pin == GPIO_MATRIX_CONST_ZERO_INPUT)
-    return "CONST_0";
+  if (pin_isvirtual(pin))
+    return "CONST";
 
   return  func < IOMUX_NFUNC && 
           pin < NUM_PINS && 
@@ -353,19 +370,17 @@ static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
   for (pin = start_pin; pin <= stop_pin; pin++) {
     
     if (pin_exist_silent(pin)) {
-      // add "!" before pin number for RESERVED pins. 
-      // Input-only pins are painted green. Didn't checked it touroughly but it looks like only original ESP32
-      // has input-only pins; other models (both xtensa and risc-v CPUs) have no such restriction
+
       char color = 'n', mark = ' ';
+
       if (pin_is_input_only_pin(pin)) {
         color = 'g';
         mark = '+';
-      }
-      if (pin_is_reserved(pin)) {
+      } else if (pin_is_reserved(pin)) {
         mark = '!';
-        if (color == 'n')
-          color = 'w';
-      }
+        color = 'w';
+      }     
+      
       q_printf( "%% %c<%c>%02u</> ",mark,color,pin);
 
       // get pin IO_MUX function currently selected
@@ -379,7 +394,7 @@ static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
         const char *pre = (i == fun_sel) ? "<r>" : "";    // gcc must fold two comparisions into one
         const char *post = (i == fun_sel) ? "*</>" : " ";
         
-        q_printf("|%s %9s%s", pre, iomux_funame(pin, i), post);
+        q_printf("|%s %-9.9s%s", pre, iomux_funame(pin, i), post);
         
       }
       q_print(CRLF);
@@ -389,7 +404,7 @@ static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
                 "% Legend:\r\n"
                 "%   Function, that is currently assigned to the pin is <r>marked with \"*\"</>\r\n"
                 "%   Input-only pins (marked \"+\") are green (ESP32 only)\r\n"
-                "%   Pins that are <w>RESERVED</> all marked with \"<b>!</>\", avoid them!\r\n"));
+                "%   Pins that are <w>RESERVED</> are labelled with \"<b>!</>\", avoid them!\r\n"));
   return 0;
 }
 
@@ -405,8 +420,7 @@ static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
 //               
 static bool pin_set_iomux_function(unsigned char pin, unsigned char function) {
 
-  // Virtual pins?
-  if (pin == GPIO_MATRIX_CONST_ONE_INPUT || pin == GPIO_MATRIX_CONST_ZERO_INPUT)
+  if (pin_isvirtual(pin))
     return false;
 
   // Special case for a non-existent function 0xff: reset pin, execute IDF's gpio_pad_select_gpio and return
@@ -446,10 +460,10 @@ int digitalForceRead(int pin) {
 // callbacks are called. pin bus type remain unchanged
 //
 void digitalForceWrite(int pin, unsigned char level) {
-  if (pin == GPIO_MATRIX_CONST_ONE_INPUT || pin == GPIO_MATRIX_CONST_ZERO_INPUT)
-    return;
-  gpio_ll_output_enable(&GPIO, pin);
-  gpio_set_level((gpio_num_t)pin, level == HIGH ? 1 : 0);
+  if (likely(pin_isreal(pin))) {
+    gpio_ll_output_enable(&GPIO, pin);
+    gpio_set_level((gpio_num_t)pin, level == HIGH ? 1 : 0);
+  }
 }
 
 // ESP32 Arduino Core as of version 3.0.5 (at the moment of writing) defines pin OUTPUT flag as both INPUT and OUTPUT
@@ -471,9 +485,8 @@ void pinForceMode(unsigned int pin, unsigned int flags) {
   // NOTE: do not replace "(flags & MACRO) == MACRO" with "flags & MACRO": Arduino flags can have more than
   //       1 bit set
 
-  // Virtual pins?
-  if (pin == GPIO_MATRIX_CONST_ONE_INPUT || pin == GPIO_MATRIX_CONST_ZERO_INPUT)
-    return;
+  if (pin_isvirtual(pin))
+    return ;
 
   if ((flags & PULLUP) == PULLUP)         gpio_ll_pullup_en(&GPIO, pin);    else gpio_ll_pullup_dis(&GPIO, pin);
   if ((flags & PULLDOWN) == PULLDOWN)     gpio_ll_pulldown_en(&GPIO, pin);  else gpio_ll_pulldown_dis(&GPIO, pin);
@@ -535,9 +548,7 @@ static bool pin_not_exist_notice(unsigned char pin) {
   list_pins(1);
   q_print("</>\r\n");
 
-#if defined(GPIO_MATRIX_CONST_ONE_INPUT) && defined(GPIO_MATRIX_CONST_ZERO_INPUT)
   q_printf("%% Pins %u and %u are \"virtual\": sources of constant 1/0\r\n",GPIO_MATRIX_CONST_ONE_INPUT,GPIO_MATRIX_CONST_ZERO_INPUT);
-#endif
 
 #if CONFIG_IDF_TARGET_ESP32
   q_printf("%% Pins <g>34..39</> can be only used as INPUT!\r\n");
@@ -549,20 +560,18 @@ static bool pin_not_exist_notice(unsigned char pin) {
 }
 
 // pin number is in range and is a valid GPIO number?
-//
-static inline bool pin_exist(unsigned char pin) {
-  return (pin == GPIO_MATRIX_CONST_ONE_INPUT || 
-          pin == GPIO_MATRIX_CONST_ZERO_INPUT ||
-        ((pin < NUM_PINS) && (((uint64_t)1 << pin) & SOC_GPIO_VALID_GPIO_MASK)))  ? true
-                                                                                  : pin_not_exist_notice(pin);
-}
-
-// Same as above but does not print anything to terminal
 static inline bool pin_exist_silent(unsigned char pin) {
   return  pin == GPIO_MATRIX_CONST_ONE_INPUT || 
           pin == GPIO_MATRIX_CONST_ZERO_INPUT ||
         ((pin < NUM_PINS) && (((uint64_t)1 << pin) & SOC_GPIO_VALID_GPIO_MASK));
 }
+
+
+static inline bool pin_exist(unsigned char pin) {
+  return pin_exist_silent(pin) ? true
+                               : pin_not_exist_notice(pin);
+}
+
 
 // Check if pin can be used as a wakeup sorce in command "nap alarm"
 static bool pin_can_wakeup(uint8_t pin) {
@@ -591,39 +600,36 @@ static bool pin_can_wakeup(uint8_t pin) {
   return false;
 }
 
-// save pin state.
-// there is an array Pins[] which is used for that. Subsequent saves rewrite previous save.
-// pin_load() is used to load pin state from Pins[]
+// save pin to internal register
 //
 static void pin_save(int pin) {
 
   bool pd, pu, ie, oe, od, slp_sel;
   uint32_t drv, fun_sel, sig_out;
 
-  if (pin == GPIO_MATRIX_CONST_ONE_INPUT || pin == GPIO_MATRIX_CONST_ZERO_INPUT)
-    return;
-  
+  if (pin_isreal(pin)) {
 
-  pin_get_io_config(pin, &pu, &pd, &ie, &oe, &od, &drv, &fun_sel, &sig_out, &slp_sel);
+    pin_get_io_config(pin, &pu, &pd, &ie, &oe, &od, &drv, &fun_sel, &sig_out, &slp_sel);
 
-  //Pin peri connections:
-  // If fun_sel == PIN_FUNC_GPIO then sig_out is the signal ID
-  // to route to the pin via GPIO Matrix.
+    //Pin peri connections:
+    // If fun_sel == PIN_FUNC_GPIO then sig_out is the signal ID
+    // to route to the pin via GPIO Matrix.
 
-  Pins[pin].sig_out = sig_out;
-  Pins[pin].fun_sel = fun_sel;
-  Pins[pin].bus_type = perimanGetPinBusType(pin);
+    Pins[pin].sig_out = sig_out;
+    Pins[pin].fun_sel = fun_sel;
+    Pins[pin].bus_type = perimanGetPinBusType(pin);
 
-  //save digital value for OUTPUT GPIO
-  if (Pins[pin].bus_type == ESP32_BUS_TYPE_GPIO && oe)
-    Pins[pin].value = (digitalForceRead(pin) == HIGH);
+    //save digital value for OUTPUT GPIO
+    if (Pins[pin].bus_type == ESP32_BUS_TYPE_GPIO && oe)
+      Pins[pin].value = (digitalForceRead(pin) == HIGH);
 
-  Pins[pin].flags = 0;
-  if (pu) Pins[pin].flags |= PULLUP;
-  if (pd) Pins[pin].flags |= PULLDOWN;
-  if (ie) Pins[pin].flags |= INPUT;
-  if (oe) Pins[pin].flags |= OUTPUT_ONLY;
-  if (od) Pins[pin].flags |= OPEN_DRAIN;
+    Pins[pin].flags = 0;
+    if (pu) Pins[pin].flags |= PULLUP;
+    if (pd) Pins[pin].flags |= PULLDOWN;
+    if (ie) Pins[pin].flags |= INPUT;
+    if (oe) Pins[pin].flags |= OUTPUT_ONLY;
+    if (od) Pins[pin].flags |= OPEN_DRAIN;
+  }
 }  
 
 // Reset & set to GPIO_Matrix 
@@ -639,36 +645,33 @@ static void pin_reset(int pin) {
 //
 static void pin_load(int pin) {
 
+  if (pin_isreal(pin)) {
 
-  if (pin == GPIO_MATRIX_CONST_ONE_INPUT || pin == GPIO_MATRIX_CONST_ZERO_INPUT)
-    return;
-  
+    // 1. restore pin mode
+    pinForceMode(pin, Pins[pin].flags);
 
-  // 1. restore pin mode
-  pinForceMode(pin, Pins[pin].flags);
-
-  //2. attempt to restore peripherial connections:
-  //   If pin was not configured or was simple GPIO function then restore it to simple GPIO
-  //   If pin had a connection through GPIO Matrix, restore IN & OUT signals connection
-  if (Pins[pin].fun_sel != PIN_FUNC_GPIO) {
-    pin_set_iomux_function(pin,Pins[pin].fun_sel);
-  }
-  else {
-    if (Pins[pin].bus_type == ESP32_BUS_TYPE_INIT || Pins[pin].bus_type == ESP32_BUS_TYPE_GPIO) {
-      gpio_pad_select_gpio(pin);
-
-      // restore digital value
-      if ((Pins[pin].flags & OUTPUT_ONLY) && (Pins[pin].bus_type == ESP32_BUS_TYPE_GPIO))
-        digitalForceWrite(pin, Pins[pin].value ? HIGH : LOW);
+    //2. attempt to restore peripherial connections:
+    //   If pin was not configured or was simple GPIO function then restore it to simple GPIO
+    //   If pin had a connection through GPIO Matrix, restore IN & OUT signals connection
+    if (Pins[pin].fun_sel != PIN_FUNC_GPIO) {
+      pin_set_iomux_function(pin,Pins[pin].fun_sel);
     } else {
-      // unfortunately this will not work with Arduino :(
-      // Once lost, matrix connections can not be properly restored because of Periman's deinit, which uninstall drivers
+      if (Pins[pin].bus_type == ESP32_BUS_TYPE_INIT || Pins[pin].bus_type == ESP32_BUS_TYPE_GPIO) {
+        gpio_pad_select_gpio(pin);
+
+        // restore digital value
+        if ((Pins[pin].flags & OUTPUT_ONLY) && (Pins[pin].bus_type == ESP32_BUS_TYPE_GPIO))
+          digitalForceWrite(pin, Pins[pin].value ? HIGH : LOW);
+      } else {
+        // unfortunately this will not work with Arduino :(
+        // Once lost, matrix connections can not be properly restored because of Periman's deinit, which uninstall drivers
 #if 0      
-      if (Pins[pin].flags & OUTPUT_ONLY)
-        gpio_matrix_out(pin, Pins[pin].sig_out, false, false);
-      if (Pins[pin].flags & INPUT)
-        gpio_matrix_in(pin, Pins[pin].sig_out, false);
+        if (Pins[pin].flags & OUTPUT_ONLY)
+          gpio_matrix_out(pin, Pins[pin].sig_out, false, false);
+        if (Pins[pin].flags & INPUT)
+          gpio_matrix_in(pin, Pins[pin].sig_out, false);
 #endif        
+      }
     }
   }
 }
@@ -745,7 +748,7 @@ static int cmd_show_pin(int argc, char **argv) {
 
       // Check for special pin numbers.
       // Virtual GPIO
-      if (pin == GPIO_MATRIX_CONST_ONE_INPUT || pin == GPIO_MATRIX_CONST_ZERO_INPUT) 
+      if (pin_isvirtual(pin)) 
         q_printf("%% GPIO%u is <u><b>virtual pin</>, source of constant \"%d\"\r\n"
                 "%% Can be used in \"pin %u matrix ...\" command\r\n",
                 pin, 
@@ -972,8 +975,7 @@ static int cmd_pin_matrix(int argc, char **argv,unsigned int pin, unsigned int *
     // Disconnect OUT signal, by attaching new "Simple GPIO Output" signal
     gpio_matrix_out(pin, SIG_GPIO_OUT_IDX, false, false);
   }
-  
-
+ 
   return 0;
 }
 

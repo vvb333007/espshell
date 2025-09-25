@@ -207,6 +207,9 @@ static int cmd_uart_up(int argc, char **argv) {
   if (!pin_exist((tx = q_atol(argv[2], BAD_PIN))))
     return 2;
 
+  if (pin_isvirtual(rx) || pin_isvirtual(tx))
+    return CMD_FAILED;
+
   if ((speed = q_atol(argv[3], 0)) == 0)
     return 3;
 

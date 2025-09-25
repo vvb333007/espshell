@@ -47,6 +47,7 @@ typedef struct argcargv argcargv_t;
 static mutex_t argv_mux = MUTEX_INIT;
 
 // Increase refcounter on argcargv structure. a == NULL is ok
+// TODO: refactor to lockless
 static void userinput_ref(argcargv_t *a) {
   if (a) {
     mutex_lock(argv_mux);
@@ -169,13 +170,14 @@ void userinput_show(argcargv_t *aa) {
     }
   }
 }
-
+#if 0
 // Redisplay user input & prompt. 
 // TODO: unused for now: causes glitches; have to dive deeper in editline lib
 void userinput_redraw() {
   redisplay(); 
   TTYflush();
 }
+#endif
 
 // Find corresponding command handler (cmd_..) for given argv[0]
 // and put it to /aa->gpp/
@@ -312,14 +314,37 @@ static int64_t read_timespec(int argc, char **argv, int start, int *stop) {
 }
 
 #if WITH_TIME
-// time set 983745938743
-// time set 1978
-// time set 31
-// time set 1978 31 april
-// time set 11:31:31 am
-// time set 21:31 april 25
+
+// "12:3" "01:02:33" "1:1:1"
 //
-// TODO: move to userinput.h
+static bool read_hms(const char *p, int8_t *h, int8_t *m, int8_t *s) {
+
+  int8_t hms[3] = { 0 }, i = 0;
+
+  while (*p) {
+    if (*p == ':') {
+      if (++i > 2)
+        return false;
+    } else if (*p >= '0' && *p <= '9')
+      hms[i] = hms[i] * 10 + (*p - '0');
+    else
+      return false;
+    ++p;
+  }
+
+  if (h) *h = &hms[0];
+  if (m) *m = &hms[1];
+  if (s) *s = &hms[2];
+
+  return true;
+}
+
+//
+// "1978"
+// "31"
+// "1978 31 april"
+// "11:31:31 am"
+// "11:31 april am 1978 25"
 //
 static time_t read_datime(int argc, char **argv, int start, int *stop) {
 

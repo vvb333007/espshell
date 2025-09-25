@@ -366,6 +366,9 @@ static int cmd_count(int argc, char **argv) {
   if (!pin_exist((pin = q_atol(argv[1], 255))))
     return 1; // arg1 is bad
 
+  if (pin_isvirtual(pin))
+    return 1;
+
   // "count X clear" command?
   if (argc > 2)
     if (!q_strcmp(argv[2],"clear"))

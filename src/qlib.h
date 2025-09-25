@@ -563,7 +563,7 @@ static inline __attribute__((const)) const char *number_english_ending(unsigned 
 // rights, only boundaries are checked.
 // sizeof(unsigned int) == sizeof(void *) is ensured in espshell.c static_asserts section
 //
-bool __attribute__((const)) is_valid_address(const void *addr, unsigned int count) {
+static bool __attribute__((const)) is_valid_address(const void *addr, unsigned int count) {
   
   return  ((unsigned int)addr >= 0x20000000) && ((unsigned int)addr + count <= 0x80000000);
 }

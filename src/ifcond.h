@@ -38,13 +38,15 @@
 // are *persistent pointers*. This guarantees they always point to valid memory.
 //
 // TODO: if var_name1|imm    eq|lt|gt|le|ge|ne    imm|var_name2 poll NUM ... exec
-//
+// TODO: refactor to use read_timespec
+// TODO: "if wifi", "if ip" - wifi and ip events catcher
+
 #ifdef COMPILING_ESPSHELL
 #if WITH_ALIAS
 
 // ifcond: this is what "if rising 5 low 6 high 10 ..." or "every 1 day ..." commands are parsed into.
 //
-// There are lists of ifconds per every pin: ifconds[0..NUM_PINS-1]) and these  are for "if rising|falling X ... "
+// There are list of ifconds for every pin: ifconds[0..NUM_PINS-1]) and these  are for "if rising|falling X ... "
 //       ifconds on a list are always belong to the same pin
 // There is a list of "polled" ifconds: ifconds[NO_TRIGGER], and these are for "if low|high X ... poll ..."
 // There is a list of "every" ifconds: ifconds[EVERY_IDX], and these are for "every ..."
@@ -79,7 +81,7 @@ struct ifcond {
   uint32_t high1;           // GPIO 32..63: ...
   uint32_t low;             // GPIO 0..31: bit X set == GPIO X must be LOW for condition to match
   uint32_t low1;            // GPIO 32..63: ...
-
+//TODO: members accessed from an ISR must be volatile
   uint32_t hits;            // number of times this condition was true
   uint32_t drops;           // number of times alias was not executed (rate-limited or max-exec-limited)
   uint64_t tsta;            // timestamp, microseconds. time when condition matched
@@ -632,6 +634,7 @@ static char *q_strtime(uint32_t seconds) {
 }
 
 // Display 5 digit number as is, but after 99999 display ">99999"
+// WARNING: returns static buffer, not reentrant!
 static char *q_strnum_sat(uint32_t num) {
   static char buf[8] = { 0 };
   if (num > 99999)
@@ -1305,7 +1308,7 @@ static int cmd_if(int argc, char **argv) {
     if (rising || argv[1][0] == 'f') {
       if ((trigger_pin = q_atoi(argv[2], NO_TRIGGER)) == NO_TRIGGER)
         return 2;
-      if (!pin_exist(trigger_pin))
+      if (!pin_exist(trigger_pin) || pin_isvirtual(trigger_pin))
         return 2;
       cond_idx += 2;
     }
@@ -1322,7 +1325,7 @@ static int cmd_if(int argc, char **argv) {
       if ((pin = q_atoi(argv[cond_idx + 1], NO_TRIGGER)) == NO_TRIGGER)
         return cond_idx + 1;
 
-      if (!pin_exist(pin))
+      if (!pin_exist(pin) || pin_isvirtual(pin))
         return cond_idx + 1;
 
       // Every GPIO which is used in a condition test must be readable, i.e. INPUT-enabled

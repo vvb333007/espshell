@@ -10,16 +10,16 @@
  * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
-// TODO: IMPORTANT: when padding, use zero rmt item, so user input will not be altered
 //  -- RMT Sequences --
 //
 // THERMINOLOGY: A "level" : either logic 1 or logic 0 for a duration of X ticks
 //               A "pulse" : two levels: e.g. logic 0 for X ticks THEN logic 1 for Y ticks
 //               "bits"    : user defined asciiz string consisting of "1" and "0"
+//               "bytes"   : user defined asciiz string representing a byte string: "1af4c675..."
 //                 "one"   : what is "1" - can be a simple level or a pulse
 //                 "zero"  : what is "0" -        -- // --
 //               "levels"  : manually entered levels (instead of entering "bits", "one" and "zero")
-//                           NOTE: when used, "bits"gets compiled to "levels" automatically
+//                           NOTE: when used, "bits"/"bytes" are compiled to "levels" automatically
 //           "modulation"  : levels can be modulated with a carrier frequency. either 1's or 0's gets modulated
 //                  "eot"  : End OF Transmission behaviour - hold line HIGH or LOW after the transmission is done
 //
@@ -30,6 +30,10 @@
 // These are used by "sequence X" command (and by a sequence subdirectory
 // commands as well) (see seq_...() functions and cmd_sequence_if() function)
 //
+
+// TODO: When padding, use zero rmt item, so user input will not be altered
+// TODO: RMT RX, RMT decode
+// TODO: profiles (nec, lg, samsung)
 
 #if COMPILING_ESPSHELL
 
@@ -102,20 +106,21 @@ static void seq_freemem(int seq) {
 
 // initialize/reset sequences to default values
 //
-static void __attribute__((constructor)) seq_init() {
-
+static void __attribute__((constructor)) _seq_init() {
+  rmt_data_t zero = { 0 };
   for (int i = 0; i < SEQUENCES_NUM; i++) {
     sequences[i].tick = 1;
     seq_freemem(i);
-    sequences[i].alph[0].duration0 = sequences[i].alph[0].duration1 = 0;
-    sequences[i].alph[1].duration0 = sequences[i].alph[1].duration1 = 0;
-    sequences[i].ht[0].duration0 = sequences[i].ht[0].duration1 = 0;
-    sequences[i].ht[1].duration0 = sequences[i].ht[1].duration1 = 0;
+    sequences[i].alph[0] = zero;
+    sequences[i].alph[1] = zero;
+    sequences[i].ht[0] = zero;
+    sequences[i].ht[1] = zero;
     sequences[i].loop_count = SEQ_LOOP_NONE;
   }
 }
 
 // used by "show" command, sends output to the user
+//
 static void seq_show_rmt_symbol(rmt_data_t *sym) {
   if (likely(sym)) {
     if (sym->duration0) {
@@ -148,7 +153,7 @@ static void seq_show(unsigned int seq) {
   struct sequence *s;
 
   if (seq >= SEQUENCES_NUM) {
-    q_printf("%% <e>Sequence %d does not exist</>\r\n", seq);
+    q_printf("%% <e>Sequence %u does not exist</>\r\n", seq);
     return;
   }
 
@@ -417,14 +422,14 @@ static int seq_send(unsigned int pin, unsigned int seq) {
       }
       // success!
     } else {
-#if 0      
-      // Waiting for https://github.com/espressif/arduino-esp32/issues/11731
+#if ESP_ARDUINO_VERSION > ESP_ARDUINO_VERSION_VAL(3,3,0)
+      // waiting for https://github.com/espressif/arduino-esp32/issues/11858
        if (!rmtWriteLoopingCount(pin, s->seq, s->seq_len, seq->loop_count)) {
          HELP(q_print("% RMT failed (rmtWriteLoopingCount)\r\n"));
          return -1;
        }
 #else       
-      q_print("% loop count is not implemented yet, wait for the new Arduino Core\r\n");
+      q_print("% Update your Arduino Core to use this feature\r\n");
       goto run_non_looping;
 #endif      
     }

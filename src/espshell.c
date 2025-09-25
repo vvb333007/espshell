@@ -147,39 +147,28 @@
 // Number of pins available
 #define NUM_PINS SOC_GPIO_PIN_COUNT
 
-
+// Number of UARTs available
+#define NUM_UARTS SOC_UART_NUM
 
 //#define xPRAGMA(string) _Pragma(#string)
 //#define PRAGMA(string) xPRAGMA(string)
 //#define WD() PRAGMA(GCC diagnostic ignored "-Wformat")
 
-
-
 // -- Miscellaneous forwards.
-
-// block current task, wait for signal from another task or from an ISR.
-// Timeout value less than 1 means infinite timeout. Declared in task.h
+void STARTUP_HOOK espshell_start();
 static bool task_wait_for_signal(uint32_t *sig, uint32_t timeout_ms); 
-
-// are we running in espshell task context? (task.h)
 static INLINE bool is_foreground_task();             
-
-// check if UART u is up
-
-#define NUM_UARTS SOC_UART_NUM
 static inline bool uart_isup(unsigned char u);       
-
-// check if address is in range 0x20000000 .. 0x80000000. Declared in qlib.h
-bool __attribute__((const)) is_valid_address(const void *addr, unsigned int count); 
-
-static int q_strcmp(const char *, const char *);     // loose strcmp
-static int PRINTF_LIKE q_printf(const char *, ...);  // printf()
-static int q_print(const char *);                    // puts()
-
-static int   q_touch(const char *);                  // see filesystem.h
-static FILE *files_fopen(const char *, const char *);// ..
-
+static bool __attribute__((const)) is_valid_address(const void *addr, unsigned int count); 
+static int q_strcmp(const char *, const char *);
+static int PRINTF_LIKE q_printf(const char *, ...);
+static int q_print(const char *);
+static NORETURN void must_not_happen(const char *message, const char *file, int line);
+static int   q_touch(const char *);
+static FILE *files_fopen(const char *, const char *);
 static bool pin_is_input_only_pin(int pin);
+static bool inline __attribute__((const)) pin_isreal(uint8_t const pin);
+static bool inline __attribute__((const)) pin_isvirtual(uint8_t const pin);
 static bool pin_exist(unsigned char pin);
 static bool pin_exist_silent(unsigned char pin);
 static bool pin_is_reserved(unsigned char pin);
@@ -193,12 +182,6 @@ static INLINE bool esp_gpio_is_pin_reserved(unsigned int gpio) {
 }
 #endif
 
-
-
-static NORETURN void must_not_happen(const char *message, const char *file, int line);
-
-void STARTUP_HOOK espshell_start();
-
 // Globals & string constants
 //
 // "Context": an user-defined value (a number or a pointer) which is set by change_command_directory() when 
@@ -206,6 +189,7 @@ void STARTUP_HOOK espshell_start();
 // This is how command "uart 1" passes its argument  (the number "1") to the subtree commands like "write" or "read". 
 // Used to store: sequence number, uart,i2c interface number, probably something else
 // NOTE: every espshell task has its own copy of this variable: it is a thread-specific variable
+// TODO: use "void *" instead of "unsigned int" (64-bit safe code)
 static __thread unsigned int Context = 0;
 
 // Macros to set/get Context values. Since it is a simple C typecast here, make sure that
@@ -218,14 +202,15 @@ static __thread unsigned int Context = 0;
 #define context_set(_New)    { Context = (__typeof__(Context))_New; }
 
 
-// Currently used prompt.
+// Currently used prompt. It is shared between tasks
+static const char * prompt = PROMPT;
+
 // Prompts are locally maintained by modules, usually as a static buffer declared on a stack. As a result we don't have
 // to allocate/free memory for the prompt but it also creates problems when multiple threads try to set their prompts.
 // Fortunately, background tasks are NOT allowed to change the prompt
 //
-static const char * prompt = PROMPT;
-
 static void prompt_set(const char *new_prompt) {
+  
   if (is_foreground_task()) {
     //VERBOSE(q_printf("%% Changing prompt from %s to %s\r\n", prompt, new_prompt));
     prompt = new_prompt ? new_prompt : PROMPT;
@@ -601,7 +586,7 @@ static  void espshell_initonce() {
     convar_add(cam_ledc_timer);    // Avoiding interference: ESP32 TIMER used by ESPCAM
 #endif
     // init subsystems
-    seq_init();
+    //seq_init();
 
    // task_new(test1_task, NULL, "test1");
    // task_new(test2_task, NULL, "test2");
