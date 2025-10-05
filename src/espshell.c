@@ -11,15 +11,15 @@
  */
 
 // HELLO DEAR RANDOM PROGRAMMER!
-// ACTUAL SOURCE CODE IS IN .H FILES. 
-// THIS FILE JUST JOINS ALL MODULES TOGETHER
-
+// ACTUAL SOURCE CODE IS IN .H FILES (SCROLL DOWN TO LINE 256) 
+// THIS FILE JUST JOINS ALL MODULES TOGETHER, DEFINES GLOBALS, DECLARES FORWARDS AND PROCESSES USER INPUT
+// Flow: espshell_start() -> espshell_task() -> readline() -> espshell_command()
+//
 #define COMPILING_ESPSHELL 1
 
-
-// enable -Wformat warnings. Turned off by Arduino IDE by default.
 #pragma GCC diagnostic warning "-Wformat"  
 #pragma GCC optimize ("O2")
+//#pragma GCC optimize ("Os")
 
 // Limits
 #define CONSOLE_UP_POLL_DELAY 1000     // 1000ms. How often to check if Serial is up
@@ -35,7 +35,8 @@
 #define ESPSHELL_MAX_CNLEN 10          // Maximum length (strlen()) of a command name. 
                                        // NOTE!! If you change this, make sure initializer string is changed too in question.h:help_command_list()
 
-// Prompts used by command subdirectories. Must be not longer than MAX_PROMPT_LEN
+// Prompts used by command subdirectories.
+// Must be not longer than MAX_PROMPT_LEN, except for PROMPT_FILES which can be up to MAX_PATH
 #define PROMPT "esp32#>"                // Main prompt
 #define PROMPT_I2C "esp32-i2c%u>"       // I2C prompt
 #define PROMPT_SPI "esp32-spi%u>"       // SPI prompt
@@ -45,6 +46,8 @@
 #define PROMPT_SEARCH "Search: "        // History search prompt
 #define PROMPT_ESPCAM "esp32-cam>"      // ESPCam settings directory
 #define PROMPT_ALIAS "esp32-alias>"     // Alias editing directory.
+#define PROMPT_WIFISTA "esp32-sta>"     // WiFi STA
+#define PROMPT_WIFIAP "esp32-ap>"       // WiFi SoftAP
 
 // Includes. Lots of them.
 // classic C
@@ -154,7 +157,7 @@
 //#define PRAGMA(string) xPRAGMA(string)
 //#define WD() PRAGMA(GCC diagnostic ignored "-Wformat")
 
-// -- Miscellaneous forwards.
+// -- Miscellaneous forwards, which can not be otherwhise resolved by rearrangement of #includes below
 void STARTUP_HOOK espshell_start();
 static bool task_wait_for_signal(uint32_t *sig, uint32_t timeout_ms); 
 static INLINE bool is_foreground_task();             
@@ -187,10 +190,11 @@ static INLINE bool esp_gpio_is_pin_reserved(unsigned int gpio) {
 // "Context": an user-defined value (a number or a pointer) which is set by change_command_directory() when 
 // switching to new command subtree. 
 // This is how command "uart 1" passes its argument  (the number "1") to the subtree commands like "write" or "read". 
-// Used to store: sequence number, uart,i2c interface number, probably something else
-// NOTE: every espshell task has its own copy of this variable: it is a thread-specific variable
-// TODO: use "void *" instead of "unsigned int" (64-bit safe code)
-static __thread unsigned int Context = 0;
+// Used to store: sequence number, uart,i2c interface number,pointer to aliases, probably something else
+//
+// NOTE: thread-local variable
+//
+static __thread uintptr_t Context = 0;
 
 // Macros to set/get Context values. Since it is a simple C typecast here, make sure that
 // arguments you pass are convertible to "unsigned int" (4 bytes)
@@ -202,12 +206,10 @@ static __thread unsigned int Context = 0;
 #define context_set(_New)    { Context = (__typeof__(Context))_New; }
 
 
-// Currently used prompt. It is shared between tasks
+// Currently used prompt. It is shared between tasks, but only foreground tasks are allowed to change it
 static const char * prompt = PROMPT;
 
-// Prompts are locally maintained by modules, usually as a static buffer declared on a stack. As a result we don't have
-// to allocate/free memory for the prompt but it also creates problems when multiple threads try to set their prompts.
-// Fortunately, background tasks are NOT allowed to change the prompt
+// Prompts are locally maintained by modules, usually as a static buffer declared on a stack.
 //
 static void prompt_set(const char *new_prompt) {
   
@@ -298,6 +300,9 @@ static int espshell_command(char *p, argcargv_t *aa);
 #include "espcam.h"             // Camera support
 #include "alias.h"
 #include "ifcond.h"
+#if WITH_WIFI
+#include "wifi0.h"
+#endif
 #if WITH_TIME
 #include "time0.h"
 #endif
@@ -587,6 +592,7 @@ static  void espshell_initonce() {
 #endif
     // init subsystems
     //seq_init();
+    //nv_init_once(); 
 
    // task_new(test1_task, NULL, "test1");
    // task_new(test2_task, NULL, "test2");

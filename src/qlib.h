@@ -27,6 +27,8 @@
 //       hex2uint32 to convert pointers (user input, e.g. TASK_ID) to uint32_t which is not portable
 //       across 32/64 bit architectures.
 //
+// TODO: consider implementing q_delay via NotifyWait: then every q_delay becomes interruptible and we can get rid
+//       of this ugly delay_interruptible() logic? How to implement keypress interruption then?
 #if COMPILING_ESPSHELL
 
 #include <stdatomic.h>
@@ -924,17 +926,21 @@ static bool ishex(const char *p) {
 }
 
 // check only first 1-2 bytes (not counting "0x" if present)
-// 
+// TODO: refactor to decrease number of branches
 static bool ishex2(const char *p) {
 
   if (likely(p && *p)) {
-    if (p[0] == '0' && p[1] == 'x')
+    if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X'))
       p += 2;
 
-    if ((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F')) {
+    if ((*p >= '0' && *p <= '9') ||
+        (*p >= 'a' && *p <= 'f') ||
+        (*p >= 'A' && *p <= 'F')) {
       p++;
-      if ((*p == 0) || (*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F'))
-        return true;
+      if ((*p == 0) ||
+          (*p >= '0' && *p <= '9') ||
+          (*p >= 'a' && *p <= 'f') ||
+          (*p >= 'A' && *p <= 'F')) return true;
     }
   }
   return false;
@@ -990,9 +996,9 @@ static bool q_isnumeric(const char *p) {
   return false;
 }
 
-//convert hex ascii byte.
-//strings "A", "5a" "0x5a" are all valid input
-
+// Convert hex ascii byte, unrolled
+// Strings "A", "5a" "0x5a" are all valid input
+//
 static unsigned char hex2uint8(const char *p) {
 
   unsigned char f = 0, l;  //first and last
@@ -1007,8 +1013,8 @@ static unsigned char hex2uint8(const char *p) {
     f = *p++;
     // Code below will treat any unexpected symbol (e.g. letter "k") as a zero;
     // Thus strings like "0xKK" will convert to 0, "0xAZ" -> 0xa0, "0xZA" -> 0x0a
-    f = f - (f >= 'A' && f <= 'F' ? 'A' 
-                                  : (f >= 'a' && f <= 'f' ? 'a' 
+    f = f - (f >= 'A' && f <= 'F' ? ('A' - 10) 
+                                  : (f >= 'a' && f <= 'f' ? ('a' - 10)
                                                           : (f >= '0' && f <= '9' ? '0' 
                                                                                   : f )));
     f <<= 4;
@@ -1017,8 +1023,8 @@ static unsigned char hex2uint8(const char *p) {
   l = *p++;
   // Code below expands either to a number or, if input was incorrect, zero is returned
   // This leads to equaliuty between "0", "0x" and "0x0" - all of these strings get converted to zero
-  l = l - (l >= 'A' && l <= 'F' ? 'A' 
-                                : (l >= 'a' && l <= 'f' ? 'a' 
+  l = l - (l >= 'A' && l <= 'F' ? ('A' - 10)
+                                : (l >= 'a' && l <= 'f' ? ('a' - 10)
                                                         : (l >= '0' && l <= '9' ? '0' 
                                                                                 : l )));
   return f | l;
@@ -1112,6 +1118,31 @@ static unsigned int binary2uint32(const char *p) {
   }
   return value;
 }
+
+
+// Ascii to MAC address
+// Convert asciiz "  0001:0203:0405" or "01 02 03:04 05 06" to /unsigned char[6]/
+//
+static bool q_atomac(const char *text, unsigned char *out) {
+
+  int k = 0;
+  unsigned char out0[6];
+
+  if (!out)
+    out = out0;
+
+  if (likely(text)) {
+    while(*text && k < 6) {
+      if (ishex2(text)) {
+        out[k++] = hex2uint8(text);
+        text++;
+      }
+      text++;
+    }
+  }
+  return k == 6;
+}
+
 
 #define DEF_BAD ((unsigned int)(-1))
 
@@ -1427,7 +1458,7 @@ static void q_printhex(const unsigned char *p, unsigned int len) {
 // /i/    - first argv to start collecting text from
 // /out/  - allocated buffer
 // Returns number of bytes in buffer /*out/
-//
+// TODO: move to userinput.h, rename to userinput_as_string
 static int text2buf(int argc, char **argv, int i /* START */, char **out) {
 
   int size = 0;
@@ -1485,6 +1516,7 @@ static int text2buf(int argc, char **argv, int i /* START */, char **out) {
   }
   return size;
 }
+
 
 
 // version of delay() which can be interrupted by user input (terminal

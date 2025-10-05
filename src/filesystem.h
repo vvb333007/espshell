@@ -1299,7 +1299,7 @@ static int cmd_files_mount(int argc, char **argv) {
   if (argc > 2) {
     mp = argv[2];
     if (mp[0] != '/') {
-      HELP(q_print("% <e>Mount point must start with \"/\"</>\r\n"));
+      HELP(q_print("% <e>Mount point must begin with \"/\"</>\r\n"));
       return 2;
     }
   } else {

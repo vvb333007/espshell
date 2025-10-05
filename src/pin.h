@@ -24,7 +24,7 @@
 
 // TODO: join flags together if there are no other commands except pinMode:
 // TODO: "pin 2 in out up open" should be converted to single pinForceMode(), not 4
-// TODO: looped commands with no delays must be killable without -9
+
 
 #if COMPILING_ESPSHELL
 
@@ -579,6 +579,7 @@ static bool pin_can_wakeup(uint8_t pin) {
   uint8_t printed = 0;
 
   if (pin_exist(pin) &&
+      pin_isreal(pin) && // pilestain
       esp_sleep_is_valid_wakeup_gpio(pin))
     return true;
 
@@ -586,7 +587,7 @@ static bool pin_can_wakeup(uint8_t pin) {
            "%% Following GPIOs can be used to wake up CPU from sleep:\r\n"
            "%%", pin);
 
-  for (int i = 0; i < 64; i++)
+  for (int i = 0; i < NUM_PINS; i++)
     if (pin_exist_silent(i)) 
       if (esp_sleep_is_valid_wakeup_gpio(i)) {
         q_printf(" %u",i);
@@ -1021,14 +1022,14 @@ static int cmd_pin_loop(int argc, char **argv,unsigned int pin, unsigned int *st
 // "pin NUM arg1 arg2 .. argn"
 //
 // Big fat "pin" command. Processes multiple arguments
-// TODO: do some sort of caching in case of a looped commands: we don't need all these q_atol() and q_atrcmp() for the second, third whatever pass
+// TODO: Caching of arguments for looped commands
+// TODO: join flags where possible to single call
 //
-
 static int cmd_pin(int argc, char **argv) {
 
 // Shortcut to access individual characters in argv[i]
 // First character is guaraneed by userinput_tokenize() : tokens are at least 1 character long
-// Second character is guaranteed : if w have only 1 character then second character is '\0'
+// Second character is guaranteed : if we have only 1 character then second character is '\0'
 #define X(_Index) argv[i][_Index]
 
   unsigned int  flags = 0, // Flags to set (i.e. OUTPUT ,INPUT, OPEN_DRAIN, PULL_UP, PULL_DOWN etc)
@@ -1050,21 +1051,21 @@ static int cmd_pin(int argc, char **argv) {
   if (!pin_exist((pin = q_atol(argv[1], DEF_BAD)))) 
     return 1;
 
-  // Repeat whole "pin" command /count/ times; /count/ can be set by the "loop" keyword
+  
+  bool seen_delay = false; // seen "delay" keyword?
+
+  // Repeat whole "pin" command /count/ times; /count/ can be set by the "loop" keyword.
   while ( true ) {
 
     // Run through "pin NUM arg1, arg2 ... argN" arguments, looking for keywords to execute.
-    // Abort if there were errors during next keywords processing. TODO: make "abort" be selectable
+    // Abort if there were errors during next keywords processing. TODO: make "abort"/"gnore" be selectable
     while (i < argc) {
 
       int ret;
       bool has3;  // do we have 3 letters of the keyword?
       unsigned char level;  // used by "low", "high"
 
-      // X() is the currently processed argv element. X(I) means Ith character of currently processed argv;
-      // We want to be sure in just first 3 characters: a minimum which is enough to distinguish between
-      // all "pin" keywords
-      
+      // has3 == true if memory at argv[i][2] is readable (possibly containing '\0')
       has3 = (X(1) && X(2));
 
       // Decode next keyword by looking at certain characters
@@ -1100,8 +1101,10 @@ static int cmd_pin(int argc, char **argv) {
                       informed = true;
                       HELP(q_print("% <g>Hint: Press [Enter] to interrupt the command</>\r\n"));
                     }
+                    seen_delay = true;
                     // Was interrupted by a keypress or by the "kill" command? Abort whole command then.
                     if (delay_interruptible(duration) != duration) {
+has_been_interrupted:                      
                       HELP(q_printf("%% Command \"%s\" has been interrupted\r\n", argv[0]));
                       // TODO: return CMD_FAILED ?
                       return 0;
@@ -1116,7 +1119,7 @@ static int cmd_pin(int argc, char **argv) {
                   } else {
         // high
                     level = 1;
-    pin_set_level:
+pin_set_level:
                     if (pin_is_input_only_pin(pin)) {
                       q_printf("%% <e>Pin %u is **INPUT-ONLY**, can not be set \"%s\"</>\r\n", pin, argv[i]);
                       return i;
@@ -1197,7 +1200,7 @@ static int cmd_pin(int argc, char **argv) {
                       return ret;
                   } else
         // save
-                    pin_save(pin);
+                  pin_save(pin);
                   break;
         // toggle
         case 't' :
@@ -1214,14 +1217,6 @@ static int cmd_pin(int argc, char **argv) {
       i++;  // next keyword
     }       // big fat "while (i < argc)"
 
-    // Give a chance to cancel whole command if it is looped, before going for the next cycle
-    // Anykey press, but only if it is a foreground process: bg commands are killed by "kill"
-    if (is_fore)
-      if (anykey_pressed()) {
-        HELP(q_print("% Key pressed, aborting..\r\n"));
-        break;
-      }
-
     // Only decrement and check count value if it is not zero.
     // Value of zero means "infinity" so while() loop must be infinite as well
     if (count)
@@ -1230,9 +1225,27 @@ static int cmd_pin(int argc, char **argv) {
 
     // prepare to start over again from argv[1]      
     i = 1;
+
+    // A killpoint for looped foreground commands:
+    // Give a chance to cancel whole command if it is looped, before going for the next cycle
+    // TODO: only if there were no "delay" which is TOO_LONG
+    if (is_fore) {
+      if (anykey_pressed())
+        goto has_been_interrupted;
+    } else
+    // A killpoint for looped bg commands, which have no "delay" statement
+    // e.g. "pin 2 low high loop infinite &". Otherwise we have to "kill -9" instead of "kill".
+    // A killpoint decreases "pin 2 low high loop infinite &" performance from 354kHz down to 151kHz
+    if (!seen_delay) {
+      uint32_t sig = 0;
+      if (task_wait_for_signal(&sig,0))
+        if (sig == SIGNAL_TERM)
+          goto has_been_interrupted;
+    }
   } // while ( true )
   return 0;
 #undef X
 }
+
 
 #endif // #if COMPILING_ESPSHELL

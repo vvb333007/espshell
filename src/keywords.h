@@ -142,6 +142,7 @@ static int cmd_show_ifs(int, char **);
 static int cmd_show(int, char **);
 static int cmd_show_pin(int, char **);
 #if WITH_TIME
+#  error "time0.h module is not ready yet. Not sure if it even compiles. Turn WITH_TIME off"
 static int cmd_show_time(int, char **);
 #endif
 static int cmd_show_sequence(int, char **);
@@ -160,7 +161,7 @@ static int cmd_colors(int, char **);
 static int cmd_tty(int, char **);
 static int cmd_hostid(int, char **);
 
-
+// Alias commands
 #if WITH_ALIAS
 static int cmd_alias_if(int, char **);
 static int cmd_alias_quit(int, char **);
@@ -173,83 +174,46 @@ static int cmd_alias_asterisk(int, char **);
 static int cmd_time(int, char **);
 #endif
 
+#if WITH_WIFI
+static int cmd_wifi_if(int, char **);
+static int cmd_wifi_scan(int, char **);
+static int cmd_wifi_mac(int, char **);
+#endif
 
-// -- Shell Commands --
+
+// -- Commands and Subdirectories --
 //
-// ESPShell commands are entries to /keywords_.../ arrays. Each entry starts and ends with "{" and "}" brackets.
-// Command keyword, command handler function and expected number of arguments are on the same line as opening brace
-// Help lines (/full/ and /brief/) are enclosed with HELPK macro which expands to empty strings if ESPShell is compiled
-// with its help system off (see WITH_HELP flag in espshell.h)
+// ESPShell commands are defined as entries in the /keywords_.../ arrays.  
+// Each entry starts and ends with "{" and "}" braces.  
+// The command keyword, its handler function, and the expected number of arguments
+// are placed on the same line as the opening brace.  
 //
-// There are number of keyword arrays: 
+// Help text lines (/full/ and /brief/) are wrapped in the HELPK macro, which expands
+// to empty strings if ESPShell is compiled with the help system disabled
+// (see the WITH_HELP flag in espshell.h).
 //
-// keywords_alias    : Alias editor
-// keywords_uart     : UART commands
-// keywords_iic      : I2C commands
-// keywords_spi      : don't use it
-// keywords_sequence : Pulse generator commands
-// keywords_files    : Filesystem commands
-// keywords_main     : Main command directory
-// keywords_camera   : ESP Camera commands
-// 
-// Switching between arrays is possible via change_command_directory() function.
-// To create new commands tree use "uart" keywords below as a template. There are comments explaining the syntax.
-
-#if WITH_ALIAS
-
-KEYWORDS_DECL(alias) {
-
-  KEYWORDS_BEGIN
-    
-  { "delete", cmd_alias_delete, 1,
-    HELPK("% \"<b>delete</> [all | LINE]\"\r\n" 
-          "%\r\n"
-          "% Delete lines from the alias:\r\n"
-          "% 1. No arguments. Means \"delete the last line\"\r\n"
-          "% 2. One argument, keyword \"all\". Deletes all lines\r\n"
-          "% 3. LINE is a line number, (use \"list\" to see line numbers)\r\n" 
-          "% <u>Examples:</>\r\n"
-          "%   <i>delete</>     - Removes last entered command from the alias\r\n"
-          "%   <i>delete all</> - Removes everything\r\n"
-          "%   <i>delete 4</>   - Removes line #4"),
-    HELPK("Delete lines") },
-
-  { "delete", cmd_alias_delete,NO_ARGS, HIDDEN_KEYWORD },
-
-  { "list", cmd_alias_list, NO_ARGS,
-    HELPK("% \"<b>list</>\"\r\n" 
-          "%\r\n"
-          "% Display current alias content"),
-    HELPK("Display content") },
-
-  { "quit", cmd_alias_quit, NO_ARGS,
-    HELPK("% \"<b>quit</>\r\n" 
-          "%\r\n"
-          "% Exit from the alias configuration modes.\r\n"),
-    HELPK("Quit alias editor") },
-
-  // Special entry. Matches any command just as MANY_ARGS matches any number of arguments
-  // The first "*" is what actually matches while "TEXT*" is just a hint for the user
-  { "*TEXT*", cmd_alias_asterisk, MANY_ARGS,
-    HELPK("% \"<b>COMMAND ARG1 ARG2 ... ARGn</>\"\r\n" 
-          "%\r\n"
-          "% Any command with any number of arguments"),
-    HELPK("Add any command to the alias") },
-
-  {
-    NULL, NULL, 0, NULL, NULL
-  }
-};
-
-// Register "alias" command directory (global variable keywords_alias)
-KEYWORDS_REG(alias)
-
-#endif //WITH_ALIAS
-
-
-// UART commands.
-// These are available after executing "uart 2" (or any other uart interface)
-// This subdirectory is a preferred template to create other command trees
+// Several keyword arrays (sometimes called "command trees" or "subdirectories") are defined:
+//
+// keywords_alias    : Alias editor  
+// keywords_uart     : UART commands  
+// keywords_iic      : I2C commands  
+// keywords_spi      : Do not use  
+// keywords_sequence : Pulse generator commands  
+// keywords_files    : Filesystem commands  
+// keywords_main     : Main command directory  
+// keywords_camera   : ESP Camera commands  
+// keywords_wifi     : Dummy tree, used only to highlight the "wifi" command  
+// keywords_ap       : WiFi AP  
+// keywords_sta      : WiFi STA  
+//
+// Switching between arrays is done via the change_command_directory() function.  
+// To create a new command tree, use the "uart" keywords below as a template.  
+// Inline comments explain the syntax.
+//
+//
+// UART commands.  
+// These become available after executing "uart 2" (or any other UART interface).  
+// This subdirectory is the recommended template for creating other command trees.  
 //
 KEYWORDS_DECL(uart) {   // Declares the "uart" command directory.
                         // Creates global (thread-local) variable /keywords_alias/
@@ -265,7 +229,7 @@ KEYWORDS_DECL(uart) {   // Declares the "uart" command directory.
   // { "command_name", handler_func, HIDDEN_KEYWORD },
   //
 
-  // Command "up", requires 3 arguments:
+  // Command "up", requires at least 3 arguments:
   { "up", cmd_uart_up, 3,
     HELPK("% \"<b>up</> <i>RX TX SPEED</> <o>[BITS] [no|even|odd] [1|1.5|2]</>\"\r\n" 
           "%\r\n"
@@ -283,7 +247,7 @@ KEYWORDS_DECL(uart) {   // Declares the "uart" command directory.
           "%   <i>up 18 19 115200 <i>8 even 1.5</> - Eight bits, 1.5 stopbits, even parity" ),
     HELPK("Initialize uart (pins/speed)") },
 
-    // Variants of "up" with 4,5 and 6 arguments
+    // Variants of "up" with 4,5 and 6 arguments: same handler
     { "up", cmd_uart_up, 4, HIDDEN_KEYWORD },
     { "up", cmd_uart_up, 5, HIDDEN_KEYWORD },
     { "up", cmd_uart_up, 6, HIDDEN_KEYWORD },
@@ -324,12 +288,12 @@ KEYWORDS_DECL(uart) {   // Declares the "uart" command directory.
     HELPK("Talk to connected device") },
 
   // Command that accepts any number of arguments, including zero.
-  // If you have several entries with the same command name, which only differs in their required arguments number,
-  // then MANY_ARGS must be the last entry in the group:
-  //
-  // {"write", ... , 1,
-  // {"write", ... , 3,
-  // {"write", ... , MANY_ARGS,  <---- last entry in the "write" group
+  // If you have several entries with the same command name (i.e. a group), which only differ in their
+  // "required arguments number", then the MANY_ARGS entry must be the last entry in the group:
+  // Example:
+  // {"write", ... , 1,          <--- called on "write ARG"
+  // {"write", ... , 3,          <--- called on "write ARG ARG ARG"
+  // {"write", ... , MANY_ARGS,  <--- last entry in the "write" group, called on all other "write" variats
   //
   { "write", cmd_uart_write, MANY_ARGS,
     HELPK("% \"<b>write</> <i>TEXT</>\"\r\n"
@@ -342,12 +306,14 @@ KEYWORDS_DECL(uart) {   // Declares the "uart" command directory.
           "%   <i>write ATI\\n\\rMixed\\20Text and \\20\\21\\ff</>"),
     HELPK("Send bytes over this UART") },
 
-  // Contains common entries (like "exit") and a NULL entry at the very end
-  // If this part is omitted  then NULL entry must be declared manually (see alias subdirectory at the beghinning of this file)
+  // KEYWORDS_END contains common entries (like "exit") and a NULL entry at the very end
+  // If this part is omitted  then NULL entry must be declared manually (see "alias" directory
+  // at the beghinning of this file)
   KEYWORDS_END
 };
 
-// Final step: register our command tree. Skipping of this step does not affect espshell operation.
+// Final step: register our command tree.
+// Skipping of this step does not affect espshell operation (affects colors in command "?" display only)
 KEYWORDS_REG(uart);
 
 //I2C subderictory keywords
@@ -406,8 +372,8 @@ KEYWORDS_DECL(iic) {
 KEYWORDS_REG(iic)
 
 #if WITH_SPI
-//spi subderictory keywords list
-//
+//SPI subderictory keywords
+//No use cases so far, so it is disabled by default
 KEYWORDS_DECL(spi) {
 
   KEYWORDS_BEGIN
@@ -449,7 +415,7 @@ KEYWORDS_DECL(spi) {
 KEYWORDS_REG(spi)
 #endif //WITH_SPI
 
-//'sequence' subderictory keywords list
+//RMT (sequence) subderictory keywords
 //
 KEYWORDS_DECL(sequence) {
 
@@ -642,6 +608,284 @@ KEYWORDS_DECL(sequence) {
   KEYWORDS_END
 };
 KEYWORDS_REG(sequence)
+
+
+
+#if WITH_WIFI
+// Dummy group "wifi".
+// "wifi ap|sta" switches current command directory to either "ap" or "sta", but never to the "wifi"
+// It is here purely for colorer and does not affect espshell operation
+KEYWORDS_DECL(wifi) { 
+  { NULL, NULL, 0, NULL, NULL }
+};
+KEYWORDS_REG(wifi)
+
+// "wifi sta" command subdirectory
+// WiFi STA
+KEYWORDS_DECL(sta) {
+
+  KEYWORDS_BEGIN
+
+  { "up", NULL, NO_ARGS,
+    HELPK("% \"<b>up</>\"\r\n" 
+          "%\r\n"
+          "% Connect to the configured AP. Configuration (e.g., IP, DHCP, NTP) must be done\r\n"
+          "% <u>before</>. Once the interface is \"up\", the settings are locked and can not be\r\n"
+          "% changed on the fly: the interface must be shut down before configuring"),
+    HELPK("Initialize and start WiFi interface") },
+
+  { "down", NULL, NO_ARGS,
+    HELPK("% \"<b>down</>\"\r\n" 
+          "%\r\n"
+          "% Stop & shutdown a WiFi interface"),
+    HELPK("Shutdown WiFi interface") },
+
+  { "scan", cmd_wifi_scan, MANY_ARGS,
+    HELPK("% \"<b>scan</> [<o>active|passive|bssid AABB:CCDD:EEFF]*\"\r\n" 
+          "%\r\n"
+          "% Scan and display available networks.\r\n"
+          "% Performs passive or active scan (default is \"active\") and displays\r\n"
+          "% found networks or, if \"bssid\" is set, displays detailed information on\r\n"
+          "% specific Access Point\r\n"
+          "% <u>Examples</>:\r\n"
+          "% <i>scan</>                          : Active scan (AP probe)\r\n"
+          "% <i>scan passive</>                  : Passive scan (AP sniff)\r\n"
+          "% <i>scan bssid 0001:2233:4455</>     : Active scan of specific AP\r\n"
+          "% <i>scan b 0001:2233:4455 passive</> : Passive scan of specific AP"),
+    HELPK("WiFi scan") },
+
+  { "ntp", NULL, 1,
+    HELPK("% \"<b>ntp</> dhcp|off|<i>SERVER</>\"\r\n" 
+          "%\r\n"
+          "% SNTP configuration:\r\n"
+          "% dhcp    - use SNTP servers from DHCP reply\r\n"
+          "% off     - disable SNTP\r\n"
+          "% SERVER  - use SERVER to get time information from\r\n"
+          "% <u>Examples</>:\r\n"
+          "%   ntp dhcp         - use DHCP to obtain NTP servers\r\n"
+          "%   ntp pool.ntp.org - use pool.ntp.org as NTP server"),
+    HELPK("SNTP settings") },
+
+  { "mac", cmd_wifi_mac, 1,
+    HELPK("% \"<b>mac</> <i>MAC-ADDRESS</>|default\"\r\n" 
+          "%\r\n"
+          "% Set interface MAC address:\r\n"
+          "%\r\n"
+          "% <u>Examples</>:\r\n"
+          "%   mac 0001123456af\r\n"
+          "%   mac 00:01:12:34:56:af\r\n"
+          "%   mac 0001:1234:56af"),
+    HELPK("MAC settings (STAtion)") },
+
+  { "ssid", NULL, 1,
+    HELPK("% \"<b>ssid</> SSID|NUM [<o>pass PASSWORD</>] [<o>retry RETRY_NUM</> | <o>infinite</>]\"\r\n" 
+          "%\r\n"
+          "% Set network name to use, specify password and retry number\r\n"
+          "% <i>SSID</> is either a network SSID, (like \"IoT Network2\") or\r\n"
+          "% <u>a network number</>, which can be obtained during scan\r\n"
+          "% (see \"scan\" command)\r\n"
+          "% <i>PASSWORD</>  is a network password. Omit entirely for open networks\r\n"
+          "% <i>RETRY_NUM</> is the number of connection attempts before giving up\r\n"
+          "%\r\n"
+          "% <u>Examples</>:\r\n"
+          "%   ssid IoT_Network pass 63923zz - connect to network IoT_Network\r\n"
+          "%   ssid 1 pass 63923zz retry 10  - connect to network ID1 (see scan output)\r\n"
+          "%   ssid IoT_Net2 bssid ee00:ee20:0203  - match AccessPoint's mac address\r\n"
+          "%"),
+    HELPK("Remote network SSID") },
+
+    { "ssid", NULL, 3, HIDDEN_KEYWORD },
+    { "ssid", NULL, 5, HIDDEN_KEYWORD },
+
+  { "ip", NULL, 2,
+    HELPK("% \"<b>ip address</> dhcp\"\r\n" 
+          "% \"<b>ip address</> A.B.C.D/PREFIX [gw <o>A.B.C.D</>] [dns <o>A.B.C.D</> [<o>A.B.C.D</>]]\"\r\n" 
+          "%\r\n"
+          "% Set interface IP address to use: static or DHCP\r\n"
+          "% <i>dhcp</>                  : use DHCP to obtain IP information\r\n"
+          "% <i>A.B.C.D/PREFIX</>        : IP address and the prefix length e.g.\r\n"
+          "%   \"192.168.0.1/24\" is 192.168.0.1 and a netmask 255.255.255.0\r\n"
+          "% <i>gw A.B.C.D</> : specify default gateway\r\n"
+          "% <i>dns A.B.C.D [A.B.C.D]</> : specify DNS server(s)\r\n"
+          "%\r\n"
+          "%<u>Examples</>:\r\n"
+          "%   <i>ip address dhcp</>           : Obtain address automatically\r\n"
+          "%   <i>ip address 192.168.0.2/24</> : Static IP with 255.255.255.0 mask\r\n"
+          "%   <i>ip ad 192.168.0.2/24 dns 8.8.8.8</>: Static IP and DNS\r\n"
+          "%   <i>ip ad dhcp dns 8.8.8.8</>    : Dynamic IP and static DNS\r\n"
+          "%   <i>ip ad 192.168.0.2/24 gw 192.168.0.1</>\r\n"
+          "%        : Static IP address and default gateway</>\r\n"
+          "%"),
+    HELPK("IP information") },
+  { "ip", NULL, 4, HIDDEN_KEYWORD },
+  { "ip", NULL, 5, HIDDEN_KEYWORD },
+  { "ip", NULL, 6, HIDDEN_KEYWORD },
+  { "ip", NULL, 7, HIDDEN_KEYWORD },
+
+  KEYWORDS_END
+};
+KEYWORDS_REG(sta)
+
+// WiFi AP
+KEYWORDS_DECL(ap) {
+
+  KEYWORDS_BEGIN
+
+  { "up", NULL, NO_ARGS,
+    HELPK("% \"<b>up</>\"\r\n" 
+          "%\r\n"
+          "% Initialize & start WiFi Access Point"),
+    HELPK("Initialize WiFi interface") },
+
+  { "down", NULL, NO_ARGS,
+    HELPK("% \"<b>down</>\"\r\n" 
+          "%\r\n"
+          "% Stop & shutdown WiFi Access Point"),
+    HELPK("Shutdown WiFi interface") },
+
+  { "scan", cmd_wifi_scan, MANY_ARGS,
+    HELPK("% \"<b>scan</> [<o>active|passive|bssid AABB:CCDD:EEFF]*\"\r\n" 
+          "%\r\n"
+          "% Scan and display available networks.\r\n"
+          "% Performs passive or active scan (default is \"active\") and displays\r\n"
+          "% found networks or, if \"bssid\" is set, displays detailed information on\r\n"
+          "% specific Access Point\r\n"
+          "% <u>Examples</>:\r\n"
+          "% <i>scan</>                          : Active scan (AP probe)\r\n"
+          "% <i>scan passive</>                  : Passive scan (AP sniff)\r\n"
+          "% <i>scan bssid 0001:2233:4455</>     : Active scan of specific AP\r\n"
+          "% <i>scan b 0001:2233:4455 passive</> : Passive scan of specific AP"),
+    HELPK("WiFi scan") },
+
+  { "mac", cmd_wifi_mac, 1,
+    HELPK("% \"<b>mac</> <i>MAC-ADDRESS</>|default\"\r\n" 
+          "%\r\n"
+          "% Set interface MAC address:\r\n"
+          "% NOTE: bit 0 of the first octet of the address must be set to zero\r\n"
+          "%\r\n"
+          "% <u>Examples</>:\r\n"
+          "%   mac 0101123456af       - invalid address (bit 0 is set)\r\n"
+          "%   mac 0001123456af       - valid address\r\n"
+          "%   mac 00:01:12:34:56:af  - Microsoft style\r\n"
+          "%   mac 0001:1234:56af     - Cisco style"),
+    HELPK("MAC settings (Access Point)") },
+
+  { "ssid", NULL, 1,
+    HELPK("% \"<b>ssid</> SSID [<o>pass PASSWORD</>] [<o>max-conn NUM</>]\"\r\n" 
+          "%\r\n"
+          "% Set Access Point SSID and password\r\n"
+          "% <i>SSID</> is a network name, max 32 characters\r\n"
+          "% <i>PASWORD</> is the access password. Omit \"pass\" keyword for open-auth\r\n"
+          "% <i>NUM</> max number of clients\r\n"
+          "%\r\n"
+          "% <u>Examples</>:\r\n"
+          "%   ssid IoT_Network pass 63923zz - Advertise as network IoT_Network\r\n"
+          "%"),
+    HELPK("This Access Point name") },
+
+    { "ssid", NULL, 3, HIDDEN_KEYWORD },
+    { "ssid", NULL, 5, HIDDEN_KEYWORD },
+
+  { "dhcp", NULL, 2,
+    HELPK("% \"<b>dhcp start A.B.C.D [<o>A.B.C.D</>]\r\n" 
+          "%\r\n"
+          "% Set IP address range for the DHCP and start the server\r\n"
+          "%\r\n"
+          "%<u>Examples</>:\r\n"
+          "%   <i>dhcp start 192.168.0.2</> : Lease addresses starting from 192.168.0.2\r\n"
+          "%   <i>dhcp start 192.168.0.2 192.168.0.3</> : Only 2 IP addresses available\r\n"
+          "%   <i>dhcp stop</>   : Stop DHCP server on interface\r\n"
+          "%"),
+    HELPK("DHCP server settings") },
+  { "dhcp", NULL, 2, HIDDEN_KEYWORD },
+  { "dhcp", NULL, 1, HIDDEN_KEYWORD },
+
+  { "ip", NULL, 2,
+    HELPK("% \"<b>ip address</> A.B.C.D/PREFIX [gw <o>A.B.C.D</>] [dns <o>A.B.C.D</> [<o>A.B.C.D</>]]\"\r\n" 
+          "%\r\n"
+          "% Set interface IP address to use\r\n"
+          "% <i>A.B.C.D/PREFIX</>        : IP address and the prefix length e.g.\r\n"
+          "%   \"192.168.0.1/24\" is 192.168.0.1 and a netmask 255.255.255.0\r\n"
+          "% <i>gw A.B.C.D</> : specify default gateway\r\n"
+          "% <i>dns A.B.C.D [A.B.C.D]</> : specify DNS server(s)\r\n"
+          "%\r\n"
+          "%<u>Examples</>:\r\n"
+          "%   <i>ip address 192.168.0.2/24</> : Static IP with 255.255.255.0 mask\r\n"
+          "%   <i>ip ad 192.168.0.2/24 dns 8.8.8.8</>: Static IP and DNS\r\n"
+          "%"),
+    HELPK("IP information") },
+  { "ip", NULL, 4, HIDDEN_KEYWORD },
+  { "ip", NULL, 5, HIDDEN_KEYWORD },
+  { "ip", NULL, 6, HIDDEN_KEYWORD },
+  { "ip", NULL, 7, HIDDEN_KEYWORD },
+  
+
+  { "ip", HELP_ONLY,
+    HELPK("% \"<b>ip natp</> [off]\"\r\n" 
+          "%\r\n"
+          "% Enable or disable NAT/P for WiFi clients\r\n"
+          "%<u>Examples</>:\r\n"
+          "%   <i>ip natp</>     : Enable NAT\r\n"
+          "%   <i>ip natp off</> : Disable NAT (default)\r\n"
+          "%"),
+    NULL },
+
+  KEYWORDS_END
+};
+KEYWORDS_REG(ap)
+#endif //WITH_WIFI
+
+// esp32-alias>
+//
+#if WITH_ALIAS
+KEYWORDS_DECL(alias) {
+
+  KEYWORDS_BEGIN
+    
+  { "delete", cmd_alias_delete, 1,
+    HELPK("% \"<b>delete</> [all | LINE]\"\r\n" 
+          "%\r\n"
+          "% Delete lines from the alias:\r\n"
+          "% 1. No arguments. Means \"delete the last line\"\r\n"
+          "% 2. One argument, keyword \"all\". Deletes all lines\r\n"
+          "% 3. LINE is a line number, (use \"list\" to see line numbers)\r\n" 
+          "% <u>Examples:</>\r\n"
+          "%   <i>delete</>     - Removes last entered command from the alias\r\n"
+          "%   <i>delete all</> - Removes everything\r\n"
+          "%   <i>delete 4</>   - Removes line #4"),
+    HELPK("Delete lines") },
+
+  { "delete", cmd_alias_delete,NO_ARGS, HIDDEN_KEYWORD },
+
+  { "list", cmd_alias_list, NO_ARGS,
+    HELPK("% \"<b>list</>\"\r\n" 
+          "%\r\n"
+          "% Display current alias content"),
+    HELPK("Display content") },
+
+  { "quit", cmd_alias_quit, NO_ARGS,
+    HELPK("% \"<b>quit</>\r\n" 
+          "%\r\n"
+          "% Exit from the alias configuration modes.\r\n"),
+    HELPK("Quit alias editor") },
+
+  // Special entry. Matches any command just as MANY_ARGS matches any number of arguments
+  // The first "*" is what actually matches while "TEXT*" is just a hint for the user
+  { "*TEXT*", cmd_alias_asterisk, MANY_ARGS,
+    HELPK("% \"<b>COMMAND ARG1 ARG2 ... ARGn</>\"\r\n" 
+          "%\r\n"
+          "% Any command with any number of arguments"),
+    HELPK("Add any command to the alias") },
+
+  {
+    NULL, NULL, 0, NULL, NULL
+  }
+};
+
+// Register "alias" command directory (global variable keywords_alias)
+KEYWORDS_REG(alias)
+#endif //WITH_ALIAS
+
 
 #if WITH_FS
 // Filesystem commands. this commands subdirectory is enabled
@@ -1539,6 +1783,15 @@ KEYWORDS_DECL(main) {
   { "colors", cmd_colors, 1, HIDDEN_KEYWORD },
   { "colors", cmd_colors, NO_ARGS, HIDDEN_KEYWORD },
 #endif
+#if WITH_WIFI
+  { "wifi", cmd_wifi_if, 1,
+    HELPK("% \"<b>wifi ap|sta</>\"\r\n"
+          "%\r\n"
+          "% Enter Wifi STA or Wifi AP configuration modes:\r\n"
+          "% \"<i>wifi sta</>\" - Station mode (WiFi client mode)\r\n"
+          "% \"<i>wifi ap</>\"  - SoftAP mode (WiFi Access Point mode)\r\n"
+        ), HELPK("WiFi interface commands") },
+#endif
 
   KEYWORDS_END
 };
@@ -1831,7 +2084,6 @@ static void keywords_register(const struct keywords_t *key, const char *name) {
 }
 
 // Check, if given name can be a command directory
-// TODO: rename keywords_espcam to keywords_camera 
 //
 static bool is_command_directory(const char *p) {
   if (p && *p) {
@@ -1845,15 +2097,5 @@ static bool is_command_directory(const char *p) {
   }
   return false;
 }
-
-#if 0
-static void keywords_show_subdirs() {
-  for (int idx = 0; idx < 15; idx++)
-    if (Subdirs[idx].name)
-      q_printf("\"%s\" : 0x%p\r\n",Subdirs[idx].name,Subdirs[idx].key);
-    else
-      break;
-}
-#endif
 #endif // #if COMPILING_ESPSHELL
 

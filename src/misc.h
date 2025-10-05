@@ -15,137 +15,6 @@
 
 
 #if COMPILING_ESPSHELL
-// TODO: save/restore certain variables before/after deep sleep. E.g. /keywords/, /Context/ and /Cwd/
-// TODO: register a callback on deep sleep start to save values
-// TODO: use __update_rtcmem_vars() to restore saved variables
-
-RTC_DATA_ATTR static uint32_t Sleep_count = 0;
-
-// Update variables located in RTC SLOW_MEM
-//
-static void __attribute__((constructor)) __update_rtcmem_vars() {
-  if (esp_reset_reason() == ESP_RST_DEEPSLEEP)
-    Sleep_count++;
-}
-
-// "uptime"
-//
-// Displays system uptime as returned by esp_timer_get_time() counter
-// Displays last reboot cause
-//
-static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
-
-  unsigned char i,
-                core;
-  
-  unsigned int cause,
-               val,
-               sec = q_millis() / 1000,
-               div = 60 * 60 * 24;
-
-  static_assert(ESP_RST_CPU_LOCKUP == 15, "Code review is required");
-  static_assert(ESP_SLEEP_WAKEUP_VBAT_UNDER_VOLT == 14, "Code review is required");
-
-  // Restart Reason (or Reset Reason)
-  const char *rr[] = {
-    "<w>reason can not be determined",   "<g>board power-on",                   "<g>external (pin) reset",   "<g>reload command",
-    "<e>exception and/or kernel panic",  "<e>interrupt watchdog",               "<e>task watchdog",          "<e>other watchdog",
-    "<g>returning from a deep sleep",    "<w>brownout (software or hardware)",  "<i>reset over SDIO",        "<i>reset by USB peripheral",
-    "<i>reset by JTAG",                  "<e>reset due to eFuse error",         "<w>power glitch detected",  "<e>CPU lock up (double exception)"
-  };
-
-  // Reset reason (per-core, ROM)
-  const char *rr2[] = { 
-    "",
-    "Power on reset",
-    "",
-    "Software resets the digital core",
-    "",
-    "Deep sleep resets the digital core",
-    "SDIO module resets the digital core",
-    "Main watch dog 0 resets digital core",
-    "Main watch dog 1 resets digital core",
-    "RTC watch dog resets digital core",
-    "",
-    "Main watch dog resets CPU",
-    "Software resets CPU",
-    "RTC watch dog resets CPU",
-    "CPU0 resets CPU1 by DPORT_APPCPU_RESETTING",
-    "Reset when the VDD voltage is not stable",
-    "RTC watch dog resets digital core and RTC module"
-  };
-
-  // Deep-sleep wakeup source. Entries containing "(light sleep)" should never appear
-  const char *wakeup_source[] = {
-    "<w>an undefined event",
-    "",
-    "EXT0 (external signal using RTC_IO)",
-    "EXT1 (external signal using RTC_CNTL)",
-    "a timer",
-    "a touchpad",
-    "the ULP co-processor/microcode",
-    "a GPIO (light sleep)",
-    "an UART (light sleep)",
-    "the WIFI (light sleep)",
-    "the CO-CPU (INT)",
-    "the CO-CPU (TRIG)",
-    "Bluetooth (light sleep)",
-    "<w>VAD",
-    "<w>VDD_BAT under voltage",
-  };
-  
-  
-
-#define XX(_Text, _Divider) do {\
-  if (sec >= div) { \
-    val = sec / div; \
-    sec = sec % div; \
-    q_printf("%u " #_Text "%s ", PPA(val)); \
-  } \
-  div /= _Divider; \
-} while (0)
-
-  q_print("% Last boot was ");
-
-  XX(day,24);
-  XX(hour,60);
-  XX(minute,60);
-
-#undef XX
-
-  q_printf("%u second%s ago\r\n",PPA(sec));
-
-  // "Classic" ESP-IDF reset reason:
-  if ((i = esp_reset_reason()) > ESP_RST_CPU_LOCKUP)
-    i = 0;
-
-  q_printf("%% Reset reason: \"%s</>\"\r\n", rr[i]);
-
-  // "Bootloader-style" reset reason (for each core):
-  for (core = 0; core < portNUM_PROCESSORS; core++)
-    if ((i = esp_rom_get_reset_reason(core)) < sizeof(rr2) / sizeof(rr2[0]))
-      q_printf("%%    CPU%u: %s\r\n",core, rr2[i]);
-
-  // Retreive and display deep sleep wakeup source
-  // Sleep_count is non-zero ONLY when we are returning from a deep sleep.
-  if (Sleep_count) {
-
-    if ((cause = (unsigned int )esp_sleep_get_wakeup_cause()) >= sizeof(wakeup_source)/sizeof(char *))
-      cause = 0;
-
-    q_printf("%% Returned from a deep sleep: <i>%lu time%s</>\r\n%% Wakeup was caused by <g>%s</>\r\n",
-              PPA(Sleep_count),
-              wakeup_source[cause]);
-
-    // Nap_alarm_time resides in RTC_SLOW_MEMORY, which is 
-    // not cleared after waking up from deep sleep
-    if ((cause == ESP_SLEEP_WAKEUP_TIMER) && (Nap_alarm_time != 0))
-      q_printf("%% Slept for %llu seconds\r\n",Nap_alarm_time / 1000000ULL);
-  }
-  // TODO: details for EXT0 and EXT1 causes - i.e. which GPIO woke CPU up
-  return 0;
-}
-
 
 //"tty NUM"
 //
@@ -344,24 +213,16 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
 
 //extern const char *PromptID, defined in editline.h
 
-static bool nv_init = false;
-
-static void nv_init_once() {
-
-  if (nv_init)
-    return ;
+static void __attribute__((constructor)) _nv_storage_init() {
 
   esp_err_t err = nvs_flash_init();
   if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
       nvs_flash_erase();
       err = nvs_flash_init();
   }
-  if (err != ESP_OK) {
-    q_print("% NV flash init failed\r\n");
-    return ;
-  }
-
-  nv_init = true;
+  if (err != ESP_OK)
+    // q_printf() will not work if called too early
+    printf("%% NV flash init failed, hostid and WiFi driver settings are lost\r\n");
 }
 
 
@@ -375,8 +236,6 @@ static bool nv_save_config(const char *nspace) {
 
     if (!nspace)
       nspace = "espshell";
-
-    nv_init_once();
 
     // Open NVS storage
     if ((err = nvs_open(nspace, NVS_READWRITE, &handle)) != ESP_OK) {
@@ -404,8 +263,6 @@ static bool nv_load_config(const char *nspace) {
     if (!nspace)
       nspace = "espshell";
 
-    nv_init_once(); 
-    
     if ((err = nvs_open(nspace, NVS_READONLY, &handle)) != ESP_OK) {
         q_printf("%% Error opening NVS: %s", esp_err_to_name(err));
         return false;

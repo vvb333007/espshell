@@ -22,12 +22,9 @@
 #  error "Please update ESP-IDF and/or Arduino Core libraries to a newer version"
 #endif
 
-// not in .h files of ArduinoCore.
-extern bool setCpuFrequencyMhz(uint32_t);
 
-// TODO: make cpu_ticks() to accept an address where result is stored
-//       if *address == 0, then CCOUNT is stored otherwise, if *address != 0
-//       then *address = CCOUNT - *address
+// For performance profiling:
+// Get CPU cycles count
 //
 static inline __attribute__((always_inline)) uint32_t cpu_ticks() {
   uint32_t ccount;
@@ -62,6 +59,92 @@ static inline __attribute__((always_inline)) uint32_t cpu_ticks() {
 static unsigned short CPUFreq  = 240,  // Default values (or "expected values")
                       APBFreq  = 80, 
                       XTALFreq = 40;
+
+// TODO: investigate RTC_NOINIT_ATTR section: probably we can get rid of these "backup" variables
+
+RTC_DATA_ATTR static uint32_t Sleep_count  = 0; // Number of times CPU returned from a sleep (deep + light).
+RTC_DATA_ATTR static uint32_t Reset_count2 = 0; // backup area
+__NOINIT_ATTR static uint32_t Reset_count;      // Number of times CPU was rebooted (including deep sleep reboots)
+
+static unsigned char Reset_reason = 1;   // Last reset cause (index to Rr_desc). precached at startup
+static unsigned char Wakeup_source = 0;  // Wakeup source that caused wakeup event (index to Ws_desc)
+
+//static bool Light_sleep = false; // set to /true/ when going to light sleep.
+
+// The main purpose of this global variable is to attract user attention to "nap alarm" command.
+// Thats why there is no default wakeup source nor default wakeup interval
+static int Nap_alarm_set = 0;
+static uint64_t Nap_alarm_time = 0; // Sleep duration, microseconds (if wakeup source == timer only)
+static RTC_DATA_ATTR uint64_t Nap_alarm_time2 = 0; // Copy of Nap_alarm_time but in SLOW_MEM to survive deep sleep
+
+
+// Reset reason human-readable
+static const char *Rr_desc[] = {
+    "<w>reason can not be determined",   "<g>board power-on",                   "<g>external (pin) reset",   "<g>reload command",
+    "<e>exception and/or kernel panic",  "<e>interrupt watchdog",               "<e>task watchdog",          "<e>other watchdog",
+    "<g>returning from a deep sleep",    "<w>brownout (software or hardware)",  "<i>reset over SDIO",        "<i>reset by USB peripheral",
+    "<i>reset by JTAG",                  "<e>reset due to eFuse error",         "<w>power glitch detected",  "<e>CPU lock up (double exception)"
+  };
+
+// Reset reason (per-core, ROM)
+static const char *Rr_desc_percore[] = { 
+    "", "Power on reset", "", "Software resets the digital core", "",     "Deep sleep resets the digital core",
+    "SDIO module resets the digital core", "Main watch dog 0 resets digital core", "Main watch dog 1 resets digital core",
+    "RTC watch dog resets digital core", "", "Main watch dog resets CPU", "Software resets CPU", 
+    "RTC watch dog resets CPU", "CPU0 resets CPU1 by DPORT_APPCPU_RESETTING", "Reset when the VDD voltage is not stable",
+    "RTC watch dog resets digital core and RTC module"
+  };
+
+// Deep-sleep wakeup source. Entries containing "(light sleep)" should never appear
+static const char *Ws_desc[] = {
+    "<w>an undefined event",
+    "",
+    "EXT0 (external signal, GPIO)",
+    "EXT1 (external signal, GPIOs)",
+    "a timer",
+    "a touchpad",
+    "the ULP co-processor/microcode",
+    "a GPIO (light sleep)",
+    "an UART (light sleep)",
+    "the WIFI (light sleep)",
+    "the CO-CPU (INT)",
+    "the CO-CPU (TRIG)",
+    "Bluetooth (light sleep)",
+    "<w>VAD",
+    "<w>VDD_BAT under voltage",
+  };
+  
+
+// Update variables located in RTC SLOW_MEM and in .noinit section
+// SLOW_MEM survives deep sleep so sleep counter is located there.
+// Deep sleep wipes .noinit memory, "reload" wipes SLOW_MEM
+//
+// Because of the above we keep sleep counter in RTC SLOW MEM, while Reset_counter
+// is storted in .noinit AND in RTC_SLOW_MEM
+//
+static void __attribute__((constructor)) _cpu_reset_sleep_init() {
+
+  if ((Reset_reason = esp_reset_reason()) > ESP_RST_CPU_LOCKUP)
+    Reset_reason = 0;
+  
+  switch(Reset_reason) {
+    case ESP_RST_DEEPSLEEP:
+      Sleep_count++;              
+      if ((Wakeup_source = (unsigned int )esp_sleep_get_wakeup_cause()) >= sizeof(Ws_desc)/sizeof(char *))
+        Wakeup_source = 0;
+      // FALLTHROUGH
+    case ESP_RST_POWERON:
+      Reset_count = Reset_count2;
+      // FALLTHROUGH
+    default:
+  };
+
+  // Reset_count is located in .noinit so it survives "reload" command. However, a deep sleep trashes .noinit section
+  // so we have to restore Reset_count value from a memory which is resistant to deep sleep cycles - in RTC_SLOW_MEM
+  Reset_count++;
+  Reset_count2 = Reset_count; // backup copy 
+}
+
 
 // Read vital information (XTAL, CPU and APB frequencies) and store it in global variables
 // Called at startup, before main()
@@ -239,6 +322,9 @@ static int cmd_show_cpuid(int argc, char **argv) {
   return 0;
 }
 
+// not in .h files of ArduinoCore.
+extern bool setCpuFrequencyMhz(uint32_t);
+
 //"cpu CLOCK"
 //
 // Set cpu frequency.
@@ -304,14 +390,8 @@ static int NORETURN cmd_reload(UNUSED int argc, UNUSED char **argv) {
   //return 0;
 }
 
-
-// The main purpose of this global variable is to attract user attention to "nap alarm" command.
-// Thats why there is no default wakeup source nor default wakeup interval
-static int Nap_alarm_set = 0;
-
-// Located in RTC SLOW_MEM so after deep sleep one can query sleep duration
-static RTC_DATA_ATTR uint64_t Nap_alarm_time = 0;
-
+// Check if proper alarm set
+//
 static bool is_alarm_set(bool deep) {
 
   if ((Nap_alarm_set & (1<<ESP_SLEEP_WAKEUP_EXT0)) ||
@@ -322,8 +402,9 @@ static bool is_alarm_set(bool deep) {
   
   if ((Nap_alarm_set & (1 << ESP_SLEEP_WAKEUP_UART))) {
     if (deep) {
-      q_print("% Your current wakeup source is \"UART\" which works for light sleep only\r\n");
-      return false;
+      q_print("% Please note that UART wakeup only works when directly connected to\r\n"
+              "% UART. It does not work with USB-UART bridges, commonly found in DevKit clones\r\n");
+      return true;
     }
     return true;
   }
@@ -331,9 +412,9 @@ static bool is_alarm_set(bool deep) {
   return false;
 }
 
+// "show nap"
 //
-//
-static int cmd_show_nap(int argc, char **argv) {
+static int cmd_show_nap(UNUSED int argc, UNUSED char **argv) {
   if (Nap_alarm_set == 0)
     q_print("% There are no sleep alarms set\r\n");
   else {
@@ -477,8 +558,7 @@ static int cmd_nap_alarm(int argc, char **argv) {
     if (ESP_OK == esp_sleep_enable_timer_wakeup(tim)) {
       Nap_alarm_set |= 1 << ESP_SLEEP_WAKEUP_TIMER;
       Nap_alarm_time = tim;
-    }
-    else {
+    } else {
       HELP(q_print("% Failed to set wakeup alarm timer\r\n"));
       return CMD_FAILED;
     }
@@ -502,21 +582,102 @@ static int cmd_nap(int argc, char **argv) {
   }
 
   if (!is_alarm_set(deep)) {
-    HELP(q_printf("%% When should we wakeup? (set \"<i>nap alarm</>\" first)\r\n"));
+    HELP(q_printf("%% When should we wakeup?\r\n"));
     return CMD_FAILED;
   }
+
+  // Copy Nap_alarm_time to SLOW_MEM just before going to sleep.
+  Nap_alarm_time2 = Nap_alarm_time;
 
   HELP(q_printf("%% Entering %s sleep\r\n", deep ? "deep" : "light"));
   HELP(q_delay(100));  // give a chance to the q_print above to do its job
 
   if (deep)
-    esp_deep_sleep_start();
-  else 
+    esp_deep_sleep_start(); // does not return
+  else {
+    //Light_sleep = true;
     esp_light_sleep_start();
+    Sleep_count++;
+  }
 
-  HELP(q_print("% Returning from the sleep\r\n"));
+  HELP(q_print("% Resuming operation\r\n"));
+  // Reread wakeup cause, so subsequent "uptime" shows correct wakeup source
+  if ((Wakeup_source = (unsigned int )esp_sleep_get_wakeup_cause()) >= sizeof(Ws_desc)/sizeof(char *))
+    Wakeup_source = 0;
 
   return 0;
 }
+
+
+// "uptime"
+//
+// Displays system uptime as returned by esp_timer_get_time() counter
+// Displays last reboot cause
+//
+bool wifi_arduino_lib_detected();
+static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
+
+  unsigned char i,
+                core;
+  
+  unsigned int val,
+               sec = q_millis() / 1000,
+               div = 60 * 60 * 24;
+
+  static_assert(ESP_RST_CPU_LOCKUP == 15, "Code review is required");
+  static_assert(ESP_SLEEP_WAKEUP_VBAT_UNDER_VOLT == 14, "Code review is required");
+
+  
+  q_printf("WiFi Arduino library: %s\r\n",wifi_arduino_lib_detected() ? "detected" : "not linked");
+
+#define XX(_Text, _Divider) do {\
+  if (sec >= div) { \
+    val = sec / div; \
+    sec = sec % div; \
+    q_printf("%u " #_Text "%s ", PPA(val)); \
+  } \
+  div /= _Divider; \
+} while (0)
+
+  q_print("% Last boot was ");
+
+  XX(day,24);
+  XX(hour,60);
+  XX(minute,60);
+
+#undef XX
+
+  q_printf("%u second%s ago\r\n",PPA(sec));
+
+  q_printf("%% Reset reason: \"%s</>\"\r\n", Rr_desc[Reset_reason]);
+
+  // "Bootloader-style" reset reason (for each core):
+  for (core = 0; core < portNUM_PROCESSORS; core++)
+    if ((i = esp_rom_get_reset_reason(core)) < sizeof(Rr_desc_percore) / sizeof(Rr_desc_percore[0]))
+      q_printf("%%    CPU%u: %s\r\n",core, Rr_desc_percore[i]);
+
+
+  // Retreive and display sleep wakeup source
+  //
+  if (Sleep_count) {
+
+    q_printf("%% Returned from sleep: <i>%lu time%s</> (sequental), wakeup caused by <i>%s</>\r\n",
+              PPA(Sleep_count),
+              Ws_desc[Wakeup_source]);
+
+    // Nap_alarm_time2 resides in RTC_SLOW_MEMORY, which is 
+    // not cleared after waking up from a deep sleep and is not changed by "nap alarm" command
+    //
+    if ((Wakeup_source == ESP_SLEEP_WAKEUP_TIMER) && (Nap_alarm_time2 != 0)) {
+      uint32_t tmp = (uint32_t )(Nap_alarm_time2 / 1000000ULL);
+      q_printf("%% Slept for %lu second%s\r\n",PPA(tmp));
+    }
+  }
+  if (Reset_count > 1)
+    q_printf("%% Firmware reload count: %lu (# of resets since power-on)\r\n",Reset_count - 1);
+  // TODO: details for EXT0 and EXT1 causes - i.e. which GPIO woke CPU up
+  return 0;
+}
+
 #endif // #if COMPILING_ESPSHELL
 
