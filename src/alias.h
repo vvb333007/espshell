@@ -8,6 +8,9 @@
  * non-commercial, education purposes.  Credits, however, would be greatly appreciated.
  *
  * Author: Viacheslav Logunov <vvb333007@gmail.com>
+ *
+ * $Id$
+ * $Id$
  */
 
 // -- Command Aliases --
