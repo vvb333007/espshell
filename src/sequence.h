@@ -423,8 +423,7 @@ static int seq_send(unsigned int pin, unsigned int seq) {
       // success!
     } else {
 #if ESP_ARDUINO_VERSION > ESP_ARDUINO_VERSION_VAL(3,3,0)
-      // waiting for https://github.com/espressif/arduino-esp32/issues/11858
-       if (!rmtWriteLoopingCount(pin, s->seq, s->seq_len, seq->loop_count)) {
+       if (!rmtWriteRepeated(pin, s->seq, s->seq_len, s->loop_count)) {
          HELP(q_print("% RMT failed (rmtWriteLoopingCount)\r\n"));
          return -1;
        }
@@ -435,7 +434,9 @@ static int seq_send(unsigned int pin, unsigned int seq) {
     }
     // success!
   } else {
+#if ESP_ARDUINO_VERSION > ESP_ARDUINO_VERSION_VAL(3,3,0)
 run_non_looping:    
+#endif
     if (!rmtWrite(pin, s->seq, s->seq_len, RMT_WAIT_FOR_EVER)) {
       HELP(q_print("% RMT failed (rmtWrite)\r\n"));
       return -1;

@@ -13,8 +13,7 @@
 // Written to add support for a hardware CDC, this code actually enables ANY hardware as long as Serial object
 // supports it. It can be HWCDC or USBCDC class or just HardwareSerial. It can be SoftwareSerial as well.
 //
-// Unfortunately I was not able to find something like hwcdc_read_bytes() to implement console_read_bytes().
-// So instead of duplicating Arduino Core HWCDC code here I decided to wrap up calls to Serial object; 
+// It is a simple C++ class Serial ---> C console...() wrapper, nothing more
 //
 // Pros:
 // 1. It is more efficient in terms of code size. 
@@ -32,6 +31,7 @@
 
 // SERIAL_IS_USB is autodetected from Arduino IDE settings: selecting "Hardware CDC On Boot" will 
 // set SERIAL_IS_USB to 1 (see espshell.h)
+//
 #if SERIAL_IS_USB
 
 // Check if Serial is up and running.
@@ -66,33 +66,7 @@ extern "C" int console_read_bytes(void *buf, uint32_t len, TickType_t wait) {
 
   while((av = Serial.available()) <= 0 && (wait-- > 0))
     taskYIELD();
-
   
   return (wait == 0) ? -1 : Serial.read((uint8_t *)buf, len);
 }
-
 #endif //SERIAL_IS_USB
-
-// Detect if user has linked his applicatio against WiFi Arduino library or not.
-// We do need this in order to implement co-existence with WiFi library, reuse its netif's
-// 
-#undef COMPILING_ESPSHELL
-#include "wifi0.h"           // get system lwip, wifi, netif headers
-
-// If user code uses WiFi Arduino library, then this function will be redefined by the linker.
-// WiFi Lib's returns either a valid pointer or NULL, while our functions always return 0xffffffff:
-// This function requires C++ linkage and name mangling and this is the only reason why it is located
-// in this file: this is the only c++ file in the project and I do not want to add any more
-//
-__attribute__((weak)) esp_netif_t *get_esp_interface_netif(esp_interface_t interface) {
-  volatile uintptr_t t = 0xffffffffUL;
-  return (esp_netif_t *)t;
-}
-
-// Return /true/ if user sketch uses WiFi library
-//
-extern "C" bool wifi_arduino_lib_detected() {
-  return (uintptr_t )get_esp_interface_netif((esp_interface_t) 0) != 0xffffffffUL;
-}
-
-

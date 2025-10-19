@@ -178,6 +178,11 @@ static int cmd_time(int, char **);
 static int cmd_wifi_if(int, char **);
 static int cmd_wifi_scan(int, char **);
 static int cmd_wifi_mac(int, char **);
+static int cmd_wifi_hostname(int, char **);
+static int cmd_wifi_ip_address(int, char **);
+static int cmd_wifi_natp(int, char **);
+static int cmd_wifi_ntp(int, char **);
+static int cmd_wifi_dhcp(int, char **);
 #endif
 
 
@@ -626,13 +631,23 @@ KEYWORDS_DECL(sta) {
 
   KEYWORDS_BEGIN
 
-  { "up", NULL, NO_ARGS,
-    HELPK("% \"<b>up</>\"\r\n" 
+  { "up", NULL, 1,
+    HELPK("% \"<b>up BSSID [PASSWORD] [retry [NUM]] [reconnect]</>\"\r\n" 
           "%\r\n"
-          "% Connect to the configured AP. Configuration (e.g., IP, DHCP, NTP) must be done\r\n"
+          "% Connect to the AP BSSID using password PASSWORD, making NUM or infinite\r\n" 
+          "% number of attempts to connect. Configuration (e.g., IP, DHCP, NTP) must be done\r\n"
           "% <u>before</>. Once the interface is \"up\", the settings are locked and can not be\r\n"
-          "% changed on the fly: the interface must be shut down before configuring"),
+          "% changed on the fly: the interface must be shut down before configuring\r\n"
+          "%\r\n"
+          "% NOTE: use \"scan\" command to find out BSSIDs\r\n"
+          "%\r\n"
+          "%<u>Examples</>:\r\n"
+          "%  up 0044:ff55:02ae jfhod786 \r\n"
+          "%  up 0044:ff55:02ae jfhod786 reconnect\r\n"
+          "%  up 0044:ff55:02ae jfhod786 reconnect retry"),
     HELPK("Initialize and start WiFi interface") },
+
+  { "up", NULL, 2, HIDDEN_KEYWORD },
 
   { "down", NULL, NO_ARGS,
     HELPK("% \"<b>down</>\"\r\n" 
@@ -654,16 +669,23 @@ KEYWORDS_DECL(sta) {
           "% <i>scan b 0001:2233:4455 passive</> : Passive scan of specific AP"),
     HELPK("WiFi scan") },
 
-  { "ntp", NULL, 1,
-    HELPK("% \"<b>ntp</> dhcp|off|<i>SERVER</>\"\r\n" 
+  { "ntp", cmd_wifi_ntp, 1,
+    HELPK("% \"<b>ntp</> [<o>dhcp</>|<o>HOST</>] [<o>enable</>|<o>disable</>]</>\"\r\n" 
           "%\r\n"
-          "% SNTP configuration:\r\n"
-          "% dhcp    - use SNTP servers from DHCP reply\r\n"
-          "% off     - disable SNTP\r\n"
-          "% SERVER  - use SERVER to get time information from\r\n"
+          "% SNTP client configuration:\r\n"
+          "%  <i>dhcp</>    - Obtain SNTP servers from DHCP reply\r\n"
+          "%  <i>SERVER</>  - Use SNTP server HOST (ip or hostname)\r\n"
+          "%  <i>disable</> - disable SNTP\r\n"
+          "%  <i>enable</>  - enable SNTP\r\n"
+          "%\r\n"
           "% <u>Examples</>:\r\n"
           "%   ntp dhcp         - use DHCP to obtain NTP servers\r\n"
-          "%   ntp pool.ntp.org - use pool.ntp.org as NTP server"),
+          "%   ntp dhcp enable  - use DHCP and enable SNTP client\r\n"
+          "%   ntp pool.ntp.org - use pool.ntp.org as NTP server\r\n"
+          "%   ntp enable       - Start SNTP client\r\n"
+          "%   ntp disable      - Disable SNTP client\r\n"
+          "%"
+          ),
     HELPK("SNTP settings") },
 
   { "mac", cmd_wifi_mac, 1,
@@ -677,51 +699,38 @@ KEYWORDS_DECL(sta) {
           "%   mac 0001:1234:56af"),
     HELPK("MAC settings (STAtion)") },
 
-  { "ssid", NULL, 1,
-    HELPK("% \"<b>ssid</> SSID|NUM [<o>pass PASSWORD</>] [<o>retry RETRY_NUM</> | <o>infinite</>]\"\r\n" 
+  { "hostname", cmd_wifi_hostname, 1,
+    HELPK("% \"<b>hostname</> <i>TEXT</>\r\n" 
           "%\r\n"
-          "% Set network name to use, specify password and retry number\r\n"
-          "% <i>SSID</> is either a network SSID, (like \"IoT Network2\") or\r\n"
-          "% <u>a network number</>, which can be obtained during scan\r\n"
-          "% (see \"scan\" command)\r\n"
-          "% <i>PASSWORD</>  is a network password. Omit entirely for open networks\r\n"
-          "% <i>RETRY_NUM</> is the number of connection attempts before giving up\r\n"
+          "% Set host name (max 31 symbols, alphanumerics and dots are allowed)\r\n"
           "%\r\n"
           "% <u>Examples</>:\r\n"
-          "%   ssid IoT_Network pass 63923zz - connect to network IoT_Network\r\n"
-          "%   ssid 1 pass 63923zz retry 10  - connect to network ID1 (see scan output)\r\n"
-          "%   ssid IoT_Net2 bssid ee00:ee20:0203  - match AccessPoint's mac address\r\n"
-          "%"),
-    HELPK("Remote network SSID") },
+          "%   hostname mars.local\r\n"
+          "%   hostname Moon2"),
+    HELPK("Host name") },
 
-    { "ssid", NULL, 3, HIDDEN_KEYWORD },
-    { "ssid", NULL, 5, HIDDEN_KEYWORD },
+  { "hostname", cmd_wifi_hostname, NO_ARGS, HIDDEN_KEYWORD},
 
-  { "ip", NULL, 2,
+  { "ip", cmd_wifi_ip_address, MANY_ARGS,
     HELPK("% \"<b>ip address</> dhcp\"\r\n" 
           "% \"<b>ip address</> A.B.C.D/PREFIX [gw <o>A.B.C.D</>] [dns <o>A.B.C.D</> [<o>A.B.C.D</>]]\"\r\n" 
           "%\r\n"
           "% Set interface IP address to use: static or DHCP\r\n"
-          "% <i>dhcp</>                  : use DHCP to obtain IP information\r\n"
           "% <i>A.B.C.D/PREFIX</>        : IP address and the prefix length e.g.\r\n"
-          "%   \"192.168.0.1/24\" is 192.168.0.1 and a netmask 255.255.255.0\r\n"
-          "% <i>gw A.B.C.D</> : specify default gateway\r\n"
+          "%                            \"192.168.0.1/24\" is 192.168.0.1 and a netmask\r\n"
+          "%                            \"255.255.255.0\" (24 bit mask)\r\n"
+          "% <i>dhcp</>                  : use DHCP to obtain IP information\r\n"
+          "% <i>gw A.B.C.D</>            : specify default gateway\r\n"
           "% <i>dns A.B.C.D [A.B.C.D]</> : specify DNS server(s)\r\n"
           "%\r\n"
           "%<u>Examples</>:\r\n"
-          "%   <i>ip address dhcp</>           : Obtain address automatically\r\n"
-          "%   <i>ip address 192.168.0.2/24</> : Static IP with 255.255.255.0 mask\r\n"
-          "%   <i>ip ad 192.168.0.2/24 dns 8.8.8.8</>: Static IP and DNS\r\n"
-          "%   <i>ip ad dhcp dns 8.8.8.8</>    : Dynamic IP and static DNS\r\n"
-          "%   <i>ip ad 192.168.0.2/24 gw 192.168.0.1</>\r\n"
-          "%        : Static IP address and default gateway</>\r\n"
+          "%   <i>ip address dhcp</>            : Obtain address automatically\r\n"
+          "%   <i>ip address 192.168.0.2/24</>  : Static IP with 255.255.255.0 mask\r\n"
+          "%   <i>ip ad 1.1.0.2/8 dns 8.8.8.8</>: Static IP and DNS\r\n"
+          "%   <i>ip ad dhcp dns 8.8.8.8</>     : Dynamic IP, static DNS\r\n"
+          "%   <i>ip ad dhcp gw 192.168.0.1</>  : Dynamic IP address, static gateway</>\r\n"
           "%"),
     HELPK("IP information") },
-  { "ip", NULL, 4, HIDDEN_KEYWORD },
-  { "ip", NULL, 5, HIDDEN_KEYWORD },
-  { "ip", NULL, 6, HIDDEN_KEYWORD },
-  { "ip", NULL, 7, HIDDEN_KEYWORD },
-
   KEYWORDS_END
 };
 KEYWORDS_REG(sta)
@@ -731,11 +740,21 @@ KEYWORDS_DECL(ap) {
 
   KEYWORDS_BEGIN
 
-  { "up", NULL, NO_ARGS,
-    HELPK("% \"<b>up</>\"\r\n" 
+  { "up", NULL, 1,
+    HELPK("% \"<b>up NETWORK_NAME [PASSWORD] [max-sta NUM]</>\"\r\n" 
           "%\r\n"
-          "% Initialize & start WiFi Access Point"),
-    HELPK("Initialize WiFi interface") },
+          "% Create an Access Point with NETWORK_NAME using password PASSWORD,\r\n"
+          "% limiting max number of connections to NUM.\r\n"
+          "% Once the interface is \"up\", the settings are locked and can not be\r\n"
+          "% changed on the fly: the interface must be shut down before configuring\r\n"
+          "%\r\n"
+          "% NOTE: use \"\" as NETWORK_NAME to create hidden networks\r\n"
+          "%\r\n"
+          "%<u>Examples</>:\r\n"
+          "%  up IoT_Network              - create OPEN network IoT_Network\r\n"
+          "%  up Home jfhod786 max-sta 1  - Network \"Home\", with password, max 1 sta"
+          ),
+    HELPK("Initialize and start WiFi interface") },
 
   { "down", NULL, NO_ARGS,
     HELPK("% \"<b>down</>\"\r\n" 
@@ -744,13 +763,15 @@ KEYWORDS_DECL(ap) {
     HELPK("Shutdown WiFi interface") },
 
   { "scan", cmd_wifi_scan, MANY_ARGS,
-    HELPK("% \"<b>scan</> [<o>active|passive|bssid AABB:CCDD:EEFF]*\"\r\n" 
+    HELPK("% \"<b>scan</> [active|passive|bssid <o>AABB:CCDD:EEFF</>]*\"\r\n" 
           "%\r\n"
           "% Scan and display available networks.\r\n"
-          "% Performs passive or active scan (default is \"active\") and displays\r\n"
+          "% Performs a passive or an active scan (default is \"active\") and displays\r\n"
           "% found networks or, if \"bssid\" is set, displays detailed information on\r\n"
-          "% specific Access Point\r\n"
+          "% a specific Access Point\r\n"
+          "%\r\n"
           "% <u>Examples</>:\r\n"
+          "%\r\n"
           "% <i>scan</>                          : Active scan (AP probe)\r\n"
           "% <i>scan passive</>                  : Passive scan (AP sniff)\r\n"
           "% <i>scan bssid 0001:2233:4455</>     : Active scan of specific AP\r\n"
@@ -770,65 +791,75 @@ KEYWORDS_DECL(ap) {
           "%   mac 0001:1234:56af     - Cisco style"),
     HELPK("MAC settings (Access Point)") },
 
-  { "ssid", NULL, 1,
-    HELPK("% \"<b>ssid</> SSID [<o>pass PASSWORD</>] [<o>max-conn NUM</>]\"\r\n" 
+  { "hostname", cmd_wifi_hostname, 1,
+    HELPK("% \"<b>hostname</> [<i>TEXT</>]\r\n" 
           "%\r\n"
-          "% Set Access Point SSID and password\r\n"
-          "% <i>SSID</> is a network name, max 32 characters\r\n"
-          "% <i>PASWORD</> is the access password. Omit \"pass\" keyword for open-auth\r\n"
-          "% <i>NUM</> max number of clients\r\n"
+          "% Set/display hostname (per-interface)\r\n"
+          "% No arguments : displays current hostname for the interface\r\n"
+          "% TEXT         : set hostname for the interface\r\n"
           "%\r\n"
           "% <u>Examples</>:\r\n"
-          "%   ssid IoT_Network pass 63923zz - Advertise as network IoT_Network\r\n"
+          "%   <i>hostname</>            : Display hostname\r\n"
+          "%   <i>hostname mars.local</> : Set hostname \"mars.local\"\r\n"
+          "%   <i>hostname Moon2</>      : Set hostname \"Moon2\"\r\n"\
           "%"),
-    HELPK("This Access Point name") },
-
-    { "ssid", NULL, 3, HIDDEN_KEYWORD },
-    { "ssid", NULL, 5, HIDDEN_KEYWORD },
-
-  { "dhcp", NULL, 2,
-    HELPK("% \"<b>dhcp start A.B.C.D [<o>A.B.C.D</>]\r\n" 
+    HELPK("Host name (per interface)") },
+  { "hostname", cmd_wifi_hostname, NO_ARGS, HIDDEN_KEYWORD},
+  
+  { "dhcp", cmd_wifi_dhcp, 2,
+    HELPK("% \"<b>dhcp A.B.C.D [<o>NUM</>] [<o>LEASE</>]\r\n" 
+          "% \"<b>dhcp enable|disable\r\n" 
           "%\r\n"
-          "% Set IP address range for the DHCP and start the server\r\n"
+          "% Set IP address range for the DHCP and start/stop the server\r\n"
+          "% DHCP server IP pool must reside on the interface subnet\r\n"
           "%\r\n"
-          "%<u>Examples</>:\r\n"
-          "%   <i>dhcp start 192.168.0.2</> : Lease addresses starting from 192.168.0.2\r\n"
-          "%   <i>dhcp start 192.168.0.2 192.168.0.3</> : Only 2 IP addresses available\r\n"
-          "%   <i>dhcp stop</>   : Stop DHCP server on interface\r\n"
+          "%<u>Examples (AP address is 192.168.0.1)</>:\r\n"
+          "%   <i>dhcp 192.168.0.2</>        : Lease addresses starting from 192.168.0.2\r\n"
+          "%   <i>dhcp 192.168.0.2 2 3600</> : Only 2 IP addresses available, 1 hour lease\r\n"
+          "%   <i>dhcp enable</>             : Enable DHCP server on the AP interface\r\n"
           "%"),
     HELPK("DHCP server settings") },
-  { "dhcp", NULL, 2, HIDDEN_KEYWORD },
-  { "dhcp", NULL, 1, HIDDEN_KEYWORD },
+  { "dhcp", cmd_wifi_dhcp, 2, HIDDEN_KEYWORD },
+  { "dhcp", cmd_wifi_dhcp, 1, HIDDEN_KEYWORD },
 
-  { "ip", NULL, 2,
-    HELPK("% \"<b>ip address</> A.B.C.D/PREFIX [gw <o>A.B.C.D</>] [dns <o>A.B.C.D</> [<o>A.B.C.D</>]]\"\r\n" 
+  { "ip", cmd_wifi_ip_address, MANY_ARGS,
+    HELPK("% \"<b>ip address</> A.B.C.D/PREFIX [dns <o>A.B.C.D</> [<o>A.B.C.D</>]]\"\r\n" 
           "%\r\n"
           "% Set interface IP address to use\r\n"
-          "% <i>A.B.C.D/PREFIX</>        : IP address and the prefix length e.g.\r\n"
-          "%   \"192.168.0.1/24\" is 192.168.0.1 and a netmask 255.255.255.0\r\n"
-          "% <i>gw A.B.C.D</> : specify default gateway\r\n"
-          "% <i>dns A.B.C.D [A.B.C.D]</> : specify DNS server(s)\r\n"
+          "% <i>A.B.C.D/PREFIX</>        : IP address and the prefix length\r\n"
+          "% <i>dns A.B.C.D [A.B.C.D]</> : Override DNS (default: use STA's DNS)\r\n"
           "%\r\n"
           "%<u>Examples</>:\r\n"
           "%   <i>ip address 192.168.0.2/24</> : Static IP with 255.255.255.0 mask\r\n"
-          "%   <i>ip ad 192.168.0.2/24 dns 8.8.8.8</>: Static IP and DNS\r\n"
+          "%   <i>ip ad 192.168.0.2/24 dns 8.8.8.8</>: Static IP and Google DNS\r\n"
           "%"),
     HELPK("IP information") },
-  { "ip", NULL, 4, HIDDEN_KEYWORD },
-  { "ip", NULL, 5, HIDDEN_KEYWORD },
-  { "ip", NULL, 6, HIDDEN_KEYWORD },
-  { "ip", NULL, 7, HIDDEN_KEYWORD },
   
 
-  { "ip", HELP_ONLY,
-    HELPK("% \"<b>ip natp</> [off]\"\r\n" 
+  { "natp", cmd_wifi_natp, 4,
+    HELPK("% \"<b>natp</> enable|disable\"\r\n" 
+          "% \"<b>natp</> A.B.C.D PORT_IN PORT_OUT [unmap]\"\r\n" 
           "%\r\n"
-          "% Enable or disable NAT/P for WiFi clients\r\n"
+          "% <i>A.B.C.D</> : Local host (on AP's subnet)\r\n"
+          "% <i>PORT_IN</> : Local port (\"inside\")\r\n"
+          "% <i>PORT_OUT</>: External port (\"outide\")\r\n"
+          "% <i>unmap</>   : Remove previously configured static mapping\r\n"
+          "%\r\n"
+          "% 1. Enable or disable NAT/P for WiFi clients\r\n"
+          "% 2. Create/delete static portmaps: map client_IP:PORT to the \"external\"\r\n"
+          "%    AP:PORT e.g. make client's web/ftp server be accessible from the outside\r\n"
+          "%\r\n"
           "%<u>Examples</>:\r\n"
-          "%   <i>ip natp</>     : Enable NAT\r\n"
-          "%   <i>ip natp off</> : Disable NAT (default)\r\n"
+          "% <i>natp enable</>                : Enable NAT/P\r\n"
+          "% <i>natp disable</>               : Disable NAT/P (default)\r\n"
+          "% <i>natp 192.168.4.5 80 8080</>   : Map 192.168.4.5:80 <-> AccessPoint:8080\r\n"
+          "% <i>natp 192.168.4.5 80 8080 un</>: Remove mapping\r\n"
           "%"),
-    NULL },
+    HELPK("NAT/P settings") },
+
+    { "natp", cmd_wifi_natp, 3, HIDDEN_KEYWORD },
+    { "natp", cmd_wifi_natp, 2, HIDDEN_KEYWORD },
+    { "natp", cmd_wifi_natp, 1, HIDDEN_KEYWORD },
 
   KEYWORDS_END
 };

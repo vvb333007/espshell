@@ -22,7 +22,6 @@
 #  error "Please update ESP-IDF and/or Arduino Core libraries to a newer version"
 #endif
 
-
 // For performance profiling:
 // Get CPU cycles count
 //
@@ -614,7 +613,6 @@ static int cmd_nap(int argc, char **argv) {
 // Displays system uptime as returned by esp_timer_get_time() counter
 // Displays last reboot cause
 //
-bool wifi_arduino_lib_detected();
 static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
 
   unsigned char i,
@@ -626,9 +624,6 @@ static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
 
   static_assert(ESP_RST_CPU_LOCKUP == 15, "Code review is required");
   static_assert(ESP_SLEEP_WAKEUP_VBAT_UNDER_VOLT == 14, "Code review is required");
-
-  
-  q_printf("WiFi Arduino library: %s\r\n",wifi_arduino_lib_detected() ? "detected" : "not linked");
 
 #define XX(_Text, _Divider) do {\
   if (sec >= div) { \

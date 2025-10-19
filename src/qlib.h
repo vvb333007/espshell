@@ -1143,6 +1143,61 @@ static bool q_atomac(const char *text, unsigned char *out) {
   return k == 6;
 }
 
+// IP or IP/PREFIX ascii string to an IP address and a mask
+// "1.2.3.4" , "1.2.3.4/24", "1.2/16"
+// Returns 0 if input is either invalid or "0.0.0.0"
+// Storage for /mask/ is optional, can be NULL
+//
+static uint32_t q_atoip(const char *p, uint32_t *mask) {
+  
+  int      piece  = 0;  // numbers between dots and slashes
+  uint32_t result = 0;  // read IP
+  int      dots   = 0;  // number of dots seen
+
+  // Set default mask. Update it later, if we have prefix length ("a.b.c.d/prefix_length")
+  if (mask)
+    *mask = 0xffffffffUL; //255.255.255.255 - host mask
+
+  // Substract here, because of ++p in /while(*++p)/
+  if (p--) 
+    while(*++p)
+      switch (*p) {
+        // Accumulate digits. If resulting number is >255 then retrun with error
+        case '0' ... '9':
+          if ((piece = piece * 10 + (*p - '0')) > 255)
+            return 0;
+          break;
+
+        // A dot: commit accumulated number. Expected not more than 3 dots 
+        case '.':
+          result = result * 256 + piece;
+          piece = 0;
+          if (++dots > 3)
+            return 0;
+          break;
+
+        // Prefix length. Commit last accumulated number
+        case '/':
+        case '\\':
+          result = (result * 256 + piece) << ((3 - dots) * 8);
+          piece = 0;
+          while(*++p)
+            if (*p >= '0' && *p <= '9')
+              if ((piece = piece * 10 + (*p - '0')) > 32)
+                return 0;
+          if (mask)
+            *mask = *mask << (32 - piece);
+          return result;
+        default:
+          return 0;
+      };
+
+  // "no prefix length" values end up here, must be 3 dots
+  // and a non-zero last piece
+  return dots == 3 && piece > 0 ? result * 256 + piece : 0;
+}
+
+
 
 #define DEF_BAD ((unsigned int)(-1))
 
@@ -1440,8 +1495,6 @@ static void q_printhex(const unsigned char *p, unsigned int len) {
     }
   }
 }
-
-
 
 // convert argument TEXT for uart/write and files/write commands (and others)
 // to a buffer. This function is used to join up argv's which are the same logical text.
