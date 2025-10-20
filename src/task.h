@@ -136,9 +136,7 @@ static vsa_t *task_list = 0;            //  variable-sized array to hold active 
 
 // Must be called by a task to finish its execution:
 // FreeRTOS can not handle "return" from the task function. Instead, vTaskDelete must be called
-// Since Cwd is a thread-local variable, which is malloc()'ed, we dispose it here also
-//
-// TODO: Investigate FreeRTOS' "task deletion hook" (TLS and Del callback)
+// TODO: Since Cwd is a thread-local variable, which is malloc()'ed, we dispose it here also
 #define task_finished() \
   { \
     taskid_forget(taskid_self()); \

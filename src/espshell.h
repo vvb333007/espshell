@@ -27,64 +27,53 @@
 
 //#define MEMTEST 1              // Enable memory logger (extra output on "show memory"). For shell self-diagnostics
 #define WITH_ALIAS 1             // Set to 0 to disable alias support (commands "alias", "if", "every" and "exec")
-#define WITH_WIFI 0              // Enable WiFi/IP functions
-
+#define WITH_WIFI 1              // Enable WiFi/IP functions
 #define AUTOSTART 1              // Set to 0 for manual shell start via espshell_start().
-#define STACKSIZE (5 * 1024)     // Shell task stack size
-
 #define WITH_HELP 1              // Set to 0 to save some program space by excluding help strings/functions
-
 #define WITH_HISTORY 1           // Enable command history
-#define HIST_SIZE 20             // History buffer size (number of commands to remember)
-
 #define WITH_ESPCAM 1            // Include camera commands. Set to 0 if your board does not have camera
-
 #define WITH_VAR 1               // enable support for sketch variables (command "var")
-
-#define STARTUP_ECHO 1           // echo mode at espshell startup (-1=blackhole, 0=no echo or 1=echo)
 #define WITH_COLOR 1             // Enable terminal colors support. Set to 0 if your terminal doesn't support ANSI colors
-#define AUTO_COLOR 1             // Let ESPShell decide wheither to enable coloring or not. Command "color on|off|auto" is about that
-
 #define WITH_FS 1                // Filesystems (fat/spiffs/littlefs) support. Unlikely that you'll need all of them
-#define MOUNTPOINTS_NUM 5        // Max number of simultaneously mounted filesystems (must be >0)
 #define WITH_SPIFFS 1            // support SPIF filesystem
 #define WITH_LITTLEFS 1          //   --    LittleFS
 #define WITH_FAT 1               //   --    FAT
 #define WITH_SD 1                // Support FAT filesystem on SD/TF card over SPI
 
+#define MOUNTPOINTS_NUM 5        // Max number of simultaneously mounted filesystems (must be >0)
+#define STARTUP_ECHO 1           // echo mode at espshell startup (-1=blackhole, 0=no echo or 1=echo)
+#define STACKSIZE (5 * 1024)     // Shell task stack size
+#define HIST_SIZE 20             // History buffer size (number of commands to remember)
+#define AUTO_COLOR 1             // Let ESPShell decide wheither to enable coloring or not. Command "color on|off|auto" is about that
 #define DIR_RECURSION_DEPTH 127  // Max directory depth TODO: make a test with long "/a/a/a/.../a" path
-
 #define SEQUENCES_NUM 10         // Max number of sequences available for the command "sequence"
-
-//#define QM_JOIN_HEADERS        // Supress repeating headers on "? command" when multiple entries are printed
+//#define STARTUP_PORT 0         // Console port number, where shell will be deployed at startup.
+                                 // Undefined=AUTO, 0=UART0, 1=UART1, 2=UART2, 99=USBCDC
 
 // -- Compile-time settings END --
 
-#if ARDUINO_USB_CDC_ON_BOOT      // USB mode?
-#  define SERIAL_IS_USB 1        
-#  define STARTUP_PORT 99        // Don't change this: USB port is always number 99
-#else                             
-#  define SERIAL_IS_USB 0
-#  define STARTUP_PORT UART_NUM_0  // UART number, where shell will be deployed at startup. can be changed.
-#endif                            
-
-#if WITH_SD
-#  if !WITH_FAT
-#    undef WITH_FAT
-#    define WITH_FAT 1
-#    warning "FAT FS support is ENABLED, because of WITH_SD (== 1)"
+#ifndef STARTUP_PORT
+#  if ARDUINO_USB_CDC_ON_BOOT      // USB mode?
+#    define STARTUP_PORT 99        // Don't change this: USB port is always number 99
+#  else                             
+#    define STARTUP_PORT UART_NUM_0
 #  endif
 #endif
 
-#if MEMTEST
-#  undef WITH_HISTORY
-#  undef HIST_SIZE
-#  define WITH_HISTORY 0          // Disable history when hunting for memory leaks
-#  define HIST_SIZE 1             // Must be >0
-#  warning "Shell command history is DISABLED because of MEMTEST (== 1)"  
+#if STARTUP_PORT == 99
+#  define SERIAL_IS_USB 1
+#else
+#  define SERIAL_IS_USB 0
 #endif
 
-// Developers section
+#if WITH_SD && !WITH_FAT
+#  undef WITH_SD
+#  define WITH_SD 0
+#  warning "SD support is disabled (depends on FAT FS, which is disabled)"
+#endif
+
+// -- Developers section
+//
 //#define MPIPE_USES_MSGBUF // experimental MessagePipes using FreeRTOS MessageBuffers instead of Queues
 
 
@@ -103,23 +92,15 @@ extern "C" {
 void espshell_start();
 #endif
 
-// 2) Execute an arbitrary shell command
-// /p/ - A pointer to a valid asciiz string.
+// 2) Execute an arbitrary shell command (ascii string as typed by user)
+// Only 1 command per call is allowed , no "uptime\nshow cpu\n" work anymore: must be two separate calls
+//
+// /p/ - A pointer to a valid asciiz string e.g. "pin 2 low high loop inf &" or "show tasks"
+//
+// Returns 0 if everything was ok or CMD_... error codes
 //
 int espshell_exec(const char *p);
 
-
-// 3) Check if ESPShell has finished processing of last espshell_exec() call and is ready for new espshell_exec()
-// This function does NOT tell you that command execution is finished. It is about readiness of the shell to accept new
-// commands
-//
-bool espshell_exec_finished();
-
-
-// used internally by convar_add macro (see below [8] )
-void espshell_varadd(const char *name, void *ptr, int size, bool isf, bool isp, bool isu);
-void espshell_varaddp(const char *name, void *ptr, int size, bool isf, bool isp, bool isu);
-void espshell_varadda(const char *name, void *ptr, int size,int count, bool isf, bool isp, bool isu);
 
 // 4) By default ESPShell occupies UART0  (or USB). Default port could be changed
 // at compile time by setting #define STARTUP_PORT in "extra/espshell.h"
@@ -182,6 +163,7 @@ void digitalForceWrite(int pin, unsigned char level);
 
 void pinForceMode(unsigned int pin, unsigned int flags);
 
+#if WITH_VAR
 // 8)
 // Access sketch variables from ESPShell while sketch is running: in order to do so variables 
 // must be **registered** (using one of convar_addX() macros). Once registered, variables are 
@@ -190,13 +172,13 @@ void pinForceMode(unsigned int pin, unsigned int flags);
 //    Variable types supported: 
 //
 //      1. Simple types: unsigned/signed char, short, int and long; float; bool;
-//      2. Pointers: pointers to Simple Types, pointer to a pointer
-//      3. Arrays of Simple Types, arrays of pointers
+//      2. Pointers: pointers to Simple Types, a pointer to a pointer
+//      3. Arrays: arrays of Simple Types, arrays of Pointers
 //
 //    To register a non-pointer type variable (i.e. "int", "unsigned char" and so on) use "convar_add()"
 //    To register a pointer to a simple scalar type use convar_addp()
 //    To register a pointer to a pointer use convar_addpp()
-//    Arrays of scalar types is registered with convar_adda()
+//    Arrays of scalar types are registered with convar_adda()
 //    Arrays of pointers are registered with convar_addap()
 // 
 //    Example: register sketch variables in ESPShell
@@ -216,10 +198,15 @@ void pinForceMode(unsigned int pin, unsigned int flags);
 //    convar_addap(arr2);            // add an array of pointers
 //
 //
-#if WITH_VAR
-extern float dummy_float;
 
-// Register a non-pointer variable of a simple (builtin) type (e.g. float, unsigned int, signed char, bool and so on)
+// used internally by convar_add macro
+extern float dummy_float;
+void espshell_varadd (const char *, void *, int, bool, bool, bool);
+void espshell_varaddp(const char *, void *, int, bool, bool, bool);
+void espshell_varadda(const char *, void *, int, int,  bool, bool, bool);
+
+// a) Register a non-pointer variable of a simple (builtin) type (e.g. float, 
+//    unsigned int, signed char, bool and so on)
 #  define convar_add( VAR ) do { \
           __typeof__(VAR) __x = ( __typeof__(VAR) )(-1); \
           bool is_signed = (__x < 0); /* HELLO! If you see this warning during compilation - just ignore it :) */ \
@@ -264,4 +251,3 @@ extern float dummy_float;
 #endif
                       
 #endif //espshell_h
-

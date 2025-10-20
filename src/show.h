@@ -28,15 +28,18 @@ static const struct {
   const char     *key;
   const show_cb_t cb;
 } show_keywords[] = {
+  #if WITH_WIFI
+  { "wifi", cmd_show_wifi },
+#endif
 #if WITH_ALIAS
   { "alias", cmd_show_alias },
+  { "ifs", cmd_show_ifs },
 #endif
 #if WITH_TIME
   { "time", cmd_show_time },
 #endif  
   { "nap", cmd_show_nap },
   { "uart", cmd_show_uart },
-  { "ifs", cmd_show_ifs },
   { "tasks", cmd_show_tasks },
   { "pwm", cmd_show_pwm },
   { "counters", cmd_show_counters },

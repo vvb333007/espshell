@@ -83,8 +83,10 @@ static bool History = true;
 
 static unsigned char *editinput();
 
+#if WITH_HELP
 // brother of help_command() but accepts plaintext buffer (non-tokenized)
 static bool help_page_for_inputline(unsigned char *raw);
+#endif
 
 
 static EL_STATUS enter_pressed_cr();
@@ -789,11 +791,12 @@ TTYspecial(unsigned int c) {
   if (c == DEL)
     return del_pressed();
 
+#if WITH_HELP
   if ((c == '?') && !bypass_qm) {
     if (help_page_for_inputline(Line) == true)
       return redisplay();
   }
-
+#endif
   // If @ is the first symbol of the Line, we temporary switch Echo off (until <Enter>).
   // This is to simulate "@echo off" DOS behaviour. Symbol '@' itself is supressed.
   // This can be used to securely enter passwords
