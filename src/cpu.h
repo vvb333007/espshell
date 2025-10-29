@@ -132,6 +132,7 @@ static void __attribute__((constructor)) _cpu_reset_sleep_init() {
       if ((Wakeup_source = (unsigned int )esp_sleep_get_wakeup_cause()) >= sizeof(Ws_desc)/sizeof(char *))
         Wakeup_source = 0;
       // FALLTHROUGH
+    case ESP_RST_USB:
     case ESP_RST_POWERON:
       Reset_count = Reset_count2;
       // FALLTHROUGH
@@ -178,10 +179,6 @@ static int cmd_show_cpuid(int argc, char **argv) {
   const char *chipid = "ESP32-(Unknown)";
 
   esp_chip_info(&chip_info);
-
-#ifdef DEBUG
-  show_cmd_tree_stats();
-#endif  
 
 #if CONFIG_IDF_TARGET_ESP32
   uint32_t chip_ver;
@@ -513,6 +510,7 @@ static int cmd_nap_alarm(int argc, char **argv) {
 #endif
   } else if (!q_strcmp(argv[2],"touch")) {
 
+    // TODO: touch wakeup source
     q_print("% Not implemented yet");
     //Nap_alarm_set |= 1 << ESP_SLEEP_WAKEUP_TOUCHPAD;
     return CMD_FAILED;

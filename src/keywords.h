@@ -2107,9 +2107,7 @@ static int cmd_exit(int argc, char **argv) {
 static struct {
   const struct keywords_t *key;
   const char *name;
-#if DEBUG
   uint8_t count;
-#endif  
 } Subdirs[16] = { 0 }; // TODO: no raw numbers!
 
 // Temporary.
@@ -2119,11 +2117,7 @@ static void keywords_register(const struct keywords_t *key, const char *name, in
   MUST_NOT_HAPPEN(idx > 14);
   Subdirs[idx].key = key;
   Subdirs[idx].name = name;
-#if DEBUG
   Subdirs[idx].count = count;
-#else
-  //count = count;
-#endif  
   idx++;
 }
 
@@ -2142,7 +2136,6 @@ static bool is_command_directory(const char *p) {
   return false;
 }
 
-#if DEBUG
 static void show_cmd_tree_stats() {
   int idx = 0, total = 0;
   while(Subdirs[idx].key) {
@@ -2156,7 +2149,6 @@ static void show_cmd_tree_stats() {
   }
   q_printf("Total: %u entries in %u trees\r\n", total, idx);
 }
-#endif
 
 #endif // #if COMPILING_ESPSHELL
 

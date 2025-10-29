@@ -31,6 +31,7 @@
 #define PIN_MAX (NUM_PINS - 1)
 
 
+
 // -- GPIO Internal Save Register --
 // Structure which is used to save/load pin states by "pin X save"/"pin X load": (throughout docs it is 
 // called "pin internal register")
@@ -314,9 +315,6 @@ static void pin_get_io_config(uint8_t pin,
 }
 
 
-
-
-
 // WARNING! Not reentrat, use with caution
 // WARNING! Undefined behaviour IF io_mux_func_name[][] is a long number, as a text: "12345". These numbers
 //          are pin numbers and are not expected to go beyound 255
@@ -377,11 +375,16 @@ static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
       if (pin_is_input_only_pin(pin)) {
         color = 'g';
         mark = '+';
-      } else if (pin_is_reserved(pin)) {
+      } else if (pin_is_reserved(pin)) { // reserved at startup (flash/psram)
         mark = '!';
         color = 'w';
-      }     
-      
+      }
+#if 0      
+       else if (esp_gpio_is_pin_reserved(pin)) { // reserved recently (uart/spi/etc)
+        mark = 'x';
+        color = 'i';
+      }
+#endif      
       q_printf( "%% %c<%c>%02u</> ",mark,color,pin);
 
       // get pin IO_MUX function currently selected
@@ -404,7 +407,7 @@ static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
   HELP(q_print( "\r\n"
                 "% Legend:\r\n"
                 "%   Function, that is currently assigned to the pin is <r>marked with \"*\"</>\r\n"
-                "%   Input-only pins (marked \"+\") are green (ESP32 only)\r\n"
+                "%   Input-only pins (marked \"+\") are <g>green</> (ESP32 only)\r\n"
                 "%   Pins that are <w>RESERVED</> are labelled with \"<b>!</>\", avoid them!\r\n"));
   return 0;
 }

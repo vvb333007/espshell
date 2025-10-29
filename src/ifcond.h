@@ -1331,7 +1331,8 @@ static int cmd_if(int argc, char **argv) {
 
       // Every GPIO which is used in a condition test must be readable, i.e. INPUT-enabled
       // Even if GPIO is LOW, for "low" condition to work this GPIO must be readable.
-      gpio_input_enable(pin);
+      //gpio_input_enable(pin);
+      gpio_ll_input_enable(&GPIO, pin); // TODO: 
 
       // Set corresponding bit and a gpio bitmask
       if (argv[cond_idx][0] == 'l')

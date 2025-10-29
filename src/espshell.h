@@ -26,12 +26,12 @@
 #define ESPSHELL_VERSION "0.99.12-dev" // Code version
 
 //#define MEMTEST 1              // Enable memory logger (extra output on "show memory"). For shell self-diagnostics
-#define WITH_ALIAS 0             // Set to 0 to disable alias support (commands "alias", "if", "every" and "exec")
-#define WITH_WIFI 0              // Enable WiFi/IP functions
+#define WITH_ALIAS 1             // Set to 0 to disable alias support (commands "alias", "if", "every" and "exec")
+#define WITH_WIFI 1              // Enable WiFi/IP functions
 #define AUTOSTART 1              // Set to 0 for manual shell start via espshell_start().
 #define WITH_HELP 1              // Set to 0 to save some program space by excluding help strings/functions
 #define WITH_HISTORY 1           // Enable command history
-#define WITH_ESPCAM 1            // Include camera commands. Set to 0 if your board does not have camera
+#define WITH_ESPCAM 0            // Include camera commands. Set to 0 if your board does not have camera
 #define WITH_VAR 1               // enable support for sketch variables (command "var")
 #define WITH_COLOR 1             // Enable terminal colors support. Set to 0 if your terminal doesn't support ANSI colors
 #define WITH_FS 1                // Filesystems (fat/spiffs/littlefs) support. Unlikely that you'll need all of them
