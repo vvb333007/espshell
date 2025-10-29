@@ -1119,7 +1119,7 @@ static unsigned int binary2uint32(const char *p) {
   return value;
 }
 
-
+#if WITH_WIFI
 // Ascii to MAC address
 // Convert asciiz "  0001:0203:0405" or "01 02 03:04 05 06" to /unsigned char[6]/
 //
@@ -1196,7 +1196,7 @@ static uint32_t q_atoip(const char *p, uint32_t *mask) {
   // and a non-zero last piece
   return dots == 3 && piece > 0 ? result * 256 + piece : 0;
 }
-
+#endif // WITH_WIFI
 
 
 #define DEF_BAD ((unsigned int)(-1))

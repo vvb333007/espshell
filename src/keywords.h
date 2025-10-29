@@ -176,6 +176,7 @@ static int cmd_time(int, char **);
 
 #if WITH_WIFI
 static int cmd_wifi_if(int, char **);
+static int cmd_wifi_up(int, char **);
 static int cmd_wifi_scan(int, char **);
 static int cmd_wifi_mac(int, char **);
 static int cmd_wifi_hostname(int, char **);
@@ -631,20 +632,21 @@ KEYWORDS_DECL(sta) {
 
   KEYWORDS_BEGIN
 
-  { "up", NULL, 1,
-    HELPK("% \"<b>up BSSID [PASSWORD] [retry [NUM]] [reconnect]</>\"\r\n" 
+  { "up", cmd_wifi_up, MANY_ARGS,
+    HELPK("% \"<b>up bssid XXXX:YYYY:ZZZZ [PASSWORD] [reconnect]</>\"\r\n" 
+          "% \"<b>up SSID [PASSWORD] [reconnect]</>\"\r\n" 
           "%\r\n"
-          "% Connect to the AP BSSID using password PASSWORD, making NUM or infinite\r\n" 
-          "% number of attempts to connect. Configuration (e.g., IP, DHCP, NTP) must be done\r\n"
-          "% <u>before</>. Once the interface is \"up\", the settings are locked and can not be\r\n"
-          "% changed on the fly: the interface must be shut down before configuring\r\n"
+          "% Connect to the AP (SSID or BSSID) using password PASSWORD. Configuration\r\n"
+          "% (e.g., IP, DHCP, NTP) must be done <u>before</>. Once the interface is \"up\"\r\n"
+          "% settings are locked and can not be changed on the fly: the interface must be\r\n"
+          "% shut down before configuring\r\n"
           "%\r\n"
           "% NOTE: use \"scan\" command to find out BSSIDs\r\n"
           "%\r\n"
           "%<u>Examples</>:\r\n"
-          "%  up 0044:ff55:02ae jfhod786 \r\n"
+          "%  up \"Home Network\" jfhod786 \r\n"
           "%  up 0044:ff55:02ae jfhod786 reconnect\r\n"
-          "%  up 0044:ff55:02ae jfhod786 reconnect retry"),
+          "%"),
     HELPK("Initialize and start WiFi interface") },
 
   { "up", NULL, 2, HIDDEN_KEYWORD },
@@ -1551,18 +1553,20 @@ KEYWORDS_DECL(main) {
           "%  \"<i>NUMBER</>\"  - Set pin. All subsequent keywords will apply to this new pin\r\n"
           "% \"<i>loop</>\"  - Execute whole \"pin\" command multiple times\r\n"
           "%\r\n"
-          "% <u>Examples:</>\r\n%\r\n"
-          "%  <i>pin 1 read               - pin1: read digital value\r\n"
-          "%  <i>pin 1 read aread         - pin1: digital read followed by an analog read\r\n"
-          "%  <i>pin 1 in out up          - pin1 is INPUT and OUTPUT with PULLUP\r\n"
-          "%  <i>pin 1 save high load     - Save pin state, set HIGH(1), restore pin state\r\n"
-          "%  <i>pin 1 high               - pin1 set to logic \"1\"\r\n"
-          "%  <i>pin 1 high delay 100 low - Set pin1 to logic \"1\", after 100ms to \"0\"\r\n"
-          "%  <i>pin 1 pwm 5000 0.3       - Set 5kHz, 30% duty square wave output\r\n"
-          "%  <i>pin 1 pwm 0 0            - Disable PWN on GPIO1\r\n"
-          "%  <i>pin 1 low high loop inf  - Generate squarewave at max speed\r\n"
-          "%  <i>pin 1 hi del 500 lo del 500 loop 10 - Blink a led 10 times\r\n%\r\n"
-          "% (see \"docs/html/GPIO.html\" for more details & examples)\r\n"),  NULL },
+          "% <u>Some examples:</>\r\n%\r\n"
+          "%  <i>pin 1 read</>               - GPIO1: read digital value\r\n"
+          "%  <i>pin 1 read aread</>         - GPIO1: digital read followed by an analog read\r\n"
+          "%  <i>pin 1 in out up</>          - GPIO1 is INPUT and OUTPUT with PULLUP\r\n"
+          "%  <i>pin 1 save high load</>     - Save pin state, set HIGH(1), restore pin state\r\n"
+          "%  <i>pin 1 high</>               - GPIO1 set to logic \"1\"\r\n"
+          "%  <i>pin 1 high delay 100 low</> - Set pin1 to logic \"1\", after 100ms to \"0\"\r\n"
+          "%  <i>pin 1 pwm 5000 0.3</>       - Set 5kHz, 30% duty square wave output\r\n"
+          "%  <i>pin 1 pwm 0 0</>            - Disable PWN on GPIO1\r\n"
+          "%  <i>pin 1 low high loop inf</>  - Generate squarewave at max speed\r\n"
+          "%  <i>pin 1 hi del 500 lo del</> 500 loop 10 - Blink a led 10 times\r\n"
+          "%  <i>pin 1 matrix in 33</>       - GPIO1 is the source for peri signal#33\r\n"
+          "%  <i>pin 1 matrix</>             - Reset pin's GPIO Matrix connections"
+          ),  NULL },
 
   // PWM generation
   { "pwm", cmd_pwm, 4,
@@ -1795,6 +1799,7 @@ KEYWORDS_DECL(main) {
           "% <u>Examples</>>\r\n"
           "%   <i>exec motor_on</> - Execute command list named \"motor_on\"\r\n"), "Execute scripts/aliases" },
 #endif //ALIAS
+
   { "exec", cmd_exec, MANY_ARGS,
     HELPK("% \"<b>exec /FILE_NAME</>\"\r\n"
           "%\r\n"
@@ -1802,7 +1807,7 @@ KEYWORDS_DECL(main) {
           "% Filesystem must be mounted and /FILE_NAME must start with \"/\"\r\n"
           "%\r\n"
           "% <u>Examples</>>\r\n"
-          "%   <i>exec \"/ffat/Desktop/New Folder(1)/script.cfg\"</>"), NULL },
+          "%   <i>exec \"/ffat/Desktop/New Folder(1)/script.cfg\"</>"), "Execute scripts/aliases" },
 
 
 #if WITH_HISTORY
@@ -2102,15 +2107,23 @@ static int cmd_exit(int argc, char **argv) {
 static struct {
   const struct keywords_t *key;
   const char *name;
+#if DEBUG
+  uint8_t count;
+#endif  
 } Subdirs[16] = { 0 }; // TODO: no raw numbers!
 
 // Temporary.
 // Will be rewritten
-static void keywords_register(const struct keywords_t *key, const char *name) {
+static void keywords_register(const struct keywords_t *key, const char *name, int const count) {
   static unsigned char idx = 0;
   MUST_NOT_HAPPEN(idx > 14);
   Subdirs[idx].key = key;
   Subdirs[idx].name = name;
+#if DEBUG
+  Subdirs[idx].count = count;
+#else
+  //count = count;
+#endif  
   idx++;
 }
 
@@ -2128,5 +2141,22 @@ static bool is_command_directory(const char *p) {
   }
   return false;
 }
+
+#if DEBUG
+static void show_cmd_tree_stats() {
+  int idx = 0, total = 0;
+  while(Subdirs[idx].key) {
+    int i = 0;
+    while(Subdirs[idx].key[i].cmd) {
+      i++;
+    }
+    q_printf("Tree: \"%s\", %u entries\r\n", Subdirs[idx].name, i);
+    total += i;
+    idx++;
+  }
+  q_printf("Total: %u entries in %u trees\r\n", total, idx);
+}
+#endif
+
 #endif // #if COMPILING_ESPSHELL
 

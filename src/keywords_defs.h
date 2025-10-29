@@ -87,12 +87,12 @@ struct keywords_t {
 #define KEYWORDS_DECL(_Key) \
   static const struct keywords_t keywords_ ## _Key [] =
 
-static void keywords_register(const struct keywords_t *key, const char *name);
+static void keywords_register(const struct keywords_t *key, const char *name, int const count);
 
 #define KEYWORDS_REG(_Key) \
  /* Each keywords array has its own constructor which registers this particular array */ \
   void __attribute__((constructor)) __init_kwd_ ## _Key () { \
-    keywords_register(keywords_ ## _Key, # _Key); \
+    keywords_register(keywords_ ## _Key, # _Key, sizeof(keywords_ ## _Key) / sizeof(keywords_ ## _Key[0])); \
   } \
 
 #endif // #if COMPILING_ESPSHELL

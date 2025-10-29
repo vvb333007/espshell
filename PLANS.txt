@@ -1,15 +1,8 @@
-Before 1.0 can be released:
+Roadmap:
 
 0. Documentation is a bit outdated: new commands are missing, some screenshots are
    too old and do not match real command output
 
-1. Support for $variables and wifi/ip events in command "if":
-    esp32#>if $ByteCounter gt 1000 exec SomeCommand
-    esp32#>if got|lost ip exec SomeCommand
-    esp32#>if got|lost ip exec SomeCommand
-
-2. Make command processor be able to expand "$" values: $1 is argv[1] and 
-   $VarName is a sketch variable
 
 3. Sequences: add sequence capture (using RMT), captured sequence display and 
    saving to a FS. (IR remote capture & playback) add sequence decode, based on
@@ -32,3 +25,55 @@ Before 1.0 can be released:
    bootloader.bin, nvs.bin, firmware.bin etc, (RW except the main app partition, which is RO).
 
 9. Basic WiFi support (Ap, STA and AP+STA)
+
+10. Conditions and events: Variables support
+
+  a) add ability to poll sketch variables:
+     if $var_name1|imm    eq|lt|gt|le|ge|ne    imm|$var_name2 poll NUM ... exec     <--- persistent
+
+  b) add support for "execute and forget" one-shot conditions (keyword "once")
+     if $var_name1|imm    eq|lt|gt|le|ge|ne    imm|$var_name2 once ... exec         <--- one shot, discarded after use
+
+  c) Start to add "return values" support: some commands (e.g. "pin 36 aread") should store their
+     return value(s) in special variables (e.g. $1, $2) so subsequent "if" can use it:
+	esp32#>pin 36 aread
+	esp32#>if $1 gt 3000 exec Warning <-- implicit "once"
+
+
+  d) Add "break" keyword to the "if" command so it can "break" alias execution. This is to simulate 
+    "if..then..else" behaviour
+
+
+	// x = adc_read(36);
+        // if (x > 3000) {
+        //    display_warning();
+        // } else {
+	//   if (x > 2000)
+	//     command1();
+	//   printf("Read value %u\r\n",x)
+	// }
+	esp32#>pin 36 aread
+	esp32#>if $1 gt 3000 exec Warning break
+	esp32#>if $1 gt 2000 exec Command_1
+	esp32#>echo "Read value" $1
+
+  e) Add "goto LINE_NUM" command to "if", (replaces "exec" when used)
+
+  f) Refactor to use read_timespec
+  g) wifi and ip events catcher (if got|lost ip, if sta|ap connected, )
+
+  h) "if then else" semantics:
+
+        // if ($1 > 1000 && $1 < 3000):
+	esp32#>if $1 gt 1000 $1 lt 3000 exec Warning
+
+
+        // if ($1 < 1000 || $1 > 3000):
+	esp32#>if $1 lt 1000 exec Warning
+	esp32#>if $1 gt 3000 exec Warning
+
+	// if ($1 < 1000 || ($1 > 3000 && $1 <= 4000)):
+	esp32#>if $1 lt 1000 exec Warning
+	esp32#>if $1 gt 3000 $1 le 4000 exec Warning
+
+

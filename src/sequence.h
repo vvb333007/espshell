@@ -422,19 +422,21 @@ static int seq_send(unsigned int pin, unsigned int seq) {
       }
       // success!
     } else {
-#if ESP_ARDUINO_VERSION > ESP_ARDUINO_VERSION_VAL(3,3,0)
+      // rmtWriteLoopingCount() was introduced in 3.3.1 but then it was renamed in 3.3.2 to rmtWriteRepeated()
+      //
+#if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3,3,2)
        if (!rmtWriteRepeated(pin, s->seq, s->seq_len, s->loop_count)) {
          HELP(q_print("% RMT failed (rmtWriteLoopingCount)\r\n"));
          return -1;
        }
 #else       
-      q_print("% Update your Arduino Core to use this feature\r\n");
+      q_print("% Update your Arduino Core (version greater than 3.3.1) to use this feature\r\n");
       goto run_non_looping;
 #endif      
     }
     // success!
   } else {
-#if ESP_ARDUINO_VERSION > ESP_ARDUINO_VERSION_VAL(3,3,0)
+#if ESP_ARDUINO_VERSION < ESP_ARDUINO_VERSION_VAL(3,3,2)
 run_non_looping:    
 #endif
     if (!rmtWrite(pin, s->seq, s->seq_len, RMT_WAIT_FOR_EVER)) {

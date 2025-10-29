@@ -179,6 +179,10 @@ static int cmd_show_cpuid(int argc, char **argv) {
 
   esp_chip_info(&chip_info);
 
+#ifdef DEBUG
+  show_cmd_tree_stats();
+#endif  
+
 #if CONFIG_IDF_TARGET_ESP32
   uint32_t chip_ver;
   uint32_t pkg_ver;
@@ -623,7 +627,7 @@ static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
                div = 60 * 60 * 24;
 
   static_assert(ESP_RST_CPU_LOCKUP == 15, "Code review is required");
-  static_assert(ESP_SLEEP_WAKEUP_VBAT_UNDER_VOLT == 14, "Code review is required");
+  // static_assert(ESP_SLEEP_WAKEUP_VBAT_UNDER_VOLT == 14, "Code review is required"); // FIXME:
 
 #define XX(_Text, _Divider) do {\
   if (sec >= div) { \

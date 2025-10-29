@@ -357,6 +357,41 @@ static int convar_value_as_string(struct convar *var, char *out, int olen) {
 }
 
 
+static void inline __attribute__((always_inline))
+_memcpy(char *dst, char *src, uint8_t count) {
+  switch(count) {
+    case 4: *dst++ = *src++; // FALLTHROUGH
+    case 3: *dst++ = *src++; // FALLTHROUGH
+    case 2: *dst++ = *src++; // FALLTHROUGH
+    case 1: *dst = *src;     // FALLTHROUGH
+    default:
+  };
+}
+#if 0
+// Compare two variables
+// Returns <0 if var < var2, >0 if var > var2 or 0 if var == var2
+//
+//convar_map_variable() ?
+static int convar_compare(struct convar *var, struct convar *var2) {
+
+  if (var && var2) {
+    composite_t comp = { 0 }, comp2 = { 0 };
+
+    _memcpy((char *)&comp, (char *)var->ptr, var->size);
+    _memcpy((char *)&comp2, (char *)var2->ptr, var2->size);
+
+    if (var->isf) return comp.fval - comp2.fval; else
+    if (var->isp) return comp.uval - comp2.uval; else
+    if (var->isu) return (int)(var->size == sizeof(int) ? comp.uval - comp2.uval
+                                                        : (var->size == sizeof(short) ? comp.ush - comp2.ush
+                                                                                      : comp.uchar - comp2.uchar)); else
+    return (int)(var->size == sizeof(int) ? comp.ival - comp2.ival
+                                          : (var->size == sizeof(short) ? comp.ish - comp2.ish
+                                                                        : comp.ichar - comp2.ichar));
+  }
+  return -1;
+}
+#endif
 // Show variable value by variable name
 //
 static int convar_show_var(char *name) {

@@ -10,8 +10,11 @@
  * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
-
-
+// -- WiFi support
+// Creation/deletion/configuring of WiFi interfaces. Access Point and/or Station mode
+// We need WiFi for our FTP server to work, which in turn is required for filesystem
+// upload
+//
 
 #include "freertos/event_groups.h"
 #include <esp_wifi.h>
@@ -35,6 +38,9 @@
 
 #define is_sta_here() (esp_netif_get_handle_from_ifkey("WIFI_STA_DEF") != NULL)
 #define is_ap_here() (esp_netif_get_handle_from_ifkey("WIFI_AP_DEF") != NULL)
+
+static wifi_config_t AP_config = { 0 };
+static wifi_config_t STA_config = { 0 };
 
 #if 0
 // Get esp_netif_t by its name:
@@ -83,7 +89,8 @@ static esp_netif_t *netif_by_name(const char *name) {
 
 //static bool Ap_up = false;
 //static bool Sta_up = false;
-static bool Wifi_started = false;
+static bool Wifi_started = false;   // TODO: _Atomic
+static bool Wifi_prepared = false;  // TODO: _Atomic
 
 // WiFi auth types in human=readable form. First byte is the security type: -open, *psk, +psk mm, or $enterprise
 // see legend in "scan" command output
@@ -126,21 +133,16 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
   if (likely(event_base == WIFI_EVENT))
     switch(event_id) {
       case WIFI_EVENT_STA_START:
-        if (is_sta_here()) {
-          VERBOSE(q_print("% STA started, connecting...\r\n"));
-        } else {
-          VERBOSE(q_print("% STA started, but not interface created yet. Delayed.\r\n"));
-        }
-        //esp_wifi_connect();
         return;
 
       case WIFI_EVENT_STA_CONNECTED:
         VERBOSE(q_print("% STA connected, starting DHCP client...\r\n"));
         //start_sta_dhcp();
+        
         return ;
 
       case WIFI_EVENT_STA_DISCONNECTED:
-        VERBOSE(q_print("% STA connected, stopping DHCP/SNTP client...\r\n"));
+        VERBOSE(q_print("% STA disconnected, stopping DHCP/SNTP client...\r\n"));
         //stop_sntp();
         //stop_sta_dhcp();
         //esp_wifi_connect(); // optional auto-reconnect
@@ -148,16 +150,10 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
     
     // AP events
       case WIFI_EVENT_AP_START:
-        if (is_ap_here()) {
-          VERBOSE(q_print("% AP started, starting DHCP server...\r\n"));
-        } else {
-          VERBOSE(q_print("% AP started, but no AP interface created yet. Delayed.\r\n"));
-        }
         //start_ap_dhcp();
         return ;
 
       case WIFI_EVENT_AP_STOP:
-        VERBOSE(q_print("% AP stopped, stopping DHCP server...\r\n"));
         //stop_ap_dhcp();
         return ;
 
@@ -167,50 +163,76 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
     VERBOSE(q_printf("%% WIFI-EVENT: arg=%p, base=%x, id=%x, edata=%p\r\n",arg,(unsigned int)event_base,(unsigned int)event_id,event_data));
 }
 
-// Initialize and start the WiFi stack, perform minimal initial config, create netifs.
+// Initialize the WiFi stack, perform minimal initial config.
 // Can be called multiple times
 //
-static bool start_wifi_stack() {
+static bool prepare_wifi_stack() {
 
-  if (!Wifi_started) {
+  if (!Wifi_prepared) {
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
 
     // NVS must be initialized for WiFi driver to be happy;
     // it is done in _nv_storage_init() constructor
+
+    // Create default event loop
     esp_event_loop_create_default();
 
+    // Attach IP and WiFi event handlers. This module relies on the ESP32 event system for its operation
     esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL);
     esp_event_handler_instance_register(IP_EVENT, ESP_EVENT_ANY_ID,  &ip_event_handler, NULL, NULL);
 
+    // Initialize WiFi
     esp_wifi_init(&cfg);
+
+    // Use RAM, not flash otherwise your STA will try to connect to AP remembered from the previous connection
+    // This can be very annoying
     esp_wifi_set_storage(WIFI_STORAGE_RAM);
+
+    // We don't know yet what mode user will use so initialize both
     esp_wifi_set_mode(WIFI_MODE_APSTA);
-    esp_wifi_set_channel(11, 0);
+    //esp_wifi_set_channel(11, 0);
 #if SOC_WIFI_SUPPORT_5G
     esp_wifi_set_band_mode(WIFI_BAND_MODE_AUTO);
 #endif
+    Wifi_prepared = true;
+  }
+  // TODO: check other errors
+  return Wifi_prepared;
+}
+
+static bool start_wifi_stack() {
+
+  if (!Wifi_prepared) {
+    VERBOSE(q_print("% start_wifi_stack() called without prepare_wifi_stack()\r\n"));
+    return false;
+  }
+
+  if (!Wifi_started) {
     if (esp_wifi_start() == ESP_OK) {
       Wifi_started = true;
-      VERBOSE(q_print("% WIFI initialized, driver loaded\r\n"));
+      VERBOSE(q_print("% WIFI started\r\n"));
     } else {
       VERBOSE(q_print("% WIFI failed to initialize\r\n"));
     }
   }
-  // TODO: check other errors
   return Wifi_started;
 }
 
+// Performs "unprepare" and "stop"
+// This is mainly for development purposes 
 static void stop_wifi_stack() {
-  if (Wifi_started) {
+
+  if (Wifi_started)
     esp_wifi_stop();
+
+  if (Wifi_prepared) {
     esp_wifi_deinit();
-    Wifi_started = false;
     esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler);
     esp_event_handler_instance_unregister(IP_EVENT, ESP_EVENT_ANY_ID, &ip_event_handler);
-
-    VERBOSE(q_print("% WIFI deinit"));
   }
+  
+  Wifi_started = Wifi_prepared = false;
 }
 
 
@@ -221,13 +243,16 @@ static int cmd_wifi_if(int argc, char **argv) {
   if (argc < 2)
     return CMD_MISSING_ARG;
 
-  start_wifi_stack();
+  if (!prepare_wifi_stack()) {
+    q_print("% Failed to prepare the WiFi stack. WiFi is not available\r\n");
+    return CMD_FAILED;
+  }
 
   // Set appropriate keywords (keywords_ap or keywords_sta), store interface type in /Context/
   // Create corresponding esp_netif_t
   if (argv[1][0] == 's')  {
     
-    if (!esp_netif_get_handle_from_ifkey("WIFI_STA_DEF"))
+    if (!esp_netif_get_handle_from_ifkey("WIFI_STA_DEF")) // TODO: is_sta_here()
       if (!esp_netif_create_default_wifi_sta()) {
         q_print("% Can not create default STA network interface\r\n");
         return CMD_FAILED;
@@ -236,7 +261,7 @@ static int cmd_wifi_if(int argc, char **argv) {
 
   } else if (argv[1][0] == 'a') { 
 
-    if (!esp_netif_get_handle_from_ifkey("WIFI_AP_DEF"))
+    if (!esp_netif_get_handle_from_ifkey("WIFI_AP_DEF")) // TODO: is_ap_here()
       if (!esp_netif_create_default_wifi_ap()) {
         q_print("% Can not create default AP network interface\r\n");
         return CMD_FAILED;
@@ -244,7 +269,12 @@ static int cmd_wifi_if(int argc, char **argv) {
     change_command_directory(WIFI_IF_AP, KEYWORDS(ap), PROMPT_WIFIAP, "WiFi Access Point");
 
   } else {
-    HELP(q_print("% Two options: \"wifi sta\" or \"wifi ap\"\r\n"));
+    HELP(q_printf("%% Unknown mode \"%s\". Supported modes are \"sta\" and \"ap\"\r\n", argv[1]));
+    return CMD_FAILED;
+  }
+
+  if (!start_wifi_stack()) {
+    HELP(q_print("% Failed to start WiFi\r\n"));
     return CMD_FAILED;
   }
 
@@ -311,9 +341,9 @@ static void display_ap_details(wifi_ap_record_t *ap, const char *requested_bssid
   }
 }
 
-// "show wifi ap|sta"
-//
-//
+// "show wifi ap|sta|clients"
+// Client         Leased IP
+// XXXX:XXXX:XXXX 192.168.0.1
 static int cmd_show_wifi(int argc, char **argv) {
   return 0;
 }
@@ -528,9 +558,10 @@ print_error_and_return:
 static int cmd_wifi_ip_address(int argc, char **argv) {
 
   uint32_t ip = 0, mask = 0xffffff00, gw = 0, dns1 = 0, dns2 = 0;
+  bool dhcpc = false, renew = false;
   THIS_INTERFACE(ifx);
 
-  if (ni)
+  //if (ni)
 
   if (argc < 3)
     return CMD_MISSING_ARG;
@@ -540,17 +571,44 @@ static int cmd_wifi_ip_address(int argc, char **argv) {
       q_print("% AP must have a static IP address (e.g. default 192.168.4.1/24)\r\n");
       return CMD_FAILED;
     }
-
+    dhcpc = true;
   } else {
     
-
-    ip = q_atoip(argv[2], &mask);
-    if (ip == 0) {
+    if ((ip = q_atoip(argv[2], &mask)) == 0) {
       q_print("% Invalid address/mask. (a valid example: \"192.168.4.1/24\")\r\n");
       return CMD_FAILED;
     }
-    VERBOSE(q_print("% Static IP address and subnet mask requested\r\n"));
+    
   }
+
+  //[renew|gw A.B.C.D|dns A.B.C.D [A.B.C.D]]*  
+  for (int i = 3; i < argc; i++) {
+    if (!q_strcmp(argv[i],"renew"))
+      renew = true;
+    else if (!q_strcmp(argv[i],"gw")) {
+      i++;
+      if (i < argc) {
+        if ((gw = q_atoip(argv[i], NULL)) == 0) {
+          q_print("% Invalid default gateway address\r\n");
+          return CMD_FAILED;
+        }
+      }
+    } else if (!q_strcmp(argv[i],"dns")) {
+
+      i++;
+      if (i < argc) {
+        uint32_t *p = dns1 ? &dns2 : &dns1;
+        if ((*p = q_atoip(argv[i], NULL)) == 0) {
+          q_print("% Invalid DNS address\r\n");
+          return CMD_FAILED;
+        }
+      }
+    } else
+      q_printf("%% Keyword \"%s\" ignored\r\n",argv[i]);
+  }
+
+  q_printf("IP: %08x, MASK: %08x, DHCPC: %d, RENEW: %d, GW: %08x, DNS1: %08x, DNS2: %08x\r\n",
+            ip,mask,dhcpc,renew,gw,dns1,dns2);
 
   return 0;
 }
@@ -600,6 +658,36 @@ static int cmd_wifi_dhcp(int argc, char **argv) {
     // TODO: set the new DHCPS configuration
     VERBOSE(q_print("% Configuring DHCP server..\r\n"));
   }
+  return 0;
+}
+
+// up "Network Name"
+// up bssid 0000:1111:2222
+//
+static int cmd_wifi_up(int argc, char **argv) {
+
+  THIS_INTERFACE(ifx);
+
+  if (ifx == WIFI_IF_STA) {
+
+    wifi_config_t wifi_sta_config = {
+        .sta = {
+            .scan_method = WIFI_ALL_CHANNEL_SCAN,
+            .failure_retry_cnt = 3,
+            .sae_pwe_h2e = WPA3_SAE_PWE_BOTH,
+        },
+    };
+    strlcpy(wifi_sta_config.sta.ssid,argv[1],sizeof(wifi_sta_config.sta.ssid));
+    strlcpy(wifi_sta_config.sta.password,argv[2],sizeof(wifi_sta_config.sta.password));
+
+    esp_wifi_set_config(WIFI_IF_STA, &wifi_sta_config);
+    esp_wifi_connect();
+  } else {
+
+  }
+
+
+
   return 0;
 }
 

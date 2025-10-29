@@ -32,6 +32,8 @@
 // 1. Pointers to aliases are persistent, and whole list of aliases is an _Atomic pointer
 // 2. Pointer to lines (alias->lines) is not persistent and must be checked for NULL value. Access to lines
 //    is protected by alias' RWlock (see e.g. alias_is_empty() )
+//
+// TODO: "goto [+|-]NUM|end" command  (only available within an alias) - go to specified line,+-lines, last line
 
 #if COMPILING_ESPSHELL
 #if  WITH_ALIAS

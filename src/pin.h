@@ -310,8 +310,9 @@ static void pin_get_io_config(uint8_t pin,
   gpio_get_io_config((gpio_num_t)pin, &c);
   X(fun_sel);  X(sig_out);  X(drv);  X(pu);  X(pd);  X(ie);  X(oe);  X(od);  X(slp_sel);
 #  undef X
-}
 #endif // Old or new IDF?
+}
+
 
 
 

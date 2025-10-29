@@ -104,7 +104,7 @@ static int help_keys(UNUSED int argc, UNUSED char **argv) {
   // 25 lines maximum to fit in default terminal window without scrolling
   q_print("%             -- ESPShell Keys -- \r\n\r\n"
           "% <ENTER>         : Execute command.\r\n"
-          "% <- -> /\\ \\/     : Arrows: move cursor left or right. Up and down to scroll\r\n"
+          "% <- ->           : Arrows: move cursor left or right. Up and down to scroll\r\n"
           "%                   through command history\r\n"
           "% <DEL>           : As in Notepad\r\n"
           "% <BACKSPACE>     : As in Notepad\r\n"

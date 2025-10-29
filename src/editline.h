@@ -245,19 +245,28 @@ TTYget() {
     return PushBack;
   }
 
-  while( true ) {
-    // read 1 byte from user.
-    // if returned value is < 1, that means either "timeout" or "console down"
-    while (console_read_bytes(&c, 1, portMAX_DELAY) < 1)
+
+  // read 1 byte from user.
+  // if returned value is EOF, or there were less than 1 byte read this can be indication
+  // of the console transport layer failure (disconnected)
+  do {
+    int retry;
+
+keep_trying:
+
+    retry = 0;
+
+    while (console_read_bytes(&c, 1, portMAX_DELAY) < 1) {
+
       q_yield();
-    
-    if (likely(c != 0))
-      break;
-    // EOF symbol must not enter espshell command pipeline. We can get EOF only if we have problems
-    // with transport layer (uart down or USB down)
-    q_print("% ESPShell failed to read serial port\r\n");
-    q_delay(1000);
-  }
+
+      if (++retry > 9) {
+        q_print("% Console transport layer is down. Check your terminal connection\r\n");
+        q_delay(1000);
+        goto keep_trying;
+      }
+    }
+  } while( c == 0 );
 
 #if WITH_COLOR
   // Trying to be smart when coloring mode is set to "auto" (default behaviour):

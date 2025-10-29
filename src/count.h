@@ -332,9 +332,11 @@ bool count_wait_for_the_first_pulse(unsigned int pin) {
     ret = task_wait_for_signal(&value, DELAY_INFINITE);
   else
     // foreground tasks can be interrupted by a keypress, so we poll console with TRIGGER_POLL interval.
-    while( (ret = task_wait_for_signal(&value, TRIGGER_POLL)) == false)
+    while( (ret = task_wait_for_signal(&value, TRIGGER_POLL)) == false) {
+      printf("Checking for anykey_pressed()\r\n");
       if (anykey_pressed()) 
         break;
+    }
 
   if (value == SIGNAL_TERM) 
     ret = false; // cancel further processing

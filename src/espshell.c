@@ -129,7 +129,10 @@
 #endif
 
 // Enable VERBOSE(...) macro only when "Tools->Core Debug Level" is set to "Verbose"
+//
+#undef DEBUG
 #if ARDUHAL_LOG_LEVEL == ARDUHAL_LOG_LEVEL_VERBOSE
+#  define DEBUG 1
 #  define VERBOSE( ... ) __VA_ARGS__ 
 #else
 #  define VERBOSE( ... ) { /* Nothing here */ }
@@ -381,7 +384,7 @@ static void amp_helper_task(void *arg) {
   
   // its ok to unref null pointer
   userinput_unref(aa);
-
+  
   files_set_cwd(NULL); // Free memory used for CWD
   task_finished();
 }
@@ -567,17 +570,24 @@ bool espshell_exec_finished() {
 }
 
 
-// This function may be called multiple times despite its name:
-// Calls functions which are intended to be called once, things like 
-// convars & memory allocations, but can not be called as a __constructor__ function
+// Despite the name, this function can be called multiple times.
+// Its job is to run a bunch of module-level "init" functions.
+// Some inits run automatically via __attribute__((constructor)),
+// but a few need to be kicked off manually — that’s what this does.
 //
-static bool call_once = false;
-
+// Typically used for things that should only run once (like
+// convar setup or memory allocations) but can’t be done inside
+// a constructor for one reason or another.
+//
 static  void espshell_initonce() {
 
-  if (!call_once) {
+  static bool inited = false;
+
+  if (!inited) {
+    inited = true;
+
+    // Set default prompt: e.g. "esp32#>"
     prompt = PROMPT;
-    call_once = true;
 
     // Add internal shell variables
     convar_add(ls_show_dir_size);  // enable/disable dir size counting for "ls" command
@@ -590,12 +600,20 @@ static  void espshell_initonce() {
     convar_add(cam_ledc_chan);  // Avoiding interference: LEDC channels used by ESPCAM for generating XCLK
     convar_add(cam_ledc_timer);    // Avoiding interference: ESP32 TIMER used by ESPCAM
 #endif
-    // init subsystems
+    // init subsystems,  if any
     //seq_init();
     //nv_init_once(); 
 
-   // task_new(test1_task, NULL, "test1");
-   // task_new(test2_task, NULL, "test2");
+    int flags;  
+
+    setvbuf(stdin, NULL, _IONBF, 0);
+    setvbuf(stdout, NULL, _IONBF, 0);    
+
+    flags = fcntl(STDIN_FILENO, F_GETFL, 0);
+    fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
+
+    flags = fcntl(STDOUT_FILENO, F_GETFL, 0);
+    fcntl(STDOUT_FILENO, F_SETFL, flags | O_NONBLOCK);    
   }
 }
 
@@ -617,15 +635,16 @@ static void espshell_task(const void *arg) {
     if ((shell_task = task_new(espshell_task, NULL, "ESPShell")) == NULL)
       q_print("% ESPShell failed to start its task\r\n");
   } else {
-
-    // wait until user code calls Serial.begin()
+    // arg is NULL - we were called by task_new() and we are running as separate process now
+    // wait until user code calls Serial.begin() or otherwise initializes Serial.
     while (!console_isup())
       q_delay(CONSOLE_UP_POLL_DELAY);
 
-    // Now we can be sure that "loopTaskHandle" (see Arduino Core) is not NULL
-    // Add loop() task to our list of tasks. This code could be called more than once but
-    // it is ok to taskid_remember() the same number - it gets overwritten
-    taskid_remember(loopTaskHandle);
+    // Check if Arduino's loop() task is already started. It must be
+    if (loopTaskHandle == NULL)
+      q_print("% <e>Console is initialized but loop task is not started</>");
+    else
+      taskid_remember(loopTaskHandle);
 
 
     // Read some startup data from nvram (if available)
@@ -637,7 +656,7 @@ static void espshell_task(const void *arg) {
     //
     while (!Exit) {
       char *line = readline(prompt ? prompt : "<null>");
-      if (line)
+      if (line && *line)
         espshell_command(line, NULL);
       else
         // if readline() starts to fail, we risk to end up in a spinloop, starving IDLE0 or IDLE1 tasks
@@ -670,19 +689,8 @@ static INLINE bool espshell_started() {
 //
 // This function can be used to restart the shell which was terminated by command "exit ex"
 //
+
 void STARTUP_HOOK espshell_start() {
-
-
-// These static assertions primarily apply to the var.h module, 
-// which *assumes* sizeof(int) == sizeof(void*) == 4 
-// (as is true on 32-bit CPUs). 
-// Problems will arise when porting this code to a 64-bit system 
-// (i.e., sizeof(void*) > sizeof(int)).
-//
-// The affected code relates to task IDs (task.h) and variables (var.h).
-//
-// We perform these assertions at the start so that we can safely convert 
-// between 32-bit types and protect otherwise unsafe code.
 
   static_assert(sizeof(unsigned long long) == 8);
   static_assert(sizeof(signed long long) == 8);
@@ -692,8 +700,7 @@ void STARTUP_HOOK espshell_start() {
   static_assert(sizeof(unsigned int) == 4);
   static_assert(sizeof(signed char) == 1);
   static_assert(sizeof(signed int) == 4);
-  static_assert(sizeof(void *) == 4);
-  //static_assert(sizeof(task_t) == sizeof(void *)); fixed.
+  static_assert(sizeof(void *) == 4); // TODO: get rid of it. We must not assume pointer size
   static_assert(sizeof(float) == 4);
   
   espshell_initonce();

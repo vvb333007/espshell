@@ -10,8 +10,7 @@
  * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
-// -- "If" and "Every": GPIO and/or Timer events --
-// WELL-COMMENTED BIG MESS. Needs refactoring.
+// -- "If" and "Every": GPIO/Timer/Network events --
 //
 // An "ifcond" (short for "if condition") is a data structure that holds:
 // - a GPIO event or a timer event
@@ -37,9 +36,11 @@
 // An extra layer of safety comes from the fact that both struct ifcond and struct alias
 // are *persistent pointers*. This guarantees they always point to valid memory.
 //
-// TODO: if var_name1|imm    eq|lt|gt|le|ge|ne    imm|var_name2 poll NUM ... exec
+// TODO: if $var_name1    eq|lt|gt|le|ge|ne    imm|$var_name2 poll NUM ... exec     <--- persistent
+// TODO: if $var_name1    eq|lt|gt|le|ge|ne    imm|$var_name2 ... exec              <--- one shot, discarded after use
 // TODO: refactor to use read_timespec
-// TODO: "if wifi", "if ip" - wifi and ip events catcher
+// TODO: wifi and ip events catcher (if got|lost ip, if sta|ap connected, )
+// TODO: "break" and "goto" keywords
 
 #ifdef COMPILING_ESPSHELL
 #if WITH_ALIAS
