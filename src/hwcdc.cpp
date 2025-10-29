@@ -46,7 +46,7 @@ extern "C" bool console_isup() {
 extern "C" int console_write_bytes(const void *buf, size_t len) {
   int len0 = len;
   while( true ) {
-    int space = 1/*Serial.availableForWrite()*/, w;
+    int space = Serial.availableForWrite(), w;
     if (space) {
       if (space >= len) {
         len0 = Serial.write((const uint8_t *)buf, len);
