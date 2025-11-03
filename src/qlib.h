@@ -1120,8 +1120,25 @@ static unsigned int binary2uint32(const char *p) {
 }
 
 #if WITH_WIFI
+// Network utility functions: IP parsing, MAC parsing etc
+// We assume LittleEndian arch here (all Espressif chips are LE as of Nov-2025)
+//
+#if 1 // set to 0 for hypotethical big-endian MPU
+#  define q_ntohl(_X) __builtin_bswap32(_X)
+#  define q_htonl(_X) __builtin_bswap32(_X)
+#  define q_ntohs(_X) __builtin_bswap16(_X)
+#  define q_htons(_X) __builtin_bswap16(_X)
+#else
+#  define q_ntohl(_X) (_X)
+#  define q_htonl(_X) (_X)
+#  define q_ntohs(_X) (_X)
+#  define q_htons(_X) (_X)
+#endif
+
+
+
 // Ascii to MAC address
-// Convert asciiz "  0001:0203:0405" or "01 02 03:04 05 06" to /unsigned char[6]/
+// Convert asciiz "  0001:0203:0405" or "0102 03:0405 06" to /unsigned char[6]/
 //
 static bool q_atomac(const char *text, unsigned char *out) {
 
@@ -1196,10 +1213,12 @@ static uint32_t q_atoip(const char *p, uint32_t *mask) {
   // and a non-zero last piece
   return dots == 3 && piece > 0 ? result * 256 + piece : 0;
 }
+
+
 #endif // WITH_WIFI
 
 
-#define DEF_BAD ((unsigned int)(-1))
+#define DEF_BAD ((unsigned int)(-1)) // to be used as "default" value for q_atol
 
 // q_atol() : extended version of atol()
 // 1. Accepts decimal, hex,octal or binary numbers (0x for hex, 0 for octal, 0b for binary)

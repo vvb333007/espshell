@@ -177,6 +177,7 @@ static int cmd_time(int, char **);
 #if WITH_WIFI
 static int cmd_wifi_if(int, char **);
 static int cmd_wifi_up(int, char **);
+static int cmd_wifi_down(int, char **);
 static int cmd_wifi_scan(int, char **);
 static int cmd_wifi_mac(int, char **);
 static int cmd_wifi_hostname(int, char **);
@@ -633,8 +634,7 @@ KEYWORDS_DECL(sta) {
   KEYWORDS_BEGIN
 
   { "up", cmd_wifi_up, MANY_ARGS,
-    HELPK("% \"<b>up bssid XXXX:YYYY:ZZZZ [PASSWORD] [reconnect]</>\"\r\n" 
-          "% \"<b>up SSID [PASSWORD] [reconnect]</>\"\r\n" 
+    HELPK("% \"<b>up SSID|BSSID [PASSWORD] [reconnect]</>\"\r\n" 
           "%\r\n"
           "% Connect to the AP (SSID or BSSID) using password PASSWORD. Configuration\r\n"
           "% (e.g., IP, DHCP, NTP) must be done <u>before</>. Once the interface is \"up\"\r\n"
@@ -649,9 +649,8 @@ KEYWORDS_DECL(sta) {
           "%"),
     HELPK("Initialize and start WiFi interface") },
 
-  { "up", NULL, 2, HIDDEN_KEYWORD },
 
-  { "down", NULL, NO_ARGS,
+  { "down", cmd_wifi_down, NO_ARGS,
     HELPK("% \"<b>down</>\"\r\n" 
           "%\r\n"
           "% Stop & shutdown a WiFi interface"),
@@ -742,7 +741,7 @@ KEYWORDS_DECL(ap) {
 
   KEYWORDS_BEGIN
 
-  { "up", NULL, 1,
+  { "up", cmd_wifi_up, MANY_ARGS,
     HELPK("% \"<b>up NETWORK_NAME [PASSWORD] [max-sta NUM]</>\"\r\n" 
           "%\r\n"
           "% Create an Access Point with NETWORK_NAME using password PASSWORD,\r\n"
@@ -754,11 +753,12 @@ KEYWORDS_DECL(ap) {
           "%\r\n"
           "%<u>Examples</>:\r\n"
           "%  up IoT_Network              - create OPEN network IoT_Network\r\n"
-          "%  up Home jfhod786 max-sta 1  - Network \"Home\", with password, max 1 sta"
+          "%  up Home jfhod786 max-sta 1  - Network \"Home\", with password, for 1 client\r\n"
+          "%  up \"\" jfhod786            - Hidden network, with password"
           ),
     HELPK("Initialize and start WiFi interface") },
 
-  { "down", NULL, NO_ARGS,
+  { "down", cmd_wifi_down, NO_ARGS,
     HELPK("% \"<b>down</>\"\r\n" 
           "%\r\n"
           "% Stop & shutdown WiFi Access Point"),

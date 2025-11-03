@@ -603,7 +603,7 @@ static  void espshell_initonce() {
     // init subsystems,  if any
     //seq_init();
     //nv_init_once(); 
-
+#if 0
     int flags;  
 
     setvbuf(stdin, NULL, _IONBF, 0);
@@ -614,6 +614,8 @@ static  void espshell_initonce() {
 
     flags = fcntl(STDOUT_FILENO, F_GETFL, 0);
     fcntl(STDOUT_FILENO, F_SETFL, flags | O_NONBLOCK);    
+#endif
+
   }
 }
 
