@@ -341,23 +341,52 @@ static int cmd_wifi_if(int argc, char **argv) {
 // XXXX:XXXX:XXXX 192.168.0.1
 static int cmd_show_wifi(int argc, char **argv) {
 
+  wifi_interface_t ifx;
   esp_netif_t *ni;
   esp_netif_ip_info_t ipi = { 0 };
+
+  
 
   if (argc < 3)
     return CMD_MISSING_ARG;
 
-  if (!q_strcmp(argv[2],"ap") || !q_strcmp(argv[2],"clients"))
+  if (!q_strcmp(argv[2],"ap") || !q_strcmp(argv[2],"clients")) {
     ni = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
-  else
+    ifx = WIFI_IF_AP;
+  } else if (!q_strcmp(argv[2],"sta")) {
     ni = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    ifx = WIFI_IF_STA;
+  } else {
+    HELP(q_print("% <e>\"sta\", \"ap\" or \"clients\" keywords expected</>\r\n"));
+    return CMD_FAILED;
+  }
 
   if (!ni) {
     q_print("% Network interface is NULL\r\n");
     return CMD_FAILED;
   }
 
-  //q_printf("%% Network interface is %p\r\n",ni);
+  bool link_up = false, proto_up = false;
+  wifi_ap_record_t ap_info;
+
+  link_up = esp_netif_is_netif_up(ni);
+
+  if (ifx == WIFI_IF_STA)
+    proto_up = (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK);
+  else
+    proto_up = true;
+
+  q_printf("%% Network interface WIFI %s\r\n",ifx == WIFI_IF_STA ? "STA" : "AP");
+  q_printf("%% Link: %s, Protocol: %s\r\n",link_up ? "UP" : "DOWN", proto_up ? "UP" : "DOWN");
+
+  if (ifx == WIFI_IF_STA) {
+    if (proto_up) {
+      q_printf("%% Connected to %s, BSSID: %02x%02x:%02x%02x:%02x%02x\r\n",
+                ap_info.ssid[0] ? (const char *)&ap_info.ssid[0] : "a hidden network",
+                ap_info.bssid[0],ap_info.bssid[1],ap_info.bssid[2],ap_info.bssid[3],ap_info.bssid[4],ap_info.bssid[5]);
+    } else
+      q_print("% Not connected to any Access Point\r\n");
+  }
   
   esp_netif_get_ip_info(ni, &ipi);
 
@@ -367,7 +396,9 @@ static int cmd_show_wifi(int argc, char **argv) {
               ipi.netmask.addr,
               ipi.gw.addr);
   else
-    q_print("% No IP address set/obtained");
+    q_print("% No IP address set/obtained\r\n");
+
+  
 
   return 0;
 }
@@ -794,8 +825,10 @@ static int cmd_wifi_dhcp(int argc, char **argv) {
   return 0;
 }
 
-// up "Network Name"
-// up bssid 0000:1111:2222
+// up SSID [PASSWORD]                                  <-- sta
+// up BSSID [PASSWORD]                                 <-- sta
+// up SSID PASSWORD [max-conn NUM | channel NUM]*      <-- ap
+// up SSID                                             <-- ap
 //
 static int cmd_wifi_up(int argc, char **argv) {
 
@@ -807,40 +840,82 @@ static int cmd_wifi_up(int argc, char **argv) {
   //
   wifi_ap_record_t ap_info;
   if (esp_netif_is_netif_up(ni) || (ifx == WIFI_IF_STA && esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK)) {
-    q_print("% Interface is UP and RUNNING. Use \"down\" to shut down\r\n");
+    HELP(q_print("% Interface is UP and RUNNING. (Use \"down\" before reconfiguring)\r\n"));
     return 0;
   }
 
-
-
+  // Command "up" for STA interface: read SSID/BSSID, PASSWORD and the keyword "no-retry"
+  //
   if (ifx == WIFI_IF_STA) {
 
-    wifi_config_t wifi_sta_config = {
-        .sta = {
-            .scan_method = WIFI_ALL_CHANNEL_SCAN,
-            .failure_retry_cnt = 3,
-            .sae_pwe_h2e = WPA3_SAE_PWE_BOTH,
-        },
-    };
+    wifi_config_t stac = { 0 };
 
+    stac.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
+    stac.sta.failure_retry_cnt = 3;
+    stac.sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
+
+    // Is first parameter SSID or BSSID?
     if (q_atomac(argv[1],bssid)) {
-      memcpy(wifi_sta_config.sta.bssid, bssid, sizeof(wifi_sta_config.sta.bssid));
-      wifi_sta_config.sta.bssid_set = true;
+      memcpy(stac.sta.bssid, bssid, sizeof(stac.sta.bssid));
+      stac.sta.bssid_set = true;
       VERBOSE(q_print("% Connect using BSSID\r\n"));
     } else {
-      strlcpy((char *)wifi_sta_config.sta.ssid,argv[1],sizeof(wifi_sta_config.sta.ssid));
+      strlcpy((char *)stac.sta.ssid,argv[1],sizeof(stac.sta.ssid));
       VERBOSE(q_print("% Connect using SSID\r\n"));
     }
 
+    // Password supplied? "auto-connect"?
+    
     if (argc > 2) {
-      strlcpy((char *)wifi_sta_config.sta.password,argv[2],sizeof(wifi_sta_config.sta.password));
+      strlcpy((char *)stac.sta.password,argv[2],sizeof(stac.sta.password));
+      if (argc > 3)
+        if (!q_strcmp(argv[3],"auto-connect"))
+          Sta_reconnect = true;
     }
 
-    esp_wifi_set_config(WIFI_IF_STA, &wifi_sta_config);
+    esp_wifi_set_config(WIFI_IF_STA, &stac);
     esp_wifi_connect();
   } else {
-    // TODO: configure AP: password,SSID and max-clients
-    // TODO: set APSTA mode
+
+    wifi_config_t apc = { 0 };
+
+    strlcpy((char *)apc.ap.ssid,argv[1],sizeof(apc.ap.ssid));
+    apc.ap.ssid_len = strlen(argv[1]);
+
+    // SSID is empty string?
+    if (apc.ap.ssid_len == 0)
+      apc.ap.ssid_hidden = 1;
+
+    // password supplied?
+    if (argc > 2)
+      strlcpy((char *)apc.ap.password,argv[2],sizeof(apc.ap.password));
+
+    if (apc.ap.password[0] /*strlen(argv[2]) > 0*/ == 0) {
+      VERBOSE(q_print("% AP authentication mode set to OPEN (no password supplied)\r\n"));
+      apc.ap.authmode = WIFI_AUTH_OPEN;
+    } else {
+      VERBOSE(q_print("% AP authentication mode set to WPA2-PSK\r\n"));
+      apc.ap.authmode = WIFI_AUTH_WPA2_PSK;
+    }
+
+
+    // up "SSID" "Password" [max-conn NUM | channel NUM | auth AUTH]
+    //
+    //
+    for (int i = 3; i < argc; i++) {
+      // next token is "max-conn"? convert next token to number and save
+      if (!q_strcmp(argv[i],"max-conn")) {
+        if (++i < argc)
+          apc.ap.max_connection = q_atol(argv[i], 1);
+      } else if (!q_strcmp(argv[i],"channel")) {
+        if (++i < argc)
+          apc.ap.channel = q_atol(argv[i], 0);
+      } else
+        q_printf("%% Keyword \"%s\" ignored\r\n",argv[i]);
+    }
+
+    esp_wifi_set_mode(WIFI_MODE_APSTA);
+    esp_wifi_set_config(WIFI_IF_AP, &apc);
   }
 
   return 0;
@@ -856,8 +931,10 @@ static int cmd_wifi_down(int argc, char **argv) {
   //
   wifi_ap_record_t ap_info;
   if (esp_netif_is_netif_up(ni) || (ifx == WIFI_IF_STA && esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK)) {
-    if (ifx == WIFI_IF_STA)
+    if (ifx == WIFI_IF_STA) {
+      Sta_reconnect = false;
       esp_wifi_disconnect();
+    }
     else {
       // TODO: set interface DOWN, link DOWN?
       esp_wifi_set_mode(WIFI_MODE_STA);
