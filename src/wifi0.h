@@ -119,7 +119,7 @@ static bool dhcp_server_set_dns_option() {
     esp_netif_dhcps_stop(apif);
   }
 
-  VERBOSE(q_print("%% Reconfiguring DHCP server..\r\n"));
+  VERBOSE(q_print("%% Reconfiguring DHCP server (adding DNS option)..\r\n"));
   esp_netif_dhcps_option(apif, ESP_NETIF_OP_SET, ESP_NETIF_DOMAIN_NAME_SERVER, &dhcps_offer_option, sizeof(dhcps_offer_option));
 
   if (status == ESP_NETIF_DHCP_STARTED) {
@@ -195,13 +195,17 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
         break;
 
 
-      case WIFI_EVENT_AP_STACONNECTED:
-        VERBOSE(q_print("% WIFI AP: client connected, authenticated\r\n")); 
+      case WIFI_EVENT_AP_STACONNECTED: {
+        wifi_event_ap_staconnected_t *event = (wifi_event_ap_staconnected_t*) event_data;
+        VERBOSE(q_printf("%% WIFI AP: " MACSTR " connected, (aid=%d, auth=OK))\r\n",MAC2STR(event->mac), event->aid)); 
         break;
+      }
 
-      case WIFI_EVENT_AP_STADISCONNECTED:
-        VERBOSE(q_print("% WIFI AP: client disconnected\r\n"));
+      case WIFI_EVENT_AP_STADISCONNECTED: {
+        wifi_event_ap_stadisconnected_t *event = (wifi_event_ap_stadisconnected_t*) event_data;
+        VERBOSE(q_printf("%% WIFI AP: " MACSTR " disconnected, (aid=%d, deauth))\r\n",MAC2STR(event->mac), event->aid)); 
         break;
+      }
 
       case WIFI_EVENT_AP_WRONG_PASSWORD:
         VERBOSE(q_print("% WIFI AP: client connection failed (wrong password)\r\n"));
@@ -398,6 +402,55 @@ static int cmd_wifi_if(int argc, char **argv) {
 }
 
 
+#include "esp_wifi_ap_get_sta_list.h"
+
+static int cmd_show_wifi_clients(UNUSED int argc, UNUSED char **argv) {
+
+
+    esp_netif_t *apif = get_apif();
+    wifi_sta_list_t sta_list;
+    esp_err_t err;
+
+    if (!apif) {
+      q_print("% Access Point was never set up\r\n");
+      return 0;
+    }
+
+    if ((err = esp_wifi_ap_get_sta_list(&sta_list)) != ESP_OK) {
+list_is_empty:
+        q_print("% Stations list is empty\r\n");
+        return 0;
+    }
+
+    if (!sta_list.num)
+      goto list_is_empty;
+
+    if (sta_list.num > ESP_WIFI_MAX_CONN_NUM)
+      sta_list.num = ESP_WIFI_MAX_CONN_NUM;
+
+    
+    wifi_sta_mac_ip_list_t pairs = { 0 };
+    esp_wifi_ap_get_sta_list_with_ip(&sta_list, &pairs);
+    
+    q_print("%<r> # | MAC address   | RSSI | IP Address </>\r\n"
+               "% --+------_---------+------+------------\r\n");
+
+    for (int i = 0; i < sta_list.num; i++) {
+        wifi_sta_info_t *info = &sta_list.sta[i];
+
+        q_printf("%%%3d| %02X%02X:%02X%02X:%02X%02X | %4d | " IPSTR "\r\n",
+                 i+1,
+                 info->mac[0], info->mac[1], info->mac[2],
+                 info->mac[3], info->mac[4], info->mac[5],
+                 info->rssi,
+                 IP2STR(&pairs.sta[i].ip));
+    }
+    q_print("% --+--------+-------+------+------------\r\n");
+    q_printf("%% Connected: %d station%s\r\n", PPA(sta_list.num));
+
+    return 0;
+}
+
 
 // "show wifi ap|sta|clients"
 // Client         Leased IP
@@ -408,16 +461,17 @@ static int cmd_show_wifi(int argc, char **argv) {
   esp_netif_t *ni;
   esp_netif_ip_info_t ipi = { 0 };
 
-  
-
   if (argc < 3)
     return CMD_MISSING_ARG;
 
-  if (!q_strcmp(argv[2],"ap") || !q_strcmp(argv[2],"clients")) {
-    ni = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
+  if (!q_strcmp(argv[2],"clients"))
+    return cmd_show_wifi_clients(argc, argv);
+
+  if (!q_strcmp(argv[2],"ap")) {
+    ni = get_apif();
     ifx = WIFI_IF_AP;
   } else if (!q_strcmp(argv[2],"sta")) {
-    ni = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    ni = get_staif();
     ifx = WIFI_IF_STA;
   } else {
     HELP(q_print("% <e>\"sta\", \"ap\" or \"clients\" keywords expected</>\r\n"));
@@ -428,6 +482,8 @@ static int cmd_show_wifi(int argc, char **argv) {
     q_print("% Network interface is NULL\r\n");
     return CMD_FAILED;
   }
+
+
 
   bool link_up = false, proto_up = false;
   wifi_ap_record_t ap_info;
@@ -442,6 +498,10 @@ static int cmd_show_wifi(int argc, char **argv) {
   q_printf("%% Network interface WIFI %s\r\n",ifx == WIFI_IF_STA ? "STA" : "AP");
   q_printf("%% Link: %s, Protocol: %s\r\n",link_up ? "UP" : "DOWN", proto_up ? "UP" : "DOWN");
 
+  uint8_t mac[6];
+  if (esp_wifi_get_mac(ifx, mac) == ESP_OK)
+    q_printf("%% MAC address: <i>%02x%02x:%02x%02x:%02x%02x</>\r\n",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+
   if (ifx == WIFI_IF_STA) {
     if (proto_up) {
       q_printf("%% Connected to %s, BSSID: %02x%02x:%02x%02x:%02x%02x\r\n",
@@ -450,19 +510,48 @@ static int cmd_show_wifi(int argc, char **argv) {
     } else
       q_print("% Not connected to any Access Point\r\n");
   }
-  
-  esp_netif_get_ip_info(ni, &ipi);
 
-  if (ipi.ip.addr)
-    q_printf("%% IP address: " IPSTR ", mask: " IPSTR ", gateway: " IPSTR "\r\n",
-              IP2STR(&ipi.ip),
-              IP2STR(&ipi.netmask),
-              IP2STR(&ipi.gw));
+  q_print("%\r\n");
+  
+  if (ESP_OK == esp_netif_get_ip_info(ni, &ipi)) {
+    if (ipi.ip.addr)
+      q_printf("%% IP address: " IPSTR ", mask: " IPSTR ", gateway: " IPSTR "\r\n",
+                IP2STR(&ipi.ip),
+                IP2STR(&ipi.netmask),
+                IP2STR(&ipi.gw));
+    else
+      q_print("% No IP address set/obtained\r\n");
+  }
+
+  // DNS information
+  esp_netif_dns_info_t dnsi = { 0 };
+
+  esp_netif_get_dns_info(ni, ESP_NETIF_DNS_MAIN, &dnsi);
+  if (dnsi.ip.u_addr.ip4.addr != 0)
+    q_printf("%% Main DNS: " IPSTR "\r\n", IP2STR(&dnsi.ip.u_addr.ip4));
   else
-    q_print("% No IP address set/obtained\r\n");
+    q_printf("%% DNS servers are not set\r\n");
 
-  
+  esp_netif_get_dns_info(ni, ESP_NETIF_DNS_BACKUP, &dnsi);
+  if (dnsi.ip.u_addr.ip4.addr != 0)
+    q_printf("%% Backup DNS: " IPSTR "\r\n", IP2STR(&dnsi.ip.u_addr.ip4));
 
+  // DHCP information
+  // TODO: DHCP address pool
+  esp_netif_dhcp_status_t status = 0;
+
+  if (ifx == WIFI_IF_AP)
+    esp_netif_dhcps_get_status(ni, &status);
+  else
+    esp_netif_dhcpc_get_status(ni, &status);
+
+  q_printf("%% DHCP %s is %s on the interface\r\n",
+          (ifx == WIFI_IF_AP ? "server" : "client"),
+          (status == ESP_NETIF_DHCP_STARTED ? "<i>started</>" : "<w>stopped</>"));
+
+  const char *hostn = NULL;
+  if (esp_netif_get_hostname(ni, &hostn) == ESP_OK)
+    q_printf("%% Host name (per-interface): \"%s\"\r\n",hostn);
   return 0;
 }
 
@@ -471,6 +560,7 @@ static int cmd_show_wifi(int argc, char **argv) {
 // Depending on the /Context/ sets either AP or STA mac address
 //
 static int cmd_wifi_mac(int argc, char **argv) {
+  esp_err_t err;
   uint8_t mac[6];
   THIS_INTERFACE(wif);
 
@@ -481,10 +571,10 @@ static int cmd_wifi_mac(int argc, char **argv) {
     q_print("% MAC address AABB:CCDD:EEFF (or AA:BB:CC:DD:EE:FF) expected\r\n");
     return CMD_FAILED;
   }
-  if (esp_wifi_set_mac(wif, mac) == ESP_OK)
+  if ((err = esp_wifi_set_mac(wif, mac)) == ESP_OK)
     q_printf("%% New MAC address (%s, %s) set\r\n", wif == WIFI_IF_STA ? "STA" : "AP", argv[1]);
   else {
-    q_print("% Can not set the new mac address\r\n");
+    q_printf("%% Can not set the new mac address (error %d)\r\n",err);
     if (mac[0] & 1)
       q_print("% Bit 0 of the first byte in MAC address must be 0 (zero)\r\n");
     return CMD_FAILED;
@@ -868,27 +958,23 @@ static int cmd_wifi_natp(int argc, char **argv) {
 
   staif = get_staif();  
 
-    // TODO: use get_staif() remove is_sta_here
-  if (!staif) {
-    q_print("% NAT/P requires <i>both STA(WAN) and AP(LAN)</> to be \"up\"\r\n");
+  if (!staif)
     return CMD_FAILED;
-  }
+  
 
   if (!q_strcmp(argv[1],"enable")) {
 
     // Make STA to be default interface and enable NAT/P on the AP
     //
-    VERBOSE(q_print("% NAT/P enabled\r\n"));
     esp_netif_set_default_netif(staif);
     if (ESP_OK != esp_netif_napt_enable(ni))
-      q_print("% Failed to enable NAT/P\r\n");
+      q_print("% Failed to enable NAT/P. Make sure AP and STA interfaces are UP\r\n");
     return 0;
 
   } else if (!q_strcmp(argv[1],"disable")) {
 
     // Disable NAT/P
     //
-    VERBOSE(q_print("% NAT/P disabled\r\n"));
     if (ESP_OK != esp_netif_napt_disable(ni))
       q_print("% Failed to disable NAT/P\r\n");
 

@@ -2136,7 +2136,8 @@ static bool is_command_directory(const char *p) {
   return false;
 }
 
-static void show_cmd_tree_stats() {
+
+static UNUSED void show_cmd_tree_stats() {
   int idx = 0, total = 0;
   while(Subdirs[idx].key) {
     int i = 0;
