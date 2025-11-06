@@ -80,6 +80,11 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
       must_not_happen(#__VA_ARGS__, __FILE__, __LINE__ ); \
   }
 
+#define NOT_YET() \
+  do { \
+    q_print("% This feature is under development and is not implemented yet\r\n"); \
+  } while( 0 )
+
 // OS Abstraction Layer. Thin wrapper to hide all OS-specific API and keep it in one place.
 // It includes: delay(), millis(), micros(), semaphores, mutexes, rwlocks, tasks etc. As a result, rest of the
 // ESPShell code is free from FreeRTOS-specific calls. This layer allows me to develop & debug big chunks of 
@@ -1164,6 +1169,8 @@ static bool q_atomac(const char *text, unsigned char *out) {
 // "1.2.3.4" , "1.2.3.4/24", "1.2/16"
 // Returns 0 if input is either invalid or "0.0.0.0"
 // Storage for /mask/ is optional, can be NULL
+//
+// TODO: add third "def" parameter
 //
 static uint32_t q_atoip(const char *p, uint32_t *mask) {
   

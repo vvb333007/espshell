@@ -838,24 +838,24 @@ KEYWORDS_DECL(ap) {
     HELPK("IP information") },
   
 
-  { "natp", cmd_wifi_natp, 4,
+  { "natp", cmd_wifi_natp, MANY_ARGS,
     HELPK("% \"<b>natp</> enable|disable\"\r\n" 
-          "% \"<b>natp</> A.B.C.D PORT_IN PORT_OUT [unmap]\"\r\n" 
+          "% \"<b>natp</> add|delete tcp|udp EXT_PORT A.B.C.D LOCAL_PORT\"\r\n" 
           "%\r\n"
           "% <i>A.B.C.D</> : Local host (on AP's subnet)\r\n"
-          "% <i>PORT_IN</> : Local port (\"inside\")\r\n"
-          "% <i>PORT_OUT</>: External port (\"outide\")\r\n"
-          "% <i>unmap</>   : Remove previously configured static mapping\r\n"
+          "% <i>LOCAL_PORT</> : Local port (\"inside\", AP side)\r\n"
+          "% <i>EXT_PORT</>   : External port (\"outide\", STA side)\r\n"
           "%\r\n"
           "% 1. Enable or disable NAT/P for WiFi clients\r\n"
           "% 2. Create/delete static portmaps: map client_IP:PORT to the \"external\"\r\n"
-          "%    AP:PORT e.g. make client's web/ftp server be accessible from the outside\r\n"
+          "%    port e.g. make client's web/ftp server be accessible from the outside\r\n"
+          "%    Thus AP is the LAN interface, while STA is the WAN interface\r\n"
           "%\r\n"
           "%<u>Examples</>:\r\n"
-          "% <i>natp enable</>                : Enable NAT/P\r\n"
-          "% <i>natp disable</>               : Disable NAT/P (default)\r\n"
-          "% <i>natp 192.168.4.5 80 8080</>   : Map 192.168.4.5:80 <-> AccessPoint:8080\r\n"
-          "% <i>natp 192.168.4.5 80 8080 un</>: Remove mapping\r\n"
+          "% <i>natp enable</>                 : Enable NAT/P\r\n"
+          "% <i>natp disable</>                : Disable NAT/P (default)\r\n"
+          "% <i>natp add 80 192.168.4.5 8080</>: Map 192.168.4.5:8080 <-> STA:80\r\n"
+          "% <i>natp del 80</>                 : Remove mapping\r\n"
           "%"),
     HELPK("NAT/P settings") },
 
