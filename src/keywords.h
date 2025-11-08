@@ -634,18 +634,21 @@ KEYWORDS_DECL(sta) {
   KEYWORDS_BEGIN
 
   { "up", cmd_wifi_up, MANY_ARGS,
-    HELPK("% \"<b>up SSID|BSSID [PASSWORD] [reconnect]</>\"\r\n" 
+    HELPK("% \"<b>up SSID|BSSID [PASSWORD] [reconnect]</>\"\r\n"
+          "% \"<b>up</>\"\r\n" 
           "%\r\n"
           "% Connect to the AP (SSID or BSSID) using password PASSWORD. Configuration\r\n"
-          "% (e.g., IP, DHCP, NTP) must be done <u>before</>. Once the interface is \"up\"\r\n"
-          "% settings are locked and can not be changed on the fly: the interface must be\r\n"
-          "% shut down before configuring\r\n"
+          "% (e.g., IP, DHCP, NTP) must be done <u>before</>. If there is a system WiFi configuration\r\n"
+          "% loaded (from NVS/user sketch) the short form of \"up\" (without arguments)\r\n"
+          "% can be used\r\n"
           "%\r\n"
           "% NOTE: use \"scan\" command to find out BSSIDs\r\n"
+          "% NOTE: use \"show wifi sta\" command show system WiFi config\r\n"
           "%\r\n"
           "%<u>Examples</>:\r\n"
-          "%  up \"Home Network\" jfhod786 \r\n"
-          "%  up 0044:ff55:02ae jfhod786 reconnect\r\n"
+          "%  up \"Home Network\" jfhod786    - connect using SSID\r\n"
+          "%  up 0044:ff55:02ae jfhod786 auto - connect using BSSID, auto reconnect\r\n"
+          "%  up                              - connect using previously set config\r\n"
           "%"),
     HELPK("Initialize and start WiFi interface") },
 

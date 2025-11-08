@@ -92,41 +92,114 @@ static const char *Wifi_cipher[] = {
     "GCMP",    "GCMP256",   "AES_GMAC128", "AES_GMAC256"
 };
 
+// Update AP's DNS settings from STA's DHCP reply.
+// DNS entries are updated only if AP ha sno static DNS servers configured.
+// This one is called when STA receives GOT_IP event (see ip_event_handler() below)
+//
 static bool sta_propagate_dns(esp_netif_t *sta) {
   if (!AP_static_dns) {
     esp_netif_dns_info_t dnsi = { 0 };
     esp_netif_t *apif = get_apif();
-    if (!sta || !apif)
-      return false;
-    esp_netif_get_dns_info(sta,ESP_NETIF_DNS_MAIN,&dnsi);
-    esp_netif_set_dns_info(apif,ESP_NETIF_DNS_MAIN,&dnsi);
-    return true;
+    if (sta && apif)
+      if (esp_netif_get_dns_info(sta,ESP_NETIF_DNS_MAIN,&dnsi) == ESP_OK)
+        return (ESP_OK == esp_netif_set_dns_info(apif,ESP_NETIF_DNS_MAIN,&dnsi));
   }
   return false;
 }
+
+// DHCP server must be stopped before reconfiguring
+// This functions stops the server and saves returns /true/ if server was started
+// or /false/ if it was not. This return value is then used with dhcp_server_restart_if_was_started(X)
+//
+static bool dhcp_server_stop_if_started(esp_netif_t *apif) {
+
+  if (likely(apif != NULL)) {
+    // failsafe: assume started in case of any errors
+    esp_netif_dhcp_status_t status = ESP_NETIF_DHCP_STARTED;
+    esp_netif_dhcps_get_status(apif, &status);
+    if (status != ESP_NETIF_DHCP_STOPPED) {
+      HELP(q_print("% Stopping DHCP server..Ok \r\n"));
+      esp_netif_dhcps_stop(apif);
+      return true;
+    }
+  }
+  return false;
+}
+
+
+static void dhcp_server_restart_if_was_started(esp_netif_t *apif, bool was_started) {
+
+  if (was_started) {
+    HELP(q_print("%% Restarting AP's DHCP server.."));
+    if (esp_netif_dhcps_start(apif) == ESP_OK) {
+      HELP(q_print("Ok\r\n"));
+    } else {
+      HELP(q_print("Failed\r\n"));
+    }
+  }
+}
+
 
 #define DHCPS_OFFER_DNS 0x02
 
 static bool dhcp_server_set_dns_option() {
 
-  esp_netif_dhcp_status_t status = ESP_NETIF_DHCP_STARTED;
   esp_netif_t *apif = get_apif();
   uint8_t dhcps_offer_option = DHCPS_OFFER_DNS;
+  bool was_started;
 
-  esp_netif_dhcps_get_status(apif, &status);
-  if (status != ESP_NETIF_DHCP_STOPPED) {
-    VERBOSE(q_print("% Stopping DHCP server.. \r\n"));
-    esp_netif_dhcps_stop(apif);
-  }
+  if (apif == NULL)
+    return false;
+
+  was_started = dhcp_server_stop_if_started(apif);
 
   VERBOSE(q_print("%% Reconfiguring DHCP server (adding DNS option)..\r\n"));
-  esp_netif_dhcps_option(apif, ESP_NETIF_OP_SET, ESP_NETIF_DOMAIN_NAME_SERVER, &dhcps_offer_option, sizeof(dhcps_offer_option));
+  esp_netif_dhcps_option(apif, 
+                        ESP_NETIF_OP_SET,
+                        ESP_NETIF_DOMAIN_NAME_SERVER,
+                        &dhcps_offer_option, sizeof(dhcps_offer_option));
 
-  if (status == ESP_NETIF_DHCP_STARTED) {
-    VERBOSE(q_print("%% Starting DHCP server..\r\n"));
-    esp_netif_dhcps_start(apif);
-  }
+  dhcp_server_restart_if_was_started(apif, was_started);
 
+  return true;
+}
+
+// Set custom lease time in seconds
+//
+static bool dhcp_server_set_lease_option(uint32_t lease) {
+
+  esp_netif_t *apif = get_apif();
+  
+  bool was_started;
+
+  if (apif == NULL)
+    return false;
+
+  was_started = dhcp_server_stop_if_started(apif);
+
+  if (ESP_OK != esp_netif_dhcps_option(apif,
+                                        ESP_NETIF_OP_SET,
+                                        ESP_NETIF_IP_ADDRESS_LEASE_TIME,
+                                        &lease,
+                                        sizeof(lease)))
+    q_print("% Failed to set lease time\n");
+    
+  dhcp_server_restart_if_was_started(apif, was_started);
+  return true;
+}
+
+// Set custom lease time in seconds
+//
+static bool dhcp_server_set_ip_pool(esp_netif_t *apif, uint32_t ip_start, uint32_t count) {
+
+  if (apif == NULL)
+    return false;
+
+  bool was_started = dhcp_server_stop_if_started(apif);
+
+  //TODO:
+
+  dhcp_server_restart_if_was_started(apif, was_started);
   return true;
 }
 
@@ -370,17 +443,15 @@ static int cmd_wifi_if(int argc, char **argv) {
   }
 
   if (!get_staif())
-    if (!esp_netif_create_default_wifi_sta()) {
-      q_print("% Can not create default STA network interface\r\n");
-      return CMD_FAILED;
-    }
+    esp_netif_create_default_wifi_sta();
 
   if (!get_apif())
-      if (!esp_netif_create_default_wifi_ap()) {
-        q_print("% Can not create default AP network interface\r\n");
-        return CMD_FAILED;
-      }
+    esp_netif_create_default_wifi_ap();
 
+  if (!get_apif() || !get_staif()) {
+    q_print("% Can not create default AP/STA network interfaces\r\n");
+    return CMD_FAILED;
+  }
 
   // Set appropriate keywords (keywords_ap or keywords_sta), store interface type in /Context/
   // Create corresponding esp_netif_t
@@ -452,14 +523,34 @@ list_is_empty:
 }
 
 
+ 
+
+
+static void show_wifi_ap_config(wifi_ap_config_t *c) {
+
+  q_printf("%% Network: \"%s\"%s channel %u, max-conn: %u\r\n",c->ssid, c->ssid_hidden ? " (hidden)" : "", c->channel, c->max_connection);
+}
+
+static void show_wifi_sta_config(wifi_sta_config_t *c) {
+
+  q_printf("%% Access Point: \"%s\" ",c->ssid);
+  if (c->bssid_set)
+    q_printf(", BSSID: %02x%02x:%02x%02x:%02x%02x\r\n",c->bssid[0],c->bssid[1],c->bssid[2],c->bssid[3],c->bssid[4],c->bssid[5]);
+
+}
+
+
 // "show wifi ap|sta|clients"
-// Client         Leased IP
-// XXXX:XXXX:XXXX 192.168.0.1
+//                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     0000000000000000   00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 
 static int cmd_show_wifi(int argc, char **argv) {
 
   wifi_interface_t ifx;
   esp_netif_t *ni;
   esp_netif_ip_info_t ipi = { 0 };
+  wifi_config_t conf = { 0 };
+  bool link_up = false, proto_up = false;
+  wifi_ap_record_t ap_info;
+
 
   if (argc < 3)
     return CMD_MISSING_ARG;
@@ -467,12 +558,21 @@ static int cmd_show_wifi(int argc, char **argv) {
   if (!q_strcmp(argv[2],"clients"))
     return cmd_show_wifi_clients(argc, argv);
 
+  // Set /ni/ to be esp_netif_t pointer of the interface we are "show"ing
+  // /ifx/ is set to WIFI_IF_AP or WIFI_IF_STA and corresponding wifi config is then read
+  //
   if (!q_strcmp(argv[2],"ap")) {
+
     ni = get_apif();
     ifx = WIFI_IF_AP;
+    esp_wifi_get_config(WIFI_IF_AP, &conf); // if this API fails we'll display a null config
+
   } else if (!q_strcmp(argv[2],"sta")) {
+
     ni = get_staif();
     ifx = WIFI_IF_STA;
+    esp_wifi_get_config(WIFI_IF_STA, &conf); // if this API fails we'll display a null config
+
   } else {
     HELP(q_print("% <e>\"sta\", \"ap\" or \"clients\" keywords expected</>\r\n"));
     return CMD_FAILED;
@@ -484,10 +584,6 @@ static int cmd_show_wifi(int argc, char **argv) {
   }
 
 
-
-  bool link_up = false, proto_up = false;
-  wifi_ap_record_t ap_info;
-
   link_up = esp_netif_is_netif_up(ni);
 
   if (ifx == WIFI_IF_STA)
@@ -496,7 +592,7 @@ static int cmd_show_wifi(int argc, char **argv) {
     proto_up = true;
 
   q_printf("%% Network interface WIFI %s\r\n",ifx == WIFI_IF_STA ? "STA" : "AP");
-  q_printf("%% Link: %s, Protocol: %s\r\n",link_up ? "UP" : "DOWN", proto_up ? "UP" : "DOWN");
+  q_printf("%% Link: %s</>, Protocol: %s</>\r\n",link_up ? "<g>UP" : "<i>DOWN", proto_up ? "<g>UP" : "<i>DOWN");
 
   uint8_t mac[6];
   if (esp_wifi_get_mac(ifx, mac) == ESP_OK)
@@ -504,11 +600,21 @@ static int cmd_show_wifi(int argc, char **argv) {
 
   if (ifx == WIFI_IF_STA) {
     if (proto_up) {
-      q_printf("%% Connected to %s, BSSID: %02x%02x:%02x%02x:%02x%02x\r\n",
-                ap_info.ssid[0] ? (const char *)&ap_info.ssid[0] : "a hidden network",
+      q_printf("%% Connected to <b>%s</>, BSSID: %02x%02x:%02x%02x:%02x%02x\r\n",
+                ap_info.ssid[0] ? (const char *)&ap_info.ssid[0] : "a <i>hidden network",
                 ap_info.bssid[0],ap_info.bssid[1],ap_info.bssid[2],ap_info.bssid[3],ap_info.bssid[4],ap_info.bssid[5]);
     } else
-      q_print("% Not connected to any Access Point\r\n");
+      q_printf("%% Not connected to any Access Point\r\n"
+              "%% Configured SSID is \"<i>%s</>\"\r\n",conf.sta.ssid);
+
+    show_wifi_sta_config(&conf.sta);
+
+  } else if (ifx == WIFI_IF_AP) {
+      q_printf("%% Advertises as <b>%s</> %s\r\n",
+                  conf.ap.ssid,
+                  !conf.ap.ssid[0] || conf.ap.ssid_hidden ? "( hidden )"
+                                                          : "");
+      show_wifi_ap_config(&conf.ap);
   }
 
   q_print("%\r\n");
@@ -551,7 +657,7 @@ static int cmd_show_wifi(int argc, char **argv) {
 
   const char *hostn = NULL;
   if (esp_netif_get_hostname(ni, &hostn) == ESP_OK)
-    q_printf("%% Host name (per-interface): \"%s\"\r\n",hostn);
+    q_printf("%% Host name (per-interface): \"<i>%s</>\"\r\n",hostn);
   return 0;
 }
 
@@ -577,6 +683,9 @@ static int cmd_wifi_mac(int argc, char **argv) {
     q_printf("%% Can not set the new mac address (error %d)\r\n",err);
     if (mac[0] & 1)
       q_print("% Bit 0 of the first byte in MAC address must be 0 (zero)\r\n");
+    else if (wif == WIFI_IF_AP)
+      q_print("% WIFI AP interface must be UP to change its MAC address\r\n");
+
     return CMD_FAILED;
   }
   return 0;
@@ -1033,7 +1142,7 @@ static int cmd_wifi_ntp(int argc, char **argv) {
   return 0;
 }
 
-// "dhcp 192.168.4.1 [MAX_CLIENTS [LEASE_TIME]]"
+// "dhcp START_IP_ADDRESS [MAX_CLIENTS=16 [TIMESPEC]]"
 // "dhcp enable|disable"
 //
 static int cmd_wifi_dhcp(int argc, char **argv) {
@@ -1052,7 +1161,7 @@ static int cmd_wifi_dhcp(int argc, char **argv) {
     esp_netif_dhcps_stop(ni);
   } else {
     uint32_t ip, mask;
-    uint32_t lease       = 36000, // 10 hours lease interval
+    uint32_t lease       = 0,     // use default lease interval
              max_clients = 252;   //.0, .1, .254 and .255 are reserved
 
     if ((ip = q_atoip(argv[1],&mask)) == 0) {
@@ -1066,8 +1175,9 @@ static int cmd_wifi_dhcp(int argc, char **argv) {
     if (argc > 3)
       lease = q_atol(argv[3], lease);
 
-    // TODO: set the new DHCPS configuration
-    VERBOSE(q_print("% Configuring DHCP server..\r\n"));
+    bool was_started = dhcp_server_stop_if_started(ni);
+    // TODO:
+    dhcp_server_restart_if_was_started(ni, was_started);
   }
   return 0;
 }
@@ -1096,35 +1206,61 @@ static int cmd_wifi_up(int argc, char **argv) {
   if (ifx == WIFI_IF_STA) {
 
     wifi_config_t stac = { 0 };
+    bool use_saved = false;
 
-    stac.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
-    stac.sta.failure_retry_cnt = 3;
-    stac.sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
-
-    // Is first parameter SSID or BSSID?
-    if (q_atomac(argv[1],bssid)) {
-      memcpy(stac.sta.bssid, bssid, sizeof(stac.sta.bssid));
-      stac.sta.bssid_set = true;
-      VERBOSE(q_print("% Connect using BSSID\r\n"));
-    } else {
-      strlcpy((char *)stac.sta.ssid,argv[1],sizeof(stac.sta.ssid));
-      VERBOSE(q_print("% Connect using SSID\r\n"));
+    // "up" without arguments: use saved config, if available (STA only)
+    // AP also can be configured from its default config but that means OPEN security, so it is disabled:
+    // "up" without args only allowed for the STA interfaces
+    //
+    while (argc < 2) {
+      if (esp_wifi_get_config(WIFI_IF_STA, &stac) == ESP_OK) {
+        if (stac.sta.bssid_set || stac.sta.ssid[0]) {
+          use_saved = true;
+          break;
+        }
+      }
+      q_print("% No valid WiFi STA configuration found, use \"up SSID [PASSWORD]\"\r\n");
+      return CMD_MISSING_ARG;
     }
 
-    // Password supplied? "auto-connect"?
+    if (!use_saved) {
+
+      stac.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
+      stac.sta.failure_retry_cnt = 3;
+      stac.sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
     
-    if (argc > 2) {
-      strlcpy((char *)stac.sta.password,argv[2],sizeof(stac.sta.password));
-      if (argc > 3)
-        if (!q_strcmp(argv[3],"auto-connect"))
-          Sta_reconnect = true;
+      // Is first parameter SSID or BSSID?
+      if (q_atomac(argv[1],bssid)) {
+        memcpy(stac.sta.bssid, bssid, sizeof(stac.sta.bssid));
+        stac.sta.bssid_set = true;
+        HELP(q_print("% Connect to a network using BSSID\r\n"));
+      } else {
+        strlcpy((char *)stac.sta.ssid,argv[1],sizeof(stac.sta.ssid));
+        HELP(q_print("% Connect to a network using SSID\r\n"));
+      }
+
+      // Password supplied? "auto-connect"?
+    
+      if (argc > 2) {
+        strlcpy((char *)stac.sta.password,argv[2],sizeof(stac.sta.password));
+        if (argc > 3)
+          if (!q_strcmp(argv[3],"auto-connect"))
+            Sta_reconnect = true;
+          HELP(q_print("% Auto-reconnect enabled\r\n"));
+      }
     }
 
-    esp_wifi_set_config(WIFI_IF_STA, &stac);
-    esp_wifi_connect();
+    if (ESP_OK == esp_wifi_set_config(WIFI_IF_STA, &stac))
+      esp_wifi_connect();
+    else
+      q_print("% Can not set new WiFi configuration\r\n");
+
   } else {
 
     wifi_config_t apc = { 0 };
+
+    if (argc < 2)
+      return CMD_MISSING_ARG;
 
     strlcpy((char *)apc.ap.ssid,argv[1],sizeof(apc.ap.ssid));
     apc.ap.ssid_len = strlen(argv[1]);
