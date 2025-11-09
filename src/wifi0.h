@@ -145,7 +145,7 @@ static void dhcp_server_restart_if_was_started(esp_netif_t *apif, bool was_start
 static bool dhcp_server_set_dns_option() {
 
   esp_netif_t *apif = get_apif();
-  uint8_t dhcps_offer_option = DHCPS_OFFER_DNS;
+  uint8_t dhcps_offer_option = OFFER_DNS;
   bool was_started;
 
   if (apif == NULL)
@@ -164,6 +164,7 @@ static bool dhcp_server_set_dns_option() {
   return true;
 }
 
+#if 0
 // Set custom lease time in seconds
 //
 static bool dhcp_server_set_lease_option(uint32_t lease) {
@@ -202,6 +203,7 @@ static bool dhcp_server_set_ip_pool(esp_netif_t *apif, uint32_t ip_start, uint32
   dhcp_server_restart_if_was_started(apif, was_started);
   return true;
 }
+#endif
 
 // IP Events handler instance
 //
@@ -373,11 +375,17 @@ static void stop_wifi_stack() {
 static void display_ap_details(wifi_ap_record_t *ap, const char *requested_bssid) {
 
   const char *bw_desc[] = { "unknown", "20MHz", "40MHz", "80MHz", "160MHz", "80+80MHz", "unknown", "unknown" };
+  char bssid_text[16];
 
   if (likely(ap)) {
 
+    if (requested_bssid == NULL) { // TODO: refactor display_ap_details, get rid of second parameter
+      snprintf(bssid_text,sizeof(bssid_text),"%02x%02x:%02x%02x:%02x%02x", ap->bssid[0], ap->bssid[1], ap->bssid[2], ap->bssid[3], ap->bssid[4], ap->bssid[5]);
+      requested_bssid = bssid_text;
+    }
+
     // SSID, BSSID and Security
-    q_printf("%%\r\n%% Access point \"<i>%s</>\" (BSSID: %s)\r\n%%\r\n", ap->ssid[0] ? (char *)ap->ssid : "[Hidden name]", requested_bssid);
+    q_printf("%%\r\n%%<r>Information on AP \"%s\" (BSSID: %s)    </>\r\n%%\r\n", ap->ssid[0] ? (char *)ap->ssid : "[Hidden name]", requested_bssid);
     q_printf("%% Security: [%s], Pairwise cipher: %s, Group cipher: %s\r\n",
           Wifi_auth[ap->authmode],
           Wifi_cipher[ap->pairwise_cipher],
@@ -504,7 +512,7 @@ list_is_empty:
     esp_wifi_ap_get_sta_list_with_ip(&sta_list, &pairs);
     
     q_print("%<r> # | MAC address   | RSSI | IP Address </>\r\n"
-               "% --+------_---------+------+------------\r\n");
+               "% --+---------------+------+------------\r\n");
 
     for (int i = 0; i < sta_list.num; i++) {
         wifi_sta_info_t *info = &sta_list.sta[i];
@@ -525,17 +533,62 @@ list_is_empty:
 
  
 
-
+// Display AP WIFI configuration
+//
+//
 static void show_wifi_ap_config(wifi_ap_config_t *c) {
 
-  q_printf("%% Network: \"%s\"%s channel %u, max-conn: %u\r\n",c->ssid, c->ssid_hidden ? " (hidden)" : "", c->channel, c->max_connection);
+  q_printf("%%\r\n%% Network: \"%s\"%s, WIFI channel %u, max-conn: %u\r\n",
+            c->ssid, 
+            c->ssid_hidden ? " (hidden)"
+                           : "", 
+            c->channel,
+            c->max_connection);
+
+    q_printf("%%\r\n%% Authentication: %s , pairwise cipher: %s\r\n"
+             "%% SAE PWE derivation method: %d , SAE EXT feature: %sabled\r\n",
+            Wifi_auth[c->authmode],
+            Wifi_cipher[c->pairwise_cipher],
+            (int)c->sae_pwe_h2e,
+            c->sae_ext ? "en" : "dis");
+
+    q_printf("%%\r\n%% Beacon interval: %u (TU) , CSA count: %u, dtim period: %u (sec)\r\n"
+             "%% FTM responder: %sabled, PMF capable: %s, PMF required: %s\r\n",
+              c->beacon_interval,
+              c->csa_count,
+              c->dtim_period,
+              c->ftm_responder ? "en" : "dis",
+              c->pmf_cfg.capable ? "Yes" : "No",
+              c->pmf_cfg.required ? "Yes" : "No" );
+          
 }
 
+// Display arbitrary wifi_config_t (STA or AP only)
+//
 static void show_wifi_sta_config(wifi_sta_config_t *c) {
 
-  q_printf("%% Access Point: \"%s\" ",c->ssid);
+  q_printf("%%\r\n%% Configured: SSID: \"<i>%s</>\" ",c->ssid);
   if (c->bssid_set)
     q_printf(", BSSID: %02x%02x:%02x%02x:%02x%02x\r\n",c->bssid[0],c->bssid[1],c->bssid[2],c->bssid[3],c->bssid[4],c->bssid[5]);
+  else
+    q_print(CRLF);
+
+    q_printf("%%\r\n%% Scan method: %s, channel: <i>%u</>\r\n"
+             "%% SAE PWE derivation method: %d , SAE PK mode: %u\r\n",
+            c->scan_method == WIFI_FAST_SCAN ? "Fast scan" : "All channels",
+            c->channel,
+            (int)c->sae_pwe_h2e,
+            (int)c->sae_pk_mode);
+
+    q_printf("%%\r\n%% Radio measurement: %s , BSS transition mgmt: %s, MBO: %sabled, FT: %sabled\r\n"
+             "%% OWE: %sabled, PMF capable: %s, PMF required: %s\r\n",
+              c->rm_enabled ? "<i>ON</>" : "Off",
+              c->btm_enabled ? "<i>ON</>" : "Off",
+              c->mbo_enabled ? "en" : "dis",
+              c->ft_enabled ? "en" : "dis",
+              c->owe_enabled ? "en" : "dis",
+              c->pmf_cfg.capable ? "Yes" : "No",
+              c->pmf_cfg.required ? "Yes" : "No" );
 
 }
 
@@ -544,12 +597,16 @@ static void show_wifi_sta_config(wifi_sta_config_t *c) {
 //                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     0000000000000000   00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 
 static int cmd_show_wifi(int argc, char **argv) {
 
-  wifi_interface_t ifx;
-  esp_netif_t *ni;
-  esp_netif_ip_info_t ipi = { 0 };
-  wifi_config_t conf = { 0 };
-  bool link_up = false, proto_up = false;
-  wifi_ap_record_t ap_info;
+  wifi_interface_t     ifx;                // interface type
+  esp_netif_t         *ni;                 // interface 
+  esp_netif_ip_info_t  ipi = { 0 };        // read ip information here
+  esp_netif_dns_info_t dnsi = { 0 };       // read dns information
+  wifi_config_t        conf = { 0 };       // AP or STA configuration 
+  wifi_ap_record_t     ap_info;            // AP, STA is connected to
+  uint8_t              mac[6];             // interface mac address
+  bool                 link_up = false,    // Link layer is UP?
+                       proto_up = false;   // Protocol layer is UP?
+  const char          *hostn = NULL;       // Interface host name
 
 
   if (argc < 3)
@@ -583,45 +640,24 @@ static int cmd_show_wifi(int argc, char **argv) {
     return CMD_FAILED;
   }
 
-
+  // Link == netif status
   link_up = esp_netif_is_netif_up(ni);
+  // Procol: AP->always UP, STA->only when associated
+  proto_up = (ifx == WIFI_IF_STA) ? (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) : true;
 
-  if (ifx == WIFI_IF_STA)
-    proto_up = (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK);
-  else
-    proto_up = true;
-
-  q_printf("%% Network interface WIFI %s\r\n",ifx == WIFI_IF_STA ? "STA" : "AP");
+  q_printf("%%<r> Network interface WIFI %s                         </>\r\n",ifx == WIFI_IF_STA ? "STA" : "AP");
   q_printf("%% Link: %s</>, Protocol: %s</>\r\n",link_up ? "<g>UP" : "<i>DOWN", proto_up ? "<g>UP" : "<i>DOWN");
 
-  uint8_t mac[6];
   if (esp_wifi_get_mac(ifx, mac) == ESP_OK)
     q_printf("%% MAC address: <i>%02x%02x:%02x%02x:%02x%02x</>\r\n",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 
-  if (ifx == WIFI_IF_STA) {
-    if (proto_up) {
-      q_printf("%% Connected to <b>%s</>, BSSID: %02x%02x:%02x%02x:%02x%02x\r\n",
-                ap_info.ssid[0] ? (const char *)&ap_info.ssid[0] : "a <i>hidden network",
-                ap_info.bssid[0],ap_info.bssid[1],ap_info.bssid[2],ap_info.bssid[3],ap_info.bssid[4],ap_info.bssid[5]);
-    } else
-      q_printf("%% Not connected to any Access Point\r\n"
-              "%% Configured SSID is \"<i>%s</>\"\r\n",conf.sta.ssid);
-
-    show_wifi_sta_config(&conf.sta);
-
-  } else if (ifx == WIFI_IF_AP) {
-      q_printf("%% Advertises as <b>%s</> %s\r\n",
-                  conf.ap.ssid,
-                  !conf.ap.ssid[0] || conf.ap.ssid_hidden ? "( hidden )"
-                                                          : "");
-      show_wifi_ap_config(&conf.ap);
-  }
 
   q_print("%\r\n");
   
   if (ESP_OK == esp_netif_get_ip_info(ni, &ipi)) {
+    q_print("% <r>IP information and services                        </>\r\n");
     if (ipi.ip.addr)
-      q_printf("%% IP address: " IPSTR ", mask: " IPSTR ", gateway: " IPSTR "\r\n",
+      q_printf("%% IP address: <i>" IPSTR "</>, mask: " IPSTR ", gateway: " IPSTR "\r\n",
                 IP2STR(&ipi.ip),
                 IP2STR(&ipi.netmask),
                 IP2STR(&ipi.gw));
@@ -630,11 +666,10 @@ static int cmd_show_wifi(int argc, char **argv) {
   }
 
   // DNS information
-  esp_netif_dns_info_t dnsi = { 0 };
 
   esp_netif_get_dns_info(ni, ESP_NETIF_DNS_MAIN, &dnsi);
   if (dnsi.ip.u_addr.ip4.addr != 0)
-    q_printf("%% Main DNS: " IPSTR "\r\n", IP2STR(&dnsi.ip.u_addr.ip4));
+    q_printf("%% Main DNS: <i>" IPSTR "</>\r\n", IP2STR(&dnsi.ip.u_addr.ip4));
   else
     q_printf("%% DNS servers are not set\r\n");
 
@@ -655,9 +690,31 @@ static int cmd_show_wifi(int argc, char **argv) {
           (ifx == WIFI_IF_AP ? "server" : "client"),
           (status == ESP_NETIF_DHCP_STARTED ? "<i>started</>" : "<w>stopped</>"));
 
-  const char *hostn = NULL;
+  
   if (esp_netif_get_hostname(ni, &hostn) == ESP_OK)
     q_printf("%% Host name (per-interface): \"<i>%s</>\"\r\n",hostn);
+
+
+  if (ifx == WIFI_IF_STA) {
+    if (proto_up) {
+      q_printf("%% Connected to <b>%s</>, BSSID: %02x%02x:%02x%02x:%02x%02x\r\n",
+                ap_info.ssid[0] ? (const char *)&ap_info.ssid[0] : "a <i>hidden network",
+                ap_info.bssid[0],ap_info.bssid[1],ap_info.bssid[2],ap_info.bssid[3],ap_info.bssid[4],ap_info.bssid[5]);
+
+        display_ap_details(&ap_info, NULL);
+    } else {
+      q_print("% <i>Not connected</> to any Access Point\r\n");
+      show_wifi_sta_config(&conf.sta);
+    }
+
+  } else if (ifx == WIFI_IF_AP) {
+      q_printf("%% Advertises as <b>%s</>%s\r\n",
+                  conf.ap.ssid,
+                  !conf.ap.ssid[0] || conf.ap.ssid_hidden ? " (hidden)"
+                                                          : "");
+      show_wifi_ap_config(&conf.ap);
+  }
+
   return 0;
 }
 
@@ -1210,7 +1267,7 @@ static int cmd_wifi_up(int argc, char **argv) {
 
     // "up" without arguments: use saved config, if available (STA only)
     // AP also can be configured from its default config but that means OPEN security, so it is disabled:
-    // "up" without args only allowed for the STA interfaces
+    // "up" without args only allowed for STA interfaces
     //
     while (argc < 2) {
       if (esp_wifi_get_config(WIFI_IF_STA, &stac) == ESP_OK) {
