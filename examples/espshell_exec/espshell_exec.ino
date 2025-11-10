@@ -1,3 +1,5 @@
+#error "Sorry, API has changed but examples are not. Not yet."
+#if 0
 // Example use of espshell_exec() to execute arbitrary shell commands
 // from the sketch
 
@@ -43,3 +45,4 @@ void loop() {
   while (1)
     delay(1000);
 } 
+#endif
