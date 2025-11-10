@@ -175,6 +175,7 @@ static int cmd_time(int, char **);
 #endif
 
 #if WITH_WIFI
+static int cmd_wifi_storage(int , char **);
 static int cmd_wifi_if(int, char **);
 static int cmd_wifi_up(int, char **);
 static int cmd_wifi_down(int, char **);
@@ -1830,6 +1831,19 @@ KEYWORDS_DECL(main) {
           "% \"<i>wifi sta</>\" - Station mode (WiFi client mode)\r\n"
           "% \"<i>wifi ap</>\"  - SoftAP mode (WiFi Access Point mode)\r\n"
         ), HELPK("WiFi interface commands") },
+
+  { "wifi", cmd_wifi_if, 2,
+    HELPK("% \"<b>wifi storage flash|ram</>\"\r\n"
+          "%\r\n"
+          "% Switch between RAM and FLASH when storing WiFi configuration\r\n"
+          "% so after reboot it is enough to \"up\" without arguments:\r\n"
+          "% SSID, BSSID, passwords etc are retrieved from the flash\r\n"
+          "% Default value is RAM\r\n"
+          "% <u>Examples</>:\r\n"
+          "% \"<i>wifi storage flash</>\" - Enable auto-save STA/AP config\r\n"
+          "% \"<i>wifi storage ram</>\"   - Keep configs in RAM"
+        ), HELPK("WiFi interface commands") },
+
 #endif
 
   KEYWORDS_END

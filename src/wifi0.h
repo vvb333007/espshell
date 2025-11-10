@@ -118,7 +118,7 @@ static bool dhcp_server_stop_if_started(esp_netif_t *apif) {
     esp_netif_dhcp_status_t status = ESP_NETIF_DHCP_STARTED;
     esp_netif_dhcps_get_status(apif, &status);
     if (status != ESP_NETIF_DHCP_STOPPED) {
-      HELP(q_print("% Stopping DHCP server..Ok \r\n"));
+      VERBOSE(q_print("% Stopping DHCP server..Ok \r\n"));
       esp_netif_dhcps_stop(apif);
       return true;
     }
@@ -126,21 +126,24 @@ static bool dhcp_server_stop_if_started(esp_netif_t *apif) {
   return false;
 }
 
-
+// Opposite of the above function. Starts server, which is currently stopped but was started before
+// (i.e. second argument must be the value, returned by the above function)
+//
 static void dhcp_server_restart_if_was_started(esp_netif_t *apif, bool was_started) {
 
   if (was_started) {
-    HELP(q_print("%% Restarting AP's DHCP server.."));
+    VERBOSE(q_print("%% Restarting AP's DHCP server.."));
     if (esp_netif_dhcps_start(apif) == ESP_OK) {
-      HELP(q_print("Ok\r\n"));
+      VERBOSE(q_print("Ok\r\n"));
     } else {
-      HELP(q_print("Failed\r\n"));
+      VERBOSE(q_print("Failed\r\n"));
     }
   }
 }
 
-
-#define DHCPS_OFFER_DNS 0x02
+#ifndef OFFER_DNS
+#  define OFFER_DNS 0x02
+#endif
 
 static bool dhcp_server_set_dns_option() {
 
@@ -222,13 +225,14 @@ static void ip_event_handler(void *arg, esp_event_base_t event_base, int32_t eve
                           IP2STR(&got->ip_info.gw),
                           got->ip_changed ? "" : "not "));
         if (!AP_static_dns) {
+          HELP(q_print("% WIFI STA: propagating DNS servers to the AP interface..\r\n"));
           sta_propagate_dns(got->esp_netif);
           dhcp_server_set_dns_option();
         }
         break;
 
       case IP_EVENT_STA_LOST_IP:
-        VERBOSE(q_print("% STA lost its IP address\r\n"));
+        HELP(q_print("% WIFI STA: IP address lost, protocol DOWN\r\n"));
         break;
 
       default:
@@ -248,11 +252,11 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
         break;
 
       case WIFI_EVENT_STA_CONNECTED:
-        VERBOSE(q_print("% WIFI STA: Connected to the network. Obtaining IP address..\r\n"));
+        HELP(q_print("% WIFI STA: Connected to the network. Configuring IP..\r\n"));
         break;
 
       case WIFI_EVENT_STA_DISCONNECTED:
-        VERBOSE(q_print("% WIFI STA: disconnected, protocol DOWN\r\n"));
+        VERBOSE(q_print("% WIFI STA: disconnected, link DOWN\r\n"));
         // optional auto-reconnect
          if (Sta_reconnect) {
            VERBOSE(q_print("% WIFI STA: trying to reconnect..\r\n"));
@@ -437,6 +441,18 @@ static void display_ap_details(wifi_ap_record_t *ap, const char *requested_bssid
   }
 }
 
+// Set WiFi driver storage: NVS or RAM
+//
+static int cmd_wifi_storage(int argc, char **argv) {
+  wifi_storage_t storage = WIFI_STORAGE_RAM;
+  if (argc < 3)
+    return CMD_MISSING_ARG;
+  if (!q_strcmp(argv[2],"flash"))
+    storage = WIFI_STORAGE_FLASH;
+  return ESP_OK == esp_wifi_set_storage(storage) ? 0 : CMD_FAILED;
+}
+
+
 
 // TODO: static_assert(WIFI_CIPHER_UNKNOWN == 12, "Code review is required");
 // "wifi ap|sta"
@@ -459,6 +475,12 @@ static int cmd_wifi_if(int argc, char **argv) {
   if (!get_apif() || !get_staif()) {
     q_print("% Can not create default AP/STA network interfaces\r\n");
     return CMD_FAILED;
+  }
+
+  if (argc > 2) {
+    if (!q_strcmp(argv[1],"storage"))
+      return cmd_wifi_storage(argc, argv);
+    return 1;
   }
 
   // Set appropriate keywords (keywords_ap or keywords_sta), store interface type in /Context/
@@ -1384,6 +1406,7 @@ static int cmd_wifi_down(int argc, char **argv) {
 
   return 0;
 }
+
 
 #endif // if compiling espshell
 
