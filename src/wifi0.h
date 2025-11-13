@@ -505,6 +505,37 @@ static int cmd_wifi_if(int argc, char **argv) {
 
 #include "esp_wifi_ap_get_sta_list.h"
 
+// esp32-ap>kick AID
+//
+static int cmd_wifi_kick(int argc, char **argv) {
+
+  uint16_t aid;
+  esp_err_t err = ESP_OK + 1;
+
+  if (argc < 2)
+    return CMD_MISSING_ARG;
+
+  //"kick all"
+  if (!q_strcmp(argv[1],"all"))
+    aid = 0;
+  else { // kick NUMBER
+    if (0 == (aid = q_atol(argv[1],0)))
+      q_print("% A valid AID is required (see \"show wifi clients\" output)\r\n");
+    else
+      err = esp_wifi_deauth_sta(aid);
+  }
+
+  if (err != ESP_OK) {
+    q_printf("%% Failed to kick STA AID %u\r\n",aid);
+    return CMD_FAILED;
+  }
+
+  return 0;
+}
+
+// "show wifi clients"
+//
+//
 static int cmd_show_wifi_clients(UNUSED int argc, UNUSED char **argv) {
 
 
@@ -513,15 +544,14 @@ static int cmd_show_wifi_clients(UNUSED int argc, UNUSED char **argv) {
     esp_err_t err;
 
     if (!apif) {
-      q_print("% Access Point was never set up\r\n");
+list_is_empty:
+      q_print("% No connections. STA list is empty\r\n");
       return 0;
     }
 
-    if ((err = esp_wifi_ap_get_sta_list(&sta_list)) != ESP_OK) {
-list_is_empty:
-        q_print("% Stations list is empty\r\n");
-        return 0;
-    }
+    if ((err = esp_wifi_ap_get_sta_list(&sta_list)) != ESP_OK)
+      goto list_is_empty;
+    
 
     if (!sta_list.num)
       goto list_is_empty;
@@ -533,21 +563,28 @@ list_is_empty:
     wifi_sta_mac_ip_list_t pairs = { 0 };
     esp_wifi_ap_get_sta_list_with_ip(&sta_list, &pairs);
     
-    q_print("%<r> # | MAC address   | RSSI | IP Address </>\r\n"
-               "% --+---------------+------+------------\r\n");
+    q_print("%<r> # |  MAC address   | RSSI |  AID  | Leased IP Address</>\r\n"
+               "% --+----------------+------+-------+------------------\r\n");
 
     for (int i = 0; i < sta_list.num; i++) {
+
+        uint16_t aid;
         wifi_sta_info_t *info = &sta_list.sta[i];
 
-        q_printf("%%%3d| %02X%02X:%02X%02X:%02X%02X | %4d | " IPSTR "\r\n",
+        // fetch STA AID by its MAC address
+        if (ESP_OK != esp_wifi_ap_get_sta_aid(info->mac, &aid))
+          aid = 0; // invalid AID (AID numbers start from 1)
+
+        q_printf("%%%3d| %02X%02X:%02X%02X:%02X%02X | %4d | %5u | " IPSTR "\r\n",
                  i+1,
                  info->mac[0], info->mac[1], info->mac[2],
                  info->mac[3], info->mac[4], info->mac[5],
                  info->rssi,
+                 aid,
                  IP2STR(&pairs.sta[i].ip));
     }
-    q_print("% --+--------+-------+------+------------\r\n");
-    q_printf("%% Connected: %d station%s\r\n", PPA(sta_list.num));
+    q_print("% --+----------------+------+-------+------------------\r\n");
+    q_printf("%% Connected: %d station%s. Use \"kick AID\" or \"kick all\" to deauth\r\n", PPA(sta_list.num));
 
     return 0;
 }
@@ -658,7 +695,10 @@ static int cmd_show_wifi(int argc, char **argv) {
   }
 
   if (!ni) {
-    q_print("% Network interface is NULL\r\n");
+    q_print("% No WiFi interfaces were created by the sketch so far.\r\n"
+            "% <i>Execute any of WiFi commands</> (e.g. \"wifi ap\" or \"wifi sta\") to create\r\n"
+            "% and initialize WiFi interfaces, and then try your \"show wifi ...\" again\r\n");
+
     return CMD_FAILED;
   }
 

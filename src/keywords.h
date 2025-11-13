@@ -186,6 +186,7 @@ static int cmd_wifi_ip_address(int, char **);
 static int cmd_wifi_natp(int, char **);
 static int cmd_wifi_ntp(int, char **);
 static int cmd_wifi_dhcp(int, char **);
+static int cmd_wifi_kick(int, char **);
 #endif
 
 
@@ -661,7 +662,7 @@ KEYWORDS_DECL(sta) {
     HELPK("Shutdown WiFi interface") },
 
   { "scan", cmd_wifi_scan, MANY_ARGS,
-    HELPK("% \"<b>scan</> [<o>active|passive|bssid AABB:CCDD:EEFF]*\"\r\n" 
+    HELPK("% \"<b>scan</> [<o>active</> | <o>passive</> | <o>bssid AABB:CCDD:EEFF</>]*\"\r\n" 
           "%\r\n"
           "% Scan and display available networks.\r\n"
           "% Performs passive or active scan (default is \"active\") and displays\r\n"
@@ -679,7 +680,7 @@ KEYWORDS_DECL(sta) {
           "%\r\n"
           "% SNTP client configuration:\r\n"
           "%  <i>dhcp</>    - Obtain SNTP servers from DHCP reply\r\n"
-          "%  <i>SERVER</>  - Use SNTP server HOST (ip or hostname)\r\n"
+          "%  <i>HOST</>  - Use SNTP server HOST (ip or hostname)\r\n"
           "%  <i>disable</> - disable SNTP\r\n"
           "%  <i>enable</>  - enable SNTP\r\n"
           "%\r\n"
@@ -768,7 +769,7 @@ KEYWORDS_DECL(ap) {
           "% Stop & shutdown WiFi Access Point"),
     HELPK("Shutdown WiFi interface") },
 
-  { "scan", cmd_wifi_scan, MANY_ARGS,
+  { "scan", cmd_wifi_scan, MANY_ARGS, //TODO: get rid of bssid keyword
     HELPK("% \"<b>scan</> [active|passive|bssid <o>AABB:CCDD:EEFF</>]*\"\r\n" 
           "%\r\n"
           "% Scan and display available networks.\r\n"
@@ -866,6 +867,21 @@ KEYWORDS_DECL(ap) {
     { "natp", cmd_wifi_natp, 3, HIDDEN_KEYWORD },
     { "natp", cmd_wifi_natp, 2, HIDDEN_KEYWORD },
     { "natp", cmd_wifi_natp, 1, HIDDEN_KEYWORD },
+
+
+  { "kick", cmd_wifi_kick, 1,
+    HELPK("% \"<b>kick all</>\r\n" 
+          "% \"<b>kick AID</>>\r\n" 
+          "%\r\n"
+          "% Deauthenticate a connected station by its AID. AID-MAC client mapping\r\n"
+          "% can be seen in \"show wifi clients\" output (see \"AID\" column)\r\n"
+          "%\r\n"
+          "%<u>Examples</>:\r\n"
+          "%   <i>kick all</>  : Kick (deauth) all clients\r\n"
+          "%   <i>kick 1</>    : Kick (deauth) a client with AID#1\r\n"
+          "%"),
+    HELPK("Deauthenticate clients") },
+
 
   KEYWORDS_END
 };
@@ -1836,9 +1852,10 @@ KEYWORDS_DECL(main) {
     HELPK("% \"<b>wifi storage flash|ram</>\"\r\n"
           "%\r\n"
           "% Switch between RAM and FLASH when storing WiFi configuration\r\n"
-          "% so after reboot it is enough to \"up\" without arguments:\r\n"
+          "% so after reboot command \"up\" can be used without arguments:\r\n"
           "% SSID, BSSID, passwords etc are retrieved from the flash\r\n"
-          "% Default value is RAM\r\n"
+          "% Default value is RAM (discard all configs after reboot)\r\n"
+          "%\r\n"
           "% <u>Examples</>:\r\n"
           "% \"<i>wifi storage flash</>\" - Enable auto-save STA/AP config\r\n"
           "% \"<i>wifi storage ram</>\"   - Keep configs in RAM"
