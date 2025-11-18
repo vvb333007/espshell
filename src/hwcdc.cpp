@@ -41,37 +41,10 @@ extern "C" bool console_isup() {
   return Serial; //Serial:: bool operator
 }
 
-#define BUGGY_USB 0 // Current implementation of HWCDC is buggy. Calling Serial.write() creates a mess
-                    // on the screen.
 
 // Send characters to user terminal
-//
 extern "C" int console_write_bytes(const void *buf, size_t len) {
-#if BUGGY_USB
-  int len0 = len;
-  while( true ) {
-    int space = Serial.availableForWrite(), w;
-    if (space) {
-      if (space >= len) {
-        len0 = Serial.write((const uint8_t *)buf, len);
-        goto flush_and_return;
-      }
-      w = Serial.write((const uint8_t *)buf, space);
-
-      buf += w;
-      len -= w;
-    } else
-      portYIELD();
-  }
-flush_and_return:
-
-  Serial.flush();
-  return len0;
-#else
-  len = Serial.write((const uint8_t *)buf, len);
-  Serial.flush();
-  return len;
-#endif
+  return Serial.write((const uint8_t *)buf, len);
 }
 
 // How many characters are available for read?
@@ -81,18 +54,31 @@ extern "C" int console_available() {
 }
 
 // Read user input, with a timeout.
-// Returns number of bytes read on success or <0 on error
+// Returns number of bytes read on success or 0 on error
 //
 extern "C" int console_read_bytes(void *buf, uint32_t len, TickType_t wait) {
-
   int av;
+  uint32_t len0 = len, min;
+  uint8_t *buf0 = (uint8_t *)buf;
+  size_t r;
 
-// TODO: Make proper blocking read within timeout. Not just wait for the first byte and read what was in the FIFO.
-// TODO: Should read() in a loop, until either timeout OR full /len/ bytes read. Every successful read() resets /wait/ to its
-//       initial value
-  while((av = Serial.available()) <= 0 && (wait-- > 0))
-    taskYIELD();
-  
-  return (av <= 0) ? -1 : Serial.read((uint8_t *)buf, len);
+  while (len) {
+    av = Serial.available();
+    if (av < 1) {
+      if (wait-- > 0)
+        taskYIELD();
+      else
+        return len0 - len;
+    } else {
+      min = (av <= len) ? av : len;
+      r = Serial.read(buf0, min);
+      if (r) {
+        buf0 += r;
+        len -= r;
+      }
+    }
+  }
+
+  return len0 - len;
 }
 #endif //SERIAL_IS_USB

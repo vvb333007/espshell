@@ -136,6 +136,10 @@ static const char Spaces[41] = {
   '\0'
 };
 #endif
+
+// TODO: hidden command "screen WIDTH HEIGHT"
+//static uint8_t TermCols = 80, TermLines = 25;
+
 // "? NAME"
 // Displays a manual page for NAME (e.g. "? pin")
 //
@@ -165,7 +169,9 @@ try_one_more_time:
         // Print help page
         q_printf("%s\r\n\r\n",key[i].help ? key[i].help                        // use /.help/ if it is exists
                                           : (key[i].brief ? key[i].brief  // otherwise use /.brief/
-        /* This one can not happen --------------> */     : "Help page is missing. Please report it to the author"));
+        /* This one can not happen --------------> */     : "Help page is missing"));
+
+        
         
         found++;
       }
@@ -178,7 +184,7 @@ try_one_more_time:
       key = KEYWORDS(main);
       goto try_one_more_time;
     }
-    q_printf("%% Sorry, no manual entry for \"%s\"\r\n"
+    q_printf("\r\n%% Sorry, no manual entry for \"%s\"\r\n"
              "%% Type \"<i>?</>\" and press <Enter> to see what is available\r\n" ,argv[1]);
     return CMD_FAILED;
   }

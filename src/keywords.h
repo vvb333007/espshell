@@ -225,7 +225,7 @@ static int cmd_wifi_kick(int, char **);
 // This subdirectory is the recommended template for creating other command trees.  
 //
 KEYWORDS_DECL(uart) {   // Declares the "uart" command directory.
-                        // Creates global (thread-local) variable /keywords_alias/
+                       
 
   KEYWORDS_BEGIN        // Optional. Inserts common commands like "?" or "help"
   // Normal commands:
@@ -302,7 +302,17 @@ KEYWORDS_DECL(uart) {   // Declares the "uart" command directory.
   // Example:
   // {"write", ... , 1,          <--- called on "write ARG"
   // {"write", ... , 3,          <--- called on "write ARG ARG ARG"
-  // {"write", ... , MANY_ARGS,  <--- last entry in the "write" group, called on all other "write" variats
+  // {"write", ... , MANY_ARGS,  <--- last entry in the "write" group, called on all other "write" variants
+  //
+  // Doing it like this:
+  //
+  // {"write", ... , 1,          <--- called on "write ARG"
+  // {"write", ... , MANY_ARGS,
+  // {"write", ... , 3,          <--- called on "write ARG ARG ARG"
+  //
+  // will block 3-arg variant from executing. 
+  //
+    
   //
   { "write", cmd_uart_write, MANY_ARGS,
     HELPK("% \"<b>write</> <i>TEXT</>\"\r\n"
@@ -1162,8 +1172,11 @@ KEYWORDS_DECL(main) {
     HELPK("% \"<b>time</>\" <i>set</> (<i>YEAR</>|<i>MONTH</>|<i>DAY</>|<i>TIME</>|<b>am|pm</>)*\r\n"
           "%\r\n"
           "% Set system time, and optionally update attached RTC clock\r\n"
+          "% An order of arguments is not important. Omitted values are not set\r\n"
+          "% NOTE: To update RTC you should configure RTC chip via \"time source...\"\r\n"
+          "% NOTE: Use \"time source rtc ... read-only\" tp prevent \"time set\" from\r\n"
+          "%       changing RTC chip memory\r\n"
           "% <u>Examples</>:\r\n"
-          "% Note that order of arguments is not important. Omitted values are not set\r\n"
           "%   <i>time set 23874682763</>    : set time as a UNIX timestamp\r\n"
           "%   <i>time set 2025 april</>     : change year+month\r\n"
           "%   <i>time set 20 sep 11:20</>   : a month, a date and the time\r\n"
@@ -1194,21 +1207,27 @@ KEYWORDS_DECL(main) {
   { "time", HELP_ONLY,
     HELPK("% \"<b>time</>\" source manual\r\n"
           "% \"<b>time</>\" source rtc [<o>I2C_BUS I2C_ADDR [base-reg NUM] [no-sync] [read-only]</>]\r\n"
-          "% \"<b>time</>\" source ntp [<o>IP_ADDR</>|<o>HOST_NAME</>] \r\n"
+          "% \"<b>time</>\" source ntp\r\n"
           "%\r\n"
-          "% Set time source to sync with:\r\n"
-          "%   <i>manual</> - do not sync. CPU keeps track of time\r\n"
-          "%   <i>rtc</>    - sync with RTC chip\r\n"
-          "%   <i>ntp</>    - sync with NTP server\r\n"
-          "% <u>Examples</>:\r\n"
+          "% Set system time source :\r\n"
+          "%   <i>manual</> - ESP32 keeps track of time\r\n"
+          "%   <i>rtc</>    - Sync local time with RTC chip\r\n"
+          "%   <i>ntp</>    - Sync local time with NTP server\r\n"
+          "%\r\n"
+          "%<u>NOTE</>: to sync with RTC (\"time source rtc\") the RTC chip must be described\r\n"
+          "%    to the shell (I2C address and base register offset are required in some cases) \r\n"
+          "%    with the command \"time source rtc 0 0x68\" (an example) \r\n"
+          "%<u>NOTE</>: to sync with NTP (\"time source ntp\") one have to configure WIFI STA\r\n"
+          "%    interface and connect to an Access Point to obtain NTP server address or otherwise\r\n"
+          "%    configure SNTP server address (i.e. static or dynamic)\r\n"
+          "% <u>RTC Examples</>:\r\n"
           "%   <i>time source rtc 0 0x68</>            : Typical DS3231,DS13.. setup (I2C0)\r\n"
           "%   <i>time source rtc 1 0x51 base-reg 2</> : Typical PCF8563 setup (I2C1)\r\n"
-          "%   <i>time source rtc 0 0x68 no-sync</>    : Do not update local time\r\n"
-          "%   <i>time source rtc 0 0x68 read-only</>  : Do not update RTC time\r\n"
-          "%   <i>time source rtc</>                   : Update local time from the chip\r\n"
+          "%   <i>time source rtc 0 0x68 no-sync</>    : ..and do not update local time\r\n"
+          "%   <i>time source rtc 0 0x68 read-only</>  : ..and do not update RTC (e.g. via \"time set ...\")\r\n"
+          "%   <i>time source rtc</>                   : Update (\"sync\") local time from the chip\r\n"
           "%\r\n"
-          "%   <i>time source ntp pool.ntp.org</>      : Set NTP time server\r\n"
-          "%   <i>time source ntp</>                   : Sync again"
+          "%   <i>time source ntp</>                   : Sync with NTP (see wifi command \"ntp enable\")"
     ), NULL },
 #endif //WITH_TIME
   { "uptime", cmd_uptime, NO_ARGS,

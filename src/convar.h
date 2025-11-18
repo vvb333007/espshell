@@ -369,6 +369,8 @@ _memcpy(char *dst, char *src, uint8_t count) {
 }
 #if 0
 // Compare two variables
+// We need this for our ifcond.h module, which performs logic operations on variables
+//
 // Returns <0 if var < var2, >0 if var > var2 or 0 if var == var2
 //
 //convar_map_variable() ?

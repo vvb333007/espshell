@@ -29,7 +29,7 @@ static uint32_t __attribute__((const)) make_config(char bits, char parity, char 
 // everything that comes from the user goes to "remote" and  vice versa
 //
 // returns  when BREAK_KEY is pressed
-// TODO: refactor, make BREAK_KEY a convar
+// TODO: refactor to a single "while". refactor to interleave reads/writes from/to remote, make BREAK_KEY a convar
 //
 static void
 uart_tap(int remote) {
@@ -75,6 +75,49 @@ uart_tap(int remote) {
     }
   } while ( true );
 }
+
+#if 0
+static void
+uart_tap2(int remote) {
+
+  int av;
+  char buf[UART_RXTX_BUF];
+
+  /* Infinite loop. Interrupted with Ctrl+C code on the UART*/
+  while (1) {
+    if ((av = console_available()) > 0) {
+      if (av > UART_RXTX_BUF)
+        av = UART_RXTX_BUF;
+
+      console_read_bytes(buf, av, 3);
+
+      if (buf[0] == BREAK_KEY)
+        return;
+
+      uart_write_bytes(remote, buf, av);
+    }
+    
+    if (ESP_OK != uart_get_buffered_data_len(remote, &av)) {
+      HELP(q_printf(uartIsDown, remote));
+      return;
+    }
+
+    if (av > 0) {
+      if (av > UART_RXTX_BUF)
+        av = UART_RXTX_BUF;
+      uart_read_bytes(remote, buf, av, portMAX_DELAY);
+      console_write_bytes(buf, av);
+    }
+    q_yield();
+  }
+
+}
+#endif
+
+
+
+
+
 
 //check if UART has its driver installed
 static inline bool uart_isup(unsigned char u) {

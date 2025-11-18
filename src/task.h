@@ -49,8 +49,15 @@ static uint8_t shell_prio = 0; // Default shell priority (IDLE. Inherited by spa
 //
 // TODO: make it a convar; add ability to set NO_AFFINITY value
 //
+
 #if (portNUM_PROCESSORS > 1)
-static uint8_t shell_core = ARDUINO_RUNNING_CORE ^ 1;
+// https://github.com/espressif/arduino-esp32/issues/11959
+#  if SERIAL_IS_USB
+#    define CHANGE_CORE 0
+#  else
+#    define CHANGE_CORE 1
+#  endif
+static uint8_t shell_core = ARDUINO_RUNNING_CORE ^ CHANGE_CORE;
 #else
 static uint8_t shell_core = 0;
 #endif

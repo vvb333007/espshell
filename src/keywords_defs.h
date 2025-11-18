@@ -58,8 +58,8 @@ struct keywords_t {
 #define KEYWORDS_END \
   { "exit", cmd_exit, MANY_ARGS, \
     HELPK("% \"<b>exit</> [<o>exit</>]\"  (Hotkey: Ctrl+Z)\r\n" \
-          "% Exit from uart, i2c, spi, files etc configuration modes.\r\n" \
-          "% Has no effect when executed in main command mode unless typed twice\r\n" \
+          "% Exit from uart, i2c, wifi, filesystem etc configuration modes.\r\n" \
+          "% Has no effect when executed in the main command mode unless typed twice\r\n" \
           "% (i.e. \"exit exit\"): in this case ESPShell closes and stops its task"), \
     HELPK("Exit") }, \
   /* Last entry must be all-zeros */\
@@ -91,7 +91,7 @@ static void keywords_register(const struct keywords_t *key, const char *name, in
 
 #define KEYWORDS_REG(_Key) \
  /* Each keywords array has its own constructor which registers this particular array */ \
-  void __attribute__((constructor)) __init_kwd_ ## _Key () { \
+  static void __attribute__((constructor)) __init_kwd_ ## _Key () { \
     keywords_register(keywords_ ## _Key, # _Key, sizeof(keywords_ ## _Key) / sizeof(keywords_ ## _Key[0])); \
   } \
 
