@@ -315,7 +315,9 @@ static int64_t read_timespec(int argc, char **argv, int start, int *stop) {
 
 #if WITH_TIME
 
-// "12:3" "01:02:33" "1:1:1"
+// "12:3" "01:02:33" "1:1:1" "5"
+// Convert string to hours/minutes/seconds. Omitted parameters are assumed to be zero.
+// 24-hours format is assumed
 //
 static bool read_hms(const char *p, int8_t *h, int8_t *m, int8_t *s) {
 
@@ -332,14 +334,17 @@ static bool read_hms(const char *p, int8_t *h, int8_t *m, int8_t *s) {
     ++p;
   }
 
-  if (h) *h = &hms[0];
-  if (m) *m = &hms[1];
-  if (s) *s = &hms[2];
+  if (hms[0] > 23 || hms[1] > 59 || hms[2] > 59)
+    return false;
+
+  if (h) *h = hms[0];
+  if (m) *m = hms[1];
+  if (s) *s = hms[2];
 
   return true;
 }
 
-//
+// Returns time_t or 0
 // "1978"
 // "31"
 // "1978 31 april"
@@ -348,12 +353,12 @@ static bool read_hms(const char *p, int8_t *h, int8_t *m, int8_t *s) {
 //
 static time_t read_datime(int argc, char **argv, int start, int *stop) {
 
-  uint32_t t;
+  //uint32_t t;
   time_t val = 0;
   int stop0 = -1,v;
   int8_t am = -1; //1 = am, 0 = pm, -1 = n/a
   int8_t month;
-  bool time_seen = false; // did we see HH:MM:SS already?
+  //bool time_seen = false; // did we see HH:MM:SS already?
 
   struct tm t = { 0 };
 
@@ -361,9 +366,9 @@ static time_t read_datime(int argc, char **argv, int start, int *stop) {
     stop = &stop0;
 
   // Get local time and split it to /struct tm/
-  now = time_local();
-  gmtime_r(&now, &t);
-
+  time_t now = time(NULL);
+  localtime_r(&now, &t);
+  
   // Reset some fields
   t.tm_wday = -1;
   t.tm_yday = -1;
@@ -371,16 +376,15 @@ static time_t read_datime(int argc, char **argv, int start, int *stop) {
 
   // Scan through arguments, read values and populate /struct tm/
   for (; (start < argc) && (start != *stop); start++) {
-    // Numeric argument: either a day-of-the-month or a year
+
+
+    // 1. Numeric argument: either a day-of-the-month or a year
     if (isnum(argv[start])) {
       // Read the number. No number can be less than 1.
       // Day number is in range [1..31] while year number is >1970
-      if ((v = q_atoi(argv[start], -1)) < 1) {
-        q_printf("%% Bad number, must be either [1..31] or [1970..9999]. (argument #%d)\r\n",start);
-        goto bad;
-      }
+      v = q_atoi(argv[start], 32);
       if (v > 31 && v < 1970) {
-        q_printf("%% Unrecognized number (argument #%d)\r\n",start);
+        q_printf("%% Days are [1..31], years are [1978..2106]. What is %s? \r\n",argv[start]);
         goto bad;
       }
       if (v < 32)
@@ -388,7 +392,7 @@ static time_t read_datime(int argc, char **argv, int start, int *stop) {
       else
         t.tm_year = v - 1900;
     } else 
-    // No month has 'm' as its second letter, must be "am" or "pm"
+    // 2. No month has 'm' as its second letter, must be "am" or "pm"!
     if (argv[start][1] == 'm') {
       
         if (argv[start][0] == 'a')
@@ -400,30 +404,44 @@ static time_t read_datime(int argc, char **argv, int start, int *stop) {
           goto bad;
         }
     } else
-    // a time? time can be in forms: hh:mm or hh:mm:ss
+    // 3. A time? time can be in forms: hh:mm or hh:mm:ss
     if (argv[start][0] >= '0' && argv[start][0] <= '9') {
       int8_t h,m,s;
       if (read_hms(argv[start],&h,&m,&s)) {
+        // 12-hours format used?
+        if (am != -1) {
+          if (h > 12) {
+            q_print("% AM/PM hours must not be greater than 12 or smaller than -12\r\n");  
+            goto bad;
+          }
+
+          // Convert to 24
+          if (h == 12)
+            h = am ? 0 : 12;
+          else if (!am)
+            h = h + 12;
+        }
+
         t.tm_hour = h;
         t.tm_min = m;
         t.tm_sec = s;
       } else {
-        q_print("% Time is bad. Must be hh:mm or hh:mm:ss\r\n");
+        q_print("% Can not recognize the input. Must be hh:mm or hh:mm:ss\r\n");
         goto bad;
       }
     } else
-    // may be a month?
+    // 4. May be a month?
     if ((month = time_month_by_name(argv[start])) > 0) {
-      tm.tm_mon = month - 1;
+      t.tm_mon = month - 1;
     } else 
-    // unrecognized keyword
+    // 5. Unrecognized keyword
     {
-      q_printf("%% Unrecognized keyword at position %d\r\n",start);
+      q_printf("%% Unrecognized keyword \"%s\"\r\n",argv[start]);
       goto bad;
     }
   }
   
-  val = mktime(&tm);
+  val = mktime(&t);
 bad:
   *stop = start;
   return val;

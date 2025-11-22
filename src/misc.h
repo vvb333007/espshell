@@ -244,7 +244,8 @@ static bool nv_save_config(const char *nspace) {
     }
 
     // Write values
-    if ((err = nvs_set_str(handle, "hostid", PromptID)) == ESP_OK)
+    nvs_set_str(handle, "hostid", PromptID);
+    nvs_set_str(handle, "tz", Time.zone);
       if ((err = nvs_commit(handle)) != ESP_OK)
         q_printf("%% NVS commit failed: %s", esp_err_to_name(err));
 
@@ -258,7 +259,7 @@ static bool nv_load_config(const char *nspace) {
 
     nvs_handle_t handle;
     esp_err_t err;
-    size_t length = sizeof(PromptID);
+    
 
     if (!nspace)
       nspace = "espshell";
@@ -268,10 +269,16 @@ static bool nv_load_config(const char *nspace) {
         return false;
     }
 
-    // Read hostname
-    err = nvs_get_str(handle, "hostid", PromptID, &length);
+    // Read hostname and a timezone
+    size_t length = sizeof(PromptID);
+    nvs_get_str(handle, "hostid", PromptID, &length);
+
+    length = sizeof(Time.zone);
+    nvs_get_str(handle, "tz", Time.zone, &length);
+    if (Time.zone[0])
+      time_apply_zone();
     nvs_close(handle);
-    return err == ESP_OK;
+    return true;
 }
 
 //"hostid [NAME]"

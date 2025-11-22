@@ -142,7 +142,7 @@ static int cmd_show_ifs(int, char **);
 static int cmd_show(int, char **);
 static int cmd_show_pin(int, char **);
 #if WITH_TIME
-#  error "time0.h module is not ready yet. Not sure if it even compiles. Turn WITH_TIME off"
+//#  error "time0.h module is not ready yet. Not sure if it even compiles. Turn WITH_TIME off"
 static int cmd_show_time(int, char **);
 #endif
 static int cmd_show_sequence(int, char **);
@@ -650,17 +650,19 @@ KEYWORDS_DECL(sta) {
           "% \"<b>up</>\"\r\n" 
           "%\r\n"
           "% Connect to the AP (SSID or BSSID) using password PASSWORD. Configuration\r\n"
-          "% (e.g., IP, DHCP, NTP) must be done <u>before</>. If there is a system WiFi configuration\r\n"
-          "% loaded (from NVS/user sketch) the short form of \"up\" (without arguments)\r\n"
+          "% (e.g., IP, DHCP, NTP) better be done <u>before</>. If there is a system WiFi\r\n"
+          "% configuration loaded (from NVS/user sketch) the short form of \"up\" (without arguments)\r\n"
           "% can be used\r\n"
           "%\r\n"
-          "% NOTE: use \"scan\" command to find out BSSIDs\r\n"
-          "% NOTE: use \"show wifi sta\" command show system WiFi config\r\n"
+          "% Use \"scan\" command to find out SSIDs and BSSIDs\r\n"
+          "% Use \"show wifi sta\" command show system STA WiFi config\r\n"
+          "% Use \"wifi storage flash\" to enable config auto-save\r\n"
           "%\r\n"
           "%<u>Examples</>:\r\n"
-          "%  up \"Home Network\" jfhod786    - connect using SSID\r\n"
+          "%  up \"Home Network\" jfhod786    - connect using SSID and a password\r\n"
+          "%  up \"Home Network\" \"\" auto   - connect using SSID, no password, reconnect\r\n"
           "%  up 0044:ff55:02ae jfhod786 auto - connect using BSSID, auto reconnect\r\n"
-          "%  up                              - connect using previously set config\r\n"
+          "%  up                              - connect using system/sketch config\r\n"
           "%"),
     HELPK("Initialize and start WiFi interface") },
 
@@ -685,7 +687,7 @@ KEYWORDS_DECL(sta) {
           "% <i>scan b 0001:2233:4455 passive</> : Passive scan of specific AP"),
     HELPK("WiFi scan") },
 
-  { "ntp", cmd_wifi_ntp, 1,
+  { "ntp", cmd_wifi_ntp, MANY_ARGS,
     HELPK("% \"<b>ntp</> [<o>dhcp</>|<o>HOST</>] [<o>enable</>|<o>disable</>]</>\"\r\n" 
           "%\r\n"
           "% SNTP client configuration:\r\n"
@@ -698,7 +700,7 @@ KEYWORDS_DECL(sta) {
           "%   ntp dhcp         - use DHCP to obtain NTP servers\r\n"
           "%   ntp dhcp enable  - use DHCP and enable SNTP client\r\n"
           "%   ntp pool.ntp.org - use pool.ntp.org as NTP server\r\n"
-          "%   ntp enable       - Start SNTP client\r\n"
+          "%   ntp 2.2.2.2 dhcp - Use DHCP and static server addresses\r\n"
           "%   ntp disable      - Disable SNTP client\r\n"
           "%"
           ),
@@ -757,7 +759,7 @@ KEYWORDS_DECL(ap) {
   KEYWORDS_BEGIN
 
   { "up", cmd_wifi_up, MANY_ARGS,
-    HELPK("% \"<b>up NETWORK_NAME [PASSWORD] [max-sta NUM]</>\"\r\n" 
+    HELPK("% \"<b>up [NETWORK_NAME [PASSWORD] [max-sta NUM]</>\"\r\n" 
           "%\r\n"
           "% Create an Access Point with NETWORK_NAME using password PASSWORD,\r\n"
           "% limiting max number of connections to NUM.\r\n"
@@ -767,8 +769,10 @@ KEYWORDS_DECL(ap) {
           "% NOTE: use \"\" as NETWORK_NAME to create hidden networks\r\n"
           "%\r\n"
           "%<u>Examples</>:\r\n"
+          "%  up                          - create AP using system/saved WiFi config\r\n"
           "%  up IoT_Network              - create OPEN network IoT_Network\r\n"
           "%  up Home jfhod786 max-sta 1  - Network \"Home\", with password, for 1 client\r\n"
+          "%  up Home \"\" max-sta 1      - Network \"Home\", no password, for 1 client\r\n"
           "%  up \"\" jfhod786            - Hidden network, with password"
           ),
     HELPK("Initialize and start WiFi interface") },
@@ -1171,64 +1175,28 @@ KEYWORDS_DECL(main) {
   { "time", cmd_time, MANY_ARGS,
     HELPK("% \"<b>time</>\" <i>set</> (<i>YEAR</>|<i>MONTH</>|<i>DAY</>|<i>TIME</>|<b>am|pm</>)*\r\n"
           "%\r\n"
-          "% Set system time, and optionally update attached RTC clock\r\n"
-          "% An order of arguments is not important. Omitted values are not set\r\n"
-          "% NOTE: To update RTC you should configure RTC chip via \"time source...\"\r\n"
-          "% NOTE: Use \"time source rtc ... read-only\" tp prevent \"time set\" from\r\n"
-          "%       changing RTC chip memory\r\n"
+          "% Set/change system time.\r\n"
+          "% An order of arguments is not important, omitted values are not set\r\n"
           "% <u>Examples</>:\r\n"
-          "%   <i>time set 23874682763</>    : set time as a UNIX timestamp\r\n"
           "%   <i>time set 2025 april</>     : change year+month\r\n"
           "%   <i>time set 20 sep 11:20</>   : a month, a date and the time\r\n"
           "%   <i>time set 1:2:23 am 2025</> : the time and a year, 12-hour format"
     ), "Set system time" },
 
   { "time", HELP_ONLY,
-    HELPK("% \"<b>time</>\" <i>format</> 12|24\r\n"
-          "%\r\n"
-          "% Set output time format (input accepts both 12 and 24 format)\r\n"
-          "% <u>Examples</>:\r\n"
-          "%   <i>time format 24</> : use 24-hour format for output"
-    ), NULL },
-
-  { "time", HELP_ONLY,
     HELPK("% \"<b>time</>\" <i>zone TIMESPEC</>|none\r\n"
           "%\r\n"
           "% Set time zone (time offset) or reset it to default value\r\n"
           "% TIMESPEC consist of numbers and time specifiers:\r\n"
-          "% e.g.: \"1 day 480 hours 5 minutes\" or "-45 minutes 5 hours"\r\n"
+          "% e.g.: \"+7 hours 5 minutes\" or \"-45 minutes 5 \"\r\n"
+          "% Add \"minus\" sign to any time component to turn whole thing negative\r\n"
           "%\r\n"
           "% <u>Examples</>:\r\n"
           "%   <i>time zone 1</>             : time zone is +0100 UTC\r\n"
-          "%   <i>time zone 1 hour 45 min</> : time zone is +0145 UTC\r\n"
+          "%   <i>time zone -1 hour 45 min</>: time zone is -0145 UTC\r\n"
           "%   <i>time zone none</>          : No time offset"
     ), NULL },
 
-  { "time", HELP_ONLY,
-    HELPK("% \"<b>time</>\" source manual\r\n"
-          "% \"<b>time</>\" source rtc [<o>I2C_BUS I2C_ADDR [base-reg NUM] [no-sync] [read-only]</>]\r\n"
-          "% \"<b>time</>\" source ntp\r\n"
-          "%\r\n"
-          "% Set system time source :\r\n"
-          "%   <i>manual</> - ESP32 keeps track of time\r\n"
-          "%   <i>rtc</>    - Sync local time with RTC chip\r\n"
-          "%   <i>ntp</>    - Sync local time with NTP server\r\n"
-          "%\r\n"
-          "%<u>NOTE</>: to sync with RTC (\"time source rtc\") the RTC chip must be described\r\n"
-          "%    to the shell (I2C address and base register offset are required in some cases) \r\n"
-          "%    with the command \"time source rtc 0 0x68\" (an example) \r\n"
-          "%<u>NOTE</>: to sync with NTP (\"time source ntp\") one have to configure WIFI STA\r\n"
-          "%    interface and connect to an Access Point to obtain NTP server address or otherwise\r\n"
-          "%    configure SNTP server address (i.e. static or dynamic)\r\n"
-          "% <u>RTC Examples</>:\r\n"
-          "%   <i>time source rtc 0 0x68</>            : Typical DS3231,DS13.. setup (I2C0)\r\n"
-          "%   <i>time source rtc 1 0x51 base-reg 2</> : Typical PCF8563 setup (I2C1)\r\n"
-          "%   <i>time source rtc 0 0x68 no-sync</>    : ..and do not update local time\r\n"
-          "%   <i>time source rtc 0 0x68 read-only</>  : ..and do not update RTC (e.g. via \"time set ...\")\r\n"
-          "%   <i>time source rtc</>                   : Update (\"sync\") local time from the chip\r\n"
-          "%\r\n"
-          "%   <i>time source ntp</>                   : Sync with NTP (see wifi command \"ntp enable\")"
-    ), NULL },
 #endif //WITH_TIME
   { "uptime", cmd_uptime, NO_ARGS,
     HELPK("% \"<b>uptime</>\"\r\n"

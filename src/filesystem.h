@@ -1064,6 +1064,8 @@ static int cmd_files_if(int argc, char **argv) {
   // Initialize CWD if not initialized previously, update user prompt.
   if (Cwd == NULL)
     files_set_cwd("/");
+  else
+    files_set_cwd(Cwd); // Special case (new buffer == internal buffer). Regenerate prompt;
   return 0;
 }
 
@@ -1993,29 +1995,6 @@ static int cmd_files_mkdir(int argc, char **argv) {
   return 0;
 }
 
-
-// Create file if does not exist. If it does - update the timestamp
-//
-static int q_touch(const char *name) {
-
-  int fd;
-
-  if (files_create_dirs(name, PATH_HAS_FILENAME) < 0) {
-    q_print("% <e>Failed to create path for a file</>\r\n");
-    return -1;
-  }
-
-  name = files_full_path(name, PROCESS_ASTERISK); // TODO: not reentrant!
-
-  // try to open the file, creating it if it doesn't exist
-  if ((fd = open(name, O_CREAT | O_WRONLY, 0666)) > 0) {
-    close(fd);
-    return 0;
-  }
-  q_printf("%% <e>Can't touch \"%s\"</>\r\n", name);
-  return -1;
-}
-
 // Open file for reading and/or writing. Create file if does not exist. Create
 // all directories in the path
 //
@@ -2034,6 +2013,41 @@ static FILE *files_fopen(const char *name, const char *mode) {
     q_printf("%% Failed to open \"%s\"\r\n",name);
   return fp;
 }
+
+
+
+// Create file if does not exist. If it does - update the timestamp
+// The code below looks strange with these double checks. However, SPIFFS (which we support in espshell) is 
+// so special so among other features it fails to open() a file
+//
+static int q_touch(const char *name) {
+
+#if 0
+  int fd;
+
+  if (files_create_dirs(name, PATH_HAS_FILENAME) < 0) {
+    q_print("% <e>Failed to create path for a file</>\r\n");
+    return -1;
+  }
+
+  name = files_full_path(name, PROCESS_ASTERISK); // TODO: not reentrant!
+
+  // try to open the file, creating it if it doesn't exist
+  if ((fd = open(name, O_CREAT | O_RDWR, 0666)) >= 0) {
+    close(fd);
+    return 0;
+  }
+#else
+  FILE *fp;
+  if ((fp = files_fopen(name,"a+")) != NULL) {
+    fclose(fp);
+    return 0;
+  }
+#endif
+  q_printf("%% <e>Can't touch \"%s\" (errno=%d)</>\r\n", name, errno);
+  return -1;
+}
+
 
 
 

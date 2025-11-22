@@ -18,43 +18,13 @@
 #include <time.h>
 
 static struct {
-  uint32_t src_manual:1;  //
-  uint32_t src_ntp:1;     // NTP configured
-  uint32_t src_rtc:1;     // RTC configured
-  uint32_t rtc_rw:1;      // Allow updates to RTC
-  uint32_t format_12:1;   // 12 or 24?
+
   uint32_t local_set:1;   // Local time was set and is likely to be valid
-  uint32_t rtc_nosync:1;   // "no-sync" keyword was used
-
-  const char *server;
-  const uint8_t rtc_addr;
-  const uint8_t rtc_bus;
-  const uint8_t rtc_base;
-
-  signed int zone;    // timezone offset in seconds
-  time_t last_sync;   // seconds since last local time update
+  uint32_t reserved:31;
+  const char *src;        // human readable time source (who set the clock)
+  char zone[16];
+  time_t last_sync;       // seconds since last local time update
 } Time = { 0 };
-
-
-static struct {
-    const char *name;
-    uint8_t i2c_addr;   // I2C device address
-    uint8_t base_reg;   // First register where time starts. Assumed order: Sec, Min, Hour, Day, Weekday, Month, Year
-//    uint8_t cent_reg;   // Century register, or 0xff if not present
-//    uint8_t cent_mask;  // Century bit position
-} RtcParams[] = {
-  
-  { "ds1307"  ,0x68, 0x00 }, 
-  { "ds3231"  ,0x68, 0x00 },
-  { "pcf8563" ,0x51, 0x02 }, // note: bit7 of seconds = vl flag
-  { "pcf8523" ,0x68, 0x03 },
-  { "mcp7940n",0x6f, 0x00 }, // note: bit7 of seconds = st (osc enable), must be handled
-  { "bm8563"  ,0x51, 0x02 },
-  { "rx8025"  ,0x32, 0x00 },
-  { "rx8900"  ,0x32, 0x00 },
-  { 0 }
-};
-
 
 static int8_t time_month_by_name(const char *name) {
 
@@ -99,102 +69,22 @@ static int8_t time_month_by_name(const char *name) {
   return month;
 }
 
-
-static time_t time_local() {
-
-  struct tm tm_adj; // adjusted (according to a timezone) time
-  time_t    now;    // raw seconds since UNIX epoch.
-  
-  if ((now = time(NULL)) < (time_t)(tz * 60))
-    return now;
-
-  return now + Time.zone;
+static void time_apply_zone() {
+  setenv("TZ", Time.zone, 1);
+  tzset();
 }
 
-static bool time_zone2ascii(char *buf, int size) {
-  
-  if (likely(buf != NULL && size > 5) {
-
-    char sign = '+';
-    signed int tz_abs = Time.zone;
-
-    if (tz_abs < 0) {
-      tz_abs = -tz_abs;
-      sign = '-';
-    }
-    // e.g. "+0700"
-    snprintf(buf,size,"%c%02d%02d",
-            sign
-            tz_abs / 3600,
-           (tz_abs % 3600)/60);
-    return true;
-  }
-  return false;
-}
-
-
-#define XX(_Local, _Ntp, _Rtc) do { \
-    Time.src_internal = _Local; \
-    Time.src_ntp = _Ntp; \
-    Time.src_rtc = _Rtc; \
-} while( 0 );
-
-
-// "time source rtc ... "
-static int cmd_time_source_rtc(int argc, char **argv) {
-  return 0;
-}
-
-// "time source ntp ... "
-static int cmd_time_source_ntp(int argc, char **argv) {
-  return 0;
-}
-
-static int cmd_time_source(int argc, char **argv) {
-
-  if (argc < 3)
-    return CMD_MISSING_ARG;
-
-  if (!q_strcmp(argv[2],"ntp"))
-    return cmd_time_source_ntp(argc,argv);
-  else if (!q_strcmp(argv[2],"rtc"))
-    return cmd_time_source_rtc(argc,argv);
-  else if (!q_strcmp(argv[2],"internal"))
-    XX(1,0,0);
-  else {
-    q_print("%% Supported time sources are \"rtc\", \"ntp\" and \"internal\"\r\n");
-    return 2;
-  }
-  return 0;
-}
-
-
-
-// "time format 12|24"
-//
-static int cmd_time_format(int argc, char **argv) {
-
-  if (argc < 3)
-    return CMD_MISSING_ARG;
-  
-  if (argv[2][0] == '1')
-    Time.format_12 = 1;
-  else if (argv[2][0] == '2')
-    Time.format_12 = 0;
-  else
-    return 2;
-
-  return 0;
-}
-
+// Time zone relative to UTC. E.g. Bangkok is UTC+7, so command will be "time zone 7" or "time zone +7"
 // "time zone 1"
 // "time zone -1 hour 45 minutes"
 // "time zone 45 minutes"
 // "time zone none"
 //
+
 static int cmd_time_zone(int argc, char **argv) {
 
   int64_t val;
+  
 
   if (argc < 3)
     return CMD_MISSING_ARG;
@@ -214,7 +104,20 @@ static int cmd_time_zone(int argc, char **argv) {
     HELP(q_print("% Time zone value is out of range (>12 hours), time zone not set\r\n"));
     return CMD_FAILED;
   }
-  Time.zone = val;
+
+
+
+  snprintf(Time.zone,sizeof(Time.zone),"UTC%c%02d:%02d",
+                            val < 0 ? '+' : '-',
+                            (int )val / 3600,
+                            ((int )val % 3600) / 60);
+  
+  time_apply_zone();
+  q_printf("%% Set TZ=\"%s\", local time has been adjusted\r\n",Time.zone);
+  // TimeZone must be saved to NVS: RTC keeps track of the time but knows nothing about timezones
+  // so after reload "show time" will display UTC time instead of local time
+  // TODO: refactor config saving
+  nv_save_config(NULL);
 
   return 0;
 }
@@ -234,7 +137,7 @@ static int cmd_time_set(int argc, char **argv) {
   if (tv.tv_sec)
     settimeofday(&tv, NULL);
   else {
-    HELP(q_print("% Time was not set\r\n"));
+    HELP(q_print("% System time is unchanged\r\n"));
     return CMD_FAILED;
   }
 
@@ -250,19 +153,13 @@ static int cmd_time(int argc, char **argv) {
   if (argc < 2)
     return CMD_MISSING_ARG;
 
-  if (!q_strcmp(argc[1],"set"))
+  if (!q_strcmp(argv[1],"set"))
     return cmd_time_set(argc,argv);
 
-  if (!q_strcmp(argc[1],"format"))
-    return cmd_time_format(argc,argv);
-
-  if (!q_strcmp(argc[1],"source"))
-    return cmd_time_source(argc,argv);
-
-  if (!q_strcmp(argc[1],"zone"))
+  if (!q_strcmp(argv[1],"zone"))
     return cmd_time_zone(argc,argv);
 
-  if (!q_strcmp(argc[1],"flies")) {
+  if (!q_strcmp(argv[1],"flies")) {
     q_print("% Agree :(\r\n");
     return 0;
   }
@@ -277,39 +174,27 @@ static int cmd_time(int argc, char **argv) {
 static int cmd_show_time(int argc, char **argv) {
 
   char buf[128];    // buffer for strftime. enough space for multibyte locales
-  char buftz[8];
+  //char buftz[8];
   struct tm tm_adj; // adjusted (according to a timezone) time
   time_t now;
 
-  now = time_local();
+  now = time(NULL);
   if (!now)
     return CMD_FAILED;
-  gmtime_r(&now, &tm_adj);
+  //gmtime_r(&now, &tm_adj);
+  localtime_r(&now, &tm_adj);
     
-  if (strftime(buf, sizeof(buf), "%e of %B (%A) %H:%M:%S ,year %Y", &tm_utc) == 0)
+  if (strftime(buf, sizeof(buf), "%e of %B (%A) %H:%M:%S ,year %Y", &tm_adj) == 0)
     return CMD_FAILED;
   
-  time_zone2ascii(buftz,sizeof(buftz));
-  q_printf("%% Today is: %s (Timezone is <i>%s UTC</>)\r\n", buf, buftz);
+
+  q_printf("%% Today is: %s (<i>%s</>)\r\n", buf, Time.zone);
   if (!Time.local_set)
-    q_print("% <i>Time was NOT set, date/time above is approximate</>\r\n");
-  if (Time.src_manual)
-    q_print("%% Time is maintained by CPU\r\n");
-  if (Time.server)
-    q_printf("%% NTP server: <i>%s</>\r\n", Time.server);
-  if (Time.src_ntp)
-    q_printf("%% Time source is NTP, last sync <i>%u</> seconds ago\r\n", Time.last_sync);
-  else if (Time.src_rtc) {
-    q_printf("%% Time source is RTC, (addr=%x, bus=i2c%d, base_reg=%u)\r\n", Time.rtc_addr, Time.rtc_bus, Time.rtc_base);
-    if (Time.rtc_nosync)
-      q_print("% <i>Local time was NOT updated from the RTC</>: no-sync flag was used\r\n");
-    if (Time.rtc_rw == 0)
-      q_print("% <i>Updating the local time WILL NOT update RTC</>: read-only flag was used\r\n");
-  }
+    q_print("% Not synchronized\r\n");
+  if (Time.src)
+    q_printf("%% Time source is %s, %ssynchronized\r\n", Time.src, Time.local_set ? "" : "not ");
 
   return 0;
 }
-
-#undef XX
 
 #endif // #if COMPILING_ESPSHELL

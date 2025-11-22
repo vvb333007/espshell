@@ -838,14 +838,13 @@ static int cmd_seq_save(int argc, char **argv) {
     return CMD_FAILED;
   }
 
-  // Touch the file. it will create all the required directories
-  // Fortunately, the "touch PATH" and "save PATH" have the PATH at the same position so
-  // we can call cmd_files_touch(argc, argv) directly. TODO: this is a hack. Must have separate APIs for files
-  // Note that "touch" accepts more than one argument so cut any extra arguments off
+  // Touch the file. It is likely will fail on SPIFFS so we ignore the return code
   //
   if (q_touch(argv[1]) < 0) {
+
     q_print("% Is filesystem mounted?\r\n");
     return CMD_FAILED;
+
   }
   // Append to existing file or create new.
   // By default we append, so every module can write its configuratuion into single config file

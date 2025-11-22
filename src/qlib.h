@@ -64,7 +64,7 @@ enum {
   MEM_TASKID,    // Task remap entry
   MEM_ALIAS,     // Aliases and related allocation
   MEM_IFCOND,    // "if" and "every" conditions
-  MEM_UNUSED14,
+  MEM_SERVER,    // server(s) name or address
   MEM_UNUSED15
   // NOTE: only values 0..15 are allowed, do not add more!
 };
@@ -617,7 +617,7 @@ static const char *memtags[] = {
   "TASKID",
   "ALIAS",
   "IFCOND",
-  "UNUSED14",
+  "SERVER",
   "UNUSED15"
 };
 
@@ -857,14 +857,14 @@ static void q_tolower(char *p) {
   }
 }
 
-// Check if given ascii string represents a decimal number. Ex.: "12345", "-12"
+// Check if given ascii string represents a decimal number. Ex.: "12345", "-12", "+2"
 // "minus" sign is only accepted at the beginning (must be 1st symbol)
 // Can be called with p = NULL, it is normal
 static bool isnum(const char *p) {
   if (likely(p && *p)) {
-    if (*p == '-')
+    if (*p == '-' || *p == '+')
       p++;
-    //just single "-" is not a valid number
+    //just single sign is not a valid number
     if (*p) {
       //only digits 0..9 are valid symbols
       while (*p >= '0' && *p <= '9')
@@ -896,7 +896,7 @@ static inline int atoi2(const char *p) {
 static bool isfloat(const char *p) {
   if (p && *p) {
     bool dot = false;
-    if (*p == '-')
+    if (*p == '-' || *p == '+')
       p++;
     while ((*p >= '0' && *p <= '9') || (*p == '.' && !dot))
       if (*p++ == '.')

@@ -10,11 +10,18 @@
  * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
-// -- WiFi support
-// Creation/deletion/configuring of WiFi interfaces. Access Point and/or Station mode
-// We need WiFi for our FTP server to work, which in turn is required for filesystem
-// upload
+
+#if COMPILING_ESPSHELL
+
+// -- WiFi support --
 //
+// Creation/deletion/configuring of WiFi interfaces. Access Point and/or Station mode,
+// NAT router, NTP client and DHCP server. It is compatible with WiFi Arduino library.
+//
+// TODO: static_assert(WIFI_CIPHER_UNKNOWN == 12, "Code review is required");
+// TODO: check error codes for all esp-idf functions
+// TODO: DHCP server address pool settings
+// TODO: DHCP address lease time settings
 
 #include "freertos/event_groups.h"
 #include <esp_wifi.h>
@@ -34,47 +41,45 @@
 #include "lwip/lwip_napt.h"
 #include "dhcpserver/dhcpserver.h"
 #include "dhcpserver/dhcpserver_options.h"
+#include "esp_netif_sntp.h"
+#include "esp_sntp.h"
 
-#if COMPILING_ESPSHELL
-
-#define get_staif() esp_netif_get_handle_from_ifkey("WIFI_STA_DEF")
-#define get_apif() esp_netif_get_handle_from_ifkey("WIFI_AP_DEF")
-
-#define is_sta_here() (get_staif() != NULL)
-#define is_ap_here() (get_apif() != NULL)
-
-
-//static wifi_config_t AP_config = { 0 };
-//static wifi_config_t STA_config = { 0 };
-
-static bool Sta_reconnect = false;
-static bool AP_static_dns = false;
-
-// Get current interface index (WIFI_IF_STA or WIFI_IF_AP) and also fetch corresponding esp_netif
-// structure address: command "wifi ap|sta" autocreates AP/STA netifs so the address must not be NULL.
-// The reason why we don't simply store pointers to netifs (like it is done e.g. in Espressif WiFi 
-// Arduino library) is because interfaces may be controlled by the user sketch and be created or
-// destroyed unexpectedly
+// espshell can either obtain esp_netif_t pointers via *search* every time OR search once and *cache* these pointers
+// assuming that interfaces are not deleted/recreated again. If a host sketch (sketch which uses espshell) **deletes**
+// WiFi network interfaces then CACHE_NETIFS must be set to 0: it will result in a tiny perfomance impact because of
+// searching
 //
-#define THIS_INTERFACE(_Ifx) \
-  wifi_interface_t _Ifx = (wifi_interface_t )context_get(); \
-  __attribute__((unused)) esp_netif_t *ni = esp_netif_get_handle_from_ifkey( \
-      _Ifx == WIFI_IF_AP ? "WIFI_AP_DEF" \
-                         : (_Ifx == WIFI_IF_STA ? "WIFI_STA_DEF" \
-                                                : "UNDEF")); \
-  if (unlikely(_Ifx >= WIFI_IF_NAN || _Ifx < 0 || ni == NULL)) {\
-    q_print("% THIS_INTERFACE() : disrupted Context!\r\n"); \
-    return CMD_FAILED; \
-  }
+#define CACHE_NETIFS 1
+
+// -- Globals --
+
+// Assorted WiFi settings 
+//
+static struct {
+  bool sta_reconnect:1;     // Auto-reconnect if connection was lost?
+  bool ap_static_dns:1;     // AP has static DNS addresses set? (STA will NOT propagate its DNS to AP)
+  bool prepared:1;          // WiFi stack is fully initialized?
+  bool started:1;           // WiFi task started?
+  bool sntp_enabled:1;      // NTP is enabled or not?
+} Wifi = { 0 };             // All values are /false/ by default
 
 
-//static bool Ap_up = false;
-//static bool Sta_up = false;
-static bool Wifi_started = false;   // TODO: _Atomic
-static bool Wifi_prepared = false;  // TODO: _Atomic
+// These pointers hold strdup()ed NTP server names. LwIP SNTP only stores pointers to server names so
+// it is up to the user to make sure that this memory is always valid.
+//
+static char *ntp_servers[SNTP_MAX_SERVERS] = { NULL };
 
-// WiFi auth types in human=readable form. First byte is the security type: -open, *psk, +psk mm, or $enterprise
-// see legend in "scan" command output
+// sntp scratch area
+//
+static esp_sntp_config_t sntp_cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(2,
+                                          ESP_SNTP_SERVER_LIST("time.windows.com", "pool.ntp.org" ));
+
+
+
+// WiFi auth types in human-readable form. First byte is the security type:
+// - = open, * = psk, + = psk mm, or $ = enterprise
+// (see legend in "scan" command output)
+// Second byte is space (" ")
 //
 static const char *Wifi_auth[] = {
     "- <g>NONE</>",  "* <i>WEP</>", "* WPA",  "* WPA2",
@@ -92,23 +97,65 @@ static const char *Wifi_cipher[] = {
     "GCMP",    "GCMP256",   "AES_GMAC128", "AES_GMAC256"
 };
 
-// Update AP's DNS settings from STA's DHCP reply.
-// DNS entries are updated only if AP ha sno static DNS servers configured.
-// This one is called when STA receives GOT_IP event (see ip_event_handler() below)
+
+// -- 
+//
+
+#if CACHE_NETIFS
+// "Search once and cache results"
+// In most use-cases network interfaces are created and never deleted so
+// it is safe to fetch pointers once and cache their value
+//
+// Returns NULL if WiFi is not initialized (prepare_wifi_stack()) otherwise returns
+// pointer to the STA's netif
+//
+static esp_netif_t *get_staif() {
+  static esp_netif_t *cached = NULL;
+  if (unlikely(cached == NULL))
+    cached = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+  return cached;
+}
+
+// Return pointer to AP's netif or NULL if WiFi is not initialized
+//
+static esp_netif_t *get_apif() {
+  static esp_netif_t *cached = NULL;
+  if (unlikely(cached == NULL))
+    cached = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
+  return cached;
+}
+// Safer but slower version
+//
+#else
+#  define get_staif() esp_netif_get_handle_from_ifkey("WIFI_STA_DEF")
+#  define get_apif() esp_netif_get_handle_from_ifkey("WIFI_AP_DEF")
+#endif
+
+#define is_sta_here() (get_staif() != NULL)
+#define is_ap_here() (get_apif() != NULL)
+
+
+// Update AP's DNS settings from STA's DHCP reply. // This one is called when STA receives
+// GOT_IP event (see ip_event_handler() below).
+// When STA gets its IP/mask/GW/.. settings  it *propagates* DNS settings to the AP interface, so AP
+// can include it in its DHCP reply (AP+STA mode, NAT router)
+//
+// DNS entries are propagated only if AP has no static DNS servers configured.
 //
 static bool sta_propagate_dns(esp_netif_t *sta) {
-  if (!AP_static_dns) {
+  if (!Wifi.ap_static_dns) {
     esp_netif_dns_info_t dnsi = { 0 };
     esp_netif_t *apif = get_apif();
     if (sta && apif)
       if (esp_netif_get_dns_info(sta,ESP_NETIF_DNS_MAIN,&dnsi) == ESP_OK)
         return (ESP_OK == esp_netif_set_dns_info(apif,ESP_NETIF_DNS_MAIN,&dnsi));
+        // TODO: should we propagate BACKUP server also?
   }
   return false;
 }
 
 // DHCP server must be stopped before reconfiguring
-// This functions stops the server and saves returns /true/ if server was started
+// This functions stops the server and returns /true/ if server was started
 // or /false/ if it was not. This return value is then used with dhcp_server_restart_if_was_started(X)
 //
 static bool dhcp_server_stop_if_started(esp_netif_t *apif) {
@@ -141,14 +188,15 @@ static void dhcp_server_restart_if_was_started(esp_netif_t *apif, bool was_start
   }
 }
 
-#ifndef OFFER_DNS
-#  define OFFER_DNS 0x02
-#endif
+#define DHCP_OPT_OFFER_DNS 0x02
 
+// Tells DHCP server (AP interface) to include DNS server information in its DHCP offer.
+// Results in DHCP server restart if it was started
+//
 static bool dhcp_server_set_dns_option() {
 
   esp_netif_t *apif = get_apif();
-  uint8_t dhcps_offer_option = OFFER_DNS;
+  uint8_t dhcps_offer_option = DHCP_OPT_OFFER_DNS;
   bool was_started;
 
   if (apif == NULL)
@@ -156,7 +204,7 @@ static bool dhcp_server_set_dns_option() {
 
   was_started = dhcp_server_stop_if_started(apif);
 
-  VERBOSE(q_print("%% Reconfiguring DHCP server (adding DNS option)..\r\n"));
+  VERBOSE(q_print("%% DHCP : server will offer DNS\r\n"));
   esp_netif_dhcps_option(apif, 
                         ESP_NETIF_OP_SET,
                         ESP_NETIF_DOMAIN_NAME_SERVER,
@@ -192,7 +240,7 @@ static bool dhcp_server_set_lease_option(uint32_t lease) {
   return true;
 }
 
-// Set custom lease time in seconds
+// Set DHCP IP address range
 //
 static bool dhcp_server_set_ip_pool(esp_netif_t *apif, uint32_t ip_start, uint32_t count) {
 
@@ -219,12 +267,12 @@ static void ip_event_handler(void *arg, esp_event_base_t event_base, int32_t eve
       case IP_EVENT_STA_GOT_IP:
 
         ip_event_got_ip_t *got = (ip_event_got_ip_t *)event_data;
-        VERBOSE(q_printf("%% Interface WIFI STA got IP " IPSTR ", mask " IPSTR ", gw " IPSTR " (%schanged)\r\n",
+        HELP(q_printf("%% WIFI STA: Protocol UP (Assigned IP: " IPSTR ", mask: " IPSTR ", gw: " IPSTR " (%schanged)\r\n",
                           IP2STR(&got->ip_info.ip),
                           IP2STR(&got->ip_info.netmask),
                           IP2STR(&got->ip_info.gw),
                           got->ip_changed ? "" : "not "));
-        if (!AP_static_dns) {
+        if (!Wifi.ap_static_dns) {
           HELP(q_print("% WIFI STA: propagating DNS servers to the AP interface..\r\n"));
           sta_propagate_dns(got->esp_netif);
           dhcp_server_set_dns_option();
@@ -232,14 +280,14 @@ static void ip_event_handler(void *arg, esp_event_base_t event_base, int32_t eve
         break;
 
       case IP_EVENT_STA_LOST_IP:
-        HELP(q_print("% WIFI STA: IP address lost, protocol DOWN\r\n"));
+        HELP(q_print("% WIFI STA: Protocol DOWN (IP address lost)\r\n"));
         break;
 
       default:
+        VERBOSE(q_printf("%% IP-EVENT: unhandled (base=%x, id=%x)\r\n",(unsigned int)event_base,(unsigned int)event_id));
         break;
     };
 
-  VERBOSE(q_printf("%% IP-EVENT: arg=%p, base=%x, id=%x, edata=%p\r\n",arg,(unsigned int)event_base,(unsigned int)event_id,event_data));
 }
 
 // WiFi events handler instance
@@ -248,18 +296,18 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 
   if (likely(event_base == WIFI_EVENT))
     switch(event_id) {
-      case WIFI_EVENT_STA_START:
-        break;
 
       case WIFI_EVENT_STA_CONNECTED:
-        HELP(q_print("% WIFI STA: Connected to the network. Configuring IP..\r\n"));
+        HELP(q_print("% WIFI STA: Connected to the network, link UP. Waiting for protocol..\r\n"));
         break;
 
       case WIFI_EVENT_STA_DISCONNECTED:
-        VERBOSE(q_print("% WIFI STA: disconnected, link DOWN\r\n"));
+        wifi_event_sta_disconnected_t *event = (wifi_event_sta_disconnected_t*)event_data;
+        HELP(q_printf("%% WIFI STA: Disconnected (reason=%u, rssi=%d), link DOWN\r\n",event->reason, event->rssi));
         // optional auto-reconnect
-         if (Sta_reconnect) {
-           VERBOSE(q_print("% WIFI STA: trying to reconnect..\r\n"));
+         if (Wifi.sta_reconnect) {
+           VERBOSE(q_print("% WIFI STA: Trying to reconnect..\r\n"));
+           // TODO: make a delayed call to the esp_wifi_connect() to prevent "connect" storm
            esp_wifi_connect(); 
          }
         break;
@@ -276,13 +324,13 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 
       case WIFI_EVENT_AP_STACONNECTED: {
         wifi_event_ap_staconnected_t *event = (wifi_event_ap_staconnected_t*) event_data;
-        VERBOSE(q_printf("%% WIFI AP: " MACSTR " connected, (aid=%d, auth=OK))\r\n",MAC2STR(event->mac), event->aid)); 
+        HELP(q_printf("%% WIFI AP: " MACSTR " connected, (aid=%d, auth=OK))\r\n",MAC2STR(event->mac), event->aid)); 
         break;
       }
 
       case WIFI_EVENT_AP_STADISCONNECTED: {
         wifi_event_ap_stadisconnected_t *event = (wifi_event_ap_stadisconnected_t*) event_data;
-        VERBOSE(q_printf("%% WIFI AP: " MACSTR " disconnected, (aid=%d, deauth))\r\n",MAC2STR(event->mac), event->aid)); 
+        HELP(q_printf("%% WIFI AP: Station#%d (" MACSTR ") disconnected (reason=%u))\r\n",MAC2STR(event->mac), event->aid, event->reason)); 
         break;
       }
 
@@ -296,20 +344,49 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
     VERBOSE(q_printf("%% WIFI-EVENT: arg=%p, base=%x, id=%x, edata=%p\r\n",arg,(unsigned int)event_base,(unsigned int)event_id,event_data));
 }
 
+// Just to inform user that time is in sync now
+//
+static void time_sync_notification_cb(UNUSED struct timeval *tv) {
+    
+    Time.local_set = true;
+    Time.src = "NTP server";
+    HELP(q_print("% NTP : Time has been successfully synchronized\r\n"));
+}
+
+
 // Initialize the WiFi stack, perform minimal initial config.
 // Can be called multiple times
 //
 static bool prepare_wifi_stack() {
 
   static bool ni = false;
+
+
   if (!ni) {
+    // it is ok to call esp_netif_init() twice: if sketch performs esp_netif_init() then
+    // *this* esp_netif_init() just does nothing
    esp_netif_init();
    ni = true;
   }
 
-  if (!Wifi_prepared) {
+  // Lets check if network interfaces are created already. We check for presence AP and STA interfaces,
+  // and if found - skip WiFi initialization, set Wifi.prepared flag
+  if ((get_staif() || get_apif()) && !Wifi.prepared) {
+    VERBOSE(q_print("% WiFi seems to be initialized by the sketch. Skipping WiFi init\r\n"));
+    Wifi.prepared = true;
+  }
+
+  if (!Wifi.prepared) {
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    
+
+    sntp_cfg.start = false;                       // start SNTP service explicitly (after connecting)
+    sntp_cfg.server_from_dhcp = true;             // accept NTP offers from DHCP server, if any (need to enable *before* connecting)
+    sntp_cfg.renew_servers_after_new_IP = true;   // let esp-netif update configured SNTP server(s) after receiving DHCP lease
+    sntp_cfg.index_of_first_server = 1;
+    sntp_cfg.ip_event_to_renew = IP_EVENT_STA_GOT_IP;
+    sntp_cfg.sync_cb = time_sync_notification_cb;
 
     // NVS must be initialized for WiFi driver to be happy;
     // it is done in _nv_storage_init() constructor
@@ -335,51 +412,56 @@ static bool prepare_wifi_stack() {
     esp_wifi_set_band_mode(WIFI_BAND_MODE_AUTO);
 #endif
 
-  if (!get_staif())
-    esp_netif_create_default_wifi_sta();
+    if (!get_staif())
+      esp_netif_create_default_wifi_sta();
 
-  if (!get_apif())
-    esp_netif_create_default_wifi_ap();
+    if (!get_apif())
+      esp_netif_create_default_wifi_ap();
 
-    Wifi_prepared = true;
+    // initial SNTP init is done here, before user can configure it
+    //esp_netif_sntp_init(&sntp_cfg);
+
+    Wifi.prepared = true;
   }
   // TODO: check other errors
-  return Wifi_prepared;
+  return Wifi.prepared;
 }
 
 static bool start_wifi_stack() {
 
-  if (!Wifi_prepared) {
+  if (!Wifi.prepared) {
     VERBOSE(q_print("% start_wifi_stack() called without prepare_wifi_stack()\r\n"));
     return false;
   }
 
-  if (!Wifi_started) {
+  if (!Wifi.started) {
     if (esp_wifi_start() == ESP_OK) {
-      Wifi_started = true;
+      Wifi.started = true;
       VERBOSE(q_print("% WIFI started\r\n"));
     } else {
       VERBOSE(q_print("% WIFI failed to initialize\r\n"));
     }
   }
-  return Wifi_started;
+  return Wifi.started;
 }
 
+#if 0
 // Performs "unprepare" and "stop"
 // This is mainly for development purposes 
 static void stop_wifi_stack() {
 
-  if (Wifi_started)
+  if (Wifi.started)
     esp_wifi_stop();
 
-  if (Wifi_prepared) {
+  if (Wifi.prepared) {
     esp_wifi_deinit();
     esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler);
     esp_event_handler_instance_unregister(IP_EVENT, ESP_EVENT_ANY_ID, &ip_event_handler);
   }
   
-  Wifi_started = Wifi_prepared = false;
+  Wifi.started = Wifi.prepared = false;
 }
+#endif
 
 // Display AP details
 //
@@ -399,7 +481,7 @@ static void display_ap_details(wifi_ap_record_t *ap, const char *requested_bssid
     q_printf("%%\r\n%%<r>Information on AP \"%s\" (BSSID: %s)    </>\r\n%%\r\n", ap->ssid[0] ? (char *)ap->ssid : "[Hidden name]", requested_bssid);
     q_printf("%% Security: [%s], Pairwise cipher: %s, Group cipher: %s\r\n",
           Wifi_auth[ap->authmode],
-          Wifi_cipher[ap->pairwise_cipher],
+          Wifi_cipher[ap->pairwise_cipher], 
           Wifi_cipher[ap->group_cipher]);
 
     // WPS capabilities
@@ -435,34 +517,56 @@ static void display_ap_details(wifi_ap_record_t *ap, const char *requested_bssid
     q_print("\r\n");
 
     // FTM role
-    q_print("%\r\n% FTM role: ");
-    if (ap->ftm_responder && ap->ftm_initiator)
-      q_print("responder and initiator\r\n");
-    else if (ap->ftm_initiator)
-      q_print("initiator only\r\n");
-    else if (ap->ftm_responder)
-      q_print("responder\r\n");
-    else
-      q_print("no support for Fine Time Measurement\r\n");
+    if (ap->ftm_responder || ap->ftm_initiator) {
+      q_print("%\r\n% FTM role: ");
+      if (ap->ftm_responder && ap->ftm_initiator)
+        q_print("responder and initiator\r\n");
+      else if (ap->ftm_initiator)
+        q_print("initiator only\r\n");
+      else
+        q_print("responder\r\n");
+    }
     // TODO: display country code from /ap->country/
   }
 }
 
+// Handlers
+//
+// Prologue macro for cmd_wifi_...() handlers. Supposed to be the first line of WiFi command handlers.
+//
+// Get current interface index (WIFI_IF_STA or WIFI_IF_AP) and also fetch corresponding esp_netif_t
+// structure address: commands "wifi ap|sta" and "show wifi ap|sta" autocreate AP/STA netifs so the 
+// address must not be NULL.
+//
+#define THIS_INTERFACE(_Ifx) \
+  wifi_interface_t _Ifx = (wifi_interface_t )context_get(); /* get command directory context */ \
+  __attribute__((unused)) esp_netif_t *ni = (_Ifx == WIFI_IF_AP) ? get_apif() : get_staif(); \
+  if (unlikely(_Ifx >= WIFI_IF_NAN || _Ifx < 0 || ni == NULL)) {\
+    q_print("% THIS_INTERFACE() : disrupted Context!\r\n"); \
+    return CMD_FAILED; \
+  }
+
+
 // Set WiFi driver storage: NVS or RAM
+// "wifi storage ram|flash"
 //
 static int cmd_wifi_storage(int argc, char **argv) {
+
   wifi_storage_t storage = WIFI_STORAGE_RAM;
+
   if (argc < 3)
     return CMD_MISSING_ARG;
+
   if (!q_strcmp(argv[2],"flash"))
     storage = WIFI_STORAGE_FLASH;
+
   return ESP_OK == esp_wifi_set_storage(storage) ? 0 : CMD_FAILED;
 }
 
 
 
-// TODO: static_assert(WIFI_CIPHER_UNKNOWN == 12, "Code review is required");
 // "wifi ap|sta"
+//
 static int cmd_wifi_if(int argc, char **argv) {
 
   if (argc < 2)
@@ -539,6 +643,31 @@ static int cmd_wifi_kick(int argc, char **argv) {
 
   return 0;
 }
+static void show_sntp_servers() {
+
+  int found = 0;
+  char buff[INET6_ADDRSTRLEN];
+
+  if (Wifi.sntp_enabled) {
+    q_print("% List of configured NTP servers: ");
+    for (uint8_t i = 0; i < SNTP_MAX_SERVERS; ++i){
+      if (esp_sntp_getservername(i)) {
+        found++;
+        q_printf("%s, ", esp_sntp_getservername(i));
+      } else {
+        ip_addr_t const *ip = esp_sntp_getserver(i);
+        if (ipaddr_ntoa_r(ip, buff, sizeof(buff)) != NULL) {
+          found++;
+          q_printf("%s, ", buff);
+        }
+      }
+    }
+  }
+  if (!found)
+    q_print(" none\r\n");
+  else
+    q_print("\r\n");
+}
 
 // "show wifi clients"
 //
@@ -611,7 +740,7 @@ static void show_wifi_ap_config(wifi_ap_config_t *c) {
             c->channel,
             c->max_connection);
 
-    q_printf("%%\r\n%% Authentication: %s , pairwise cipher: %s\r\n"
+    q_printf("%%\r\n%% Authentication: [%s] , pairwise cipher: [%s]\r\n"
              "%% SAE PWE derivation method: %d , SAE EXT feature: %sabled\r\n",
             Wifi_auth[c->authmode],
             Wifi_cipher[c->pairwise_cipher],
@@ -682,13 +811,15 @@ static int cmd_show_wifi(int argc, char **argv) {
   if (argc < 3)
     return CMD_MISSING_ARG;
 
-  if (!Wifi_prepared)
+  // Prepare WiFi stack and network interfaces if not done yet: we need AP and STA netifs to be created
+  // in order to get any information on WiFi
+  if (!Wifi.prepared)
     prepare_wifi_stack();
 
   if (!q_strcmp(argv[2],"clients"))
     return cmd_show_wifi_clients(argc, argv);
 
-  // Set /ni/ to be esp_netif_t pointer of the interface we are "show"ing
+  // Set /ni/ to be esp_netif_t pointer to the interface we are "show"ing
   // /ifx/ is set to WIFI_IF_AP or WIFI_IF_STA and corresponding wifi config is then read
   //
   if (!q_strcmp(argv[2],"ap")) {
@@ -709,10 +840,7 @@ static int cmd_show_wifi(int argc, char **argv) {
   }
 
   if (!ni) {
-    q_print("% No WiFi interfaces were created by the sketch so far.\r\n"
-            "% <i>Execute any of WiFi commands</> (e.g. \"wifi ap\" or \"wifi sta\") to create\r\n"
-            "% and initialize WiFi interfaces, and then try your \"show wifi ...\" again\r\n");
-
+    q_print("% Something went wrong: No network interfaces.\r\n");
     return CMD_FAILED;
   }
 
@@ -746,13 +874,14 @@ static int cmd_show_wifi(int argc, char **argv) {
       q_print("% No IP address set/obtained\r\n");
   }
 
-  // DNS information
-
+  // DNS and NTP information
   esp_netif_get_dns_info(ni, ESP_NETIF_DNS_MAIN, &dnsi);
   if (dnsi.ip.u_addr.ip4.addr != 0)
     q_printf("%% Main DNS: <i>" IPSTR "</>\r\n", IP2STR(&dnsi.ip.u_addr.ip4));
   else
     q_printf("%% DNS servers are not set\r\n");
+  show_sntp_servers();
+  
 
   esp_netif_get_dns_info(ni, ESP_NETIF_DNS_BACKUP, &dnsi);
   if (dnsi.ip.u_addr.ip4.addr != 0)
@@ -822,7 +951,14 @@ static int cmd_wifi_mac(int argc, char **argv) {
     if (mac[0] & 1)
       q_print("% Bit 0 of the first byte in MAC address must be 0 (zero)\r\n");
     else if (wif == WIFI_IF_AP)
-      q_print("% WIFI AP interface must be UP to change its MAC address\r\n");
+    // Most of the time we are in STA mode. We only switch to APSTA when AP is configured and 
+    // \"up\". Changing AP MAC is not possible if in STA mode and the only way to achieve this - is
+    // to bring AP interface UP.
+    //
+    // We possibly could switch to APSTA, change MAC and then switch back to STA
+    // but this requires extra code which has no any function. Instead just hind the user
+    // to "up" the AP interface
+      q_print("% WIFI AP interface must be UP to allow MAC address changing\r\n");
 
     return CMD_FAILED;
   }
@@ -870,7 +1006,7 @@ static int cmd_wifi_hostname(int argc, char **argv) {
 static int cmd_wifi_scan(int argc, char **argv) {
 
   wifi_ap_record_t *ap_records;
-  bool active = true, detail = false, deinit = false;
+  bool active = true, detail = false;
   uint16_t ap_count = 0;
   uint8_t bssid[6], bidx = 0;
   
@@ -886,8 +1022,6 @@ static int cmd_wifi_scan(int argc, char **argv) {
 
   // read and process keywords
   for (int i = 1; i < argc; i++) {
-    if (!q_strcmp(argv[i],"deinit"))
-      deinit = true;
     if (!q_strcmp(argv[i],"passive"))
       active = false;
     else if (!q_strcmp(argv[i],"active"))
@@ -1002,12 +1136,17 @@ print_error_and_return:
             ap_count ? ""
                      : ", found nothing suitable");
 
+#if 0
+  //TODO: for testing only (memory requirements estimation). Must be removed.
     if (deinit)
       stop_wifi_stack();
+#endif    
 
   return 0;
 }
 
+// Get ip_info from both AP and STA interfaces and store it to ipi_ap and ipi_sta 
+//
 static void get_ip_info_ap_sta(esp_netif_ip_info_t *ipi_ap, esp_netif_ip_info_t *ipi_sta) {
 
   esp_netif_ip_info_t ipi0 = { 0 }, ipi_tmp;
@@ -1151,16 +1290,16 @@ set_static_dns:
         return CMD_FAILED;
       }
       // When static DNS servers are set for the AP, we do not propagate STA's DNS servers
-      // AP_static_dns is set to /true/ when AP has static DNS servers configured
+      // Wifi.ap_static_dns is set to /true/ when AP has static DNS servers configured
       if (ifx == WIFI_IF_AP) {
-        AP_static_dns = true;
+        Wifi.ap_static_dns = true;
         dhcp_server_set_dns_option();
       }
 
     } else {
       // No DNS1 (means there are no DNS2 as well) - reset static_dns flag for the AP
       if (ifx == WIFI_IF_AP)
-        AP_static_dns = false;
+        Wifi.ap_static_dns = false;
     }
 
     if (dns2) {
@@ -1272,11 +1411,95 @@ static int cmd_wifi_natp(int argc, char **argv) {
   return 1;
 }
 
-// "ntp server ADDRESS|dhcp [ADDRESS]"
-// "ntp disable|enable"
+// -- NTP support (Time sync) --
+//
+// NTP is available on both interfaces (AP and STA both have command "ntp") however it does not mean that
+// we can have two different NTP configurations: SNTP service is global, not a "per-interface" service. It was 
+// made available from both command subdirs (i.e. /keywords_ap/ and /keywords_sta/) for convinience.
+//
+// NTP is configured via single, multiple-argument command "ntp": enable or disable NTP client, set static or/and 
+// dynamic (obtained from a DHCP server) NTP servers
+//
+
+
+// "ntp (SERVER_NAME|IP4_ADDRESS|dhcp|enable|disable)*"
 // 
 static int cmd_wifi_ntp(int argc, char **argv) {
-  NOT_YET();
+  
+  // No args - show current NTP status
+  if (argc < 2) {
+    q_printf("%% NTP is %sabled</>\r\n", Wifi.sntp_enabled ? "<g>en" : "<i>dis");
+    return 0;
+  }
+
+  uint32_t ip;
+  int ci = 1, nsi = 0;
+  ip_addr_t ip_zero = { 0 };
+
+  while (ci < argc) {
+
+    if (!q_strcmp(argv[ci],"enable")) {
+      if (!Wifi.sntp_enabled) {
+        sntp_cfg.start = true;
+        esp_netif_sntp_init(&sntp_cfg);
+        Wifi.sntp_enabled = true;
+        VERBOSE(q_print("% SNTP client enabled\r\n"));
+      }
+    } else if (!q_strcmp(argv[ci],"disable")) {
+      if (Wifi.sntp_enabled) {
+        esp_netif_sntp_deinit();
+        sntp_cfg.start = false;
+        Wifi.sntp_enabled = false;
+        VERBOSE(q_print("% SNTP client disabled\r\n"));
+      }
+    } else if (!q_strcmp(argv[ci],"dhcp")) {
+      if (sntp_cfg.server_from_dhcp != true) {
+        sntp_cfg.server_from_dhcp = true;
+        VERBOSE(q_print("% SNTP get servers from a DHCP reply\r\n"));
+        if (Wifi.sntp_enabled) {
+          VERBOSE(q_print("% Restarting SNTP service..\r\n"));
+          esp_netif_sntp_deinit();
+          esp_netif_sntp_init(&sntp_cfg);
+        }
+      }
+    } else if ((ip = q_atoip(argv[ci], NULL)) != 0) {
+        if (nsi < SNTP_MAX_SERVERS) {
+          sntp_cfg.server_from_dhcp = false;
+          ip_addr_t ip_addr = { 0 };
+          ip_addr.u_addr.ip4.addr = q_htonl(ip);
+          esp_sntp_setserver(nsi, &ip_addr);
+
+          if (ntp_servers[nsi])
+            q_free(ntp_servers[nsi]);
+          ntp_servers[nsi] = NULL;
+
+          esp_sntp_setservername(nsi, NULL);
+          VERBOSE(q_printf("%% Static SNTP server set: " IPSTR "\r\n", IP2STR(&ip_addr.u_addr.ip4)));
+          nsi++;
+        }
+    } else if (q_findchar(argv[ci],'.')) {
+        sntp_cfg.server_from_dhcp = false;
+        if (nsi < SNTP_MAX_SERVERS) {
+          esp_sntp_setserver(nsi, &ip_zero);
+
+          // never freed, only reallocated
+          if (ntp_servers[nsi])
+            q_free(ntp_servers[nsi]);
+          ntp_servers[nsi] = q_strdup(argv[ci], MEM_SERVER);
+
+          esp_sntp_setservername(nsi, ntp_servers[nsi]); // NULL is ok
+          VERBOSE(q_printf("%% Static SNTP server name set: %s\r\n", argv[ci]));
+          nsi++;
+        }
+    } else {
+      HELP(q_print("% Server name (with a dot!), IP address, enable, disable or dhcp expected\r\n"));
+      return ci;
+    }
+    ci++;
+  }
+
+  
+
   return 0;
 }
 
@@ -1322,42 +1545,48 @@ static int cmd_wifi_dhcp(int argc, char **argv) {
 
 // up SSID [PASSWORD]                                  <-- sta
 // up BSSID [PASSWORD]                                 <-- sta
+// up
 // up SSID PASSWORD [max-conn NUM | channel NUM ]*      <-- ap
 // up SSID                                             <-- ap
 //
 static int cmd_wifi_up(int argc, char **argv) {
 
   uint8_t bssid[6];
+  bool use_saved = false;     
+  wifi_ap_record_t ap_info;
 
   THIS_INTERFACE(ifx);
 
   // Check if interface is UP and RUNNING. If it is - do nothing
   //
-  wifi_ap_record_t ap_info;
   if (esp_netif_is_netif_up(ni) || (ifx == WIFI_IF_STA && esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK)) {
-    HELP(q_print("% Interface is UP and RUNNING. (Use \"down\" before reconfiguring)\r\n"));
+    HELP(q_print("% Interface is UP. (Use \"down\" to shutdown)\r\n"));
     return 0;
   }
 
-  // Command "up" for STA interface: read SSID/BSSID, PASSWORD and the keyword "no-retry"
-  //
+  // Command "up" for the STA interface: read SSID/BSSID, PASSWORD and the keyword "no-retry"
+  // or use saved values from the flash
   if (ifx == WIFI_IF_STA) {
 
+    // Current config.
     wifi_config_t stac = { 0 };
-    bool use_saved = false;
 
-    // "up" without arguments: use saved config, if available (STA only)
-    // AP also can be configured from its default config but that means OPEN security, so it is disabled:
-    // "up" without args only allowed for STA interfaces
+    // "up" without arguments: use saved config, if available. System may read data from NVS or
+    // sketch can configure the wifi; command "up" with no arguments will use current system settings
     //
     while (argc < 2) {
+      
       if (esp_wifi_get_config(WIFI_IF_STA, &stac) == ESP_OK) {
         if (stac.sta.bssid_set || stac.sta.ssid[0]) {
           use_saved = true;
           break;
         }
       }
-      q_print("% No valid WiFi STA configuration found, use \"up SSID [PASSWORD]\"\r\n");
+
+print_error_notice_and_exit:
+
+      q_print("% No valid WiFi configuration found, use \"<i>up SSID [PASSWORD]</>\"\r\n"
+              "% Use \"<i>wifi storage flash</>\" to auto-save WiFi configuration for AP and STA\"\r\n");
       return CMD_MISSING_ARG;
     }
 
@@ -1371,10 +1600,10 @@ static int cmd_wifi_up(int argc, char **argv) {
       if (q_atomac(argv[1],bssid)) {
         memcpy(stac.sta.bssid, bssid, sizeof(stac.sta.bssid));
         stac.sta.bssid_set = true;
-        HELP(q_print("% Connect to a network using BSSID\r\n"));
+        HELP(q_print("% Connecting to a network using BSSID\r\n"));
       } else {
         strlcpy((char *)stac.sta.ssid,argv[1],sizeof(stac.sta.ssid));
-        HELP(q_print("% Connect to a network using SSID\r\n"));
+        HELP(q_print("% Connecting to a network using SSID\r\n"));
       }
 
       // Password supplied? "auto-connect"?
@@ -1383,7 +1612,7 @@ static int cmd_wifi_up(int argc, char **argv) {
         strlcpy((char *)stac.sta.password,argv[2],sizeof(stac.sta.password));
         if (argc > 3)
           if (!q_strcmp(argv[3],"auto-connect"))
-            Sta_reconnect = true;
+            Wifi.sta_reconnect = true;
           HELP(q_print("% Auto-reconnect enabled\r\n"));
       }
     }
@@ -1391,48 +1620,64 @@ static int cmd_wifi_up(int argc, char **argv) {
     if (ESP_OK == esp_wifi_set_config(WIFI_IF_STA, &stac))
       esp_wifi_connect();
     else
-      q_print("% Can not set new WiFi configuration\r\n");
+      q_print("% Can not apply the new WiFi configuration\r\n");
 
   } else {
-
+    // Command "up" for the AP
+    //
     wifi_config_t apc = { 0 };
 
-    if (argc < 2)
-      return CMD_MISSING_ARG;
-
-    strlcpy((char *)apc.ap.ssid,argv[1],sizeof(apc.ap.ssid));
-    apc.ap.ssid_len = strlen(argv[1]);
-
-    // SSID is empty string?
-    if (apc.ap.ssid_len == 0)
-      apc.ap.ssid_hidden = 1;
-
-    // password supplied?
-    if (argc > 2)
-      strlcpy((char *)apc.ap.password,argv[2],sizeof(apc.ap.password));
-
-    if (apc.ap.password[0] /*strlen(argv[2]) > 0*/ == 0) {
-      VERBOSE(q_print("% AP authentication mode set to OPEN (no password supplied)\r\n"));
-      apc.ap.authmode = WIFI_AUTH_OPEN;
-    } else {
-      VERBOSE(q_print("% AP authentication mode set to WPA2-PSK\r\n"));
-      apc.ap.authmode = WIFI_AUTH_WPA2_PSK;
+    // no args. Try to fetch system config and use it
+    while (argc < 2) {
+      if (esp_wifi_get_config(WIFI_IF_AP, &apc) == ESP_OK) {
+        if (apc.ap.ssid[0] || apc.ap.ssid_hidden) {
+          use_saved = true;
+          break;
+        }
+      }
+      goto print_error_notice_and_exit;
     }
 
-    apc.ap.max_connection = 4; // TODO: no magic numbers!
-    // up "SSID" "Password" [max-conn NUM | channel NUM | auth AUTH]
-    //
-    //
-    for (int i = 3; i < argc; i++) {
-      // next token is "max-conn"? convert next token to number and save
-      if (!q_strcmp(argv[i],"max-conn")) {
-        if (++i < argc)
-          apc.ap.max_connection = q_atol(argv[i], 1);
-      } else if (!q_strcmp(argv[i],"channel")) {
-        if (++i < argc)
-          apc.ap.channel = q_atol(argv[i], 0);
-      } else
-        q_printf("%% Keyword \"%s\" ignored\r\n",argv[i]);
+    // Read configuration parameters from the command line
+    if (!use_saved) {
+
+      
+      if (argc < 2)
+        return CMD_MISSING_ARG;
+
+      strlcpy((char *)apc.ap.ssid,argv[1],sizeof(apc.ap.ssid));
+      apc.ap.ssid_len = strlen(argv[1]);
+
+      // SSID is empty string?
+      if (apc.ap.ssid_len == 0)
+        apc.ap.ssid_hidden = 1;
+
+      // password supplied?
+      if (argc > 2)
+        strlcpy((char *)apc.ap.password,argv[2],sizeof(apc.ap.password));
+
+      if (apc.ap.password[0] /*strlen(argv[2]) > 0*/ == 0) {
+        VERBOSE(q_print("% AP authentication mode set to OPEN (no password supplied)\r\n"));
+        apc.ap.authmode = WIFI_AUTH_OPEN;
+      } else {
+        VERBOSE(q_print("% AP authentication mode set to WPA2-PSK\r\n"));
+        apc.ap.authmode = WIFI_AUTH_WPA2_PSK;
+      }
+
+      apc.ap.max_connection = 4; // TODO: no magic numbers!
+      // TODO: add auth AUTH keyword
+      // read all the rest 
+      for (int i = 3; i < argc; i++) {
+        // next token is "max-conn"? convert next token to number and save
+        if (!q_strcmp(argv[i],"max-conn")) {
+          if (++i < argc)
+            apc.ap.max_connection = q_atol(argv[i], 1);
+        } else if (!q_strcmp(argv[i],"channel")) {
+          if (++i < argc)
+            apc.ap.channel = q_atol(argv[i], 0);
+        } else
+          q_printf("%% Keyword \"%s\" ignored\r\n",argv[i]);
+      }
     }
 
     esp_wifi_set_mode(WIFI_MODE_APSTA);
@@ -1453,7 +1698,7 @@ static int cmd_wifi_down(int argc, char **argv) {
   wifi_ap_record_t ap_info;
   if (esp_netif_is_netif_up(ni) || (ifx == WIFI_IF_STA && esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK)) {
     if (ifx == WIFI_IF_STA) {
-      Sta_reconnect = false;
+      Wifi.sta_reconnect = false;
       esp_wifi_disconnect();
     }
     else {

@@ -170,6 +170,9 @@ static int q_strcmp(const char *, const char *);
 static int PRINTF_LIKE q_printf(const char *, ...);
 static int q_print(const char *);
 static NORETURN void must_not_happen(const char *message, const char *file, int line);
+#if WITH_TIME
+static int8_t time_month_by_name(const char *name);
+#endif
 static int   q_touch(const char *);
 static FILE *files_fopen(const char *, const char *);
 static bool pin_is_input_only_pin(int pin);
@@ -179,6 +182,8 @@ static bool pin_exist(unsigned char pin);
 static bool pin_exist_silent(unsigned char pin);
 static bool pin_is_reserved(unsigned char pin);
 static bool pin_can_wakeup(uint8_t pin);
+
+static bool nv_save_config(const char *nspace);
 
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 3, 0)
 extern bool esp_gpio_is_pin_reserved(unsigned int gpio);
@@ -297,6 +302,9 @@ static int espshell_command(char *p, argcargv_t *aa);
 #include "i2c.h"                // i2c generic interface
 #include "spi.h"                // spi generic interface. Not functional, unused
 #include "uart.h"               // uart generic interface
+#if WITH_TIME
+#include "time0.h"
+#endif
 #include "misc.h"               // misc command handlers
 #include "filesystem.h"         // file manager
 #include "memory.h"             // memory component
@@ -305,9 +313,6 @@ static int espshell_command(char *p, argcargv_t *aa);
 #include "ifcond.h"
 #if WITH_WIFI
 #include "wifi0.h"
-#endif
-#if WITH_TIME
-#include "time0.h"
 #endif
 
 
