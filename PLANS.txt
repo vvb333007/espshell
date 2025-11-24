@@ -1,79 +1,25 @@
 Roadmap:
 
-0. Documentation is a bit outdated: new commands are missing, some screenshots are
+1. Documentation is a bit outdated: new commands are missing, some screenshots are
    too old and do not match real command output
 
 
-3. Sequences: add sequence capture (using RMT), captured sequence display and 
+2.1 Sequences: add sequence capture (using RMT), captured sequence display and 
    saving to a FS. (IR remote capture & playback) add sequence decode, based on
    user-supplied alphabet ("one","zero","head" and "tail")
 
-4. Sequences: add support for byte strings (currently only bitstrings are 
+2.2. Sequences: add support for byte strings (currently only bitstrings are 
    recognized)
 
-5. Frequency meter: add support for start/stop pin (i.e. hardware, externally
+3. Frequency meter: add support for start/stop pin (i.e. hardware, externally
    controlled start/stop). This can improve accuracy: setting GPIO high/low 
    from an PCNT interrupt handler is much faster than sending TaskNotification.
 
-6. File manager: Implement "mv" command, make "cp" command to be able to copy 
+4. File manager: Implement "mv" command, make "cp" command to be able to copy 
    directory structure
 
-7. Port a single-user, single-threaded simple FTP server - to be able to 
+5.1. Port a single-user, single-threaded simple FTP server - to be able to 
    upload a premade filesystem (i.e. files and directories)
 
-8. Expose flash partitions when accessed via FTP as binary files in /flash
+5.1. Expose flash partitions when accessed via FTP as binary files in /flash
    bootloader.bin, nvs.bin, firmware.bin etc, (RW except the main app partition, which is RO).
-
-9. Basic WiFi support (Ap, STA and AP+STA)
-
-10. Conditions and events: Variables support
-
-  a) add ability to poll sketch variables:
-     if $var_name1|imm    eq|lt|gt|le|ge|ne    imm|$var_name2 poll NUM ... exec     <--- persistent
-
-  b) add support for "execute and forget" one-shot conditions (keyword "once")
-     if $var_name1|imm    eq|lt|gt|le|ge|ne    imm|$var_name2 once ... exec         <--- one shot, discarded after use
-
-  c) Start to add "return values" support: some commands (e.g. "pin 36 aread") should store their
-     return value(s) in special variables (e.g. $1, $2) so subsequent "if" can use it:
-	esp32#>pin 36 aread
-	esp32#>if $1 gt 3000 exec Warning <-- implicit "once"
-
-
-  d) Add "break" keyword to the "if" command so it can "break" alias execution. This is to simulate 
-    "if..then..else" behaviour
-
-
-	// x = adc_read(36);
-        // if (x > 3000) {
-        //    display_warning();
-        // } else {
-	//   if (x > 2000)
-	//     command1();
-	//   printf("Read value %u\r\n",x)
-	// }
-	esp32#>pin 36 aread
-	esp32#>if $1 gt 3000 exec Warning break
-	esp32#>if $1 gt 2000 exec Command_1
-	esp32#>echo "Read value" $1
-
-  e) Add "goto LINE_NUM" command to "if", (replaces "exec" when used)
-
-  f) Refactor to use read_timespec
-  g) wifi and ip events catcher (if got|lost ip, if sta|ap connected, )
-
-  h) "if then else" semantics:
-
-        // if ($1 > 1000 && $1 < 3000):
-	esp32#>if $1 gt 1000 $1 lt 3000 exec Warning
-
-
-        // if ($1 < 1000 || $1 > 3000):
-	esp32#>if $1 lt 1000 exec Warning
-	esp32#>if $1 gt 3000 exec Warning
-
-	// if ($1 < 1000 || ($1 > 3000 && $1 <= 4000)):
-	esp32#>if $1 lt 1000 exec Warning
-	esp32#>if $1 gt 3000 $1 le 4000 exec Warning
-
-
