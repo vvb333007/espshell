@@ -1,5 +1,3 @@
-#error "Sorry, API has changed but examples are not. Not yet."
-#if 0
 // Example use of espshell_exec() to execute arbitrary shell commands
 // from the sketch
 
@@ -13,15 +11,7 @@
 //#define LED "33"  // ESP32Cam low power red LED
 
 
-// Example command:
-// IMPORTANT NOTE: "\n" is an important part! Removing it prevents exec from happening!
-//                 Multiple commands can be separated with "\n" as well, but the last command must ends with "\n"
-//
-//static const char *command = "pin " LED " read\n"
-//                             "pin " LED " save\n"
-//                             "pin " LED " load\n";
-
-static const char *command = "pin " LED " high delay 250 low delay 250 loop 100\n";
+static const char *command = "pin " LED " high delay 250 low delay 250 loop 100";
 
 
 // Setup our serial port
@@ -37,12 +27,8 @@ void loop() {
 
   espshell_exec(command);
 
-  while (!espshell_exec_finished())
-    delay(1);
-
   Serial.printf("Blinking LED on GPIO" LED "\r\n");
 
   while (1)
     delay(1000);
 } 
-#endif
