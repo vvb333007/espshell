@@ -183,7 +183,7 @@ static bool pin_exist_silent(unsigned char pin);
 static bool pin_is_reserved(unsigned char pin);
 static bool pin_can_wakeup(uint8_t pin);
 
-static bool nv_save_config(const char *nspace);
+static bool nv_save_config(const char *nspace); // saves hostid and timezone
 
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 3, 0)
 extern bool esp_gpio_is_pin_reserved(unsigned int gpio);
@@ -193,10 +193,10 @@ static INLINE bool esp_gpio_is_pin_reserved(unsigned int gpio) {
 }
 #endif
 
-// Globals & string constants
-//
+// -- Globals & constants
+
 // "Context": an user-defined value (a number or a pointer) which is set by change_command_directory() when 
-// switching to new command subtree. 
+// switching to a new command subtree. 
 // This is how command "uart 1" passes its argument  (the number "1") to the subtree commands like "write" or "read". 
 // Used to store: sequence number, uart,i2c interface number,pointer to aliases, probably something else
 //
@@ -205,9 +205,8 @@ static INLINE bool esp_gpio_is_pin_reserved(unsigned int gpio) {
 static __thread uintptr_t Context = 0;
 
 // Macros to set/get Context values. Since it is a simple C typecast here, make sure that
-// arguments you pass are convertible to "unsigned int" (4 bytes)
+// arguments you pass are of simple types (scalar or pointer)
 //
-
 #define context_get()         (Context)    
 #define context_get_uint()   ((unsigned int)Context)
 #define context_get_ptr(_Tn) ((_Tn *)Context)
@@ -563,13 +562,14 @@ int espshell_exec(const char *p) {
   int ret = -1;
   if (likely((p0 = q_strdup(p, MEM_TMP)) != NULL)) {
     ret = espshell_command(p0, NULL);
-    free(p0);
+    q_free(p0);
   }
   return ret;
 }
 
 // check if last espshell_exec() call has completed its
 // execution
+// TODO:
 bool espshell_exec_finished() {
   return true;
 }
@@ -608,19 +608,6 @@ static  void espshell_initonce() {
     // init subsystems,  if any
     //seq_init();
     //nv_init_once(); 
-#if 0
-    int flags;  
-
-    setvbuf(stdin, NULL, _IONBF, 0);
-    setvbuf(stdout, NULL, _IONBF, 0);    
-
-    flags = fcntl(STDIN_FILENO, F_GETFL, 0);
-    fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
-
-    flags = fcntl(STDOUT_FILENO, F_GETFL, 0);
-    fcntl(STDOUT_FILENO, F_SETFL, flags | O_NONBLOCK);    
-#endif
-
   }
 }
 

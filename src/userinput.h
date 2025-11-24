@@ -253,7 +253,7 @@ one_more_try: // we get here if we wasn't able to find any suitable handler in a
 // Convert argc/argv e.g {10,seconds,20,days,48,hours" to microseconds by adding up all timespecs
 // Any negative value turn whole result negative: "-1 hour 45 min" is "-105 min",   "1 hour -45 min" is the same
 // In:
-// /start/ is the index in argv of the first element to process (must be numeric)
+// /start/ is the index in argv of the first element to process (that element must be numeric)
 // /stop/  is the pointer to the index, where to stop (index /stop/ is not processed).
 //         value of -1 means (process till the end). Pointer can be NULL which implies processing till the end
 //
@@ -344,21 +344,23 @@ static bool read_hms(const char *p, int8_t *h, int8_t *m, int8_t *s) {
   return true;
 }
 
-// Returns time_t or 0
+// Converts
 // "1978"
 // "31"
 // "1978 31 april"
 // "11:31:31 am"
 // "11:31 april am 1978 25"
+// to a time_t. Returns (time_t)0 on error
 //
 static time_t read_datime(int argc, char **argv, int start, int *stop) {
 
   //uint32_t t;
   time_t val = 0;
   int stop0 = -1,v;
-  int8_t am = -1; //1 = am, 0 = pm, -1 = n/a
+  bool pm = false, hour12 = false;
   int8_t month;
-  //bool time_seen = false; // did we see HH:MM:SS already?
+  int8_t h,m,s;
+  bool hms_seen = false; // did we see HH:MM:SS already?
 
   struct tm t = { 0 };
 
@@ -384,7 +386,7 @@ static time_t read_datime(int argc, char **argv, int start, int *stop) {
       // Day number is in range [1..31] while year number is >1970
       v = q_atoi(argv[start], 32);
       if (v > 31 && v < 1970) {
-        q_printf("%% Days are [1..31], years are [1978..2106]. What is %s? \r\n",argv[start]);
+        q_printf("%% Days are [1..31], years are [1970..inf]. What is %s? \r\n",argv[start]);
         goto bad;
       }
       if (v < 32)
@@ -393,35 +395,22 @@ static time_t read_datime(int argc, char **argv, int start, int *stop) {
         t.tm_year = v - 1900;
     } else 
     // 2. No month has 'm' as its second letter, must be "am" or "pm"!
+    //    note that argv[1] is always references a valid allocated memory
     if (argv[start][1] == 'm') {
-      
+        hour12 = true;      
         if (argv[start][0] == 'a')
-          am = 1;
+          pm = false;
         else if (argv[start][0] == 'p')
-          am = 0;
+          pm = true;
         else {
-          q_printf("%% Unknown token at position %d, expected \"am\" or \"pm\"\r\n",start);
+          q_printf("%% Unknown token \"%s\", expected \"am\" or \"pm\"\r\n",argv[start]);
           goto bad;
         }
     } else
-    // 3. A time? time can be in forms: hh:mm or hh:mm:ss
+    // 3. A time? time can be in forms: hh:mm or hh:mm:ss, so first character is digit
     if (argv[start][0] >= '0' && argv[start][0] <= '9') {
-      int8_t h,m,s;
       if (read_hms(argv[start],&h,&m,&s)) {
-        // 12-hours format used?
-        if (am != -1) {
-          if (h > 12) {
-            q_print("% AM/PM hours must not be greater than 12 or smaller than -12\r\n");  
-            goto bad;
-          }
-
-          // Convert to 24
-          if (h == 12)
-            h = am ? 0 : 12;
-          else if (!am)
-            h = h + 12;
-        }
-
+        hms_seen = true;
         t.tm_hour = h;
         t.tm_min = m;
         t.tm_sec = s;
@@ -440,15 +429,20 @@ static time_t read_datime(int argc, char **argv, int start, int *stop) {
       goto bad;
     }
   }
+
+  // Convert to 24 if 12h format was used (i.e. "am" or "pm" keywords were seen)
+  if (hms_seen && hour12) {
+    
+    if (t.tm_hour == 12)
+      t.tm_hour = t.tm_hour + (pm ? 12 : 0);
+    else if (pm)
+      t.tm_hour = t.tm_hour + 12;
+  }
   
   val = mktime(&t);
 bad:
   *stop = start;
   return val;
 }
-#endif
-
-
+#endif // WITH_TIME
 #endif //#if COMPILING_ESPSHELL
-
-

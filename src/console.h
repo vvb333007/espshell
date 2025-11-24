@@ -64,8 +64,11 @@ static inline bool console_isup() {
 #endif  //SERIAL_IS_USB
 
 // Make ESPShell to use specified UART ( or USB-CDC ) for its IO.
-// Code below reads: return current uart number if i < 0. If i is valid uart number or i is 99
-// then set current uart to that number and return the same number as well. If i is not a valid uart number then -1 is returned
+// Code below reads: 
+// Getter: return current uart number if i < 0.
+// Setter: If i is valid uart number or i is 99 then set current port to that number
+//         and return the same number as well. 
+//         If i is not a valid uart number then -1 is returned
 //
 static int console_here(int i) {
   return i < 0 ? uart 
@@ -76,12 +79,12 @@ static int console_here(int i) {
 
 // This variable gets updated by enter_pressed_cr() : once we see "\r" from user SeenCR is set to /true/
 // This variable is used to detect extra <LF> symbol and ignore it: consider command "pin 0 delay 9999". If <Enter> sends
-// <CR>+<LF> then <CR> will start command execution in a background while <LF> immediately trigger anykey_pressed() causing
+// <CR>+<LF> then <CR> will start command execution while <LF> immediately trigger anykey_pressed() causing
 // command "pin ..." to abort.
 //
 // There are 3 possibilities for user terminal:
 //
-// 1. Send <CR> :  this is what most terminals do
+// 1. Send <CR> :  this is what most terminals do. SeenCR is /true/
 // 2. Send <LF> : SeenCR is always /false/, <LF> is NOT ignored
 // 3. Send <CR> + <LF> : SeenCR is /true/, trailing <LF> is ignored
 //
@@ -95,8 +98,7 @@ static bool anykey_pressed() {
   if (console_available() > 0) {
     if (console_read_bytes(&c, 1, 0) >= 0) {
     // If user terminal is configured to send <CR>+<LF> then we silently discard <LF>
-    // If we don't then pressing <Enter> will also interrupt commands: e.g. "count 2 trigger" will
-    // be executed (\r received) and immediately interrupted (\n received)
+    //
       if (c == '\n')
         return !SeenCR;
       return true;
