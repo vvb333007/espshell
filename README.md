@@ -16,7 +16,7 @@ Users can enter and execute commands (including many built-in ones) in a manner 
 
 This library is useful for:
 
-1. **Developers** working with I2C or UART devices. ESPShell includes commands to create/delete hardware interfaces, send/receive data, etc.  
+1. **Developers** working with I2C,UART or WiFi devices. ESPShell includes commands to create/delete hardware interfaces, send/receive data, etc.  
    Examples:
    - Interfacing UART-based GPS chips or GSM modems  
    - Building libraries for I2C devices  
@@ -42,7 +42,10 @@ This library is available via the **Arduino Library Manager**:
 3. Choose the latest version and click **Install**
 
 **To install manually** (e.g., the latest source code from GitHub):
+Option#1:
+1. Copy /src directory content to your sketch directory
 
+Option#2:
 1. Create the folder: `/YourSketchBook/libraries/espshell`  
 2. Copy the library contents (`/docs`, `/src`, `/examples`, etc.) into that folder  
 3. Restart the Arduino IDE
