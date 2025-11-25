@@ -645,7 +645,7 @@ KEYWORDS_DECL(sta) {
 
   KEYWORDS_BEGIN
 
-  { "up", cmd_wifi_up, MANY_ARGS,
+  { "up", cmd_wifi_up, NO_ARGS,
     HELPK("% \"<b>up SSID|BSSID [PASSWORD] [reconnect]</>\"\r\n"
           "% \"<b>up</>\"\r\n" 
           "%\r\n"
@@ -665,6 +665,8 @@ KEYWORDS_DECL(sta) {
           "%  up                              - connect using system/sketch config\r\n"
           "%"),
     HELPK("Initialize and start WiFi interface") },
+
+    { "up", cmd_wifi_up, MANY_ARGS, HIDDEN_KEYWORD },
 
 
   { "down", cmd_wifi_down, NO_ARGS,

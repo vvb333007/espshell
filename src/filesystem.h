@@ -1821,7 +1821,7 @@ static int cmd_files_write(int argc, char **argv) {
     return CMD_MISSING_ARG;
 
   if (argc > 2)
-    size = text2buf(argc, argv, 2, &out);
+    size = userinput_join(argc, argv, 2, &out); // join arguments starting from argv[2], allocate buffer and copy joined data there
 
   unsigned flags = O_CREAT | O_WRONLY;
 
@@ -1911,7 +1911,7 @@ static int cmd_files_insdel(int argc, char **argv) {
 
   if (insert) {
     if (argc > 3) {
-      tlen = text2buf(argc, argv, 3, &text);
+      tlen = userinput_join(argc, argv, 3, &text);
       if (!tlen)
         goto free_memory_and_return;
     } else {

@@ -38,7 +38,7 @@
 //
 // TODO: if $var_name1    eq|lt|gt|le|ge|ne    imm|$var_name2 poll NUM ... exec     <--- persistent
 // TODO: if $var_name1    eq|lt|gt|le|ge|ne    imm|$var_name2 ... exec              <--- one shot, discarded after use
-// TODO: refactor to use read_timespec
+// TODO: refactor to use userinput_read_timespec
 // TODO: wifi and ip events catcher (if got|lost ip, if sta|ap connected, )
 // TODO: "break" and "goto" keywords
 
@@ -602,7 +602,7 @@ static void ifc_show_single(unsigned int num) {
   q_print("% Wrong ID. Use \"<i>show ifs</>\" to list all IDs)\r\n");
 }
 
-
+// TODO: remove, make generic version and move it in qlib!!!
 // These functions are not reentrant, use with care: subsequent calls destroy previous value
 // as it is static buffers used. Because of this these functions are not general use API and thus is not in qlib
 //

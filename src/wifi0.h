@@ -344,13 +344,11 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
     VERBOSE(q_printf("%% WIFI-EVENT: arg=%p, base=%x, id=%x, edata=%p\r\n",arg,(unsigned int)event_base,(unsigned int)event_id,event_data));
 }
 
-// Just to inform user that time is in sync now
+// Tell espshell that we have new time source and date/time values
+// Called by SNTP client when NTP server reply is received
 //
 static void time_sync_notification_cb(UNUSED struct timeval *tv) {
-    
-    Time.local_set = true;
-    Time.src = "NTP server";
-    HELP(q_print("% NTP : Time has been successfully synchronized\r\n"));
+    time_has_been_updated("NTP");
 }
 
 

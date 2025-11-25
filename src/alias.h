@@ -335,7 +335,11 @@ static int cmd_alias_asterisk(int argc, char **argv) {
   // subdirectory: we don't track directories. In such cases command handler is not precached and will be found on
   // a first alias use
   //
+  // TODO: KNOWN BUG: if command is a subdir command (say "up") it will be wrongly precached as the "uptime"
+  //                  solutions is not to precache commands which are similar to "uptime" (loose strcmp)
+  //
   // TODO: Add a parameter to userinput_find_handler() to specify search directories
+  //
   const struct keywords_t *tmp = keywords_get();
   keywords_set(main); // sets thread-specific copy, thread-safe
   userinput_find_handler(AA);

@@ -35,6 +35,54 @@ static struct {
   uint64_t last_sync;     // useconds since last local time update (manual , NTP or external RTC chip)
 } Time = { 0 };
 
+
+
+// Convert microseconds to "XXX days" or "XX hours" and so on: approximate value
+// in easy human readable form. It is used when we want to show "Last updated: XXX ago" or similar
+// NOTE: buf_len must be not less than 20 symbols : "24 hours 59 seconds", 32 symbols is the safe choice
+//
+static char *q_timelen(uint64_t usec, char *buf, size_t buf_len) {
+
+  uint32_t seconds = usec / 1000000ULL, // TODO: NOTE: will not work for time intervals greater than 136 years
+                     x,y;
+  const char *timespec[]  = {"day",    "hour",  "minute", "second"};
+  uint32_t dividers[]     = { 24*60*60,  60*60,    60,    1 };
+
+  if (!buf || buf_len < 32)
+    return NULL;
+
+  for (int i = 0; i < 3; i++) {
+
+    if (seconds >= dividers[i]) {
+      x = seconds / dividers[i];
+      y = (seconds % dividers[i]) / dividers[i + 1];
+      if (!y)
+        snprintf(buf, buf_len, "%lu %s%s", x, timespec[i], x == 1 ? "" : "s");
+      else
+        snprintf(buf, buf_len, "%lu %s%s, %lu %s%s", x, timespec[i], x == 1 ? "" : "s",
+                                                       y, timespec[i + 1], y == 1 ? "" : "s");
+      return buf;
+    }
+
+  }
+
+  strlcpy(buf, "<1 minute", buf_len);
+  return buf;
+}
+
+
+// Callback function, that tells ESPShell that time has been changed. Called by "time set".
+// NTP time sync also calls time_has_been_updated() from its "time received" callback
+//
+// Updates "Last sync" and "Time source" variables
+//
+static void time_has_been_updated(const char *new_source) {
+    Time.local_set = true;
+    Time.src = new_source;
+    Time.last_sync = q_micros();
+    HELP(q_printf("%% New system time/date has been set. (%s)\r\n", new_source ? new_source : "unspecified source"));
+}
+
 // Return a month number by its name. "january" = 1.
 // Returns <1 if /name/ is not a valid name of the month
 //
@@ -94,7 +142,7 @@ static int cmd_time_zone(int argc, char **argv) {
   if (!q_strcmp(argv[2],"none"))
     val = 0;
   else {
-    val = read_timespec(argc, argv, 2, NULL) / 1000000ULL; // convert to seconds
+    val = userinput_read_timespec(argc, argv, 2, NULL) / 1000000ULL; // convert to seconds
     if (val < 60) {
       //timespec without a time specifier defaults to seconds but we assume hours
       // i.e. "time zone 1" will read as 1 hour
@@ -128,24 +176,22 @@ static int cmd_time_zone(int argc, char **argv) {
 //
 static int cmd_time_set(int argc, char **argv) {
 
+  int stop = -1;
   struct timeval tv;
 
   if (argc < 3)
     return CMD_MISSING_ARG;
   
-  tv.tv_sec = read_datime(argc,argv,2,NULL);
+  tv.tv_sec = userinput_read_datime(argc,argv,2,&stop);
   tv.tv_usec = 0;
 
   if (tv.tv_sec) {
     settimeofday(&tv, NULL);
-    // q_micros() does not depend on system time so we can use it to measure "last_sync" intervals
-    Time.last_sync = q_micros();
-    Time.src = "user input";
-    Time.local_set = true;
-  }
-  else {
+    time_has_been_updated("user input");
+  } else {
     HELP(q_print("% System time is unchanged\r\n"));
-    return CMD_FAILED;
+    // report failed argument (if we have one)
+    return stop > 0 ? stop : CMD_FAILED;
   }
 
   return 0;
@@ -196,11 +242,14 @@ static int cmd_show_time(int argc, char **argv) {
   
 
   q_printf("%% Today is: %s (<i>%s</>)\r\n", buf, Time.zone);
-  q_printf("%% Time source is %s", Time.src ? Time.src : "unspecified");
+  q_printf("%% Time source is %s", Time.src ? Time.src : "on-chip RTC (volatile)");
+
   if (Time.local_set)
-    q_printf(", last updated: %llu minutes ago\r\n", ((q_micros() - Time.last_sync) / 1000000ULL) / 60);
+    q_printf(", last updated: %s ago\r\n", q_timelen(q_micros() - Time.last_sync, buf, sizeof(buf))  ); //reuse buf
+  else if (tm_adj.tm_year < 125) // year < 2025?
+    q_printf(", time and/or date may be incorrect\r\n");
   else
-    q_printf(", time <i>is not set</> and may be incorrect\r\n");
+    q_print(CRLF);
 
   return 0;
 }

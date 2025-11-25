@@ -1301,7 +1301,7 @@ static int IRAM_ATTR q_strcmp(const char *partial, const char *full) {
 
 // 
 static inline const char *q_findchar(const char *str, char sym) {
-  if (str) {
+  if (likely(str)) {
     while (*str && sym != *str)
       str++;
     if (sym == *str)
@@ -1309,7 +1309,6 @@ static inline const char *q_findchar(const char *str, char sym) {
   }
   return NULL;
 }
-
 
 // Adopted from esp32-hal-uart.c Arduino Core.
 // Internal buffer is changed from static to stack because q_printf() can be called from different tasks
@@ -1522,79 +1521,6 @@ static void q_printhex(const unsigned char *p, unsigned int len) {
   }
 }
 
-// convert argument TEXT for uart/write and files/write commands (and others)
-// to a buffer. This function is used to join up argv's which are the same logical text.
-// Alternatively one can use quote, but they were introduced much later, so text2buf still is in use.
-//
-// "arg1" "arg2" "arg3" --> "arg1 arg2 arg3"
-//
-// Since all whitespace between arguments is lost due to argify(), this function can not recover multiple spaces:
-// esp32#>write This        is     a TEXT
-// will be read as "This is a TEXT". The only way to preserve repeating spaces is to use quotes, or encode spaces as \20
-//
-// /argc/
-// /argv/
-// /i/    - first argv to start collecting text from
-// /out/  - allocated buffer
-// Returns number of bytes in buffer /*out/
-// TODO: move to userinput.h, rename to userinput_as_string
-static int text2buf(int argc, char **argv, int i /* START */, char **out) {
-
-  int size = 0;
-  char *b;
-
-  if (i >= argc)
-    return -1;
-
-  //instead of estimating buffer size just allocate 512 bytes buffer: espshell
-  // input strings are limited to 500 bytes.
-  if ((*out = b = (char *)q_malloc(ESPSHELL_MAX_INPUT_LENGTH + 12, MEM_TEXT2BUF)) != NULL) {
-    // go thru all the arguments and send them. the space is inserted between arguments
-    do {
-      char *p = argv[i];
-      while (*p) {
-        char c = *p;
-        p++;
-        if (c == '\\') {
-          switch (*p) {
-            case '\\':             p++;              c = '\\';              break;
-            case 'n':              p++;              c = '\n';              break;
-            case 'r':              p++;              c = '\r';              break;
-            case 't':              p++;              c = '\t';              break;
-            case '"':              p++;              c = '"';              break;
-            //case 'e':              p++;              c = '\e';              break;  //interferes with \HEX numbers
-            case 'v':              p++;              c = '\v';              break;
-            //case 'b':              p++;              c = '\b';              break;  //interferes with \HEX numbers
-            default:
-              if (ishex2(p)) {
-                c = hex2uint8(p);
-                if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X'))
-                  p += 2;
-                p++;
-                if (*p) 
-                  p++;
-              } else {
-                // unknown escape sequence: fallthrough to get "\" printed
-              }
-          }
-        }
-        *b++ = c;
-        size++;
-      }
-      i++;
-      //if there are more arguments - insert a space
-      if (i < argc) {
-        *b++ = ' ';
-        size++;
-      }
-      // input line length limiting. just in case. normally editline() must not accept lines which are too long
-      // TODO: editline() does not care
-      if (size > ESPSHELL_MAX_INPUT_LENGTH)
-        break;
-    } while (i < argc);
-  }
-  return size;
-}
 
 
 

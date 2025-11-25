@@ -353,7 +353,7 @@ static int cmd_uart_write(int argc, char **argv) {
     return CMD_MISSING_ARG;
 
   if (uart_isup(u)) {
-    if ((size = text2buf(argc, argv, 1, &out)) > 0)
+    if ((size = userinput_join(argc, argv, 1, &out)) > 0)
       if ((size = uart_write_bytes(u, out, size)) > 0)
         sent += size;
     if (out)

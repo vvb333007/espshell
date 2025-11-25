@@ -552,7 +552,7 @@ static int cmd_nap_alarm(int argc, char **argv) {
 
   } else if (q_isnumeric(argv[2])) {
 
-    int64_t tim = read_timespec(argc, argv, 2, NULL);
+    int64_t tim = userinput_read_timespec(argc, argv, 2, NULL);
     if (tim <= 0)
       return CMD_FAILED;
 

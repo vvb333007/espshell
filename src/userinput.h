@@ -247,24 +247,111 @@ one_more_try: // we get here if we wasn't able to find any suitable handler in a
   return found ? CMD_MISSING_ARG
                : CMD_NOT_FOUND;
 }
+/////////////////////////////////////////////////////////////////////////////////////////
+// Readers: read argumnents of a command in special formats like date, time, or read
+// multiple arguments as a single continuos buffer
+/////////////////////////////////////////////////////////////////////////////////////////
 
 
+// Join Arguments: takes argc/argv and starting index to read arguments, starting
+// from argv[start] till the end, joins them together and return a pointer to an allocated memory
+// containing joined text. This function is used to join up argv's which are the same logical text.
+// Alternatively one can use quotes
+//
+// "arg1" "arg2" "arg3" --> "arg1 arg2 arg3"
+//
+// Since all whitespace between arguments is lost due to argify(), this function can not recover
+// multiple spaces:
+//
+// esp32#>write This        is     a TEXT
+//
+// will be read as "This is a TEXT". The only way to preserve repeating spaces is to use
+// quotes, or encode spaces as \20
+//
+// /argc/ - number of elements available in argv[] array
+// /argv/ - array of char * pointers to arguments
+// /i/    - first argv to start collecting text from
 
-// Convert argc/argv e.g {10,seconds,20,days,48,hours" to microseconds by adding up all timespecs
-// Any negative value turn whole result negative: "-1 hour 45 min" is "-105 min",   "1 hour -45 min" is the same
+// Returns number of bytes in buffer /*out/
+// /out/  - allocated buffer
+//
+static int userinput_join(int argc, char **argv, int i /* START */, char **out) {
+
+  int size = 0;
+  char *b;
+
+  if (i >= argc)
+    return -1;
+
+  //instead of estimating buffer size just allocate 512 bytes buffer: espshell
+  // input strings are limited to 500 bytes.
+  if ((*out = b = (char *)q_malloc(ESPSHELL_MAX_INPUT_LENGTH + 12, MEM_TEXT2BUF)) != NULL) {
+    // go thru all the arguments and send them. the space is inserted between arguments
+    do {
+      char *p = argv[i];
+      while (*p) {
+        char c = *p;
+        p++;
+        if (c == '\\') {
+          switch (*p) {
+            case '\\':             p++;              c = '\\';              break;
+            case 'n':              p++;              c = '\n';              break;
+            case 'r':              p++;              c = '\r';              break;
+            case 't':              p++;              c = '\t';              break;
+            case '"':              p++;              c = '"';              break;
+            //case 'e':              p++;              c = '\e';              break;  //interferes with \HEX numbers
+            case 'v':              p++;              c = '\v';              break;
+            //case 'b':              p++;              c = '\b';              break;  //interferes with \HEX numbers
+            default:
+              if (ishex2(p)) {
+                c = hex2uint8(p);
+                if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X'))
+                  p += 2;
+                p++;
+                if (*p) 
+                  p++;
+              } else {
+                // unknown escape sequence: fallthrough to get "\" printed
+              }
+          }
+        }
+        *b++ = c;
+        size++;
+      }
+      i++;
+      //if there are more arguments - insert a space
+      if (i < argc) {
+        *b++ = ' ';
+        size++;
+      }
+      // input line length limiting. just in case. normally editline() must not accept lines which are too long
+      // TODO: editline() does not care about limiting :(
+      if (size > ESPSHELL_MAX_INPUT_LENGTH)
+        break;
+    } while (i < argc);
+  }
+  return size;
+}
+
+
+// Convert argc/argv (e.g "10","seconds","20","days","48","hours" to microseconds by adding up all timespecs.
+// Any negative value turn whole result negative: "-1 hour 45 min" is "-105 min",   "1 hour -45 min" is 
+// the same. 
+// Used to input a time interval: can be as simple as just a number: "21", which mean "25 seconds" or
+// complex, like  "21 day 480 h 1 sec 25 millis"
+//
 // In:
 // /start/ is the index in argv of the first element to process (that element must be numeric)
 // /stop/  is the pointer to the index, where to stop (index /stop/ is not processed).
 //         value of -1 means (process till the end). Pointer can be NULL which implies processing till the end
 //
-// Out: /stop/ is populated with new index (in case of error new index is set to failed element)
+// Out: /stop/ is populated with index where processing stopped (i.e. element argv[stop] was not processed)
 //      Returned value is in microseconds.
 //      Returned value of 0 must be treated as error.
 //
-// TODO: refactor "if", "nap" and "every" commands to use read_timespec
-// TODO: rename to userinput_timespec
+// TODO: refactor "if" and "every" commands to use userinput_read_timespec. Refactor show if/every also
 //
-static int64_t read_timespec(int argc, char **argv, int start, int *stop) {
+static int64_t userinput_read_timespec(int argc, char **argv, int start, int *stop) {
 
   int32_t t;
   uint64_t val = 0;
@@ -288,6 +375,7 @@ static int64_t read_timespec(int argc, char **argv, int start, int *stop) {
       t = -t;
     }
 
+    // We have a number but no more input. Treat as seconds, so timespec like "3" will read as "3 seconds"
     if ((start >= argc) || (start == *stop)) {
       val += 1000000ULL * (uint64_t)t;
       break;
@@ -315,16 +403,18 @@ static int64_t read_timespec(int argc, char **argv, int start, int *stop) {
 
 #if WITH_TIME
 
-// "12:3" "01:02:33" "1:1:1" "5"
 // Convert string to hours/minutes/seconds. Omitted parameters are assumed to be zero.
-// 24-hours format is assumed
+// 24-hours format is assumed. Time string must have at least one ':' in it
 //
-static bool read_hms(const char *p, int8_t *h, int8_t *m, int8_t *s) {
+// "12:3" "01:02:33" "1:1:1"
+static bool userinput_read_hms(const char *p, int8_t *h, int8_t *m, int8_t *s) {
 
+  bool colon_seen = false;
   int8_t hms[3] = { 0 }, i = 0;
 
   while (*p) {
     if (*p == ':') {
+      colon_seen = true;
       if (++i > 2)
         return false;
     } else if (*p >= '0' && *p <= '9')
@@ -334,7 +424,7 @@ static bool read_hms(const char *p, int8_t *h, int8_t *m, int8_t *s) {
     ++p;
   }
 
-  if (hms[0] > 23 || hms[1] > 59 || hms[2] > 59)
+  if (!colon_seen || hms[0] > 23 || hms[1] > 59 || hms[2] > 59)
     return false;
 
   if (h) *h = hms[0];
@@ -344,15 +434,19 @@ static bool read_hms(const char *p, int8_t *h, int8_t *m, int8_t *s) {
   return true;
 }
 
-// Converts
-// "1978"
-// "31"
-// "1978 31 april"
-// "11:31:31 am"
-// "11:31 april am 1978 25"
-// to a time_t. Returns (time_t)0 on error
+// Converts argc/argv, starting from index /start/, stopping at index /*stop/ to time_t
+// Populates *stop with index where parsing stopped. /stop/ can be NULL
+// Used to input time/date
+// Examples of valid inputs:
+// {"1978"},
+// {"31"},
+// {"1978","31","april"},
+// {"11:31:31","am"},
+// {"11:31","april","am","1978","25"},
 //
-static time_t read_datime(int argc, char **argv, int start, int *stop) {
+// Returns (time_t)0 on error
+//
+static time_t userinput_read_datime(int argc, char **argv, int start, int *stop) {
 
   //uint32_t t;
   time_t val = 0;
@@ -409,13 +503,13 @@ static time_t read_datime(int argc, char **argv, int start, int *stop) {
     } else
     // 3. A time? time can be in forms: hh:mm or hh:mm:ss, so first character is digit
     if (argv[start][0] >= '0' && argv[start][0] <= '9') {
-      if (read_hms(argv[start],&h,&m,&s)) {
+      if (userinput_read_hms(argv[start],&h,&m,&s)) {
         hms_seen = true;
         t.tm_hour = h;
         t.tm_min = m;
         t.tm_sec = s;
       } else {
-        q_print("% Can not recognize the input. Must be hh:mm or hh:mm:ss\r\n");
+        q_printf("%% Can not recognize the input: \"%s\"\r\n",argv[start]);
         goto bad;
       }
     } else
