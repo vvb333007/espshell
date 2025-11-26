@@ -313,11 +313,10 @@ There are three variations of the "cd" command:
 </pre>
 </p><p>
   2. "cd .."
-  Changes the current directory to its parent. Only one level is changed per command - 
-  compound paths like ../../ are not supported.  If the parent directory does not exist 
-  (as is often the case with complex mountpoints like /my/mount/point/ where intermediate 
-  directories /my and /mount do not physically exist), then cd .. continues upward until 
-  a valid directory is reached.
+  Changes the current directory to its parent. Paths like "dir/../.././dir2" are ok.
+  If the parent directory does not exist (as is often the case with complex mountpoints
+  like /my/mount/point/ where intermediate directories /my and /mount do not physically
+  exist), then cd .. continues upward until a valid directory is reached.
 <pre>
        esp32#(/)>mount wwwroot /a/mount/point
        %  FAT/exFAT  on partition "wwwroot" is mounted under "/a/mount/point"
@@ -337,7 +336,7 @@ There are three variations of the "cd" command:
        esp32#(/wwwroot/)>cd test_dir/dir2       # change dir (relative path)
        esp32#(/wwwroot/test_dir/dir2/)>cd       # back to filesystem root
        esp32#(/wwwroot/)>cd ..                  # and 1 more level up 
-       esp32#(/)>
+       esp32#(/)>cd /wwwroot/test_dir/../.././dir2/
 </pre>
 </p>
 
