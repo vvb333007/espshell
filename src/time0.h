@@ -37,9 +37,11 @@ static struct {
 
 
 
-// Convert microseconds to "XXX days" or "XX hours" and so on: approximate value
-// in easy human readable form. It is used when we want to show "Last updated: XXX ago" or similar
-// NOTE: buf_len must be not less than 20 symbols : "24 hours 59 seconds", 32 symbols is the safe choice
+// Convert microseconds to "XXX days XX hours" or "XX hours XX minutes" and so on: approximate value
+// in easy human readable form. Values less than 60 seconds are shown as "<1 minute"
+//
+// This function is used when we want to show "Last updated: XXX ago" or similar
+// NOTE: buf_len must be not less than 20 symbols : "24 hours 59 minutes", 32 symbols is the safe choice
 //
 static char *q_timelen(uint64_t usec, char *buf, size_t buf_len) {
 

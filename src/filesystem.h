@@ -1053,6 +1053,146 @@ static EL_STATUS tab_pressed() {
   }
 }
 
+// API for "cd .."
+//
+//
+static bool files_cdup() {
+
+  int i;
+  char *p;
+
+  if ((i = strlen(Cwd)) < 3)  //  minimal path "/a/". root directory reached
+    return true;
+
+
+  // remove trailing path separator and reverse search
+  // for another one. It MUST be at least 2 of them: "/root_path/"
+  files_strip_trailing_slash(Cwd);
+
+  if (NULL == (p = strrchr(Cwd, '/')))
+    MUST_NOT_HAPPEN(NULL == (p = strrchr(Cwd, '\\')));
+
+  
+  p[1] = '\0';             // strip everything after it
+  if (Cwd[0] == '\0')      // not much have left: change to "/"
+    files_set_cwd("/");
+  else {
+      
+    // partition can be mounted under /a/b/c but /a, /a/b do not exist so
+    // "cd .." from "/a/b/c/" should not end up at "/a/b/"
+    // repeat "cd .." until we reach path that exists.
+    if (!files_path_exist_dir(Cwd))
+      return files_cdup();
+
+  }
+  files_set_cwd(Cwd);  //update prompt
+  return true;
+}
+
+// API for "cd"
+//
+static bool files_cd_mount_point() {
+  int i;
+  //"cd" with no path: go to the mountpoint.
+  if ((i = files_mountpoint_by_path(files_get_cwd(), false)) < 0)
+    files_set_cwd("/");
+  else
+    files_set_cwd(mountpoints[i].mp);
+  return true;
+}
+
+// API for "cd XXXX"
+//
+//
+static bool files_cd(const char *path) {
+
+  int i = 0;
+  char *element = NULL;
+
+  // path == NULL? change to mountpoint
+  if (path == NULL)
+    return files_cd_mount_point();
+
+  // if we were called with empty path - just do nothing
+  if (path[0] == '\0')
+    return true;
+  
+  // "xxx/.." :
+  // "../xxx" : change up and call files_cd() again for the rest of the path
+  // ./ : skip and call files_cd() for the rest of the path
+  
+  if (path[0] == '.') {
+    if (path[1] == '.') {
+      if (path[2] == '/' || path[2] == '\\' || path[2] == '\0') {
+        //VERBOSE(q_printf("%% CD ..\r\n"));
+        files_cdup();
+        return files_cd(path + (path[2] ? 3 : 2));
+      }
+    } else if (path[1] == '/' || path[1] == '\\') { // "./"
+      //VERBOSE(q_printf("%% CD \"%s\"\r\n",path + 2));
+      return files_cd(path + 2);
+    }
+  }
+
+  // Absolute path: change to mountpoint and call files_cd() for the rest of the path
+  if (path[0] == '/' || path[0] == '\\') {
+    //VERBOSE(q_printf("%% CD \r\n%% CD \"%s\"\r\n",path+1));
+    files_cd_mount_point();
+    return files_cd(path + 1);
+  }
+
+  // Copy 1 path element (text up to a path separator) ("path/to/the/file.txt" has 4 elements)
+  // to the /element[]/
+  element = (char *)q_malloc(MAX_PATH, MEM_TMP);
+  if (!element)
+    return false;
+
+  for (i = 0; i < MAX_PATH; i++) {
+
+    // last path element? unwind our recursive call stack
+    if (path[i] == '\0') {
+      element[i] = '\0';
+      char *full = files_full_path(element, 0);
+      if (full && files_path_exist_dir(full)) {
+          files_set_cwd(full);
+          //VERBOSE(q_printf("%% Changing directory to %s\r\n", full));
+          q_free(element);
+          return true;
+      } else {
+        HELP(q_printf("%% cd : path element \"%s\" does not exist\r\n", full));
+        q_free(element);
+        return false;
+      }
+    }
+
+    // A path separator? call files_cd(element) 
+    // (will be treated as "the last ppath element", because /element/ has no path separator in it)
+    //
+    // cd /dev/logs/test
+    //
+    // will result in series of calls to files_cd():
+    //
+    // files_cd("/")
+    // files_cd("dev")
+    // files_cd("logs")
+    // files_cd("test")
+    //
+    if (path[i] == '/' || path[i] == '\\') {
+      element[i] = '\0';
+      //VERBOSE(q_printf("%% CD \"%s\"\r\n%% CD \"%s\"\r\n",element,path+i+1));
+      files_cd(element);
+      q_free(element);
+      return files_cd(path + i + 1);
+    }
+
+    // Just text - add it up to /element/
+    element[i] = path[i];
+  }
+  HELP(q_print("% Path is too long\r\n"));
+  q_free(element);
+  return false;
+}
+
 // "files"
 // switch to FileManager commands subtree
 //
@@ -1543,134 +1683,20 @@ static int cmd_show_mount(int argc, char **argv) {
 
 // "cd"
 // "cd .."
-// "cd /full/path"
-// "cd relative/path"
-//
-//  Change current working directory. Double dots (relative
-//  paths) are not supported on purpose: paths like "some/../../path" are considered invalid
-//  Paths which starts with double dot are treated as if user typed "cd .." i.e. change to upper
-//  level directory.
-//  Single dot (a reference to *this* directory) is not supported. Path "some/./path" is not
-//  valid for "cd" command
+// "cd /full/../path"
+// "cd relative/path/../../pum/"
 //
 static int cmd_files_cd(int argc, char **argv) {
+  bool ret = false;
 
-  if (files_get_cwd() == NULL)
-    return 0;
+  if (argc < 2)
+    ret = files_cd(NULL);
+  else if (argc > 2)
+    q_print("% <e>Please, use quotes (\"\") for paths with spaces</>\r\n");
+  else
+    ret = files_cd(argv[1]);
+  return ret ? 0 : CMD_FAILED;
 
-  //"cd" no args, go to the mountpoint.
-  // IMPORTANT: argv pointer CAN be zero here in case cmd_files_cd() is called from cmd_files_rm()
-  if (argc < 2) {
-    int i;
-    if ((i = files_mountpoint_by_path(files_get_cwd(), false)) < 0)
-      files_set_cwd("/");
-    else
-      files_set_cwd(mountpoints[i].mp);
-    return 0;
-  }
-
-  //"cd Path With Spaces"
-  if (argc > 2) {
-    HELP(q_print(SpacesInPath));
-    return 0;
-  }
-
-  int i;
-  // just in case.
-  if (argv[1][0] == '\0')
-    return 1;
-
-  // Case#1:
-  // Two leading dots - go 1 level up if possible.
-  // Paths like "../some/path" will be processed as if it was simply ".."
-  // No support of relative paths
-  if (argv[1][0] == '.' && argv[1][1] == '.') {
-
-    char *p;
-    if ((i = strlen(Cwd)) < 3)  //  minimal path "/a/". root directory reached
-      return 0;
-
-    // remove trailing path separator and reverse search
-    // for another one
-    files_strip_trailing_slash(Cwd);
-
-    if (NULL == (p = strrchr(Cwd, '/')))
-      MUST_NOT_HAPPEN(NULL == (p = strrchr(Cwd, '\\')));
-
-    // strip everything after it
-    p[1] = '\0';
-    if (Cwd[0] == '\0')
-      files_set_cwd("/");
-    else {
-      // repeat "cd .."" until we reach path that exists.
-      // partition can be mounted under /a/b/c but /a, /a/b are not exist so
-      // "cd .." from "/a/b/c/" should not end up at "/a/b/"
-      if (!files_path_exist_dir(Cwd))
-        return cmd_files_cd(argc, argv);
-    }
-    files_set_cwd(Cwd);  //update prompt
-    return 0;
-  }
-
-  // Case#2:
-  // Relative/absolute path
-  i = 0;
-  // Sanity check: must be no double dots in path
-  while (argv[1][i]) {
-    if (argv[1][i] == '.' && argv[1][i + 1] == '.') {
-      q_printf("%% <e>Two dots (..) are not supported in path</>\r\n");
-      return 1;
-    }
-    i++;
-  }
-
-  // Replace all "*" with spaces " "
-  files_asterisk2spaces(argv[1]);
-
-  // Path is absolute: check if it exists and
-  // store it as current working directory
-  if (argv[1][0] == '/') {
-    if (files_path_exist_dir(argv[1])) {
-      files_set_cwd(argv[1]);
-      return 0;
-    }
-    goto path_does_not_exist;
-  }
-
-  char tmp[512] = { 0 };
-
-  // Path is relative: append path to the CWD
-  // and check if path exists as well
-  if (strlen(Cwd) + strlen(argv[1]) > sizeof(tmp)) {
-    q_print("% <e>Path is too long</>\r\n");
-    return 1;
-  }
-
-  // tmp = Cwd+arg1
-  strcpy(tmp, Cwd);
-
-  MUST_NOT_HAPPEN((i = strlen(tmp)) < 1);
-
-  strcat(tmp, argv[1]);
-
-  // if resulting path does not end with "/" - add it, we have enough space
-  // in our tmp
-  i = strlen(tmp);
-  if (tmp[i - 1] != '\\' && tmp[i - 1] != '/') {
-    tmp[i] = '/';
-    tmp[i + 1] = '\0';
-  }
-
-  // Set new CWD if path exists
-  if (files_path_exist_dir(tmp)) {
-    if (files_set_cwd(tmp))
-      return 0;
-    else
-      q_print(Failed);
-  } else
-path_does_not_exist:
-    q_print("% <e>Path does not exist</>\r\n");
-  return 1;
 }
 
 // "ls [PATH]"

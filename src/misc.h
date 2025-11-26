@@ -85,8 +85,7 @@ static int cmd_echo(int argc, char **argv) {
     if (!q_strcmp(argv[1], "off"))    Echo = 0;  else 
     if (!q_strcmp(argv[1], "silent")) Echo = -1; else {
       // Display TEXT, go through argvs, add separators (" ")
-      // Mimic Linux "echo -n" behaviour
-     
+     // TODO: should we userinput_join() here? We will get \n\r\e.. \AB etc sequences support
       while(i < argc) {
         q_print(argv[i]);
         if (++i < argc)
