@@ -1125,7 +1125,7 @@ static bool files_cd(const char *path) {
     if (path[1] == '.') {
       if (path[2] == '/' || path[2] == '\\' || path[2] == '\0') {
         //VERBOSE(q_printf("%% CD ..\r\n"));
-        files_cdup();
+        files_cdup(); // Ignore errors
         return files_cd(path + (path[2] ? 3 : 2));
       }
     } else if (path[1] == '/' || path[1] == '\\') { // "./"
@@ -1134,10 +1134,10 @@ static bool files_cd(const char *path) {
     }
   }
 
-  // Absolute path: change to mountpoint and call files_cd() for the rest of the path
+  // Absolute path: change to root and call files_cd() for the rest of the path
   if (path[0] == '/' || path[0] == '\\') {
     //VERBOSE(q_printf("%% CD \r\n%% CD \"%s\"\r\n",path+1));
-    files_cd_mount_point();
+    files_set_cwd("");
     return files_cd(path + 1);
   }
 
@@ -1180,15 +1180,16 @@ static bool files_cd(const char *path) {
     if (path[i] == '/' || path[i] == '\\') {
       element[i] = '\0';
       //VERBOSE(q_printf("%% CD \"%s\"\r\n%% CD \"%s\"\r\n",element,path+i+1));
-      files_cd(element);
+      bool ok = files_cd(element);
       q_free(element);
-      return files_cd(path + i + 1);
+      
+      return ok ? files_cd(path + i + 1) : false;
     }
 
     // Just text - add it up to /element/
     element[i] = path[i];
   }
-  HELP(q_print("% Path is too long\r\n"));
+  HELP(q_print("% Path is too long. Must be <" xstr(MAX_PATH) "\r\n"));
   q_free(element);
   return false;
 }
