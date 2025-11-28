@@ -829,16 +829,18 @@ KEYWORDS_DECL(ap) {
     HELPK("Host name (per interface)") },
   { "hostname", cmd_wifi_hostname, NO_ARGS, HIDDEN_KEYWORD},
   
-  { "dhcp", cmd_wifi_dhcp, 2,
+  { "dhcp", cmd_wifi_dhcp, 3,
     HELPK("% \"<b>dhcp A.B.C.D [<o>NUM</>] [<o>LEASE</>]\r\n" 
           "% \"<b>dhcp enable|disable\r\n" 
           "%\r\n"
           "% Set IP address range for the DHCP and start/stop the server\r\n"
           "% DHCP server IP pool must reside on the interface subnet\r\n"
+          "% <i>NOTE1: When changing DHCP address pool range</i> make sure that\r\n"
+          "% <i> interface address is on the same subnet</i> as new DHCP IP range!\r\n"
           "%\r\n"
           "%<u>Examples (AP address is 192.168.0.1)</>:\r\n"
-          "%   <i>dhcp 192.168.0.2</>        : Lease addresses starting from 192.168.0.2\r\n"
-          "%   <i>dhcp 192.168.0.2 2 3600</> : Only 2 IP addresses available, 1 hour lease\r\n"
+          "%   <i>dhcp 192.168.4.8</>        : Lease addresses starting from 192.168.4.6\r\n"
+          "%   <i>dhcp 192.168.4.2 2 3600</> : Only 2 IP addresses available, 1 hour lease\r\n"
           "%   <i>dhcp enable</>             : Enable DHCP server on the AP interface\r\n"
           "%"),
     HELPK("DHCP server settings") },

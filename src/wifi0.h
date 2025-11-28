@@ -140,7 +140,8 @@ static esp_netif_t *get_apif() {
 // When STA gets its IP/mask/GW/.. settings  it *propagates* DNS settings to the AP interface, so AP
 // can include it in its DHCP reply (AP+STA mode, NAT router)
 //
-// DNS entries are propagated only if AP has no static DNS servers configured.
+// NOTE: DNS entries are propagated only if AP has no static DNS servers configured.
+// NOTE: only 1 DNS server entry is propagated. 
 //
 static bool sta_propagate_dns(esp_netif_t *sta) {
   if (!Wifi.ap_static_dns) {
@@ -149,7 +150,6 @@ static bool sta_propagate_dns(esp_netif_t *sta) {
     if (sta && apif)
       if (esp_netif_get_dns_info(sta,ESP_NETIF_DNS_MAIN,&dnsi) == ESP_OK)
         return (ESP_OK == esp_netif_set_dns_info(apif,ESP_NETIF_DNS_MAIN,&dnsi));
-        // TODO: should we propagate BACKUP server also?
   }
   return false;
 }
@@ -165,7 +165,7 @@ static bool dhcp_server_stop_if_started(esp_netif_t *apif) {
     esp_netif_dhcp_status_t status = ESP_NETIF_DHCP_STARTED;
     esp_netif_dhcps_get_status(apif, &status);
     if (status != ESP_NETIF_DHCP_STOPPED) {
-      VERBOSE(q_print("% Stopping DHCP server..Ok \r\n"));
+      //VERBOSE(q_print("% Stopping DHCP server..Ok \r\n"));
       esp_netif_dhcps_stop(apif);
       return true;
     }
@@ -179,11 +179,11 @@ static bool dhcp_server_stop_if_started(esp_netif_t *apif) {
 static void dhcp_server_restart_if_was_started(esp_netif_t *apif, bool was_started) {
 
   if (was_started) {
-    VERBOSE(q_print("%% Restarting AP's DHCP server.."));
+    //VERBOSE(q_print("% Restarting AP's DHCP server.."));
     if (esp_netif_dhcps_start(apif) == ESP_OK) {
-      VERBOSE(q_print("Ok\r\n"));
+      //VERBOSE(q_print("Ok\r\n"));
     } else {
-      VERBOSE(q_print("Failed\r\n"));
+      //VERBOSE(q_print("Failed\r\n"));
     }
   }
 }
@@ -204,7 +204,7 @@ static bool dhcp_server_set_dns_option() {
 
   was_started = dhcp_server_stop_if_started(apif);
 
-  VERBOSE(q_print("%% DHCP : server will offer DNS\r\n"));
+  VERBOSE(q_print("%% DHCP : DNS is included in DHCP Offer, restarting server\r\n"));
   esp_netif_dhcps_option(apif, 
                         ESP_NETIF_OP_SET,
                         ESP_NETIF_DOMAIN_NAME_SERVER,
@@ -215,14 +215,13 @@ static bool dhcp_server_set_dns_option() {
   return true;
 }
 
-#if 0
+#if 1
 // Set custom lease time in seconds
 //
-static bool dhcp_server_set_lease_option(uint32_t lease) {
+static bool dhcp_server_set_lease(esp_netif_t *apif, uint32_t lease0) {
 
-  esp_netif_t *apif = get_apif();
-  
   bool was_started;
+  dhcps_time_t lease = lease0 ? lease0 : 24*3600;
 
   if (apif == NULL)
     return false;
@@ -234,7 +233,7 @@ static bool dhcp_server_set_lease_option(uint32_t lease) {
                                         ESP_NETIF_IP_ADDRESS_LEASE_TIME,
                                         &lease,
                                         sizeof(lease)))
-    q_print("% Failed to set lease time\n");
+    q_print("% Failed to set the lease time\n");
     
   dhcp_server_restart_if_was_started(apif, was_started);
   return true;
@@ -244,16 +243,52 @@ static bool dhcp_server_set_lease_option(uint32_t lease) {
 //
 static bool dhcp_server_set_ip_pool(esp_netif_t *apif, uint32_t ip_start, uint32_t count) {
 
+  uint32_t ip_end;
+  bool was_started;
+  esp_netif_ip_info_t ipx;
+
+  dhcps_lease_t dhcps_poll = {
+    .enable = true
+  };
+
   if (apif == NULL)
     return false;
+    
+  if (esp_netif_get_ip_info(apif, &ipx) == ESP_OK) {
+    uint32_t mask = q_ntohl(ipx.netmask.addr);
+    if ((ip_start & mask) == (q_ntohl(ipx.ip.addr) & mask)) {
+      was_started = dhcp_server_stop_if_started(apif);
 
-  bool was_started = dhcp_server_stop_if_started(apif);
+      // To properly calculate ip_end we need to know the subnet mask class.
+      // Instead of messing with IP calculations we just assume class C network
+      // This effectively limits DHCP server pool size to 254 entries
+      if (count == 0)
+        ip_end = (ip_start | 0xff) - 1;
+      else {
+        if ((count + (ip_start & 0xff)) > 254)
+          ip_end = (ip_start | 0xff) - 1;
+        else
+          ip_end = ip_start + count;
+      }
 
-  //TODO:
+      dhcps_poll.start_ip.addr = q_htonl(ip_start);
+      dhcps_poll.end_ip.addr = q_htonl(ip_end);
 
-  dhcp_server_restart_if_was_started(apif, was_started);
-  return true;
+      esp_netif_dhcps_option(apif, ESP_NETIF_OP_SET, REQUESTED_IP_ADDRESS, &dhcps_poll, sizeof( dhcps_poll ));
+
+      dhcp_server_restart_if_was_started(apif, was_started);
+      return true;
+    } else
+      q_print("% <e>Requested IP range must be on the interface subnet</>\r\n");
+  } else
+    q_print("% <e>Set interface IP address first</>\r\n");
+  return false;
 }
+
+ 
+
+
+
 #endif
 
 // IP Events handler instance
@@ -284,7 +319,7 @@ static void ip_event_handler(void *arg, esp_event_base_t event_base, int32_t eve
         break;
 
       default:
-        VERBOSE(q_printf("%% IP-EVENT: unhandled (base=%x, id=%x)\r\n",(unsigned int)event_base,(unsigned int)event_id));
+        //VERBOSE(q_printf("%% IP-EVENT: unhandled (base=%x, id=%x)\r\n",(unsigned int)event_base,(unsigned int)event_id));
         break;
     };
 
@@ -330,7 +365,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 
       case WIFI_EVENT_AP_STADISCONNECTED: {
         wifi_event_ap_stadisconnected_t *event = (wifi_event_ap_stadisconnected_t*) event_data;
-        HELP(q_printf("%% WIFI AP: Station#%d (" MACSTR ") disconnected (reason=%u))\r\n",MAC2STR(event->mac), event->aid, event->reason)); 
+        HELP(q_printf("%% WIFI AP: Station#%d (" MACSTR ") disconnected (reason=%u))\r\n",event->aid, MAC2STR(event->mac),  event->reason)); 
         break;
       }
 
@@ -341,7 +376,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
       default:
         break;
     };
-    VERBOSE(q_printf("%% WIFI-EVENT: arg=%p, base=%x, id=%x, edata=%p\r\n",arg,(unsigned int)event_base,(unsigned int)event_id,event_data));
+    //VERBOSE(q_printf("%% WIFI-EVENT: arg=%p, base=%x, id=%x, edata=%p\r\n",arg,(unsigned int)event_base,(unsigned int)event_id,event_data));
 }
 
 // Tell espshell that we have new time source and date/time values
@@ -1513,14 +1548,14 @@ static int cmd_wifi_dhcp(int argc, char **argv) {
     return CMD_MISSING_ARG;
 
   if (!q_strcmp(argv[1],"enable")) {
-    VERBOSE(q_print("% Enabling DHCP server..\r\n"));
+    HELP(q_print("% Enabling DHCP server..\r\n"));
     esp_netif_dhcps_start(ni);
   } else if (!q_strcmp(argv[1],"disable")) {
-    VERBOSE(q_print("% Disabling DHCP server..\r\n"));
+    HELP(q_print("% Disabling DHCP server..\r\n"));
     esp_netif_dhcps_stop(ni);
   } else {
     uint32_t ip, mask;
-    uint32_t lease       = 0,     // use default lease interval
+    uint32_t lease       = 24*3600,     // use default lease interval
              max_clients = 252;   //.0, .1, .254 and .255 are reserved
 
     if ((ip = q_atoip(argv[1],&mask)) == 0) {
@@ -1531,12 +1566,14 @@ static int cmd_wifi_dhcp(int argc, char **argv) {
     if (argc > 2)
       max_clients = q_atol(argv[2], max_clients);
 
-    if (argc > 3)
-      lease = q_atol(argv[3], lease);
+    if (!dhcp_server_set_ip_pool(ni, ip, max_clients))
+      q_print("% Failed to set IP pool address range\r\n");
 
-    bool was_started = dhcp_server_stop_if_started(ni);
-    // TODO:
-    dhcp_server_restart_if_was_started(ni, was_started);
+    if (argc > 3) {
+      lease = q_atol(argv[3], lease);
+      if (!dhcp_server_set_lease(ni, lease))
+        q_print("% Failed to set IP lease time\r\n");
+    }
   }
   return 0;
 }
