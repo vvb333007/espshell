@@ -63,7 +63,7 @@ static unsigned short CPUFreq  = 240,  // Default values (or "expected values")
 
 RTC_DATA_ATTR static uint32_t Sleep_count  = 0; // Number of times CPU returned from a sleep (deep + light).
 RTC_DATA_ATTR static uint32_t Reset_count2 = 0; // backup area
-__NOINIT_ATTR static uint32_t Reset_count;      // Number of times CPU was rebooted (including deep sleep reboots)
+RTC_NOINIT_ATTR static uint32_t Reset_count;      // Number of times CPU was rebooted (including deep sleep reboots)
 
 static unsigned char Reset_reason = 1;   // Last reset cause (index to Rr_desc). precached at startup
 static unsigned char Wakeup_source = 0;  // Wakeup source that caused wakeup event (index to Ws_desc)
@@ -76,41 +76,80 @@ static int Nap_alarm_set = 0;
 static uint64_t Nap_alarm_time = 0; // Sleep duration, microseconds (if wakeup source == timer only)
 static RTC_DATA_ATTR uint64_t Nap_alarm_time2 = 0; // Copy of Nap_alarm_time but in SLOW_MEM to survive deep sleep
 
+// It is initialized in this way because Espressif dev team often change enum by INSERTING new values
+// instead of appending them at the end. This makes it difficult to keep backward compatibility with older versions of
+// ESP-IDF so I think that supporting backward compatibility will not be my priority anymore
 
 // Reset reason human-readable
 static const char *Rr_desc[] = {
-    "<w>reason can not be determined",   "<g>board power-on",                   "<g>external (pin) reset",   "<g>reload command",
-    "<e>exception and/or kernel panic",  "<e>interrupt watchdog",               "<e>task watchdog",          "<e>other watchdog",
-    "<g>returning from a deep sleep",    "<w>brownout (software or hardware)",  "<i>reset over SDIO",        "<i>reset by USB peripheral",
-    "<i>reset by JTAG",                  "<e>reset due to eFuse error",         "<w>power glitch detected",  "<e>CPU lock up (double exception)"
-  };
+
+  [ESP_RST_UNKNOWN] = "<w>reason can not be determined",
+  [ESP_RST_POWERON] = "<g>board power-on",
+  [ESP_RST_EXT] = "<g>external (pin) reset",
+  [ESP_RST_SW] = "<g>reload command",
+  [ESP_RST_PANIC] = "<e>exception and/or kernel panic",
+  [ESP_RST_INT_WDT] = "<e>interrupt watchdog",
+  [ESP_RST_TASK_WDT] = "<e>task watchdog",
+  [ESP_RST_WDT] = "<e>other watchdog",
+  [ESP_RST_DEEPSLEEP] = "<g>returning from a deep sleep",
+  [ESP_RST_BROWNOUT] = "<w>brownout (software or hardware)",
+  [ESP_RST_SDIO] = "<i>reset over SDIO",
+  [ESP_RST_USB] = "<i>reset by USB peripheral",
+  [ESP_RST_JTAG] = "<i>reset by JTAG",
+  [ESP_RST_EFUSE] = "<e>reset due to eFuse error",
+  [ESP_RST_PWR_GLITCH] = "<w>power glitch detected",
+  [ESP_RST_CPU_LOCKUP] = "<e>CPU lock up (double exception)"
+
+};
 
 // Reset reason (per-core, ROM)
 static const char *Rr_desc_percore[] = { 
-    "", "Power on reset", "", "Software resets the digital core", "",     "Deep sleep resets the digital core",
-    "SDIO module resets the digital core", "Main watch dog 0 resets digital core", "Main watch dog 1 resets digital core",
-    "RTC watch dog resets digital core", "", "Main watch dog resets CPU", "Software resets CPU", 
-    "RTC watch dog resets CPU", "CPU0 resets CPU1 by DPORT_APPCPU_RESETTING", "Reset when the VDD voltage is not stable",
-    "RTC watch dog resets digital core and RTC module"
-  };
+
+    [RESET_REASON_CHIP_POWER_ON]   = "Power on reset",
+    [RESET_REASON_CORE_SW]         = "Software resets the digital core by RTC_CNTL_SW_SYS_RST",
+    [RESET_REASON_CORE_DEEP_SLEEP] = "Deep sleep reset the digital core",
+    [RESET_REASON_CORE_MWDT0]      = "Main watch dog 0 resets digital core",
+    [RESET_REASON_CORE_MWDT1]      = "Main watch dog 1 resets digital core",
+    [RESET_REASON_CORE_RTC_WDT]    = "RTC watch dog resets digital core",
+    [RESET_REASON_CPU0_MWDT0]      = "Main watch dog 0 resets CPU",
+    [RESET_REASON_CPU0_SW]         = "Software resets CPU by RTC_CNTL_SW_XXXCPU_RST",
+    [RESET_REASON_CPU0_RTC_WDT]    = "RTC watch dog resets CPU",
+    [RESET_REASON_SYS_BROWN_OUT]   = "VDD voltage is not stable and resets the digital core",
+    [RESET_REASON_SYS_RTC_WDT]     = "RTC watch dog resets digital core and rtc module",
+    [RESET_REASON_CPU0_MWDT1]      = "Main watch dog 1 resets CPU",
+    [RESET_REASON_SYS_SUPER_WDT]   = "Super watch dog resets the digital core and rtc module",
+    [RESET_REASON_SYS_CLK_GLITCH]  = "Glitch on clock resets the digital core and rtc module",
+    [RESET_REASON_CORE_EFUSE_CRC]  = "eFuse CRC error resets the digital core",
+    [RESET_REASON_CORE_USB_UART]   = "USB UART resets the digital core",
+    [RESET_REASON_CORE_USB_JTAG]   = "USB JTAG resets the digital core",
+    [RESET_REASON_CORE_PWR_GLITCH] = "Glitch on power resets the digital core",
+};
 
 // Deep-sleep wakeup source. Entries containing "(light sleep)" should never appear
 static const char *Ws_desc[] = {
-    "<w>an undefined event",
-    "",
-    "EXT0 (external signal, GPIO)",
-    "EXT1 (external signal, GPIOs)",
-    "a timer",
-    "a touchpad",
-    "the ULP co-processor/microcode",
-    "a GPIO (light sleep)",
-    "an UART (light sleep)",
-    "the WIFI (light sleep)",
-    "the CO-CPU (INT)",
-    "the CO-CPU (TRIG)",
-    "Bluetooth (light sleep)",
-    "<w>VAD",
-    "<w>VDD_BAT under voltage",
+    [ESP_SLEEP_WAKEUP_UNDEFINED] = "<w>an undefined event",
+    [ESP_SLEEP_WAKEUP_ALL] =  "",
+    [ESP_SLEEP_WAKEUP_EXT0] =  "EXT0 (external signal, GPIO)",
+    [ESP_SLEEP_WAKEUP_EXT1] =  "EXT1 (external signal, GPIOs)",
+    [ESP_SLEEP_WAKEUP_TIMER] =  "a timer",
+    [ESP_SLEEP_WAKEUP_TOUCHPAD] = "a touchpad",
+    [ESP_SLEEP_WAKEUP_ULP] =  "the ULP co-processor/microcode",
+    [ESP_SLEEP_WAKEUP_GPIO] =  "a GPIO (light sleep)",
+    [ESP_SLEEP_WAKEUP_UART] =  "an UART (light sleep)",
+#ifdef ESP_SLEEP_WAKEUP_UART1    
+    [ESP_SLEEP_WAKEUP_UART1] =  "an UART1 (light sleep)",
+    [ESP_SLEEP_WAKEUP_UART2] =  "an UART2 (light sleep)",
+#endif    
+    [ESP_SLEEP_WAKEUP_WIFI] =  "the WIFI (light sleep)",
+    [ESP_SLEEP_WAKEUP_COCPU] = "the CO-CPU (INT)",
+    [ESP_SLEEP_WAKEUP_COCPU_TRAP_TRIG] = "the CO-CPU (TRIG)",
+    [ESP_SLEEP_WAKEUP_BT] = "Bluetooth (light sleep)",
+#ifdef ESP_SLEEP_WAKEUP_VAD
+    [ESP_SLEEP_WAKEUP_VAD] = "<w>VAD",
+#endif    
+#ifdef ESP_SLEEP_WAKEUP_VBAT_UNDER_VOLT        
+    [ESP_SLEEP_WAKEUP_VBAT_UNDER_VOLT] = "<w>VDD_BAT under voltage",
+#endif    
   };
   
 
@@ -132,7 +171,8 @@ static void __attribute__((constructor)) _cpu_reset_sleep_init() {
       if ((Wakeup_source = (unsigned int )esp_sleep_get_wakeup_cause()) >= sizeof(Ws_desc)/sizeof(char *))
         Wakeup_source = 0;
       // FALLTHROUGH
-    case ESP_RST_USB:
+    //case ESP_RST_INT_WDT:
+    //case ESP_RST_USB:
     case ESP_RST_POWERON:
       Reset_count = Reset_count2;
       // FALLTHROUGH
@@ -141,6 +181,7 @@ static void __attribute__((constructor)) _cpu_reset_sleep_init() {
 
   // Reset_count is located in .noinit so it survives "reload" command. However, a deep sleep trashes .noinit section
   // so we have to restore Reset_count value from a memory which is resistant to deep sleep cycles - in RTC_SLOW_MEM
+  // TODO: the above comment is outdated. .rtc_noinit is used now
   Reset_count++;
   Reset_count2 = Reset_count; // backup copy 
 }
@@ -431,7 +472,7 @@ static int cmd_show_nap(UNUSED int argc, UNUSED char **argv) {
       q_printf("%% Enabled wakeup source: Touch sensor\r\n");
 
     if (Nap_alarm_set & (1<<ESP_SLEEP_WAKEUP_UART))
-      q_printf("%% Enabled wakeup source: UART RX\r\n");
+      q_printf("%% Enabled wakeup source: UART RX\r\n"); //TODO: display which UART
   }
   return 0;
 }
@@ -621,11 +662,13 @@ static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
                 core;
   
   unsigned int val,
-               sec = q_millis() / 1000,
+               sec = (uint32_t)(q_micros() / 1000000ULL), // better than 32bit millis, gives 136 years of uptime
                div = 60 * 60 * 24;
 
   static_assert(ESP_RST_CPU_LOCKUP == 15, "Code review is required");
-  // static_assert(ESP_SLEEP_WAKEUP_VBAT_UNDER_VOLT == 14, "Code review is required"); // FIXME:
+#ifdef ESP_SLEEP_WAKEUP_VBAT_UNDER_VOLT  
+  static_assert(ESP_SLEEP_WAKEUP_VBAT_UNDER_VOLT == 14, "Code review is required");
+#endif  
 
 #define XX(_Text, _Divider) do {\
   if (sec >= div) { \
@@ -650,8 +693,9 @@ static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
 
   // "Bootloader-style" reset reason (for each core):
   for (core = 0; core < portNUM_PROCESSORS; core++)
-    if ((i = esp_rom_get_reset_reason(core)) < sizeof(Rr_desc_percore) / sizeof(Rr_desc_percore[0]))
+    if ((i = esp_rom_get_reset_reason(core)) < sizeof(Rr_desc_percore) / sizeof(Rr_desc_percore[0])) {
       q_printf("%%    CPU%u: %s\r\n",core, Rr_desc_percore[i]);
+    }
 
 
   // Retreive and display sleep wakeup source

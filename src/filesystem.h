@@ -1054,7 +1054,7 @@ static EL_STATUS tab_pressed() {
 }
 
 // API for "cd .."
-//
+// Changes CWD (cwd is thread-local)
 //
 static bool files_cdup() {
 
@@ -1079,8 +1079,8 @@ static bool files_cdup() {
   else {
       
     // partition can be mounted under /a/b/c but /a, /a/b do not exist so
-    // "cd .." from "/a/b/c/" should not end up at "/a/b/"
-    // repeat "cd .." until we reach path that exists.
+    // "cd .." from "/a/b/c/" should not end up at "/a/b/":
+    // repeat "cd .." until we reach a path that exists.
     if (!files_path_exist_dir(Cwd))
       return files_cdup();
 
@@ -1090,24 +1090,48 @@ static bool files_cdup() {
 }
 
 // API for "cd"
+// Change CWD to filesystem's mount point
 //
 static bool files_cd_mount_point() {
   int i;
-  //"cd" with no path: go to the mountpoint.
+  // find the filesystem mountopint. Change to "/" if mountpoint is not found
   if ((i = files_mountpoint_by_path(files_get_cwd(), false)) < 0)
     files_set_cwd("/");
   else
     files_set_cwd(mountpoints[i].mp);
   return true;
 }
+// bool files_cd(const char *path)
+//
+// API for "cd", "cd ..", and "cd /asdasd/asdasd/.././../../ddfsdf"
+//
+// If /path/==NULL, then CWD is set to filesystem's mount point
+// If /path/=="" this functions does nothing
+// If /path/ is a valid absolute or relative path then this function extracts 1 element from the path, performs cd to that path element
+// and calls files_cd() recursively with rest of the path:
+//
+// E.g. input path argument is "/some/path/../other/path", then the execution sequence will be:
+// 1. Change to "/"
+// 2. Change to "some"
+// 3. Change to "path"
+// 4. Change to ".."
+// 5. Change to "other" and so on
+//
+// Max depth of recursion is limited to DIR_RECURSION_DEPTH
+//
+#define files_cd(_Path) files_rcd(_Path, 0)
 
-// API for "cd XXXX"
-//
-//
-static bool files_cd(const char *path) {
+// Actual code
+static bool files_rcd(const char *path, int recursion_depth) {
 
   int i = 0;
   char *element = NULL;
+
+  if (++recursion_depth > DIR_RECURSION_DEPTH) {
+    HELP(q_print("% Path is too long (>" xstr(DIR_RECURSION_DEPTH) " dirs).\r\n"
+                 "% Increase DIR_RECURSION_DEPTH macro in ESPShell"));
+    return false;
+  }
 
   // path == NULL? change to mountpoint
   if (path == NULL)
@@ -1117,10 +1141,9 @@ static bool files_cd(const char *path) {
   if (path[0] == '\0')
     return true;
   
-  // "xxx/.." :
-  // "../xxx" : change up and call files_cd() again for the rest of the path
-  // ./ : skip and call files_cd() for the rest of the path
-  
+  // Dots in the path.
+  // Change up on "..", do nothing on "."
+  //
   if (path[0] == '.') {
     if (path[1] == '.') {
       if (path[2] == '/' || path[2] == '\\' || path[2] == '\0') {
@@ -1137,12 +1160,16 @@ static bool files_cd(const char *path) {
   // Absolute path: change to root and call files_cd() for the rest of the path
   if (path[0] == '/' || path[0] == '\\') {
     //VERBOSE(q_printf("%% CD \r\n%% CD \"%s\"\r\n",path+1));
-    files_set_cwd("");
+    files_set_cwd("/");
     return files_cd(path + 1);
   }
 
   // Copy 1 path element (text up to a path separator) ("path/to/the/file.txt" has 4 elements)
-  // to the /element[]/
+  // to the /element[]/. Since we don't know the element size we assume MAX_PATH, which is 256 symbols: having 
+  // it as an array on a stack results in stack overflow if recursion depth is > 10-20, thats why we have to use malloc here.
+  // It CAN be declared global array despite the recursion, however this will not go well with multiple tasks performing
+  // "cd" operation at the same time. Having a global buffer protected with mutex is an overkill.
+  ///
   element = (char *)q_malloc(MAX_PATH, MEM_TMP);
   if (!element)
     return false;
@@ -1195,7 +1222,7 @@ static bool files_cd(const char *path) {
 }
 
 // "files"
-// switch to FileManager commands subtree
+// switch to the FileManager commands subtree
 //
 static int cmd_files_if(int argc, char **argv) {
 
@@ -1206,7 +1233,7 @@ static int cmd_files_if(int argc, char **argv) {
   if (Cwd == NULL)
     files_set_cwd("/");
   else
-    files_set_cwd(Cwd); // Special case (new buffer == internal buffer). Regenerate prompt;
+    files_set_cwd(Cwd); // Special case (new buffer == internal buffer). Regenerate the prompt;
   return 0;
 }
 
