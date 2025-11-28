@@ -1852,6 +1852,16 @@ KEYWORDS_DECL(main) {
           "% \"<i>wifi storage ram</>\"   - Keep configs in RAM"
         ), HELPK("WiFi interface commands") },
 
+  { "wifi", cmd_wifi_if, 2,
+    HELPK("% \"<b>wifi log enable|disable</>\"\r\n"
+          "%\r\n"
+          "% Enable or disable WiFi events display: e.g. connection, disconnectio\r\n"
+          "% IP address obtained and so on\r\n"
+          "%\r\n"
+          "% <u>Examples</>:\r\n"
+          "% \"<i>wifi log enable</>\" - Enable logging"
+        ), HELPK("WiFi interface commands") },
+
 #endif
 
   KEYWORDS_END

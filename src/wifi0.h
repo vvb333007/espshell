@@ -51,6 +51,9 @@
 //
 #define CACHE_NETIFS 1
 
+// Max WiFi connections 
+#define MAX_CONN 4
+
 // -- Globals --
 
 // Assorted WiFi settings 
@@ -61,6 +64,7 @@ static struct {
   bool prepared:1;          // WiFi stack is fully initialized?
   bool started:1;           // WiFi task started?
   bool sntp_enabled:1;      // NTP is enabled or not?
+  bool log:1;               // Display WiFi/IP events or not
 } Wifi = { 0 };             // All values are /false/ by default
 
 
@@ -204,7 +208,7 @@ static bool dhcp_server_set_dns_option() {
 
   was_started = dhcp_server_stop_if_started(apif);
 
-  VERBOSE(q_print("%% DHCP : DNS is included in DHCP Offer, restarting server\r\n"));
+  VERBOSE(q_print("% DHCP : DNS is included in DHCP Offer, restarting server\r\n"));
   esp_netif_dhcps_option(apif, 
                         ESP_NETIF_OP_SET,
                         ESP_NETIF_DOMAIN_NAME_SERVER,
@@ -215,28 +219,25 @@ static bool dhcp_server_set_dns_option() {
   return true;
 }
 
-#if 1
 // Set custom lease time in seconds
 //
 static bool dhcp_server_set_lease(esp_netif_t *apif, uint32_t lease0) {
 
-  bool was_started;
+  esp_err_t err;
   dhcps_time_t lease = lease0 ? lease0 : 24*3600;
 
   if (apif == NULL)
     return false;
 
-  was_started = dhcp_server_stop_if_started(apif);
-
-  if (ESP_OK != esp_netif_dhcps_option(apif,
+  if (ESP_OK != (err = esp_netif_dhcps_option(apif,
                                         ESP_NETIF_OP_SET,
                                         ESP_NETIF_IP_ADDRESS_LEASE_TIME,
                                         &lease,
-                                        sizeof(lease)))
-    q_print("% Failed to set the lease time\n");
-    
-  dhcp_server_restart_if_was_started(apif, was_started);
-  return true;
+                                        sizeof(lease)))) {
+    HELP(q_print("% Failed to add DHCP option (\"IP address lease time\")"));                                          
+  }
+
+  return ESP_OK == err;
 }
 
 // Set DHCP IP address range
@@ -254,10 +255,12 @@ static bool dhcp_server_set_ip_pool(esp_netif_t *apif, uint32_t ip_start, uint32
   if (apif == NULL)
     return false;
     
+  // Read AP's IP address & subnet mask to verify if pool address range
+  // is on the same subnet
   if (esp_netif_get_ip_info(apif, &ipx) == ESP_OK) {
     uint32_t mask = q_ntohl(ipx.netmask.addr);
     if ((ip_start & mask) == (q_ntohl(ipx.ip.addr) & mask)) {
-      was_started = dhcp_server_stop_if_started(apif);
+      esp_err_t err;
 
       // To properly calculate ip_end we need to know the subnet mask class.
       // Instead of messing with IP calculations we just assume class C network
@@ -274,22 +277,17 @@ static bool dhcp_server_set_ip_pool(esp_netif_t *apif, uint32_t ip_start, uint32
       dhcps_poll.start_ip.addr = q_htonl(ip_start);
       dhcps_poll.end_ip.addr = q_htonl(ip_end);
 
-      esp_netif_dhcps_option(apif, ESP_NETIF_OP_SET, REQUESTED_IP_ADDRESS, &dhcps_poll, sizeof( dhcps_poll ));
+      if (ESP_OK != (err = esp_netif_dhcps_option(apif, ESP_NETIF_OP_SET, REQUESTED_IP_ADDRESS, &dhcps_poll, sizeof( dhcps_poll )))) {
+        HELP(q_print("% Failed to add DHCP option (\"IP address range\")"));
+      }
 
-      dhcp_server_restart_if_was_started(apif, was_started);
-      return true;
+      return err == ESP_OK;
     } else
       q_print("% <e>Requested IP range must be on the interface subnet</>\r\n");
   } else
     q_print("% <e>Set interface IP address first</>\r\n");
   return false;
 }
-
- 
-
-
-
-#endif
 
 // IP Events handler instance
 //
@@ -302,20 +300,19 @@ static void ip_event_handler(void *arg, esp_event_base_t event_base, int32_t eve
       case IP_EVENT_STA_GOT_IP:
 
         ip_event_got_ip_t *got = (ip_event_got_ip_t *)event_data;
-        HELP(q_printf("%% WIFI STA: Protocol UP (Assigned IP: " IPSTR ", mask: " IPSTR ", gw: " IPSTR " (%schanged)\r\n",
+        HELP(if (Wifi.log) q_printf("\r\n%% WIFI STA: Protocol UP (assigned: " IPSTR "/%u, gate: " IPSTR "\r\n",
                           IP2STR(&got->ip_info.ip),
-                          IP2STR(&got->ip_info.netmask),
-                          IP2STR(&got->ip_info.gw),
-                          got->ip_changed ? "" : "not "));
+                          __builtin_popcount(got->ip_info.netmask.addr),
+                          IP2STR(&got->ip_info.gw)));
         if (!Wifi.ap_static_dns) {
-          HELP(q_print("% WIFI STA: propagating DNS servers to the AP interface..\r\n"));
+          HELP(if (Wifi.log) q_print("% WIFI STA: propagating DNS servers to the AP interface..\r\n"));
           sta_propagate_dns(got->esp_netif);
           dhcp_server_set_dns_option();
         }
         break;
 
       case IP_EVENT_STA_LOST_IP:
-        HELP(q_print("% WIFI STA: Protocol DOWN (IP address lost)\r\n"));
+        HELP(if (Wifi.log) q_print("\r\n% WIFI STA: Protocol DOWN (IP address lost)\r\n"));
         break;
 
       default:
@@ -333,44 +330,52 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
     switch(event_id) {
 
       case WIFI_EVENT_STA_CONNECTED:
-        HELP(q_print("% WIFI STA: Connected to the network, link UP. Waiting for protocol..\r\n"));
+        HELP(if (Wifi.log) q_print("\r\n% WIFI STA: Connected, link UP. Waiting for protocol layer..\r\n"));
         break;
 
       case WIFI_EVENT_STA_DISCONNECTED:
         wifi_event_sta_disconnected_t *event = (wifi_event_sta_disconnected_t*)event_data;
-        HELP(q_printf("%% WIFI STA: Disconnected (reason=%u, rssi=%d), link DOWN\r\n",event->reason, event->rssi));
+        HELP(if (Wifi.log) q_printf("\r\n%% WIFI STA: Disconnected (reason=%u, rssi=%d), link DOWN\r\n",event->reason, event->rssi));
+        if (event->reason == WIFI_REASON_ROAMING) {
+          HELP(if (Wifi.log) q_print("% WIFI STA: station roaming\r\n"));
+        } else
         // optional auto-reconnect
          if (Wifi.sta_reconnect) {
-           VERBOSE(q_print("% WIFI STA: Trying to reconnect..\r\n"));
-           // TODO: make a delayed call to the esp_wifi_connect() to prevent "connect" storm
+           HELP(if (Wifi.log) q_print("% WIFI STA: Trying to reconnect.. (disable reconnect with \"down\")\r\n"));
+           // TODO: make a delayed call to the esp_wifi_connect() to prevent "connect" storm.
            esp_wifi_connect(); 
          }
         break;
     
     // AP events
       case WIFI_EVENT_AP_START:
-        VERBOSE(q_print("% Access Point starting..\r\n"));
+        //VERBOSE(q_print("% Access Point starting..\r\n"));
         break;
 
       case WIFI_EVENT_AP_STOP:
-        VERBOSE(q_print("% Access Point shutting down..\r\n"));
+        //VERBOSE(q_print("% Access Point shutting down..\r\n"));
         break;
 
 
       case WIFI_EVENT_AP_STACONNECTED: {
         wifi_event_ap_staconnected_t *event = (wifi_event_ap_staconnected_t*) event_data;
-        HELP(q_printf("%% WIFI AP: " MACSTR " connected, (aid=%d, auth=OK))\r\n",MAC2STR(event->mac), event->aid)); 
+        HELP(if (Wifi.log) q_printf("\r\n%% WIFI AP: %02x%02x:%02x%02x:%02x%02x connected, (aid=%d, auth=OK))\r\n",
+                                    MAC2STR(event->mac),
+                                    event->aid)); 
         break;
       }
 
       case WIFI_EVENT_AP_STADISCONNECTED: {
         wifi_event_ap_stadisconnected_t *event = (wifi_event_ap_stadisconnected_t*) event_data;
-        HELP(q_printf("%% WIFI AP: Station#%d (" MACSTR ") disconnected (reason=%u))\r\n",event->aid, MAC2STR(event->mac),  event->reason)); 
+        HELP(if (Wifi.log) q_printf("\r\n%% WIFI AP: Station#%d (%02x%02x:%02x%02x:%02x%02x) disconnected (reason=%u))\r\n",
+                                    event->aid, 
+                                    MAC2STR(event->mac),
+                                    event->reason)); 
         break;
       }
 
       case WIFI_EVENT_AP_WRONG_PASSWORD:
-        VERBOSE(q_print("% WIFI AP: client connection failed (wrong password)\r\n"));
+        HELP(if (Wifi.log) q_print("\r\n% WIFI AP: client connection failed (wrong password)\r\n"));
         break;
 
       default:
@@ -405,14 +410,13 @@ static bool prepare_wifi_stack() {
   // Lets check if network interfaces are created already. We check for presence AP and STA interfaces,
   // and if found - skip WiFi initialization, set Wifi.prepared flag
   if ((get_staif() || get_apif()) && !Wifi.prepared) {
-    VERBOSE(q_print("% WiFi seems to be initialized by the sketch. Skipping WiFi init\r\n"));
+    HELP(q_print("% WiFi seems to be initialized by the sketch. Skipping WiFi init\r\n"));
     Wifi.prepared = true;
   }
 
   if (!Wifi.prepared) {
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    
 
     sntp_cfg.start = false;                       // start SNTP service explicitly (after connecting)
     sntp_cfg.server_from_dhcp = true;             // accept NTP offers from DHCP server, if any (need to enable *before* connecting)
@@ -451,9 +455,6 @@ static bool prepare_wifi_stack() {
     if (!get_apif())
       esp_netif_create_default_wifi_ap();
 
-    // initial SNTP init is done here, before user can configure it
-    //esp_netif_sntp_init(&sntp_cfg);
-
     Wifi.prepared = true;
   }
   // TODO: check other errors
@@ -468,11 +469,10 @@ static bool start_wifi_stack() {
   }
 
   if (!Wifi.started) {
-    if (esp_wifi_start() == ESP_OK) {
+    if (esp_wifi_start() == ESP_OK)
       Wifi.started = true;
-      VERBOSE(q_print("% WIFI started\r\n"));
-    } else {
-      VERBOSE(q_print("% WIFI failed to initialize\r\n"));
+    else {
+      HELP(if (Wifi.log) q_print("% WIFI failed to initialize\r\n"));
     }
   }
   return Wifi.started;
@@ -495,6 +495,34 @@ static void stop_wifi_stack() {
   Wifi.started = Wifi.prepared = false;
 }
 #endif
+
+
+static void show_sntp_servers() {
+
+  int found = 0;
+  char buff[INET6_ADDRSTRLEN];
+
+  if (Wifi.sntp_enabled) {
+    q_print("% List of configured NTP servers: ");
+    for (uint8_t i = 0; i < SNTP_MAX_SERVERS; ++i){
+      if (esp_sntp_getservername(i)) {
+        found++;
+        q_printf("%s, ", esp_sntp_getservername(i));
+      } else {
+        ip_addr_t const *ip = esp_sntp_getserver(i);
+        if (ipaddr_ntoa_r(ip, buff, sizeof(buff)) != NULL) {
+          found++;
+          q_printf("%s, ", buff);
+        }
+      }
+    }
+    if (!found)
+      q_print(" none\r\n");
+    else
+      q_print("\r\n");
+  }
+}
+
 
 // Display AP details
 //
@@ -596,6 +624,16 @@ static int cmd_wifi_storage(int argc, char **argv) {
   return ESP_OK == esp_wifi_set_storage(storage) ? 0 : CMD_FAILED;
 }
 
+// Enable/disable verbose event logging
+// "wifi log enable|disable"
+//
+static int cmd_wifi_log(int argc, char **argv) {
+
+  if (argc < 3)
+    return CMD_MISSING_ARG;
+  Wifi.log = !q_strcmp(argv[2],"enable");
+  return 0;
+}
 
 
 // "wifi ap|sta"
@@ -624,6 +662,9 @@ static int cmd_wifi_if(int argc, char **argv) {
   if (argc > 2) {
     if (!q_strcmp(argv[1],"storage"))
       return cmd_wifi_storage(argc, argv);
+    if (!q_strcmp(argv[1],"log"))
+      return cmd_wifi_log(argc, argv);
+
     return 1;
   }
 
@@ -675,31 +716,6 @@ static int cmd_wifi_kick(int argc, char **argv) {
   }
 
   return 0;
-}
-static void show_sntp_servers() {
-
-  int found = 0;
-  char buff[INET6_ADDRSTRLEN];
-
-  if (Wifi.sntp_enabled) {
-    q_print("% List of configured NTP servers: ");
-    for (uint8_t i = 0; i < SNTP_MAX_SERVERS; ++i){
-      if (esp_sntp_getservername(i)) {
-        found++;
-        q_printf("%s, ", esp_sntp_getservername(i));
-      } else {
-        ip_addr_t const *ip = esp_sntp_getserver(i);
-        if (ipaddr_ntoa_r(ip, buff, sizeof(buff)) != NULL) {
-          found++;
-          q_printf("%s, ", buff);
-        }
-      }
-    }
-  }
-  if (!found)
-    q_print(" none\r\n");
-  else
-    q_print("\r\n");
 }
 
 // "show wifi clients"
@@ -1536,7 +1552,7 @@ static int cmd_wifi_ntp(int argc, char **argv) {
   return 0;
 }
 
-// "dhcp START_IP_ADDRESS [MAX_CLIENTS=16 [TIMESPEC]]"
+// "dhcp START_IP_ADDRESS [MAX_CLIENTS [TIMESPEC]]"
 // "dhcp enable|disable"
 //
 static int cmd_wifi_dhcp(int argc, char **argv) {
@@ -1548,32 +1564,40 @@ static int cmd_wifi_dhcp(int argc, char **argv) {
     return CMD_MISSING_ARG;
 
   if (!q_strcmp(argv[1],"enable")) {
+
     HELP(q_print("% Enabling DHCP server..\r\n"));
     esp_netif_dhcps_start(ni);
+
   } else if (!q_strcmp(argv[1],"disable")) {
+
     HELP(q_print("% Disabling DHCP server..\r\n"));
     esp_netif_dhcps_stop(ni);
+
   } else {
+
     uint32_t ip, mask;
     uint32_t lease       = 24*3600,     // use default lease interval
              max_clients = 252;   //.0, .1, .254 and .255 are reserved
 
-    if ((ip = q_atoip(argv[1],&mask)) == 0) {
-      q_print("% Keywords \"enable\", \"enable\" or a valid IP address expected\r\n");
-      return CMD_FAILED;
-    }
+    if ((ip = q_atoip(argv[1],&mask)) == 0)
+      return 1;
 
     if (argc > 2)
       max_clients = q_atol(argv[2], max_clients);
 
-    if (!dhcp_server_set_ip_pool(ni, ip, max_clients))
-      q_print("% Failed to set IP pool address range\r\n");
+    bool was_started = dhcp_server_stop_if_started(ni);
 
-    if (argc > 3) {
-      lease = q_atol(argv[3], lease);
-      if (!dhcp_server_set_lease(ni, lease))
-        q_print("% Failed to set IP lease time\r\n");
-    }
+    if (dhcp_server_set_ip_pool(ni, ip, max_clients)) {
+      HELP(q_print("% New DHCP server IP pool address range set\r\n"));
+      if (argc > 3) {
+        lease = q_atol(argv[3], lease);
+        if (!dhcp_server_set_lease(ni, lease))
+          q_print("% <e>Failed to set IP lease time</>\r\n");
+      }
+    } else
+      q_print("% <e>Failed to set IP pool address range</>\r\n");
+
+    dhcp_server_restart_if_was_started(ni, was_started);
   }
   return 0;
 }
@@ -1621,7 +1645,7 @@ static int cmd_wifi_up(int argc, char **argv) {
 print_error_notice_and_exit:
 
       q_print("% No valid WiFi configuration found, use \"<i>up SSID [PASSWORD]</>\"\r\n"
-              "% Use \"<i>wifi storage flash</>\" to auto-save WiFi configuration for AP and STA\"\r\n");
+              "% Use \"<i>wifi storage flash</>\" to auto-save WiFi configuration\r\n");
       return CMD_MISSING_ARG;
     }
 
@@ -1648,7 +1672,7 @@ print_error_notice_and_exit:
         if (argc > 3)
           if (!q_strcmp(argv[3],"auto-connect"))
             Wifi.sta_reconnect = true;
-          HELP(q_print("% Auto-reconnect enabled\r\n"));
+          HELP(q_print("% Auto-reconnect is enabled\r\n"));
       }
     }
 
@@ -1699,7 +1723,7 @@ print_error_notice_and_exit:
         apc.ap.authmode = WIFI_AUTH_WPA2_PSK;
       }
 
-      apc.ap.max_connection = 4; // TODO: no magic numbers!
+      apc.ap.max_connection = MAX_CONN;
       // TODO: add auth AUTH keyword
       // read all the rest 
       for (int i = 3; i < argc; i++) {
@@ -1728,24 +1752,25 @@ static int cmd_wifi_down(int argc, char **argv) {
 
   THIS_INTERFACE(ifx);
 
-  // Check if interface is UP and RUNNING.
+  // Check if interface is UP and RUNNING. If it is down - do nothing, except disabling "auto-reconnect"
+  // because it may be connection attempts going in background
   //
   wifi_ap_record_t ap_info;
+
+  // Stop all active connection attempts
+  if (ifx == WIFI_IF_STA)
+    Wifi.sta_reconnect = false;
+
+  // If interface is up - shutdown it
   if (esp_netif_is_netif_up(ni) || (ifx == WIFI_IF_STA && esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK)) {
-    if (ifx == WIFI_IF_STA) {
-      Wifi.sta_reconnect = false;
+    if (ifx == WIFI_IF_STA)
       esp_wifi_disconnect();
-    }
-    else {
-      // TODO: set interface DOWN, link DOWN?
+    else if (ifx == WIFI_IF_AP)
       esp_wifi_set_mode(WIFI_MODE_STA);
-    }
   } else
     q_print("% Interface is down\r\n");
 
   return 0;
 }
-
-
 #endif // if compiling espshell
 
