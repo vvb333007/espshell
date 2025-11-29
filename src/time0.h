@@ -82,7 +82,7 @@ static void time_has_been_updated(const char *new_source) {
     Time.local_set = true;
     Time.src = new_source;
     Time.last_sync = q_micros();
-    HELP(q_printf("%% New system time/date has been set. (%s)\r\n", new_source ? new_source : "unspecified source"));
+    HELP(q_printf("\r\n%% New system time/date has been set. (%s)\r\n", new_source ? new_source : "unspecified source"));
 }
 
 // Return a month number by its name. "january" = 1.

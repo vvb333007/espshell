@@ -243,12 +243,9 @@ static const char *WelcomeBanner = "\033[H\033[2J%\r\n"
 
 static const char *Bye = "% Sayonara!\r\n";
 
-static const char *SpacesInPath = "<e>% Too many arguments.\r\n"
-                                  "% If your path contains spaces, please enter spaces as \"*\":\r\n"
-                                  "% Examples: \"cd Path*With*Spaces\",  \"rm /ffat/Program*Files\"</>\r\n";
 
 static const char *MultipleEntries = "% Processing multiple paths.\r\n"
-                                     "% Not what you want? Use asterisk (*) instead of spaces in the path\r\n";
+                                     "% Not what you want? Use quotes for paths with spaces\r\n";
 
 static const char *VarOops = "<e>% Oops :-(\r\n"
                              "% No registered variables to play with</>\r\n"

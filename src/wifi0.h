@@ -20,8 +20,6 @@
 //
 // TODO: static_assert(WIFI_CIPHER_UNKNOWN == 12, "Code review is required");
 // TODO: check error codes for all esp-idf functions
-// TODO: DHCP server address pool settings
-// TODO: DHCP address lease time settings
 
 #include "freertos/event_groups.h"
 #include <esp_wifi.h>
@@ -29,7 +27,7 @@
 #include <esp_mac.h>
 #include <esp_netif.h>
 #include <esp_phy.h>
-
+#include <esp_wifi_ap_get_sta_list.h>
 #include "nvs_flash.h"
 #include "lwip/sockets.h"
 #include "lwip/netdb.h"
@@ -43,6 +41,26 @@
 #include "dhcpserver/dhcpserver_options.h"
 #include "esp_netif_sntp.h"
 #include "esp_sntp.h"
+
+// -- MACROS --
+
+#define DHCP_OPT_OFFER_DNS 0x02                    // DHCP offer option
+#define up_down_str(X) ((X) == 0 ? "DOWN" : "UP")  //  conv. macro
+
+// Prologue macro for cmd_wifi_...() handlers. Supposed to be the first line of WiFi command handlers.
+//
+// Get current interface index (WIFI_IF_STA or WIFI_IF_AP) and also fetch corresponding esp_netif_t
+// structure address: commands "wifi ap|sta" and "show wifi ap|sta" autocreate AP/STA netifs so the 
+// address must not be NULL.
+//
+#define THIS_INTERFACE(_Ifx) \
+  wifi_interface_t _Ifx = (wifi_interface_t )context_get(); /* get command directory context */ \
+  __attribute__((unused)) esp_netif_t *ni = (_Ifx == WIFI_IF_AP) ? get_apif() : get_staif(); \
+  if (unlikely(_Ifx >= WIFI_IF_NAN || _Ifx < 0 || ni == NULL)) {\
+    q_print("% THIS_INTERFACE() : disrupted Context!\r\n"); \
+    return CMD_FAILED; \
+  }
+
 
 // espshell can either obtain esp_netif_t pointers via *search* every time OR search once and *cache* these pointers
 // assuming that interfaces are not deleted/recreated again. If a host sketch (sketch which uses espshell) **deletes**
@@ -192,8 +210,6 @@ static void dhcp_server_restart_if_was_started(esp_netif_t *apif, bool was_start
   }
 }
 
-#define DHCP_OPT_OFFER_DNS 0x02
-
 // Tells DHCP server (AP interface) to include DNS server information in its DHCP offer.
 // Results in DHCP server restart if it was started
 //
@@ -245,10 +261,10 @@ static bool dhcp_server_set_lease(esp_netif_t *apif, uint32_t lease0) {
 static bool dhcp_server_set_ip_pool(esp_netif_t *apif, uint32_t ip_start, uint32_t count) {
 
   uint32_t ip_end;
-  bool was_started;
+  
   esp_netif_ip_info_t ipx;
 
-  dhcps_lease_t dhcps_poll = {
+  dhcps_lease_t dhcps_pool = {
     .enable = true
   };
 
@@ -274,11 +290,11 @@ static bool dhcp_server_set_ip_pool(esp_netif_t *apif, uint32_t ip_start, uint32
           ip_end = ip_start + count;
       }
 
-      dhcps_poll.start_ip.addr = q_htonl(ip_start);
-      dhcps_poll.end_ip.addr = q_htonl(ip_end);
+      dhcps_pool.start_ip.addr = q_htonl(ip_start);
+      dhcps_pool.end_ip.addr = q_htonl(ip_end);
 
-      if (ESP_OK != (err = esp_netif_dhcps_option(apif, ESP_NETIF_OP_SET, REQUESTED_IP_ADDRESS, &dhcps_poll, sizeof( dhcps_poll )))) {
-        HELP(q_print("% Failed to add DHCP option (\"IP address range\")"));
+      if (ESP_OK != (err = esp_netif_dhcps_option(apif, ESP_NETIF_OP_SET, REQUESTED_IP_ADDRESS, &dhcps_pool, sizeof( dhcps_lease_t )))) {
+        HELP(q_print("% Failed to add a DHCP server option (\"IP address range\")"));
       }
 
       return err == ESP_OK;
@@ -388,7 +404,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 // Called by SNTP client when NTP server reply is received
 //
 static void time_sync_notification_cb(UNUSED struct timeval *tv) {
-    time_has_been_updated("NTP");
+    time_has_been_updated("NTP server");
 }
 
 
@@ -478,24 +494,6 @@ static bool start_wifi_stack() {
   return Wifi.started;
 }
 
-#if 0
-// Performs "unprepare" and "stop"
-// This is mainly for development purposes 
-static void stop_wifi_stack() {
-
-  if (Wifi.started)
-    esp_wifi_stop();
-
-  if (Wifi.prepared) {
-    esp_wifi_deinit();
-    esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler);
-    esp_event_handler_instance_unregister(IP_EVENT, ESP_EVENT_ANY_ID, &ip_event_handler);
-  }
-  
-  Wifi.started = Wifi.prepared = false;
-}
-#endif
-
 
 static void show_sntp_servers() {
 
@@ -534,12 +532,12 @@ static void display_ap_details(wifi_ap_record_t *ap, const char *requested_bssid
   if (likely(ap)) {
 
     if (requested_bssid == NULL) { // TODO: refactor display_ap_details, get rid of second parameter
-      snprintf(bssid_text,sizeof(bssid_text),"%02x%02x:%02x%02x:%02x%02x", ap->bssid[0], ap->bssid[1], ap->bssid[2], ap->bssid[3], ap->bssid[4], ap->bssid[5]);
+      snprintf(bssid_text,sizeof(bssid_text),"%02x%02x:%02x%02x:%02x%02x", MAC2STR(ap->bssid));
       requested_bssid = bssid_text;
     }
 
     // SSID, BSSID and Security
-    q_printf("%%\r\n%%<r>Information on AP \"%s\" (BSSID: %s)    </>\r\n%%\r\n", ap->ssid[0] ? (char *)ap->ssid : "[Hidden name]", requested_bssid);
+    //q_printf("%%\r\n%%<r>Access point \"%s\" (BSSID: %s)    </>\r\n%%\r\n", ap->ssid[0] ? (char *)ap->ssid : "[Hidden name]", requested_bssid);
     q_printf("%% Security: [%s], Pairwise cipher: %s, Group cipher: %s\r\n",
           Wifi_auth[ap->authmode],
           Wifi_cipher[ap->pairwise_cipher], 
@@ -593,19 +591,6 @@ static void display_ap_details(wifi_ap_record_t *ap, const char *requested_bssid
 
 // Handlers
 //
-// Prologue macro for cmd_wifi_...() handlers. Supposed to be the first line of WiFi command handlers.
-//
-// Get current interface index (WIFI_IF_STA or WIFI_IF_AP) and also fetch corresponding esp_netif_t
-// structure address: commands "wifi ap|sta" and "show wifi ap|sta" autocreate AP/STA netifs so the 
-// address must not be NULL.
-//
-#define THIS_INTERFACE(_Ifx) \
-  wifi_interface_t _Ifx = (wifi_interface_t )context_get(); /* get command directory context */ \
-  __attribute__((unused)) esp_netif_t *ni = (_Ifx == WIFI_IF_AP) ? get_apif() : get_staif(); \
-  if (unlikely(_Ifx >= WIFI_IF_NAN || _Ifx < 0 || ni == NULL)) {\
-    q_print("% THIS_INTERFACE() : disrupted Context!\r\n"); \
-    return CMD_FAILED; \
-  }
 
 
 // Set WiFi driver storage: NVS or RAM
@@ -688,7 +673,7 @@ static int cmd_wifi_if(int argc, char **argv) {
 }
 
 
-#include "esp_wifi_ap_get_sta_list.h"
+
 
 // esp32-ap>kick AID
 //
@@ -762,8 +747,7 @@ list_is_empty:
 
         q_printf("%%%3d| %02X%02X:%02X%02X:%02X%02X | %4d | %5u | " IPSTR "\r\n",
                  i+1,
-                 info->mac[0], info->mac[1], info->mac[2],
-                 info->mac[3], info->mac[4], info->mac[5],
+                 MAC2STR(info->mac),
                  info->rssi,
                  aid,
                  IP2STR(&pairs.sta[i].ip));
@@ -773,71 +757,6 @@ list_is_empty:
 
     return 0;
 }
-
-
- 
-
-// Display AP WIFI configuration
-//
-//
-static void show_wifi_ap_config(wifi_ap_config_t *c) {
-
-  q_printf("%%\r\n%% Network: \"%s\"%s, WIFI channel %u, max-conn: %u\r\n",
-            c->ssid, 
-            c->ssid_hidden ? " (hidden)"
-                           : "", 
-            c->channel,
-            c->max_connection);
-
-    q_printf("%%\r\n%% Authentication: [%s] , pairwise cipher: [%s]\r\n"
-             "%% SAE PWE derivation method: %d , SAE EXT feature: %sabled\r\n",
-            Wifi_auth[c->authmode],
-            Wifi_cipher[c->pairwise_cipher],
-            (int)c->sae_pwe_h2e,
-            c->sae_ext ? "en" : "dis");
-
-    q_printf("%%\r\n%% Beacon interval: %u (TU) , CSA count: %u, dtim period: %u (sec)\r\n"
-             "%% FTM responder: %sabled, PMF capable: %s, PMF required: %s\r\n",
-              c->beacon_interval,
-              c->csa_count,
-              c->dtim_period,
-              c->ftm_responder ? "en" : "dis",
-              c->pmf_cfg.capable ? "Yes" : "No",
-              c->pmf_cfg.required ? "Yes" : "No" );
-          
-}
-
-// Display arbitrary wifi_config_t (STA or AP only)
-//
-static void show_wifi_sta_config(wifi_sta_config_t *c) {
-
-  q_printf("%%\r\n%% Configured: SSID: \"<i>%s</>\" ",c->ssid);
-  if (c->bssid_set)
-    q_printf(", BSSID: %02x%02x:%02x%02x:%02x%02x\r\n",c->bssid[0],c->bssid[1],c->bssid[2],c->bssid[3],c->bssid[4],c->bssid[5]);
-  else
-    q_print(CRLF);
-
-    q_printf("%%\r\n%% Scan method: %s, channel: <i>%u</>\r\n"
-             "%% SAE PWE derivation method: %d , SAE PK mode: %u\r\n",
-            c->scan_method == WIFI_FAST_SCAN ? "Fast scan" : "All channels",
-            c->channel,
-            (int)c->sae_pwe_h2e,
-            (int)c->sae_pk_mode);
-
-    q_printf("%%\r\n%% Radio measurement: %s , BSS transition mgmt: %s, MBO: %sabled, FT: %sabled\r\n"
-             "%% OWE: %sabled, PMF capable: %s, PMF required: %s\r\n",
-              c->rm_enabled ? "<i>ON</>" : "Off",
-              c->btm_enabled ? "<i>ON</>" : "Off",
-              c->mbo_enabled ? "en" : "dis",
-              c->ft_enabled ? "en" : "dis",
-              c->owe_enabled ? "en" : "dis",
-              c->pmf_cfg.capable ? "Yes" : "No",
-              c->pmf_cfg.required ? "Yes" : "No" );
-
-}
-
-
-#define up_down_str(X) ((X) == 0 ? "DOWN" : "UP")
 
 
 // "show wifi ap|sta|clients"
@@ -907,28 +826,26 @@ static int cmd_show_wifi(int argc, char **argv) {
     q_printf("%% PHY TX power: %u mW\r\n", power / 4);
 
   if (esp_wifi_get_mac(ifx, mac) == ESP_OK)
-    q_printf("%% MAC address: <i>%02x%02x:%02x%02x:%02x%02x</>\r\n",mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
-
-
-  q_print("%\r\n");
+    q_printf("%% MAC address: <i>%02x%02x:%02x%02x:%02x%02x</>\r\n",MAC2STR(mac));
   
+  q_print("%\r\n% <r>IP information and services                        </>\r\n");
   if (ESP_OK == esp_netif_get_ip_info(ni, &ipi)) {
-    q_print("% <r>IP information and services                        </>\r\n");
+    
     if (ipi.ip.addr)
-      q_printf("%% IP address: <i>" IPSTR "</>, mask: " IPSTR ", gateway: " IPSTR "\r\n",
+      q_printf("%% IP address: <i>" IPSTR "/%u</>, gateway: " IPSTR "\r\n",
                 IP2STR(&ipi.ip),
-                IP2STR(&ipi.netmask),
+                __builtin_popcount(ipi.netmask.addr),
                 IP2STR(&ipi.gw));
     else
-      q_print("% No IP address set/obtained\r\n");
+      q_print("% IP address: none\r\n");
   }
 
   // DNS and NTP information
   esp_netif_get_dns_info(ni, ESP_NETIF_DNS_MAIN, &dnsi);
   if (dnsi.ip.u_addr.ip4.addr != 0)
-    q_printf("%% Main DNS: <i>" IPSTR "</>\r\n", IP2STR(&dnsi.ip.u_addr.ip4));
+    q_printf("%% Main DNS  : <i>" IPSTR "</>\r\n", IP2STR(&dnsi.ip.u_addr.ip4));
   else
-    q_printf("%% DNS servers are not set\r\n");
+    q_print("% DNS server: none\r\n");
   show_sntp_servers();
   
 
@@ -945,33 +862,46 @@ static int cmd_show_wifi(int argc, char **argv) {
   else
     esp_netif_dhcpc_get_status(ni, &status);
 
-  q_printf("%% DHCP %s is %s on the interface\r\n",
+  q_printf("%% DHCP %s: %s\r\n",
           (ifx == WIFI_IF_AP ? "server" : "client"),
-          (status == ESP_NETIF_DHCP_STARTED ? "<i>started</>" : "<w>stopped</>"));
+          (status == ESP_NETIF_DHCP_STARTED ? "<i>started</>" : "<w>inactive</>"));
 
-  
-  if (esp_netif_get_hostname(ni, &hostn) == ESP_OK)
+    if (esp_netif_get_hostname(ni, &hostn) == ESP_OK)
     q_printf("%% Host name (per-interface): \"<i>%s</>\"\r\n",hostn);
 
-
+  q_print("%\r\n% <r>WiFi Network:                                      </>\r\n");
   if (ifx == WIFI_IF_STA) {
     if (proto_up) {
-      q_printf("%% Connected to <b>%s</>, BSSID: %02x%02x:%02x%02x:%02x%02x\r\n",
+      q_printf("%% Connected to \"<b>%s</>\", (%02x%02x:%02x%02x:%02x%02x)\r\n",
                 ap_info.ssid[0] ? (const char *)&ap_info.ssid[0] : "a <i>hidden network",
-                ap_info.bssid[0],ap_info.bssid[1],ap_info.bssid[2],ap_info.bssid[3],ap_info.bssid[4],ap_info.bssid[5]);
+                MAC2STR(ap_info.bssid));
 
         display_ap_details(&ap_info, NULL);
     } else {
-      q_print("% <i>Not connected</> to any Access Point\r\n");
-      show_wifi_sta_config(&conf.sta);
-    }
+      q_print("% Not connected to any Access Point\r\n");
+      
+      q_printf("%%\r\n%% Configured: SSID: \"<i>%s</>\" ",conf.sta.ssid);
+      if (conf.sta.bssid_set)
+        q_printf(", BSSID: %02x%02x:%02x%02x:%02x%02x\r\n", MAC2STR(conf.sta.bssid));
+      else
+        q_print(CRLF);
 
+      q_printf("%% Scan method: %s, channel: <i>%u</>\r\n",
+                conf.sta.scan_method == WIFI_FAST_SCAN ? "Fast scan" : "All channels",
+                conf.sta.channel);
+    }
   } else if (ifx == WIFI_IF_AP) {
-      q_printf("%% Advertises as <b>%s</>%s\r\n",
-                  conf.ap.ssid,
-                  !conf.ap.ssid[0] || conf.ap.ssid_hidden ? " (hidden)"
-                                                          : "");
-      show_wifi_ap_config(&conf.ap);
+
+    q_printf("%% Network: \"%s\"%s, WIFI channel %u, max-conn: %u\r\n",
+            conf.ap.ssid, 
+            conf.ap.ssid_hidden ? " (hidden)" : "", 
+            conf.ap.channel,
+            conf.ap.max_connection);
+
+    q_printf("%% Authentication: [%s] , pairwise cipher: [%s]\r\n",
+            Wifi_auth[conf.ap.authmode]+2,
+            Wifi_cipher[conf.ap.pairwise_cipher]);
+
   }
 
   return 0;
@@ -1128,6 +1058,8 @@ print_error_and_return:
         if (!detail)
           q_print("%<r> # |Ch| Network Name (SSID)             | AP MAC (BSSID) | RSSI | Security     </>\r\n"
                      "% --+--+---------------------------------+----------------+------+--------------\r\n");
+        
+          
 
         // Run through array of found networks, print out AP information
         // If we were scanning a specific BSSID then ap array is usually 1 element long (ap_count == 1)
@@ -1139,8 +1071,13 @@ print_error_and_return:
           // found matches with what was requested. just in case :)
           //
           if (detail) {
-            if (!memcmp(bssid, ap->bssid, sizeof(bssid)))
+            if (!memcmp(bssid, ap->bssid, sizeof(bssid))) {
+              q_printf("%%\r\n%%<r>Access point \"%s\" (BSSID: %02x%02x:%02x%02x:%02x%02x)</>\r\n%%\r\n",
+                          ap->ssid[0] ? (char *)ap->ssid : "[Hidden name]",
+                          MAC2STR(ap->bssid));
               display_ap_details(ap,argv[bidx]);
+              // TODO: return here?
+            }
           } else {
             // For the "table view" we print out lines (1 line for every AP) with brief information
             // on every found network
@@ -1148,7 +1085,7 @@ print_error_and_return:
                       i + 1,
                       ap->primary,
                       ap->ssid[0] ? (char *)ap->ssid : "hidden",
-                      ap->bssid[0], ap->bssid[1], ap->bssid[2],ap->bssid[3], ap->bssid[4], ap->bssid[5],
+                      MAC2STR(ap->bssid),
                       ap->rssi);
 
             if (ap->authmode < sizeof(Wifi_auth)/sizeof(Wifi_auth[0]))
