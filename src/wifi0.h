@@ -1187,39 +1187,65 @@ print_error_and_return:
 
 // ip address dhcp|A.B.C.D/M [gw A.B.C.D|dns A.B.C.D [A.B.C.D]]*
 //
+// This same function is used as a handler for both STA and AP interface.
+// Sets dynamic (DHCP) static IP address, dynamic or static DNS server addresses and the default gateway
+// address
+//
 static int cmd_wifi_ip_address(int argc, char **argv) {
 
-  uint32_t ip = 0, mask = 0xffffff00, gw = 0, dns1 = 0, dns2 = 0;
+  uint32_t ip = 0,              // ip address value, host order. for DHCP the value of /ip/ is set to 0
+           mask = 0xffffff00,   // subnet mask. optional
+           gw = 0,              // gateway, optional. If omitted then /gw/ is set to interface IP address
+           dns1 = 0,            // Main DNS server address
+           dns2 = 0;            // Backup DNS server address
+
+
+  // all ip/masks are in host byte-order
   esp_netif_ip_info_t ipi = { 0 };
   esp_err_t ret;
   
+  // Fetch current interface index (/ifx/) and a pointer to esp_netif_t (/ni/)
   THIS_INTERFACE(ifx);
 
   if (argc < 3)
     return CMD_MISSING_ARG;
 
+  
   if (!q_strcmp(argv[2],"dhcp")) {
     if (ifx == WIFI_IF_AP) {
-      q_print("% AP must have a static IP address (e.g. default 192.168.4.1/24)\r\n");
+      HELP(q_print("% <e>an AP must have a static IP address (e.g. default 192.168.4.1/24)</>\r\n"));
       return CMD_FAILED;
     }
   } else {
     
     // Read IP address and mask. If mask is not provided (i.e. "1.2.3.4" instead of "1.2.3.4/24")
-    // then we assume mask to be 255.255.255.0
+    // then we assume mask to be 255.255.255.0. 
     //
     if ((ip = q_atoip(argv[2], &mask)) == 0) {
-//bad_static_ip_address:
-      q_print("% Invalid address/mask. (a valid example: \"192.168.5.1/24\")\r\n");
+      q_print("% <e>Address/mask combination can not be set. (try \"192.168.5.1/24\")</>\r\n");
+print_note_and_return:
+      HELP(q_print("% Interface address was not changed\r\n"));
       return CMD_FAILED;
     }
 
-    if (mask == 0xffffffffUL) {
+    // Check if the netmask is ok:
+    // Absence of the mask or invalid masks like /0 or /32 are treated
+    // as if there was no subnet mask provided.
+    //
+    if (mask == 0xffffffffUL || mask == 0) {
       mask = 0xffffff00;
-      q_print("% Mask defaults to /24\r\n");
+      HELP(q_print("% Subnet mask is not provided, assuming \"/24\" (Class C network)\r\n"));
     }
 
-    // TODO: check if new IP address is a valid unicast address.
+    // Check if the new IP address is a valid unicast address:
+    // 1. /ip/ must NOT be zero (i.e. host portion of the address must not be zero)
+    // 2. /ip/ must not be broadcast (i.e. host portion of the address must not be all-one)
+    //
+    if (/*1.*/ ((ip & ~mask) == 0) || /*2. */(((ip & (~mask)) | mask) == 0xffffffffUL)) {
+      q_print("% <e>Interface address must be a valid unicast address</>\r\n");
+      goto print_note_and_return;
+    }
+
 
     // Check if IP address conflicts with other existing addresses: IP address of any interface
     // must be on a separate subnet. Read IP addresses from all interfaces and check if this new
@@ -1239,37 +1265,47 @@ static int cmd_wifi_ip_address(int argc, char **argv) {
       ip_other = q_ntohl(ipi.ip.addr);
       mask_other = q_ntohl(ipi.netmask.addr);
 
-      if ((ip_other & mask_other) == (ip & mask_other)) {
-        HELP(q_printf("%% <e>New IP address belongs to %s interface subnet</>\r\n", ifx == WIFI_IF_AP ? "STA" : "AP"));
-        return CMD_FAILED;
-      }
-    }
-  }
+      // Take wider mask
+      if (~mask_other < ~mask)
+        mask_other = mask;
 
-    //Read gateway and dns servers. Start from argv[3] till the end
-    //
-    for (int i = 3; i < argc; i++) {
-      if (!q_strcmp(argv[i],"gw")) {
-        i++;
-        if (i < argc) {
-          if ((gw = q_atoip(argv[i], NULL)) == 0) {
-            q_print("% Invalid default gateway address\r\n");
-            return CMD_FAILED;
-          }
+      if ((ip_other & mask_other) == (ip & mask_other)) {
+        q_printf("%% <e>New IP address belongs to %s interface subnet</>\r\n", ifx == WIFI_IF_AP ? "STA" : "AP");
+        goto print_note_and_return;
+      }
+      // Ok all checks were passed. Fallthrugh
+    }
+  } // if (argv[1] != "dhcp")
+
+  //Read the gateway and dns addresses (if supplied). Start from argv[3] till the end
+  // (argv[0]==ip argv[1]==address argv[2]==A.B.C.D/M argv[3]== ... )
+  //
+  // It is possible to set static DNS and/or a gateway while obtain other settings from a DHCP server.
+  // So we always expect to have "gw" and "dns" keywords even if ip address is set to dhcp: "ip address dhcp dns 8.8.8.8"
+  //
+  for (int i = 3; i < argc; i++) {
+    if (!q_strcmp(argv[i],"gw")) {
+      i++;
+      if (i < argc) {
+        if ((gw = q_atoip(argv[i], NULL)) == 0) {
+          q_print("% Invalid default gateway address\r\n");
+          goto print_note_and_return;
         }
-      } else if (!q_strcmp(argv[i],"dns")) {
-        i++;
-        if (i < argc) {
-          uint32_t *p = dns1 ? &dns2 : &dns1;
-          if ((*p = q_atoip(argv[i], NULL)) == 0) {
-            q_print("% Invalid DNS address\r\n");
-            return CMD_FAILED;
-          }
+      }
+    } else if (!q_strcmp(argv[i],"dns")) {
+      i++;
+      if (i < argc) {
+        uint32_t *p = dns1 ? &dns2 : &dns1;
+        if ((*p = q_atoip(argv[i], NULL)) == 0) {
+          q_print("% Invalid DNS address\r\n");
+          goto print_note_and_return;
         }
-      } else
-        return i;
-    } // for every DNS and GW 
-  
+      }
+    } else
+    // unrecognized keyword at position /i/
+      return i;
+  } // for every "dns" and "gw" keywords
+
 
   // Arguments are read. Process them
   //
