@@ -138,7 +138,7 @@ static __attribute__((constructor)) void __ifc_init() {
   task_t ifc_handle = NULL; // daemon task id
 
   if ((ifc_mp = mpipe_create(MPIPE_CAPACITY)) != MPIPE_INIT) {
-    if ((ifc_handle = task_new(ifc_task, NULL, "ifcond")) != NULL) {
+    if ((ifc_handle = task_new(ifc_task, NULL, "ifcond", shell_core)) != NULL) {
       task_set_priority(ifc_handle, IFCOND_PRIORITY); 
     } else {
 

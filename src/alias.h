@@ -424,7 +424,8 @@ static int alias_exec_in_background_delayed(struct alias *al, uint32_t delay_ms)
       ha->delay_ms = delay_ms;
       return task_new(alias_helper_task,
                       ha,
-                      al->name) == NULL ? CMD_FAILED : 0;
+                      al->name,
+                      shell_core) == NULL ? CMD_FAILED : 0;
     }
   return CMD_FAILED;
 }

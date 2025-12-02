@@ -28,6 +28,8 @@
 // Cases 1 and 2 use so-called "helper argument" or helper_arg to pass parameters to the task (see ha_get())
 // to initialize their environment (Context, keywords and Cwd). Case 3 does not do any setup and as a result, these
 // generic tasks must not access Context, keywords or Cwd thread-local variables
+//
+// TODO: disable task watchdogs on all cores!
 
 #if COMPILING_ESPSHELL
 
@@ -44,14 +46,14 @@ extern task_t  loopTaskHandle; // task handle of a task which calls Arduino's lo
 static task_t  shell_task = 0; // Main espshell task handle
 static uint8_t shell_prio = 0; // Default shell priority (IDLE. Inherited by spawned tasks)
 
-// CPU core number ESPShell is running on. For single core systems it is always 0
+// CPU core number ESPShell is running on. For a single core system it is always 0.
 // Tasks, that are created by ESPShell are pinned to the "shell_core"
 //
-// TODO: make it a convar; add ability to set NO_AFFINITY value
+// TODO: make it a convar;
 //
 
+// Workaround for USB-CDC (see https://github.com/espressif/arduino-esp32/issues/11959)
 #if (portNUM_PROCESSORS > 1)
-// https://github.com/espressif/arduino-esp32/issues/11959
 #  if SERIAL_IS_USB
 #    define CHANGE_CORE 0
 #  else
@@ -70,15 +72,20 @@ static uint8_t shell_core = 0;
 #define SIGNAL_KILL 2  // Force task deletion. This value can be sent but can't be received
 #define SIGNAL_HUP  3  // "Reinitialize/Re-read configuration" (Unused, for future extensions)
 
+//
+// void taskid_remember(task_t handle);
+// void taskid_forget(task_t handle);
+//
 // Remember & Forget task IDs. We only need these if we are running
-// on old Arduino Core version, where TraceUtility is disabled
+// on old Arduino Core version, where TraceFaclity is disabled: so we maintain the list
+// of running tasks.
 //
 #if CONFIG_FREERTOS_USE_TRACE_FACILITY  // New Arduino Core
 #  define taskid_remember(value) {}     //  do nothing
 #  define taskid_forget(value) {}       //  do nothing
 #else                                   // Old Arduino Core
 static vsa_t *task_list = 0;            //  variable-sized array to hold active tasks list
-#  warning "TraceUtility is disabled in ESP-IDF: Limited task module functionality"
+#  warning "TraceFacility is disabled in ESP-IDF: Limited task module functionality"
 #  define taskid_remember(value) \
        vsa_find_slot(&task_list, NULL, value, true) 
 
@@ -91,43 +98,70 @@ static vsa_t *task_list = 0;            //  variable-sized array to hold active 
      }
 #endif // !CONFIG_FREERTOS_USE_TRACE_FACILITY
 
+// task_t taskid_self();
+//
 // Get current task id
+//
 #define taskid_self() \
   xTaskGetCurrentTaskHandle()
 
+// unsigned int task_get_priority(task_t handle);
+//
 // Get task priority
+//
 #define task_get_priority(_TaskID) \
   ((unsigned int)uxTaskPriorityGet(_TaskID))
 
+// unsigned int task_set_priority(task_t handle, uint8_t priority);
+//
 // Set task priority
+//
 #define task_set_priority(_TaskID, _Prio) \
   vTaskPrioritySet(_TaskID, _Prio)
 
+// void task_resume(task_t handle);
+//
 // Resume
 #define task_resume(_TaskID) \
   vTaskResume(_TaskID)
 
+// void task_suspend(task_t handle);
+//
 // Suspend
 #define task_suspend(_TaskID) \
   vTaskSuspend(_TaskID)
 
-// Kill
+// void task_kill(task_t handle);
+//
+// Destroy task. 
+//
 #define task_kill(_TaskID) \
   vTaskDelete(_TaskID)
 
+// void task_kill_self();
 // 
+// Must be called by every task when task finishes its execution:
+// In FreeRTOS simple "return" from a task is not allowed. Instead task_kill_self() must be called.
+// This function does not return (has __attribute__((noreturn)))
+//
 #define task_kill_self() \
   vTaskDelete(NULL)
 
+// task_t task_by_name(const char *name);
+//
+// Find a task handle
+//
 #define task_by_name(_Name) \
   xTaskGetHandle(_Name)
 
 
+// task_t task_new(TaskFunction_t func, void *arg_for_func, const char *task_name, uint8_t core);
+//
 // Start a new thread on the same core espshell is running, remember the task_id.
 // With trace facility enabled, this and other macros here have zero overhead comparing to plain FreeRTOS API
-// TODO: add "_Core" parameter
 //
-#define task_new(_Func, _Arg, _Name) \
+//
+#define task_new(_Func, _Arg, _Name, _Core) \
   ({ \
     task_t handle = NULL; \
     if (pdPASS == xTaskCreatePinnedToCore((TaskFunction_t)_Func, \
@@ -136,17 +170,19 @@ static vsa_t *task_list = 0;            //  variable-sized array to hold active 
                                           _Arg, \
                                           shell_prio, /*TODO: uxTaskPriorityGet(NULL) ?*/ \
                                           &handle, \
-                                          shell_core)) \
+                                          _Core)) \
       taskid_remember(handle); \
     handle; \
   })
 
 // Must be called by a task to finish its execution:
-// FreeRTOS can not handle "return" from the task function. Instead, vTaskDelete must be called
+// FreeRTOS can not handle "return" from the task function. Instead, vTaskDelete must be called.
+// Dispose all per-thread variables here
 // TODO: Since Cwd is a thread-local variable, which is malloc()'ed, we dispose it here also
 #define task_finished() \
   { \
     taskid_forget(taskid_self()); \
+    task_return_memory(); \
     task_kill_self(); \
   }
 
@@ -167,6 +203,15 @@ static vsa_t *task_list = 0;            //  variable-sized array to hold active 
       portYIELD_FROM_ISR(); \
   }
 
+// When task is created, there are some memory buffers get allocated: CWD for the filesystem, CWD for the NVS editor
+// When task is destroyed we release that allocated memory to the system
+//
+static void task_return_memory() {
+#if WITH_FS  
+//files_set_cwd(NULL); //TODO: carefully check all calls to this befory commiting new changes
+#endif
+}
+
 // Block until any signal is received but not longer than /timeout/ milliseconds. Value of 0xffffffff (DELAY_INFINITE) means "infinite timeout":
 // function will block until it receives ANY signal; the signal value is returned in /*sig/, pointer can be NULL;
 // 
@@ -179,7 +224,7 @@ static bool task_wait_for_signal(uint32_t *sig, uint32_t timeout_ms) {
   uint32_t sig0;
 
   // portMAX_DELAY is not an infinite value, it is 0xffffffff which is about 1200 hours
-  // thats we have /loop/ flag here
+  // thats why we have /loop/ flag here
   if (timeout_ms == DELAY_INFINITE) {
     timeout_ms = portMAX_DELAY;
     loop = true;
@@ -282,14 +327,16 @@ static inline const char *files_get_cwd();
 static struct helper_arg *ha_get() {
 
   struct helper_arg *ret;
-
+  
+  // ret = ha_unused
+  // ha_unused = ret->next
   do {
     if ((ret = atomic_load(&ha_unused)) == NULL)
       break;
   } while(!atomic_compare_exchange_strong( &ha_unused, &ret, ret->next));
 
   if (!ret)
-    ret = (struct helper_arg *)q_malloc(sizeof(struct helper_arg ), MEM_TMP);
+    ret = (struct helper_arg *)q_malloc(sizeof(struct helper_arg ), MEM_TMP); // TODO: use dedicated MEM_HA
 
   // Fill common fields: /Context/, /keywords/ and /Cwd/. These fields will be used by a spawned task,
   // to set corresponding "global" (actually, __thread) variables.

@@ -66,7 +66,7 @@ static const struct campins {
   {"wrover-kit",         {-1,-1,   21,   26,27,   35,34,39,36,19,18,5,4,    25,23,22}, "Freenove ESP32-Wrover CAM Board"},
 
   {"esp-eye",            {-1,-1,    4,   18,23,   36,37,38,39,35,14,13,34,   5,27,25}, "ESP-EYE (esp32, led is on pin22)"},
-  {"esp32s3-eye",        {-1,-1,   15,     4,5,    11,9,8,10,12,18,17,16,     6,7,13}, "ESP-EYE on ESP32-S3"},
+  {"esp32s3-eye",        {-1,-1,   15,     4,5,    11,9,8,10,12,18,17,16,     6,7,13}, "ESP-EYE on ESP32-S3 (leds at io2 and io48)"},
 
   {"t-cam",              {-1,-1,    4,   18,23,   36,37,38,39,35,26,13,34,   5,27,25}, "TTGO T-Camera Plus"},
   {"t-campir",           {-1,-1,    32,  13,12,   39,36,23,18,15,4,14,5,     5,27,25}, "TTGO T-Camera with PIR sensor"},

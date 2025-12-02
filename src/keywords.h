@@ -189,6 +189,20 @@ static int cmd_wifi_dhcp(int, char **);
 static int cmd_wifi_kick(int, char **);
 #endif
 
+// NVS editor/viewer
+#if WITH_NVS
+static int cmd_nvs_if(int, char **);
+static int cmd_nvs_cd(int, char **);
+static int cmd_nvs_ls(int, char **);
+static int cmd_nvs_rm(int, char **);
+static int cmd_nvs_set(int, char **);
+static int cmd_nvs_new(int, char **);
+static int cmd_nvs_dump(int, char **);
+#  if WITH_FS
+static int cmd_nvs_import(int, char **);
+static int cmd_nvs_export(int, char **);
+#  endif
+#endif
 
 // -- Commands and Subdirectories --
 //
@@ -1168,6 +1182,96 @@ KEYWORDS_DECL(files) {
 KEYWORDS_REG(files)
 #endif  //WITH_FS
 
+#if WITH_NVS
+// NVS editor/viewer commands
+KEYWORDS_DECL(nvs) {
+
+  KEYWORDS_BEGIN
+
+  { "ls", cmd_nvs_ls, MANY_ARGS,
+    HELPK("% \"<b>ls [PATH]</>\r\n"
+          "%\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>ls /</>      - Displays list of a namespaces\r\n"
+          "%   <i>ls phy</>    - Displays entries of the \"phy\" namespace\r\n"
+          "%   <i>ls ../phy</> - Displays entries of the \"phy\" namespace\r\n"
+          "%   <i>ls</>        - Depending on a current namespace either list key/values\r\n"
+          "%                     or displays list of namespaces"),
+    HELPK("Show NVS directory content") },
+
+  { "cd", cmd_nvs_cd, 1,
+    HELPK("% \"<b>cd /</>\r\n"
+          "% \"<b>cd ..</>\r\n"
+          "% \"<b>cd NAMESPACE</>\r\n"
+          "%\r\n"
+          "% Change current namespace.\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>cd /</>    - Go to the root directory\r\n"
+          "%   <i>cd ..</>   - Go to the root directory\r\n"
+          "%   <i>cd phy</>  - Go to the \"phy\" namespace\r\n"
+          "%   <i>cd /phy</> - Go to the \"phy\" namespace"),
+    HELPK("Change name space directory") },
+
+
+  { "rm", cmd_nvs_rm, 1,
+    HELPK("% \"<b>rm</> <i>* | NAMESPACE | KEY</>\"\r\n"
+          "%\r\n"
+          "% Remove NVS entries. Removes namespaces or/and key/value pairs\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>rm phy</>  Remove namespace or a key in a current namespace\r\n"
+          "%   <i>rm /phy</> Remove namespace \"phy\"\r\n"
+          "%   <i>rm *</>    Remove content of a current directory\r\n"
+          "%                 Executed in the root (\"/\") directory wipes NVS\r\n"
+          "%   <i>rm /</>    Wipe NVS storage\r\n"
+          ),
+    HELPK("Remove entries") },
+
+  { "new", cmd_nvs_new, MANY_ARGS,
+    HELPK("% \"<b>new</> C-TYPE KEY VALUE \"\r\n"
+          "%\r\n"
+          "% Create new KEY/VALUE pair in a current namespace\r\n"
+          "% C-TYPE is one of simple scalar C types, like \"signed char\" or \"unsigned long long\"\r\n"
+          "% NOTE: If type is \"char *\" then VALUE is treated as a null-terminated string\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>new char Version 0x12</>   - Creates a key named Version with value of 18\r\n"
+          "%   <i>new unsigned int Z 0xffffffff</> - Creates a key named Z with value of 0xffffffff\r\n"
+          "%   <i>new char * Version 0x12</> - ... with value of \"0x12\" (a string)\r\n"
+          ),
+    HELPK("Create entries") },
+
+
+  { "set", cmd_nvs_set, 2,
+    HELPK("% \"<b>set KEY VALUE</>\"\r\n"
+          "%\r\n"
+          "% Set NVS key to new value"),
+    HELPK("Set new value") },
+
+  { "dump", cmd_nvs_dump, 1,
+    HELPK("% \"<b>dump KEY</>\"\r\n"
+          "%\r\n"
+          "% Display binary blobs"),
+    HELPK("Display binary blobs") },
+#if WITH_FS
+  { "export", cmd_nvs_export, 1,
+    HELPK("% \"<b>export [-c] /PATH</>\"\r\n"
+          "%\r\n"
+          "% Export NVS partition as a binary or CSV file\r\n"
+          "% -c key is used to store text CSV file, default is to store a binary"),
+    HELPK("Export NVS") },
+
+  { "import", cmd_nvs_import, 1,
+    HELPK("% \"<b>export [-c] /PATH</>\"\r\n"
+          "%\r\n"
+          "% Import NVS partition from a binary or CSV file\r\n"
+          "% -c key is used to treat /PATH as text CSV file"),
+    HELPK("Export NVS") },
+#endif //WITH_FS
+
+  KEYWORDS_END
+};
+KEYWORDS_REG(nvs);
+#endif //WITH_NVS
+
 // root directory commands
 // These commands are available immediately after espshell startup, they are also available inside of
 // of any other subderictory
@@ -1381,6 +1485,16 @@ KEYWORDS_DECL(main) {
           "%\r\n"
           "% Enter files & file system operations mode"),
     "File system access" },
+#endif
+#if WITH_NVS
+  { "nvs", cmd_nvs_if, MANY_ARGS,
+    HELPK("% \"<b>nvs [PARTITION_NAME]</>\"\r\n"
+          "%\r\n"
+          "% <u>Examples:</u>\r\n"
+          "% <i>nvs</i>           - Edit/view NVS\r\n"
+          "% <i>nvs CustomNVS</i> - Edit/view NVS located on partition CustomNVS\r\n"
+          ),
+    "Non-Volatile Storage access" },
 #endif
 
   // "show iomux" goes first, to define a /.brief/ for subsequent entries.
@@ -2098,9 +2212,9 @@ static __thread const struct keywords_t *keywords = KEYWORDS(main);
 
 // Called from cmd_uart_if(), cmd_i2c_if(),cmd_seq_if() and cmd_files_if and others to set a new command list (command directory); 
 // displays user supplied text,  returns a pointer to the keywords tree used before
-// TODO: make Context to be of "void *" type. Change all functions accordingly. This is for planned 64 bit
+//
 static const struct keywords_t *change_command_directory(
-                                    unsigned int context,         // An arbitrary number which will be stored until next directory change
+                                    uintptr_t context,            // An arbitrary number which will be stored until next directory change
                                     const struct keywords_t *dir, // New command list 
                                     const char *prom,             // New prompt
                                     const char *text) {           // User-defined text which will be displayed after entering new directory

@@ -48,6 +48,7 @@
 #define PROMPT_ALIAS "esp32-alias>"     // Alias editing directory.
 #define PROMPT_WIFISTA "esp32-sta>"     // WiFi STA
 #define PROMPT_WIFIAP "esp32-ap>"       // WiFi SoftAP
+#define PROMPT_NVS "esp32-nvs(/%s)>"     // NVS editor/viewer
 
 // Includes. Lots of them.
 // classic C
@@ -198,19 +199,22 @@ static INLINE bool esp_gpio_is_pin_reserved(unsigned int gpio) {
 // "Context": an user-defined value (a number or a pointer) which is set by change_command_directory() when 
 // switching to a new command subtree. 
 // This is how command "uart 1" passes its argument  (the number "1") to the subtree commands like "write" or "read". 
-// Used to store: sequence number, uart,i2c interface number,pointer to aliases, probably something else
+// Used to store: sequence number, uart,i2c interface number,pointer to aliases, nvs partition name, probably something else
 //
 // NOTE: thread-local variable
 //
 static __thread uintptr_t Context = 0;
 
+typedef __typeof__(Context) context_t;
+
 // Macros to set/get Context values. Since it is a simple C typecast here, make sure that
 // arguments you pass are of simple types (scalar or pointer)
 //
-#define context_get()         (Context)    
-#define context_get_uint()   ((unsigned int)Context)
-#define context_get_ptr(_Tn) ((_Tn *)Context)
-#define context_set(_New)    { Context = (__typeof__(Context))_New; }
+#define context_get()        (Context)                         // Get Context as is (no typecasting)
+#define context_get_uint()   ((unsigned int )Context)          // Get Context as an unsigned value
+#define context_get_int()    ((int )Context)                   //                a signed value
+#define context_get_ptr(_Tn) ((_Tn *)Context)                  //                a pointer to a type name _Tn
+#define context_set(_New)    { Context = (context_t)_New; }    // Set new value
 
 
 // Currently used prompt. It is shared between tasks, but only foreground tasks are allowed to change it
@@ -302,6 +306,7 @@ static int espshell_command(char *p, argcargv_t *aa);
 #include "time0.h"
 #endif
 #include "misc.h"               // misc command handlers
+#include "nvs0.h"               // NVS editor/viewer
 #include "filesystem.h"         // file manager
 #include "memory.h"             // memory component
 #include "espcam.h"             // Camera support
@@ -399,6 +404,7 @@ static void amp_helper_task(void *arg) {
 static int exec_in_background(argcargv_t *aa_current) {
 
   task_t id;
+  uint8_t core = shell_core;
   struct helper_arg *ha = ha_get();
 
   MUST_NOT_HAPPEN(aa_current == NULL);
@@ -412,9 +418,12 @@ static int exec_in_background(argcargv_t *aa_current) {
   // we want this memory remain allocated after this command
   userinput_ref(aa_current);
   ha->aa = aa_current;
+
+  if (aa_current->has_core)
+    core = aa_current->core;
  
   // Start async task. Pin to the same core where espshell is executed
-  if ((id = task_new(amp_helper_task, ha, aa_current->argv[0])) == NULL) {
+  if ((id = task_new(amp_helper_task, ha, aa_current->argv[0], core)) == NULL) {
     q_print("% <e>Can not start a new task. Resources low? Adjust STACKSIZE macro in \"espshell.h\"</>\r\n");
     userinput_unref(aa_current);
     ha_put(ha);
@@ -424,7 +433,7 @@ static int exec_in_background(argcargv_t *aa_current) {
       task_set_priority(id, aa_current->prio);
 
     //Hint user on how to stop bg command. If help is disabled, one have to "show tasks" to find ids
-    HELP(q_printf("%% Background task started\r\n%% Copy/paste \"<i>kill %p</>\" to abort\r\n", id));
+    HELP(q_printf("%% Background task started (core %u)\r\n%% Copy/paste \"<i>kill %p</>\" to abort\r\n", core, id));
   }
   return 0;
 }
@@ -450,7 +459,7 @@ static int
 espshell_command(char *p, argcargv_t *aa) {
   
   int bad = CMD_FAILED;
-
+  
   // _One_ of function arguments MUST be NULL:
   MUST_NOT_HAPPEN(((aa != NULL) && (p != NULL)) || ((aa == NULL) && (p == NULL)));
   
@@ -502,18 +511,42 @@ free_p_and_exit:
 #endif      
     {
       
-      // Accept priority value if extended &-syntax was used: ("&10" - set priority to 10)
+      char *p = &aa->argv[aa->argc - 1][1];
+      
+      // Accept priority and cpu core values if extended &-syntax was used:
+      // &10  - set priority to 10
+      // &.1  - set core to APP_CPU (core #1)
+      // &.0  - set core to PRO_CPU (core #0)
+      // &5.0 - set core to PRO_CPU (core #0) and the priority - to 5
+      //
       // If priority value is out of range, then behave like no priority was read at all
-      if (aa->argv[aa->argc - 1][1]) {
-        aa->has_prio = 1;
-        aa->prio = q_atoi(&(aa->argv[aa->argc - 1][1]), TASK_MAX_PRIO + 1);
-        if (aa->prio >= TASK_MAX_PRIO + 1) {
-          HELP(q_print("% Unrecognized priority value, priority will be inherited\r\n"));
-          aa->has_prio = 0;
+      if (*p) {
+        // do we have a dot? if yes, then core number follows the dot.
+        // replace the '.' with '\0' so q_atoi() can read it
+        char *dot;
+        if ((dot = (char *)q_findchar(p,'.')) != NULL) // TODO: make q_findchar to be a non-const!
+          *dot = '\0';
+        // workaround cases where priority value is missing ( like "&.1")
+        if (*p) {
+          // Read the priority value
+          aa->prio = q_atoi(p, TASK_MAX_PRIO + 1);
+          if (aa->prio >= TASK_MAX_PRIO + 1)
+            q_print("% Unrecognized priority value, priority will be inherited\r\n");
+          else
+            aa->has_prio = 1;
+        }
+
+        if (dot && dot[1]) {
+          // portNUM_PROCESSORS == 2, cores: 0 and 1
+          aa->core = q_atoi(dot + 1, portNUM_PROCESSORS);
+          if (aa->core >= portNUM_PROCESSORS)
+            q_printf("%% This CPU has only %u core%s (numbered starting from 0)\r\n", PPA(portNUM_PROCESSORS));
+          else
+            aa->has_core = 1;
         }
       }
       aa->has_amp = 1;
-      aa->argc--; // remove "&XX"
+      aa->argc--; // remove "&XX.YY"
     }
   } // if "&"
 
@@ -623,7 +656,7 @@ static void espshell_task(const void *arg) {
   if (arg) {
     MUST_NOT_HAPPEN (shell_task != NULL);
 
-    if ((shell_task = task_new(espshell_task, NULL, "ESPShell")) == NULL)
+    if ((shell_task = task_new(espshell_task, NULL, "ESPShell", shell_core)) == NULL)
       q_print("% ESPShell failed to start its task\r\n");
   } else {
     // arg is NULL - we were called by task_new() and we are running as separate process now

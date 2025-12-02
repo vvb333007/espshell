@@ -15,6 +15,9 @@
 
 
 #if COMPILING_ESPSHELL
+#include <nvs_flash.h>
+#include <nvs.h>
+
 
 //"tty NUM"
 //
@@ -204,82 +207,6 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
     q_delay(1);
 }
 
-
-
-
-#include <nvs_flash.h>
-#include <nvs.h>
-
-//extern const char *PromptID, defined in editline.h
-
-static void __attribute__((constructor)) _nv_storage_init() {
-
-  esp_err_t err = nvs_flash_init();
-  if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-      nvs_flash_erase();
-      err = nvs_flash_init();
-  }
-  if (err != ESP_OK)
-    // q_printf() will not work if called too early
-    printf("%% NV flash init failed, hostid and WiFi driver settings are lost\r\n");
-}
-
-
-// Save some vital configuration parameters to the NV storage.
-// Right now it is just one parameter: a host id.
-//
-static bool nv_save_config(const char *nspace) {
-
-    nvs_handle_t handle;
-    esp_err_t err;
-
-    if (!nspace)
-      nspace = "espshell";
-
-    // Open NVS storage
-    if ((err = nvs_open(nspace, NVS_READWRITE, &handle)) != ESP_OK) {
-        q_printf("%% Error opening NVS, namespace \"%s\": code %s",nspace, esp_err_to_name(err));
-        return false;
-    }
-
-    // Write values
-    nvs_set_str(handle, "hostid", PromptID);
-    nvs_set_str(handle, "tz", Time.zone);
-      if ((err = nvs_commit(handle)) != ESP_OK)
-        q_printf("%% NVS commit failed: %s", esp_err_to_name(err));
-
-    nvs_close(handle);
-    return err == ESP_OK;
-}
-
-// Load some espshell parameters from the NV storage
-//
-static bool nv_load_config(const char *nspace) {
-
-    nvs_handle_t handle;
-    esp_err_t err;
-    
-
-    if (!nspace)
-      nspace = "espshell";
-
-    if ((err = nvs_open(nspace, NVS_READONLY, &handle)) != ESP_OK) {
-        q_printf("%% Error opening NVS: %s", esp_err_to_name(err));
-        return false;
-    }
-
-    // Read hostname and a timezone
-    size_t length = sizeof(PromptID);
-    nvs_get_str(handle, "hostid", PromptID, &length);
-
-    length = sizeof(Time.zone);
-    nvs_get_str(handle, "tz", Time.zone, &length);
-    if (Time.zone[0])
-      time_apply_zone();
-    nvs_close(handle);
-    return true;
-}
-
 //"hostid [NAME]"
 //
 // Hidden command, to add a hostid to the prompt. hostid is saved in NVS and retained between power cycles
@@ -307,6 +234,5 @@ static int cmd_hostid(int argc, char **argv) {
   }
   return 0;
 }
-
 
 #endif // #if COMPILING_ESPSHELL
