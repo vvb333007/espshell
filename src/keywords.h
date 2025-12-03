@@ -1227,15 +1227,16 @@ KEYWORDS_DECL(nvs) {
     HELPK("Remove entries") },
 
   { "new", cmd_nvs_new, MANY_ARGS,
-    HELPK("% \"<b>new</> C-TYPE KEY VALUE \"\r\n"
+    HELPK("% \"<b>new</> KEY C-TYPE\"\r\n"
           "%\r\n"
           "% Create new KEY/VALUE pair in a current namespace\r\n"
           "% C-TYPE is one of simple scalar C types, like \"signed char\" or \"unsigned long long\"\r\n"
-          "% NOTE: If type is \"char *\" then VALUE is treated as a null-terminated string\r\n"
+          "%\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <i>new char Version 0x12</>   - Creates a key named Version with value of 18\r\n"
-          "%   <i>new unsigned int Z 0xffffffff</> - Creates a key named Z with value of 0xffffffff\r\n"
-          "%   <i>new char * Version 0x12</> - ... with value of \"0x12\" (a string)\r\n"
+          "%   <i>new Version char</>   - Creates a key named Version\r\n"
+          "%   <i>new Z unsigned long long</>\r\n"
+          "%   <i>new Var2 char *</>    - A string\r\n"
+          "%   <i>new Var3 char[]</>    - A binary blob\r\n"
           ),
     HELPK("Create entries") },
 
