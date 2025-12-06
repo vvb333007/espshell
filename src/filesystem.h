@@ -12,24 +12,38 @@
 
 #if COMPILING_ESPSHELL
 
-// WARNING!!!  Hello, random software developer! In case you want to mess with this code - we have bad news for you:
-// WARNING!!!  Code below uses shared RW buffers alot, i.e. functions may change input buffers like paths, argvs etc.
-// WARNING!!!  Even worse: some buffers are declared static local variables and pointer to that buffer is returned, 
-//             so extra care should be taken.
-// WARNING!!!  If you see function like some function(char *), note that it is "char *", not "const char *" for a reason.
-
+// WARNING!!!  Hello, fellow software developer! If you’re about to modify this code, we have some bad news:
+// WARNING!!!  The code below relies heavily on shared read/write buffers. Many functions WILL modify their
+//             input buffers (paths, argv arrays, etc.).
+// WARNING!!!  And it gets worse: some of these buffers are static local variables whose pointers are returned
+//             to the caller — so handle them with extra care.
+// WARNING!!!  If you see a function taking a parameter like `char *`, note that it is deliberately NOT
+//             `const char *`.
+//
 //                                          -- File Manager --
-// Minimalistic file manager: supports FAT, LittleFS and SPIFFS file systems (WITH_SPIFFS,WITH_FAT,WITH_LITTLEFS and WITH_FS controls
-// which part of the filemanager code should be compiled in); aimed to be intuitive for Linux shell prompt users: mimics "ls","cat","mkdir" etc commands
 //
-// Command handlers names start with "cmd_files_...", utility & helper functions are all have names which start with "files_"
+// Minimalistic file manager with support for FAT, LittleFS, and SPIFFS. The macros WITH_SPIFFS, WITH_FAT,
+// WITH_LITTLEFS, and WITH_FS, WITH_SD determine which parts of the file manager are compiled in.
 //
+// The interface is designed to feel familiar to Linux shell users: it mimics common commands such as `ls`,
+// `cat`, `mkdir`, etc.
+//
+// We intentionally do NOT use the `chdir()/getcwd()` API to track the current working directory. We avoid
+// touching newlib’s CWD because it may interfere with the user’s sketch. For example, if the sketch does
+// `chdir("/ffat/preferences")` and then the user runs `cd /` in the shell, we do not want the real CWD to
+// be changed — the sketch expects it to remain `/ffat/preferences`. Therefore, we maintain a separate,
+// “shadow” CWD that is completely independent from newlib’s own.
+//
+// Command handlers are named with the `cmd_files_...` prefix; utility and helper functions use the
+// `files_...` prefix.
 // TODO: fix non-reentrant code. specifically: files_full_path(), may be use __thread variables
 //
 #if WITH_FS
 
-// Current working directory. Must start and end with "/".
-// It is a per-thread local variable, which must be free() before task exits (just before task_finished())
+// Current working directory. Must start and end with "/". We don't use newlib's chdir()/getcwd() because
+// it can interfere with the sketch.
+//
+// CWD is a per-thread local variable, which must be q_free()d before task exits (just before task_finished())
 // TODO: add files_set_cwd(NULL) to task_finished()?
 //
 static __thread char *Cwd = NULL;  
@@ -38,7 +52,7 @@ static __thread char *Cwd = NULL;
 static const char *files_set_cwd(const char *cwd);
 
 // espshell allows for simultaneous mounting up to MOUNTPOINTS_NUM partitions.
-// mountpoints[] holds information about mounted filesystems.
+// mountpoints[] hold information about mounted filesystems.
 //
 static struct {
   char         *mp;            // mount point e.g. "/a/b/c/d"
@@ -81,20 +95,23 @@ static inline bool files_path_is_root(const char *path) {
   return (path && (path[0] == '/' || path[0] == '\\') && (path[1] == '\0'));
 }
 
-// Mock GNU getline
-// read complete lines (all bytes until \n symbol) from a text file.
-// \n is the line separator, \r and \n are discarded).
+// Mock GNU getline()
+// Reads a full line from a text file — all bytes up to the next '\n' character.
+// The '\n' line separator is consumed; '\r' and '\n' are stripped.
 //
-// /buf/ - Pointer to a variable, which value must be set to 0 on the first call
-//         to files_getline() : function then allocates and manages string buffer.
-//         On a next call the previously allocated buffer is reused/adjusted
+//  *buf  — Pointer to a char* variable. On the first call, *buf must be NULL.
+//          The function will then allocate and manage the line buffer.
+//          On subsequent calls, the previously allocated buffer is reused or resized.
 //
-//         caller must q_free(buf) if buf is not NULL
-// /size/- buf size (see above). set and managed by files_getline()
-// /fp/  - File opened in binary mode for reading
+//          The caller must call q_free(*buf) when the buffer is no longer needed.
 //
-// returns number of bytes valid in /buf/ or -1 on error
+//  *size — Pointer to a size_t variable holding the current buffer size.
+//          It is set and updated by files_getline().
 //
+//  fp    — File pointer opened in binary read mode.
+//
+// Returns the number of valid bytes in *buf (not including the terminating '\0'),
+// or -1 on error or end-of-file.
 static int files_getline(char **buf, unsigned int *size, FILE *fp) {
 
   int c;
@@ -145,10 +162,13 @@ static int files_getline(char **buf, unsigned int *size, FILE *fp) {
   }
 }
 
-// convert time_t to char * "31-01-2024 10:40:07"
-// WARNING: not reentrant
+// Convert time_t to char * "31-01-2024 10:40:07". It is used by command "ls" when displaying
+// directory listings
+// 
+// TODO: make it reentrant: add second arg pointer to the buffer
+//
 static char *files_time2text(time_t t) {
-  static char buf[32];
+  static char buf[32]; // WARNING: not reentrant!
   struct tm *info;
   info = localtime(&t);
 
@@ -212,6 +232,9 @@ static inline const char *files_get_cwd() {
 //
 // This is an old code. Now, filenames with spaces can be enclosed in double quotes
 // but I keep this code here for compatibility
+//
+// TODO: remove support for asteriks from the code before 1.0.0 release
+//
 static void files_asterisk2spaces(char *path) {
   if (path) {
     while (*path != '\0') {
@@ -223,7 +246,8 @@ static void files_asterisk2spaces(char *path) {
 }
 
 
-// Subtype of DATA entries in human-readable form
+// Subtype of Flash partition "DATA" entries in human-readable form
+//
 static const char *files_subtype2text(unsigned char subtype) {
 
   switch (subtype) {
@@ -286,7 +310,10 @@ static int files_mountpoint_by_path(const char *path, bool reverse) {
 
 // All this code is just to make esp_partition_find() be able to
 // find a partition by incomplete (shortened) label name
+//
 // TODO: rewrite partition lookup code to use this function
+// TODO: is q_strcmp ok here? What if we have /ffat and /ffat2 but ffat2 is enumerated first?
+// TODO: add -e flag to "mount" to force strict strcmp
 const esp_partition_t *files_partition_by_label(const char *label) {
 
   esp_partition_iterator_t it;
@@ -302,22 +329,74 @@ const esp_partition_t *files_partition_by_label(const char *label) {
   return NULL;
 }
 
+//
+// Normalize "full path":
+// Full paths are formed from relative paths by concatinatig the Cwd and 
+// the relative portion.
+//
+// However, the "relative" portion can contain things like "../.././" which must be resolved.
+// For example: we have CWD == "/ffat/configs/" and then user tries to create a file "../settings/a.txt"
+// First, user supplied path (i.e. "../settings/a.txt") is added to CWD to get "/ffat/configs/../settings/a.txt".
+// Then this "full path" (containing ../) is processed by normalize_path() to /ffat/settings/a.txt
+//
+// In ESPShell the CWD always has "/" at the beginning and "/" at the end (can be the same symbol if CWD == "/"):
+// "/ffat/" or "/ffat/settings/" and even "/", so we assume that path[0] is "/" always.
+//
+static char *normalize_path(char *path) {
 
-// make full path from path and return pointer to resulting string.
-// function uses static buffer to store result so it is cannot be called in recursive function
-// without copying the result to stack
+  char *src = path, 
+       *dst = path;
+
+  if (path[0] != '/' && path[0] != '\\') {
+    q_printf("%% Internal error (normalize path \"%s\" failed)\r\n", path);
+    return NULL;
+  }
+
+  while (*src) {
+    // although src points at the beginning of out it is safe to have src-1 here:
+    // the "if" condition below can not happen at the beginning of the path: the first symbol is always '/'
+    //
+    // Process "/..": remove the last path element in dst
+    //
+    if (*src == '.' && src[1] == '.' && *(src - 1) == '/') {
+      src += 2;
+      // remove last element from dst
+      int j = 0;
+      while (dst > path) {
+        dst--;
+        if (*dst == '/')
+          j++;
+        if (j == 2)
+          break;
+      }
+    } else if (*src == '.' && src[1] == '/' && *(src - 1) == '/') {
+    // Process "/./": ignore "./"
+        src += 2;
+    } else
+    // Process all other symbols: just copy them
+        *dst++ = *src++;
+  }
+  
+  *dst = 0;
+  return path;
+}
+
+// Build a full path from the given path and return a pointer to the resulting string.
+// This function uses a static buffer to store the result, so it must not be called
+// recursively unless the caller copies the result to a local buffer first.
+// TODO: get rid of this static buffer: add 1 more out arg
 //
-// /path/ absolute or relative path
-// /do_asterisk/ should convert asterisk to spaces or not
+// /path/       — an absolute or relative path
+// /do_asterisk/ — whether '*' characters should be converted to spaces
 //
-// returns pointer to a buffer (extendable up to 16 bytes) with full path or "/" if
-// errors happened
+// Returns a pointer to an internal buffer (auto-expandable up to 16 bytes).  
+// On error, the function returns "/".
 //
+// TODO: there are multiple potential buffer overruns in this function: when CWD is long and path is long too
+// TODO: must be refactored -> get rid of strcat and strcpy, replace them with strlcat and strlcpy
 #define PROCESS_ASTERISK true
 #define IGNORE_ASTERISK false
 
-// TODO: process ".." in the path
-//
 static char *files_full_path(const char *path, bool do_asterisk) {
 
   static char out[MAX_PATH + 16];
@@ -336,6 +415,10 @@ static char *files_full_path(const char *path, bool do_asterisk) {
   if (path[0] == '/' || path[0] == '\\') {  // path is absolute. nothing to do - just return a copy
     if (len < sizeof(out))
       strcpy(out, path);
+    else {
+      VERBOSE(q_print("% Path is too long\r\n"));
+    }
+
   } else {  // path is relative. add CWD
     cwd_len = strlen(Cwd);
     if ((len + cwd_len) < sizeof(out)) {
@@ -346,6 +429,9 @@ static char *files_full_path(const char *path, bool do_asterisk) {
 
   if (do_asterisk)
     files_asterisk2spaces(out);
+
+  normalize_path(out);
+
   return out;
 }
 
@@ -1121,7 +1207,8 @@ static bool files_cd_mount_point() {
 //
 #define files_cd(_Path) files_rcd(_Path, 0)
 
-// Actual code
+// Actual code, "recursive cd"
+//
 static bool files_rcd(const char *path, int recursion_depth) {
 
   int i = 0;
@@ -1219,6 +1306,40 @@ static bool files_rcd(const char *path, int recursion_depth) {
   HELP(q_print("% Path is too long. Must be <" xstr(MAX_PATH) "\r\n"));
   q_free(element);
   return false;
+}
+
+// Open file for reading and/or writing. Create file if does not exist. Create
+// all directories in the path
+//
+static FILE *files_fopen(const char *name, const char *mode) {
+
+  FILE *fp;
+
+  if (*mode == 'a' || *mode == 'w')
+    if (files_create_dirs(name, PATH_HAS_FILENAME) < 0) {
+      q_print("% <e>Failed to create path for a file</>\r\n");
+      return NULL;
+    }
+
+  name = files_full_path(name, PROCESS_ASTERISK); // TODO: not reentrant!
+  if ((fp = fopen(name,mode)) == NULL)
+    q_printf("%% Failed to open \"%s\"\r\n",name);
+  return fp;
+}
+
+
+
+// Create file if does not exist. If it does - update the timestamp
+//
+static int files_touch(const char *name) {
+
+  FILE *fp;
+  if ((fp = files_fopen(name,"a+")) != NULL) {
+    fclose(fp);
+    return 0;
+  }
+  q_printf("%% <e>Can't touch \"%s\" (errno=%d)</>\r\n", name, errno);
+  return -1;
 }
 
 // "files"
@@ -2049,60 +2170,6 @@ static int cmd_files_mkdir(int argc, char **argv) {
   return 0;
 }
 
-// Open file for reading and/or writing. Create file if does not exist. Create
-// all directories in the path
-//
-static FILE *files_fopen(const char *name, const char *mode) {
-
-  FILE *fp;
-
-  if (*mode == 'a' || *mode == 'w')
-    if (files_create_dirs(name, PATH_HAS_FILENAME) < 0) {
-      q_print("% <e>Failed to create path for a file</>\r\n");
-      return NULL;
-    }
-
-  name = files_full_path(name, PROCESS_ASTERISK); // TODO: not reentrant!
-  if ((fp = fopen(name,mode)) == NULL)
-    q_printf("%% Failed to open \"%s\"\r\n",name);
-  return fp;
-}
-
-
-
-// Create file if does not exist. If it does - update the timestamp
-// The code below looks strange with these double checks. However, SPIFFS (which we support in espshell) is 
-// so special so among other features it fails to open() a file
-//
-static int q_touch(const char *name) {
-
-#if 0
-  int fd;
-
-  if (files_create_dirs(name, PATH_HAS_FILENAME) < 0) {
-    q_print("% <e>Failed to create path for a file</>\r\n");
-    return -1;
-  }
-
-  name = files_full_path(name, PROCESS_ASTERISK); // TODO: not reentrant!
-
-  // try to open the file, creating it if it doesn't exist
-  if ((fd = open(name, O_CREAT | O_RDWR, 0666)) >= 0) {
-    close(fd);
-    return 0;
-  }
-#else
-  FILE *fp;
-  if ((fp = files_fopen(name,"a+")) != NULL) {
-    fclose(fp);
-    return 0;
-  }
-#endif
-  q_printf("%% <e>Can't touch \"%s\" (errno=%d)</>\r\n", name, errno);
-  return -1;
-}
-
-
 
 
 // "touch PATH1 [PATH2 ... PATHn]"
@@ -2119,7 +2186,7 @@ static int cmd_files_touch(int argc, char **argv) {
     HELP(q_print(MultipleEntries));
 
   for (i = 1; i < argc; i++) {
-    if (q_touch(argv[i]) < 0)
+    if (files_touch(argv[i]) < 0)
       err++;
     else
       q_printf("%% Touched: \"%s\"\r\n",argv[i]);
@@ -2224,11 +2291,32 @@ static int cmd_files_format(int argc, char **argv) {
 
 // "mv FILENAME1 FILENAME2"
 // "mv DIRNAME1 DIRNAME2"
-// "mv FILENAME DIRNAME"
+// "mv FILENAME DIRNAME" --> "cp FILENAME DIRNAME/FILENAME", "rm FILENAME"
 // Move/rename files or directories
 //
 static int cmd_files_mv(int argc, char **argv) {
   q_print("% Not implemented yet\r\n");
+  // TODO: implement "mv" command
+#if 0
+  bool src_file, dst_file, same_fs;
+  ...
+  if (dst_file && !src_file) {
+    q_print("% Can not move directory to a file\r\n");
+    return CMD_FAILED;
+  }
+
+  // If both src and dst are on the same file system and we are moving
+  // 1. dir -> dir
+  // 2. file -> file
+  // then we can use old good rename() here
+  if ((src_file == dst_file) && same_fs) {
+    rename(src, dst);
+  } else {
+    // Either different filesystems or src and dst types mismatch (file->dir)
+    // Emulate mv via cp & rm
+  }
+    
+#endif  
   return 0;
 }
 
@@ -2281,7 +2369,7 @@ file_to_file:
       } else
         q_printf("%% Failed to create directory \"%s\"\r\n", dpath);
 #endif
-      // TODO: not yet implemented
+      // TODO: Copy directory to directory
 
     } else {
       q_printf("%% Path \"%s\" is not a directory\r\n", dpath);

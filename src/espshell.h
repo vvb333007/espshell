@@ -27,7 +27,7 @@
 
 //#define MEMTEST 1              // Enable memory logger (extra output on "show memory"). For shell self-diagnostics
 #define WITH_TIME 1
-#define WITH_NVS 0
+#define WITH_NVS 1
 #define WITH_ALIAS 1             // Set to 0 to disable alias support (commands "alias", "if", "every" and "exec")
 #define WITH_WIFI 1              // Enable WiFi/IP functions
 #define AUTOSTART 1              // Set to 0 for manual shell start via espshell_start().

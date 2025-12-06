@@ -174,7 +174,7 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
 #if WITH_TIME
 static int8_t time_month_by_name(const char *name);
 #endif
-static int   q_touch(const char *);
+static int   files_touch(const char *);
 static FILE *files_fopen(const char *, const char *);
 static bool pin_is_input_only_pin(int pin);
 static bool inline __attribute__((const)) pin_isreal(uint8_t const pin);

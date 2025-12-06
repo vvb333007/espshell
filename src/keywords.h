@@ -1191,6 +1191,9 @@ KEYWORDS_DECL(nvs) {
   { "ls", cmd_nvs_ls, MANY_ARGS,
     HELPK("% \"<b>ls [PATH]</>\r\n"
           "%\r\n"
+          "% List keys under namespace PATH. If no PATH provided then listing\r\n"
+          "% for the current namespace is provided.\r\n"
+          "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>ls /</>      - Displays list of a namespaces\r\n"
           "%   <i>ls phy</>    - Displays entries of the \"phy\" namespace\r\n"
@@ -1204,13 +1207,14 @@ KEYWORDS_DECL(nvs) {
           "% \"<b>cd ..</>\r\n"
           "% \"<b>cd NAMESPACE</>\r\n"
           "%\r\n"
-          "% Change current namespace.\r\n"
+          "% Change current namespace. To create a new namespace just \"cd\" to that namespace\r\n"
+          "% and it will be auto-created. Note that empty namespaces may be deleted by the system\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>cd /</>    - Go to the root directory\r\n"
           "%   <i>cd ..</>   - Go to the root directory\r\n"
           "%   <i>cd phy</>  - Go to the \"phy\" namespace\r\n"
           "%   <i>cd /phy</> - Go to the \"phy\" namespace"),
-    HELPK("Change name space directory") },
+    HELPK("Change namespace directory") },
 
 
   { "rm", cmd_nvs_rm, 1,
@@ -1229,45 +1233,75 @@ KEYWORDS_DECL(nvs) {
   { "new", cmd_nvs_new, MANY_ARGS,
     HELPK("% \"<b>new</> KEY C-TYPE\"\r\n"
           "%\r\n"
-          "% Create new KEY/VALUE pair in a current namespace\r\n"
-          "% C-TYPE is one of simple scalar C types, like \"signed char\" or \"unsigned long long\"\r\n"
+          "% Create a new KEY/VALUE pair in the current namespace.\r\n"
+          "%\r\n"
+          "% C-TYPE must be one of the basic scalar C types, such as \"char\"\r\n"
+          "% or \"unsigned long long\".\r\n"
+          "%\r\n"
+          "% Two special types are also supported:\r\n"
+          "%   \"char *\"  - creates a string value\r\n"
+          "%   \"char []\" - creates a binary blob\r\n"
+          "%\r\n"
+          "% Newly created keys are initialized to zero for scalar types, or to an\r\n"
+          "% empty buffer for strings and blobs.\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <i>new Version char</>   - Creates a key named Version\r\n"
-          "%   <i>new Z unsigned long long</>\r\n"
-          "%   <i>new Var2 char *</>    - A string\r\n"
-          "%   <i>new Var3 char[]</>    - A binary blob\r\n"
+          "%   <i>new Version char</>         - Creates a key named \"Version\"\r\n"
+          "%   <i>new Z unsigned long long</> - 64-bit unsigned integer\r\n"
+          "%   <i>new Var2 char *</>          - String value\r\n"
+          "%   <i>new Var3 char[]</>          - Binary blob\r\n"
           ),
-    HELPK("Create entries") },
+    HELPK("Create keys") },
 
 
-  { "set", cmd_nvs_set, 2,
-    HELPK("% \"<b>set KEY VALUE</>\"\r\n"
+  { "set", cmd_nvs_set, MANY_ARGS,          // TEXT can be quoted (1 arg) or as is (many args)
+    HELPK("% \"<b>set KEY TEXT</>\"\r\n"
           "%\r\n"
-          "% Set NVS key to new value"),
+          "% Set new value for the KEY\r\n"
+          "% <u>Examples</>:\r\n"
+          "%   <i>set Name 10<i>                  - Set integer values\r\n"
+          "%   <i>set Str \"Text with  spaces\"<i>- Set text\r\n"
+          "%   <i>set Str Some other text<i>      - Set text\r\n"
+          "%   <i>set Blob \12\bb\fd\55\44\55<i>  - Set binary blob"),
     HELPK("Set new value") },
 
   { "dump", cmd_nvs_dump, 1,
     HELPK("% \"<b>dump KEY</>\"\r\n"
           "%\r\n"
-          "% Display binary blobs"),
+          "% Display binary blobs and long strings where simple \"ls\" is not enough\r\n"
+          "%\r\n"
+          "% <u>Examples</>:\r\n"
+          "%   <i>dump Blob<i>    - Dump key \"Blob\" (a binary blob)\r\n"
+          "%   <i>dump My_Str<i>  - Dump key \"My_Str\" (a null-terminated string)\r\n"
+          ),
     HELPK("Display binary blobs") },
+
 #if WITH_FS
   { "export", cmd_nvs_export, 1,
-    HELPK("% \"<b>export [-c] /PATH</>\"\r\n"
+    HELPK("% \"<b>export PATH/TO/FILE</>\"\r\n"
           "%\r\n"
-          "% Export NVS partition as a binary or CSV file\r\n"
-          "% -c key is used to store text CSV file, default is to store a binary"),
+          "% Export NVS partition as a CSV file\r\n"
+          "% Filesystem must be mounted in order to save files\r\n"
+          "% PATH can be relative (see files->cd) or absolute (starts with \"/\")\r\n"
+          "%\r\n"
+          "% <u>Examples</>:\r\n"
+          "%   <i>export /ffat/nvs.csv<i>  - Export NVS as CSV file\r\n"
+          ),
     HELPK("Export NVS") },
 
   { "import", cmd_nvs_import, 1,
-    HELPK("% \"<b>export [-c] /PATH</>\"\r\n"
+    HELPK("% \"<b>import PATH/TO/FILE</>\"\r\n"
           "%\r\n"
-          "% Import NVS partition from a binary or CSV file\r\n"
-          "% -c key is used to treat /PATH as text CSV file"),
-    HELPK("Export NVS") },
+          "% Import NVS partition from a CSV file\r\n"
+          "% Filesystem must be mounted in order to save files\r\n"
+          "% PATH can be relative (see files->cd) or absolute (starts with \"/\")\r\n"
+          "%\r\n"
+          "% <u>Examples</>:\r\n"
+          "%   <i>import backups/nvs.csv<i>  - Import from $CWD/backups/nvs.csv\r\n"
+          "%   <i>import /ffat/nvs.csv<i>    - Import from /ffat/nvs.csv\r\n"
+          ),
+    HELPK("Import NVS") },
 #endif //WITH_FS
-
   KEYWORDS_END
 };
 KEYWORDS_REG(nvs);

@@ -1202,7 +1202,7 @@ static int cmd_if_save(int argc, char **argv) {
   if (argc < 4)
     return CMD_MISSING_ARG;
 
-  if (q_touch(argv[3]) < 0) {
+  if (files_touch(argv[3]) < 0) {
     q_print("% Is filesystem mounted?\r\n");
     return CMD_FAILED;
   }

@@ -840,7 +840,7 @@ static int cmd_seq_save(int argc, char **argv) {
 
   // Touch the file. It is likely will fail on SPIFFS so we ignore the return code
   //
-  if (q_touch(argv[1]) < 0) {
+  if (files_touch(argv[1]) < 0) {
 
     q_print("% Is filesystem mounted?\r\n");
     return CMD_FAILED;
