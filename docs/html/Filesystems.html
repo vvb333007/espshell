@@ -36,7 +36,7 @@
 <p><h2 id=fs><a href="#top">&#8686;</a>ESP32 FILESYSTEMS</h2></p>
 
 <p>
-As of 2024, there are three filesystems commonly used on ESP32 in IDF and 
+As of 2025, there are three filesystems commonly used on ESP32 in IDF and 
 Arduino projects: LittleFS, FAT, and SPIFFS (the latter is being deprecated soon). 
 All three filesystems are supported by ESPShell in its tiny file manager.
 </p><p>
@@ -91,13 +91,19 @@ points.
 </p><p>
 A mount point is a directory whose name starts with "/", 
 for example, "/wwwroot", where the actual filesystem is deployed.
-</p><p>
-NOTE: If you want to include spaces (" ") in your path, use quotes OR use an asterisk "*" 
+</p>
+<p>
+<b>NOTE:</b> Changing the current directory affects only ESPShell itself and <b>does not affect the sketch in any way</b>.
+The sketch can still call "<b>chdir()</b>" and "<b>getcwd()</b>" as before, and its current working directory may differ from the shell’s current directory.
+This behavior is intentional, because the philosophy of ESPShell is to avoid influencing the “parent” sketch whenever possible.
+</p>
+<p>
+<b>NOTE:</b> If you want to include spaces (" ") in your path, use quotes OR use an asterisk "*" 
 instead of spaces. ESPShell will convert the asterisks to spaces in paths and 
 filenames. ESPShell does not support:        
 </p><p><ul><li>
   File name completion, </li><li>
-  Path wildcards</li></ul>
+  Path wildcards (i.e ".", "*" and "?" in the path)</li></ul>
 </p><p>
 Now, let's take a look at the file manager commands (you can exit file manager
 mode by pressing Ctrl+Z or typing "exit" and pressing &lt;Enter&gt;):
@@ -294,11 +300,11 @@ The PATH argument must be a directory path, with or without a trailing /.
 </p><p>
 Important: By default, the ls command displays the total size of directories, calculated recursively. 
 This may take time and consume memory. If this is an issue, you can change the behavior by running 
-the command var ls_show_dir_size 0, which will disable directory size reporting in the ls command.
+the command <b>"var ls_show_dir_size 0"</b>, which will disable directory size reporting in the ls command.
 </p>
 
 
-<p><h3 id=cd><a href="#top">&#8686;</a>CHANGE DIRECTORY : "cd [PATH|..]"</h3></p>
+<p><h3 id=cd><a href="#top">&#8686;</a>CHANGE DIRECTORY : "cd [PATH]"</h3></p>
 
 <p>
 There are three variations of the "cd" command:
@@ -348,7 +354,7 @@ Deletes the file or directory specified by PATH.
 </p><p>
 <ul>
   <li>If PATH is a file, it will be deleted.</li>
-  <li>If PATH is a directory, the directory and all of its contents will be deleted recursively, with no confirmation.</li>
+  <li>If PATH is a directory, the directory and all of its contents will be deleted recursively, <b>with no confirmation!</b></li>
 </ul>
 <pre>
   esp32#(/)>ls wwwroot/test_dir
