@@ -849,8 +849,8 @@ KEYWORDS_DECL(ap) {
           "%\r\n"
           "% Set IP address range for the DHCP and start/stop the server\r\n"
           "% DHCP server IP pool must reside on the interface subnet\r\n"
-          "% <i>NOTE1: When changing DHCP address pool range</i> make sure that\r\n"
-          "% <i> interface address is on the same subnet</i> as new DHCP IP range!\r\n"
+          "% <i>NOTE1: When changing DHCP address pool range</> make sure that\r\n"
+          "% <i> interface address is on the same subnet</> as new DHCP IP range!\r\n"
           "%\r\n"
           "%<u>Examples (AP address is 192.168.0.1)</>:\r\n"
           "%   <i>dhcp 192.168.4.8</>        : Lease addresses starting from 192.168.4.6\r\n"
@@ -1257,12 +1257,21 @@ KEYWORDS_DECL(nvs) {
   { "set", cmd_nvs_set, MANY_ARGS,          // TEXT can be quoted (1 arg) or as is (many args)
     HELPK("% \"<b>set KEY TEXT</>\"\r\n"
           "%\r\n"
-          "% Set new value for the KEY\r\n"
+          "% Set a new value for the KEY. Numerical values are entered as-is.\r\n"
+          "% Strings and blobs accept either ASCII text or special escape sequences \\AB\r\n"
+          "% where AB is a byte with value 0xAB (see examples below).\r\n"
+          "%\r\n"
+          "% Note that you can create new entries with the \"new\" command.\r\n"
+          "% To list existing keys, use the \"ls\" command.\r\n"
+          "%\r\n"
           "% <u>Examples</>:\r\n"
-          "%   <i>set Name 10<i>                  - Set integer values\r\n"
-          "%   <i>set Str \"Text with  spaces\"<i>- Set text\r\n"
-          "%   <i>set Str Some other text<i>      - Set text\r\n"
-          "%   <i>set Blob \12\bb\fd\55\44\55<i>  - Set binary blob"),
+          "%   <i>set Name 10</>                  - Set an integer value\r\n"
+          "%   <i>set Name -234567810</>          - Set an integer value\r\n"
+          "%   <i>set Str \"Text with  spaces\"</> - Set a string\r\n"
+          "%   <i>set Str Some other text</>      - Set a string\r\n"
+          "%   <i>set Str \"\"</>                  - Set a string to empty\r\n"
+          "%   <i>set Blob \\12\\bb\\fd\\55\\44\\55</>  - Set binary data\r\n"
+        ),
     HELPK("Set new value") },
 
   { "dump", cmd_nvs_dump, 1,
@@ -1277,17 +1286,22 @@ KEYWORDS_DECL(nvs) {
     HELPK("Display binary blobs") },
 
 #if WITH_FS
-  { "export", cmd_nvs_export, 1,
-    HELPK("% \"<b>export PATH/TO/FILE</>\"\r\n"
+  { "export", cmd_nvs_export, 2,
+    HELPK("% \"<b>export NAMESPACE /FILE.csv</>\"\r\n"
+          "% \"<b>export * /FILE.csv</>\"\r\n"
+          "% \"<b>export /FILE.csv</>\"\r\n"
           "%\r\n"
-          "% Export NVS partition as a CSV file\r\n"
-          "% Filesystem must be mounted in order to save files\r\n"
-          "% PATH can be relative (see files->cd) or absolute (starts with \"/\")\r\n"
+          "% Export the entire NVS partition or individual namespaces as a CSV (text) file\r\n"
+          "% The filesystem must be mounted to save files\r\n"
+          "% Path may be relative (see files->cd) or absolute (starting with \"/\")\r\n"
           "%\r\n"
           "% <u>Examples</>:\r\n"
-          "%   <i>export /ffat/nvs.csv<i>  - Export NVS as CSV file\r\n"
+          "%   <i>export * /ffat/nvs.csv</>        - Export all NVS entries to a CSV file\r\n"
+          "%   <i>export phy /ffat/nvs_phy.csv</>  - Export NVS entries from the \"phy\" namespace\r\n"
+          "%   <i>export nvs_phy.csv</>            - Export current NVS namespace to nvs_phy.csv\r\n"
           ),
     HELPK("Export NVS") },
+  { "export", cmd_nvs_export, 1, HIDDEN_KEYWORD },
 
   { "import", cmd_nvs_import, 1,
     HELPK("% \"<b>import PATH/TO/FILE</>\"\r\n"
@@ -1318,21 +1332,22 @@ KEYWORDS_DECL(main) {
   { "time", cmd_time, MANY_ARGS,
     HELPK("% \"<b>time</>\" <i>set</> (<i>YEAR</>|<i>MONTH</>|<i>DAY</>|<i>TIME</>|<b>am|pm</>)*\r\n"
           "%\r\n"
-          "% Set/change system time.\r\n"
-          "% An order of arguments is not important, omitted values are not set\r\n"
+          "% Set or change the system time.\r\n"
+          "% The order of arguments does not matter; omitted values are left unchanged.\r\n"
           "% <u>Examples</>:\r\n"
-          "%   <i>time set 2025 april</>     : change year+month\r\n"
-          "%   <i>time set 20 sep 11:20</>   : a month, a date and the time\r\n"
-          "%   <i>time set 1:2:23 am 2025</> : the time and a year, 12-hour format"
-    ), "Set system time" },
+          "%   <i>time set 2025 april</>     : change year and month\r\n"
+          "%   <i>time set 20 sep 11:20</>   : set month, day, and time\r\n"
+          "%   <i>time set 1:2:23 am 2025</> : set time and year (12-hour format)\r\n"
+        ),
+    HELPK("Set system time") },
 
   { "time", HELP_ONLY,
     HELPK("% \"<b>time</>\" <i>zone TIMESPEC</>|none\r\n"
           "%\r\n"
-          "% Set time zone (time offset) or reset it to default value\r\n"
-          "% TIMESPEC consist of numbers and time specifiers:\r\n"
-          "% e.g.: \"+7 hours 5 minutes\" or \"-45 minutes 5 \"\r\n"
-          "% Add \"minus\" sign to any time component to turn whole thing negative\r\n"
+          "% Set the time zone (time offset) or reset it to the default value.\r\n"
+          "% TIMESPEC consists of numbers and time specifiers:\r\n"
+          "% e.g.: \"+7 hours 5 minutes\" or \"-45 minutes 5\"\r\n"
+          "% Add a minus sign to any component to make the entire offset negative.\r\n"
           "%\r\n"
           "% <u>Examples</>:\r\n"
           "%   <i>time zone 1</>             : time zone is +0100 UTC\r\n"
@@ -1348,9 +1363,13 @@ KEYWORDS_DECL(main) {
 
   // cpu FREQ
   { "cpu", cmd_cpu, 1,
-    HELPK("% \"<b>cpu</> <i>FREQ_MHZ</>\"\r\n"
+    HELPK("% \"<b>cpu</> <i>NUMBER</>\"\r\n"
           "%\r\n"
-          "% Set CPU frequency to FREQ_MHZ Mhz"), "Set/show CPU parameters" },
+          "% Set CPU frequency to NUMBER Mhz\r\n"
+          "%\r\n"
+          "%<u>Examples:</>\r\n"
+          "%   <i>cpu 160</> - set CPU frequency to 160 MHz"),
+    HELPK("Set/show CPU frequency") },
 
   // cpu
   { "cpu", cmd_cpu, NO_ARGS,
@@ -1361,27 +1380,30 @@ KEYWORDS_DECL(main) {
   { "suspend", cmd_suspend, NO_ARGS,
     HELPK("% \"<b>suspend</>\"\r\n"
           "%\r\n"
-          "% Suspend sketch execution (Hotkey: Ctrl+C). Resume with \"resume\""), "Suspend sketch/task execution" },
+          "% Suspend sketch execution (Hotkey: Ctrl+C). Resume with \"resume\""),
+    HELPK("Suspend sketch/task execution") },
 
   { "suspend", cmd_suspend, 1,
     HELPK("% \"<b>suspend <i>TASK_ID|TASK_NAME</>\"\r\n"
           "%\r\n"
           "% Suspend execution of an arbitrary FreeRTOS task\r\n"
-          "% By its name or its ID, which can be obtained with \"show tasks\" command"
-          ), NULL },
+          "% Specify the task by its name or ID (the ID can be obtained with the \"show tasks\" command)."),
+    NULL },
 
   { "priority", cmd_priority, 1,
     HELPK("% \"<b>priority <i>NUM <o>[TASK_ID | TASK_NAME]</>\"\r\n"
           "%\r\n"
           "% Adjust the priority of an arbitrary FreeRTOS task\r\n"
-          "% By its name or its ID, which can be obtained with \"show tasks\" command."
-          "% If TASK_ID/TASK_NAME are omitted, then priority of a <u>current task</> is adjusted\r\n"
+          "% Specify the task by its name or ID (the ID can be obtained with the \"show tasks\" command).\r\n"
+          "% If TASK_ID/TASK_NAME is omitted, the priority of the <u>current task</> is adjusted.\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <i>priority 10</>           - sets priority of the caller to 10\r\n"
-          "%   <i>priority 10 esp_timer</> - sets priority of the esp_timer system task\r\n"
+          "%   <i>priority 10</>           - sets the caller's priority to 10\r\n"
+          "%   <i>priority 10 esp_timer</> - sets the priority of the esp_timer system task\r\n"
           "%   <i>priority 10 \"Tmr Svc\"</> - task with a space in its name\r\n"
-          "%   <i>priority 10 0x4565243</> - sets priority of the task ID 0x4565243"), "Adjust task priority" },
+          "%   <i>priority 10 0x45652431</> - sets the priority of the task with ID 0x45652431\r\n"
+         ),
+    HELPK("Adjust task priority") },
 
   { "priority", cmd_priority, 2, HIDDEN_KEYWORD },
 
@@ -1394,38 +1416,40 @@ KEYWORDS_DECL(main) {
     HELPK("% \"<b>resume <i>TASK_ID | TASK_NAME</>\"\r\n"
           "%\r\n"
           "% Resume execution of an arbitrary FreeRTOS task\r\n"
-          "% By its name or its ID, which can be obtained with \"show tasks\" command"
+          "% Specify the task by its name or ID (the ID can be obtained with the \"show tasks\" command)."
           ), NULL },
 
   { "kill", cmd_kill, 2,
     HELPK("% \"<b>kill <o>[-term|-kill|-9|-15] <i>TASK_ID | TASK_NAME</>\"\r\n"
           "%\r\n"
-          "% Send <i>TERMinate</> signal to an arbitrary task OR kill the task\r\n"
-          "% If <i>-9</> (or <i>-kill</>, <i>-k</>) option is used then task is deleted (unsafe):\r\n"
-          "% use this options for tasks which can not be stopped otherwise (e.g. system\r\n"
-          "% tasks, like esp_timer or ipc0).\r\n"
+          "% Send a <i>TERMinate</> signal to a task, or forcibly kill it\r\n"
+          "% If the <i>-9</>, <i>-kill</> or <i>-k</> option is used, the task is deleted (unsafe):\r\n"
+          "% use these options only for tasks that cannot be stopped otherwise (e.g. system\r\n"
+          "% tasks like esp_timer or ipc0).\r\n"
           "%\r\n"
-          "% No options, <i>-term</>, <i>-t</> or <i>-15</>: ask a task to finish (safe):\r\n"
+          "% With no options, or with <i>-term</>, <i>-t</> or <i>-15</>: request the task to finish (safe):\r\n"
           "% this is the default and preferred way to stop a task.\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>kill 0x3fff0000</>    -Terminates tasks in a safe way (using task notifications)\r\n"
           "%   <i>kill pin</>           -Safe termination of espshell's background command \"pin\"\r\n"
           "%   <i>kill -9 loopTask</>   -Forcefull deletion of Arduino's loop() task\r\n"
-          "%   <i>kill -9 0x3fff0000</> -Terminates tasks forcefully (task deletion)"),"Kill tasks" },
+          "%   <i>kill -k 0x3fff0000</> -Terminates tasks forcefully (task deletion)"),
+    HELPK("Kill tasks") },
 
   { "kill", cmd_kill, 1, HIDDEN_KEYWORD },
 
   { "reload", cmd_reload, NO_ARGS,
     HELPK("% \"<b>reload</>\"\r\n"
           "%\r\n"
-          "% Restarts CPU, performs a software reboot"), "Restarts CPU" },
+          "% Restarts CPU, performs a software reboot"), 
+    HELPK("Restarts CPU") },
 
   { "nap", cmd_nap, NO_ARGS,
     HELPK("% \"<b>nap</> [<o>deep</>]\"\r\n"
           "%\r\n"
-          "% Put the CPU into light/deep sleep mode\r\n"
-          "% CPU resumes after specified alarm (see <i>\"nap alarm\"</>)"
+          "% Put the CPU into light or deep sleep mode\r\n"
+          "% The CPU resumes after the specified alarm (see <i>\"nap alarm\"</>)."
           ), "CPU sleep and alarms" },
 
   { "nap", cmd_nap, 1, HIDDEN_KEYWORD },
@@ -1436,14 +1460,14 @@ KEYWORDS_DECL(main) {
           "% \"<b>nap alarm</> <i>low</>|<i>high</> NUM1 [ NUM2 NUM3 .. NUMn]\"\r\n"
           "% \"<b>nap alarm</> <i>disable-all</>\"\r\n"
           "%\r\n"
-          "% Set/reset CPU sleep wakeup source and/or sleep duration\r\n"
-          "% Note that multiple alarm sources can be used by executing this command\r\n"
-          "% multiple times: e.g. combined UART and TIMER alarms are allowed\r\n"
-          "% To disable all wakeup alarms use \"disable-all\".\r\n"
+          "% Set or reset the CPU sleep wakeup source and/or sleep duration\r\n"
+          "% Note that multiple wakeup sources can be configured by running this command\r\n"
+          "% multiple times: for example, UART + TIMER wakeup is allowed.\r\n"
+          "% To disable all wakeup sources, use \"disable-all\".\r\n"
           "%\r\n"
-          "% TIMESPEC is a string, that defines a time interval, consisting of days,\r\n"
-          "% hours, minutes, seconds and milliseconds:\r\n"
-          "% <i>4 days 1 hour 666 minutes ....</>\r\n"
+          "% TIMESPEC is a string that defines a time interval consisting of days,\r\n"
+          "% hours, minutes, seconds, and milliseconds:\r\n"
+          "%   <i>4 days 1 hour 666 minutes ...</>\r\n"
           "\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>nap alarm dis</>       : Disable all alarms\r\n"
@@ -1465,7 +1489,7 @@ KEYWORDS_DECL(main) {
     HELPK("% \"<b>iic</> <i>I2C_NUM</>\"\r\n"
           "%\r\n"
           "% Enter I2C interface configuration mode (i2c0, i2c1, ...)\r\n"
-          "% I2C_NUM is a number [0..1] of I2C bus to configure\r\n"
+          "% I2C_NUM is the bus number [0..1] to configure.\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>iic 0</>     - Enter I2C mode, use I2C bus#0"), "I2C commands" },
   // alias for iic. we need it for is_subdirectory()
@@ -1502,34 +1526,42 @@ KEYWORDS_DECL(main) {
           "%\r\n"
           "% Enter UART interface configuration mode (uart0, uart1 and uart2)\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <i>uart 0</>     - Enter UART mode, use uart0"), "UART commands" },
+          "%   <i>uart 0</>     - Enter UART mode, use uart0"
+        ), 
+    HELPK("UART commands") },
     
 
   { "sequence", cmd_seq_if, 1,
     HELPK("% \"<b>sequence</> <i>NUM</>\"\r\n"
           "%\r\n"
-          "% Create/configure a pulse sequence\r\n"
-          "% NUM is the sequence number, there are " xstr(SEQUENCES_NUM) "available\r\n"
+          "% Create or configure a pulse sequence that can later be replayed on any GPIO.\r\n"
+          "% NUM is the sequence number, in the range [0.." xstr(SEQUENCES_NUM) "].\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <i>sequence 5</>     - Enter sequence editing mode (Seq#5)"), "Pulse sequence configuration" },
+          "%   <i>sequence 5</>     - Enter sequence editing mode (Seq#5)"
+          ),
+    HELPK("Pulse sequence configuration") },
     
 
 #if WITH_FS
   { "files", cmd_files_if, NO_ARGS,
     HELPK("% \"<b>files</>\"\r\n"
           "%\r\n"
-          "% Enter files & file system operations mode"),
-    "File system access" },
+          "% Enter files & file system operations mode"
+          ),
+    HELPK("File system access") },
 #endif
 #if WITH_NVS
   { "nvs", cmd_nvs_if, MANY_ARGS,
     HELPK("% \"<b>nvs [PARTITION_NAME]</>\"\r\n"
           "%\r\n"
+          "% Enter the NVS (Non-Volatile Storage) editor/viewer. If PARTITION_NAME is omitted,\r\n"
+          "% the system’s default partition is used.\r\n"
+          "%\r\n"
           "% <u>Examples:</u>\r\n"
-          "% <i>nvs</i>           - Edit/view NVS\r\n"
-          "% <i>nvs CustomNVS</i> - Edit/view NVS located on partition CustomNVS\r\n"
+          "%   <i>nvs</>           - edit/view the default NVS\r\n"
+          "%   <i>nvs CustomNVS</> - edit/view the NVS located on the CustomNVS partition\r\n"
           ),
-    "Non-Volatile Storage access" },
+    HELPK("Non-Volatile Storage access") },
 #endif
 
   // "show iomux" goes first, to define a /.brief/ for subsequent entries.
@@ -1553,7 +1585,7 @@ KEYWORDS_DECL(main) {
   { "show", HELP_ONLY,
     HELPK("% \"<b>show <i>tasks</>\"\r\n"
           "%\r\n"
-          "% Display Task ID's for tasks started by ESPShell\r\n"
+          "% Display Task ID's and other information for FreeRTOS tasks\r\n"
           "% These IDs can be arguments to \"kill\", \"suspend\" and other commands"),NULL},
 
   { "show", HELP_ONLY,
@@ -1663,9 +1695,10 @@ KEYWORDS_DECL(main) {
           "% \"<b>echo</> [<o>-n</>] TEXT\"\r\n"
           "% \"<b>echo</>\"\r\n"
           "%\r\n"
-          "% User input echo / output control (default is on)\r\n"
-          "% Executed without arguments displays current echo state.\r\n"
-          "% Can be used to display TEXT as well\r\n"
+          "% Control user input echo / output (default: on)\r\n"
+          "% Executed without arguments, it displays the current echo state.\r\n"
+          "% Can also be used to display TEXT.\r\n"
+          "%\r\n"
           "% <u>Examples:</>\r\n"
           "%  <i>echo on</>               : enable user input echo\r\n"
           "%  <i>echo off</>              : disable user input echo\r\n"
@@ -1680,7 +1713,7 @@ KEYWORDS_DECL(main) {
   { "pin", cmd_pin, NO_ARGS,
     HELPK("% \"<b>pin</>\"\r\n"
           "%\r\n"
-          "% Display available/reserved pins, general GPIO information\r\n"
+          "% Display available/reserved pins and general GPIO information\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>pin</> - show GPIO availability"), 
     HELPK("GPIO commands") },
@@ -1688,7 +1721,7 @@ KEYWORDS_DECL(main) {
   { "pin", cmd_show_pin, 1,
     HELPK("% \"<b>pin</> <i>PIN_NUM</>\"\r\n"
           "%\r\n"
-          "% Show PIN_NUM GPIO configuration and its digital value\r\n"
+          "% Show GPIO configuration and digital value of PIN_NUM\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>pin 2</> - show GPIO2 information"), 
     NULL },
@@ -1696,25 +1729,26 @@ KEYWORDS_DECL(main) {
   { "pin", cmd_pin, MANY_ARGS,
     HELPK("% \"<b>pin</> <i>PIN_NUM</> [<o>ARG1 | ARG2 | ... | ARGn]*</>\"\r\n"
           "%\r\n"
-          "% Manipulate pin (GPIO) state, configuration, level, signal routing, etc\r\n"
-          "% Accepts a list of keywords (or just 1 keyword): \r\n"
+          "% Manipulate pin (GPIO) state, configuration, level, signal routing, etc.\r\n"
+          "% Accepts a list of keywords (or a single keyword):\r\n"
           "%\r\n"
-          "% \"<i>high</>\" & \"<i>low</>\"  - Set pin to \"1\" or \"0\"\r\n"
-          "% \"<i>up</>\", \"<i>down</>\" - enable PULL_UP, PULL_DOWN\r\n"
-          "% \"<i>out</>\", \"<i>in</>\" and \"<i>open</>\" - enable OUTPUT, INPUT \r\n"
-          "%                               or OPEN_DRAIN mode for the pin\r\n"
-          "% \"<i>save</>\" & \"<i>load</>\" - Save / Restore pin configuration\r\n"
-          "% \"<i>read</>\" & \"<i>aread</>\" - Perform digital or analog read\r\n"
-          "% \"<i>pwm</>\"Enable PWM signal on the pin (generator)\r\n"
-          "% \"<i>sequence</>\"  - Send an RMT (IR_Remote) sequence\r\n"
-          "% \"<i>matrix</>\" & \"<i>iomux</>\" - GPIO_Matrix and IO_MUX functions\r\n"
-          "% \"<i>hold</>\" & \"<i>release</>\" - freeze/unfreeze pin state and level.\r\n"          
-          "%  \"<i>delay</>\"  - Next keyword will be delayed\r\n"
-          "%  \"<i>NUMBER</>\"  - Set pin. All subsequent keywords will apply to this new pin\r\n"
-          "% \"<i>loop</>\"  - Execute whole \"pin\" command multiple times\r\n"
+          "% \"<i>high</>\" & \"<i>low</>\"       - set pin level to 1 or 0\r\n"
+          "% \"<i>up</>\" & \"<i>down</>\"        - enable PULL_UP or PULL_DOWN\r\n"
+          "% \"<i>out</>\", \"<i>in</>\", \"<i>open</>\"  - set OUTPUT, INPUT, or OPEN_DRAIN mode\r\n"
+          "% \"<i>save</>\" & \"<i>load</>\"      - save/restore pin configuration\r\n"
+          "% \"<i>read</>\" & \"<i>aread</>\"     - perform digital or analog read\r\n"
+          "% \"<i>pwm</>\"                - enable PWM signal on the pin\r\n"
+          "% \"<i>sequence</>\"           - send an RMT (IR remote) sequence\r\n"
+          "% \"<i>matrix</>\" & \"<i>iomux</>\"   - GPIO Matrix and IO_MUX functions\r\n"
+          "% \"<i>hold</>\" & \"<i>release</>\"   - freeze/unfreeze pin state and level\r\n"
+          "% \"<i>delay</>\"              - delay the next keyword\r\n"
+          "% \"<i>NUMBER</>\"             - switch to a new pin; subsequent keywords apply to it\r\n"
+          "% \"<i>loop</>\"               - execute the entire \"pin\" command multiple times\r\n"
           "%\r\n"
-          "% <u>Some examples:</>\r\n%\r\n"
+          "% <u>Examples:</>\r\n"
+          "%\r\n"
           "%  <i>pin 1 read</>               - GPIO1: read digital value\r\n"
+          "%  <i>pin 1 read 2 read</>        - GPIO1 and GPIO2: read digital values\r\n"
           "%  <i>pin 1 read aread</>         - GPIO1: digital read followed by an analog read\r\n"
           "%  <i>pin 1 in out up</>          - GPIO1 is INPUT and OUTPUT with PULLUP\r\n"
           "%  <i>pin 1 save high load</>     - Save pin state, set HIGH(1), restore pin state\r\n"
@@ -1733,21 +1767,23 @@ KEYWORDS_DECL(main) {
     HELPK("% \"<b>pwm <i>PIN</> [<o>FREQ</> [<o>DUTY</> [<o>CHANNEL</>] ] ]\"\r\n"
           "% \"<b>pwm <i>PIN off</>\"\r\n"
           "%\r\n"
-          "% Start or stop a PWM generator on pin PIN, frequency FREQ Hz and duty cycle\r\n"
-          "% of DUTY. Keywords \"<b>off</>\" or \"0\" are used to stop PWM output.\r\n"
-          "% FREQ is in range [0 .. " xstr(PWM_MAX_FREQUENCY) "] Hz\r\n"
+          "% Start or stop a PWM generator on PIN using frequency FREQ (Hz) and duty cycle\r\n"
+          "% DUTY. The keywords \"<b>off</>\" or \"0\" stop the PWM output.\r\n"
+          "% FREQ is in the range [0 .. " xstr(PWM_MAX_FREQUENCY) "] Hz.\r\n"
           "%\r\n"
-          "% DUTY is optional (0.5 (50%) if omitted); DUTY range is [0.00 .. 1.00])\r\n"
-          "% DUTY resolution is autoselected but can be overriden with \"var ledc_res BITS\"\r\n"
+          "% DUTY is optional (defaults to 0.5 = 50%); valid range is [0.00 .. 1.00].\r\n"
+          "% Duty resolution is auto-selected but can be overridden with \"var ledc_res BITS\".\r\n"
           "%\r\n"
-          "% CHANNEL is optional parameter, selects PWM channel to be used (0..15)\r\n"
+          "% CHANNEL is an optional parameter that selects the PWM channel to use (0..15 on ESP32,\r\n"
+          "% or 0..7 on ESP32-S3).\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>pwm 2 1000</>      - enable PWM of 1kHz, 50% duty cycle on pin 2\r\n"
           "%   <i>pwm 2 100 0.15</>  - enable PWM of 100 Hz, 15% duty cycle on pin 2\r\n"
           "%   <i>pwm 2 100 0.15 4</>- 100 Hz, 15% duty ,pin 2, Hardware channel 4\r\n"
           "%   <i>pwm 2</>           - disable PWM on pin 2\r\n"
           "%   <i>pwm 2 0</>         - same as above\r\n"
-          "%   <i>pwm 2 off</>       - same as above"),  "PWM output" },
+          "%   <i>pwm 2 off</>       - same as above"),  
+    HELPK("PWM output") },
 
   { "pwm", cmd_pwm, 3, HIDDEN_KEYWORD }, // pwm PIN FREQ DUTY
   { "pwm", cmd_pwm, 2, HIDDEN_KEYWORD }, // pwm PIN FREQ, pwm PIN off, pwm PIN 0
@@ -1757,28 +1793,31 @@ KEYWORDS_DECL(main) {
   { "count", cmd_count, MANY_ARGS,
     HELPK("% \"<b>count <i>PIN</> [<o>NUMBER</>| <o>infinite</> | <o>trigger</> | <o>filter LENGTH</>]*\"\r\n"
           "%\r\n"
-          "% Count pulses on pin PIN for NUMBER milliseconds (default value is 1 second, use \r\n"
-          "% keyword <i>infinite</> if you want this time to be very large)\r\n" 
-          "% Optional \"trigger\" keyword suspends the counter until the first pulse\r\n"
-          "% Optional \"filter LEN\" keyword ignores pulses <u>shorter than</> LEN nanoseconds\r\n"
+          "% Count pulses on PIN for NUMBER milliseconds (default is 1 second). Use the\r\n"
+          "% keyword <i>infinite</> to make the measurement time very large.\r\n"
+          "% The optional \"trigger\" keyword suspends counting until the first pulse.\r\n"
+          "% The optional \"filter LEN\" keyword ignores pulses <u>shorter than</> LEN nanoseconds.\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <i>count 4</>             - Count pulses & measure frequency on GPIO4 for 1000ms\r\n"
-          "%   <i>count 4 2000</>        - Same as above but measurement time is 2 seconds\r\n"
-          "%   <i>count 4 filter 100</>  - Count pulses, discarding those <u>shorter than</> 100ns\r\n"
-          "%   <i>count 4 infinite &</>  - Count pulses in <u>a background</> all the time\r\n"
-          "%   <i>count 4 trigger</>     - Wait for the first pulse, then start to count\r\n"
-          "%    Wait for the 1st pulse pulse, then start to count pulses for 2 seconds in a \r\n"
-          "%    background, ignoring pulses shorter than 300ns\r\n"
-          "%   <i>count 4 2000 filter 300 trig &</>"), "Pulse counter" },
+          "%   <i>count 4</>             - count pulses & measure frequency on GPIO4 for 1000 ms\r\n"
+          "%   <i>count 4 2000</>        - same as above, but measurement time is 2 seconds\r\n"
+          "%   <i>count 4 filter 100</>  - count pulses, ignoring those <u>shorter than</> 100 ns\r\n"
+          "%   <i>count 4 infinite &</>  - count pulses in the <u>background</u> continuously\r\n"
+          "%   <i>count 4 trigger</>     - wait for the first pulse, then start counting\r\n"
+          "%   <i>count 4 trigger 2000 filter 300 &</> - wait for the first pulse, then count\r\n"
+          "%     pulses for 2 seconds in the background, ignoring pulses shorter than 300 ns\r\n"
+          "%   <i>count 4 2000 filter 300 trig &</>"), 
+    HELPK("Pulse counter") },
 
   { "count", HELP_ONLY,
     HELPK("% \"<b>count <i>PIN</> <i>clear</>\"\r\n"
           "%\r\n"
-          "% Clear counters associated with pin PIN. These may be stopped, \r\n"
-          "% running or in \"trigger\" state\r\n"
-          "% <u>Example:</> \r\n"
-          "%   <i>count 4 clear</> - Clear all counters associated with GPIO4\r\n"), NULL },
+          "% Clear counters associated with PIN. These may be stopped,\r\n"
+          "% running, or in the \"trigger\" state.\r\n"
+          "% <u>Example:</>\r\n"
+          "%   <i>count 4 clear</> - clear all counters associated with GPIO4\r\n"
+          ),
+    NULL },
     
 #if WITH_ESPCAM
   { "camera", cmd_camera_if, MANY_ARGS, 
@@ -1790,119 +1829,136 @@ KEYWORDS_DECL(main) {
 #endif //WITH_ESPCAM
   
   { "var", cmd_var, 2,
-    HELPK("% \"<b>var</> <i>VARIABLE_NAME</> [<o>NEW_VALUE</>]</>\"\r\n"
+    HELPK("% \"<b>var</> <i>VARIABLE_NAME</> [<o>NEW_VALUE</>]\"\r\n"
           "%\r\n"
-          "%  a. Display sketch variable value\r\n"
-          "%S b. Set sketch variable to new value\r\n"
-          "% VARIABLE_NAME is the variable name (\"var\" to see the list of all vars)\r\n"
-          "% NEW_VALUE can be integer or float point values, positive or negative\r\n"
+          "%  a. Display a sketch variable value\r\n"
+          "%  b. Set a sketch variable to a new value\r\n"
+          "% VARIABLE_NAME is the variable name (use \"var\" to list all variables)\r\n"
+          "% NEW_VALUE may be an integer or floating-point value, positive or negative\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <i>var button1</>     - Display current value of \"button1\" sketch variable\r\n"
-          "%   <i>var angle -12.3</> - Set sketch variable \"angle\" to \"-12.3\"\r\n"
+          "%   <i>var button1</>     - display the current value of the \"button1\" sketch variable\r\n"
+          "%   <i>var angle -12.3</> - set the sketch variable \"angle\" to -12.3\r\n"
           "%\r\n"
-          "% Note#1: Partial (shortened) variable names can be used\r\n"
-          "% Note#2: Use prefix \"0x\" for hex, \"0\" for octal or \"0b\" for binary numbers"), "Sketch variables" },
+          "% Note #1: Partial (shortened) variable names may be used\r\n"
+          "% Note #2: Use the prefixes \"0x\" for hex, \"0\" for octal, and \"0b\" for binary numbers\r\n"
+    ),
+      HELPK("Sketch variables") },
 
   { "var", cmd_var, 1,
     HELPK("% \"<b>var</> <i>NUMBER</>\"\r\n"
           "%\r\n"
-          "% Display a NUMBER in differtent bases and perform unsafe C-style\r\n"
-          "% cast of a memory content\r\n"
-          "% NUMBER can be anything that converts to a number. Use \"0b\",\"0x\" or \"0\"\r\n"
-          "% prefixes to enter binary, hexadecimal or octal numbers."
+          "% Display a NUMBER in different bases and perform an unsafe C-style\r\n"
+          "% cast of memory contents.\r\n"
+          "% NUMBER can be anything that converts to a numeric value. Use \"0b\", \"0x\" or \"0\"\r\n"
+          "% prefixes to enter binary, hexadecimal, or octal numbers.\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <i>var -1234</>     - Get information on a decimal number -1234\r\n"
-          "%   <i>var 0x1234</>    -                 on a hex number..\r\n"
-          "%   <i>var 01234</>     -                 on an octal number..\r\n"
-          "%   <i>var 0b1001110</> - and on a binary number"), NULL },
+          "%   <i>var -1234</>     - get information on the decimal number -1234\r\n"
+          "%   <i>var 0x1234</>    - ...on a hexadecimal number\r\n"
+          "%   <i>var 01234</>     - ...on an octal number\r\n"
+          "%   <i>var 0b1001110</> - ...and on a binary number\r\n"
+          ),
+    NULL },
 
   { "var", cmd_var_show, NO_ARGS,
     HELPK("% \"<b>var</>\"\r\n"
           "%\r\n"
           "% Display the list of sketch variables accessible from the shell\r\n"
-          "% Variables must be registered with convar_add() macro\r\n"
+          "% Variables must be registered with the convar_add() macro\r\n"
           "%\r\n"
-          "% <u>Examples:</>\r\n"
-          "%   <i>var</> - Display variables list\r\n"), NULL },
+          "% <u>Example:</>\r\n"
+          "%   <i>var</> - display the list of variables\r\n"
+          ),
+    NULL },
 #if WITH_ALIAS
 
   { "if", cmd_if, MANY_ARGS,
     HELPK("% \"<b>if <i>rising|falling</> PIN [<o>low|high PIN</>]* [<o>max-exec NUM</>] [<o>rate-limit NUM</>] <i>exec</> ALIAS</>\"\r\n"
           "%\r\n"
-          "% Catch GPIO rising or falling interrupt\r\n"
-          "% Additional <u>level conditions</> can be provided (see examples)\r\n"
+          "% Catch GPIO rising or falling interrupts and execute scripts\r\n"
+          "% Additional <u>level conditions</> may be provided (see examples)\r\n"
           "%\r\n"
-          "%   <i>max-exec</> NUM   : execute this condition not more than NUM times\r\n"
-          "%   <i>rate-limit</> NUM : minimum time (millis) betwen two consequtive executions\r\n"
-          "%   <i>exec</> ALIAS     : alias to exec\r\n"
+          "%   <i>max-exec</> NUM   : execute this condition no more than NUM times\r\n"
+          "%   <i>rate-limit</> NUM : minimum time (ms) between two consecutive executions\r\n"
+          "%   <i>exec</> ALIAS     : alias for \"exec\"\r\n"
           "%\r\n"
           "% <u>Examples</>\r\n"
-          "% Execute alias \"Comm\" if GPIO#5 is \"falling\"\r\n"
+          "% Execute alias \"Comm\" when GPIO #5 has a falling edge\r\n"
           "%\r\n"
           "%   <i>if falling 5 exec Comm</>\r\n"
           "%\r\n"
-          "% Execute alias \"Comm\" if GPIO#5 is \"rising\" and GPIO#6 is \"low\" and GPIO#10 is \"high,\"\r\n"
-          "% but not more than 1 time per second, and not more than 5 times in total:\r\n"
+          "% Execute alias \"Comm\" when GPIO #5 has a rising edge, GPIO #6 is low, and\r\n"
+          "% GPIO #10 is high, but no more than once per second and no more than five\r\n"
+          "% times in total:\r\n"
           "%\r\n"
-          "%   <i>if rising 5 low 6 high 10 max-exec 5 rate-limit 1000 exec Comm</>"
+          "%   <i>if rising 5 low 6 high 10 max-exec 5 rate-limit 1000 exec Comm</>\r\n"
           "%\r\n"
-          "% NOTE: if alias does not exist - it is created automatically (empty)"
-          ), "Conditional GPIO events" },
+          "% NOTE: If the alias does not exist, it will be created automatically (empty)\r\n"
+          ), 
+    HELPK("Conditional GPIO events") },
 
   { "if", HELP_ONLY,
     HELPK("% \"<b>if <i>low|high</> PIN [<o>low|high PIN</>]* [<o>max-exec NUM</>] [<o>poll NUM</>] <i>exec</> ALIAS</>\"\r\n"
           "%\r\n"
-          "% Create a condition which is checked periodically (polling)\r\n"
-          "% No interrupts involved, max rate is limited by poll interval\r\n"
-          "%   <i>max-exec</>   : execute this condition not more than NUM times\r\n"
-          "%   <i>poll</>       : poll interval, milliseconds (default: 1000 ms)\r\n"
-          "%   <i>exec</>       : alias to exec\r\n"
+          "% Create a condition that is checked periodically (polling)\r\n"
+          "% No interrupts involved; the maximum rate is limited by the poll interval\r\n"
+          "%   <i>max-exec</> NUM : execute this condition no more than NUM times\r\n"
+          "%   <i>poll</>     NUM : poll interval in milliseconds (default: 1000 ms)\r\n"
+          "%   <i>exec</>     ALIAS : alias to execute\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <i>if low 5 poll 10000 exec Comm</> : if GPIO5 is low (check every 10 sec)\r\n"
-          "%   <i>if low 5 high 10 high 11 exec Comm</> : if GPIO5 is low and GPIO10,11 are high\r\n"
-          "%   <i>if low 5 max-exec 5 poll 1 exec Comm</> : .. five times max,"), NULL },
+          "%   <i>if low 5 poll 10000 exec Comm</> : if GPIO 5 is low (checked every 10 s)\r\n"
+          "%   <i>if low 5 high 10 high 11 exec Comm</> : if GPIO 5 is low and GPIO 10/11 are high\r\n"
+          "%   <i>if low 5 max-exec 5 poll 1 exec Comm</> : … up to five times, polled every 1 ms\r\n"
+          ), 
+    NULL },
 
   { "if", HELP_ONLY,
     HELPK("% \"<b>if delete NUM\"\r\n"
           "% \"<b>if delete all\"\r\n"
           "% \"<b>if delete gpio</> NUM\"\r\n"
           "%\r\n"
-          "% Delete \"if\" condition: by its ID, by GPIO number or just all of them\r\n"
-          "% (NOTE: Use \"show ifs\" to list all conditions and see their ID)\r\n"
+          "% Delete an \"if\" condition: by its ID, by GPIO number, or all of them\r\n"
+          "% (NOTE: Use \"show ifs\" to list all conditions and see their IDs)\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <b>if delete <i>6</>        : delete condition #6\r\n"
-          "%   <b>if delete <i>all</>      : delete all conditions (all, means ALL)\r\n"
-          "%   <b>if delete <i>gpio 7</>   : delete rising/falling conditions assigned to GPIO 7"), NULL },
+          "%   <b>if delete <i>6</></>        : delete condition #6\r\n"
+          "%   <b>if delete <i>all</></>      : delete all conditions (all means ALL)\r\n"
+          "%   <b>if delete <i>gpio 7</></>   : delete rising/falling conditions assigned to GPIO 7\r\n"
+          ), 
+    NULL },
 
   { "if", HELP_ONLY,
     HELPK("% \"<b>if clear [<o>gpio</>] NUM\"\r\n"
           "% \"<b>if clear all\"\r\n"
           "%\r\n"
-          "% Clear counters : (hits count & timestamp) for given \"if\" condition by\r\n"
-          "% its ID, by a GPIO number or just all of them\r\n"
-          "% Use \"<i>show ifs</>\" to list all conditions and see their ID)\r\n"
-          "% Use \"<i>if clear</>\" to reset conditions with \"max-exec\" attribute\r\n"
+          "% Clear counters (hit count & timestamp) for a given \"if\" condition\r\n"
+          "% Clear by its ID, by a GPIO number, or clear all of them\r\n"
+          "% Main use is to reset conditions that have hit their \"max-exec\" limit\r\n"
+          "%\r\n"
+          "% Use \"<i>show ifs</>\" to list all conditions and see their IDs\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <i>if clear 6</>        : Clear condition #6\r\n"
-          "%   <i>if clear all</>      : Clear all conditions (all, means ALL)\r\n"
-          "%   <i>if clear gpio 7</>   : Clear rising/falling conditions assigned to GPIO 7"), NULL },
+          "%   <i>if clear 6</>        : Clear counters for condition #6\r\n"
+          "%   <i>if clear all</>      : Clear counters for all conditions (all, means ALL)\r\n"
+          "%   <i>if clear gpio 7</>   : Clear counters for rising/falling conditions of GPIO#7"
+          ),
+    NULL },
 
   { "if", HELP_ONLY,
     HELPK("% \"<b>if <i>disable</>|<i>enable</> NUM|<i>all</>\"\r\n"
           "% \"<b>every <i>disable</>|<i>enable</> NUM|<i>all</>\"\r\n"
           "%\r\n"
-          "% Enable or disable execution of given \"if\" or \"every\" condition, by its ID\r\n"
-          "% (NOTE: Use \"show ifs\" to list all conditions and see their ID)\r\n"
+          "% Enable or disable execution of a given \"if\" or \"every\" condition by its ID\r\n"
+          "% (NOTE: Use \"show ifs\" to list all conditions and see their IDs)\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <b>if disable <i>6</>      : disable condition #6\r\n"
           "%   <b>every disable <i>all</> : disable all \"every\" conditions\r\n"
-          "%   <b>if enable <i>all</>     : Enable processing of all \"if\" conditions"), NULL },
+          "%   <b>if enable <i>all</>     : Enable processing of all \"if\" conditions"
+          ),
+    NULL },
 
   { "if", HELP_ONLY,
     HELPK("% \"<b>if save <i>ID</>|<i>*</> /FILENAME\"\r\n"
@@ -1913,14 +1969,15 @@ KEYWORDS_DECL(main) {
           "% <u>Examples:</>\r\n"
           "%   <b>if save <i>* /ffat/test.txt</> : Save all entries\r\n"
           "%   <b>if save <i>1 /ffat/test2</>    : Save \"if\" entry #1"), NULL },
-
+// TODO: must use read_timespec()
   { "every", cmd_if, MANY_ARGS,
     HELPK("% \"<b>every <i>TIME</> [<o>delay MILLIS</>] [<o>max-exec NUM</>] exec <i>ALIAS</>\"\r\n"
           "%\r\n"
-          "% Periodic events. TIME specified as NUMBER \"milliseconds|seconds|minutes|hours|days\"\r\n"
+          "% Periodic events.\r\n"
+          "% TIME is specified as NUMBER followed by \"milliseconds|seconds|minutes|hours|days\"\r\n"
           "%\r\n"
-          "%   <i>max-exec</> NUM   : execute this condition not more than NUM times\r\n"
-          "%   <i>delay</> MILLIS     : postpone first execution for specified amount of time\r\n"
+          "%   <i>max-exec</> NUM    : execute this condition no more than NUM times\r\n"
+          "%   <i>delay</> MILLIS   : postpone the first execution for the specified amount of time\r\n"
           "%   <i>exec</> ALIAS     : alias to exec\r\n"
           "%\r\n"
           "% <u>Examples</>\r\n"
@@ -1932,8 +1989,8 @@ KEYWORDS_DECL(main) {
   { "every", HELP_ONLY,
     HELPK("% \"<b>every delete</> <i>NUM</>\"\r\n"
           "%\r\n"
-          "% Delete \"every\" condition by its ID\r\n"
-          "% (NOTE: Use \"show ifs\" to list all conditions and see their ID)\r\n"
+          "% Delete an \"every\" condition by its ID\r\n"
+          "% (NOTE: Use \"show ifs\" to list all conditions and see their IDs)\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <b>every delete <i>6</>        : delete condition #6"), NULL },
@@ -1941,33 +1998,33 @@ KEYWORDS_DECL(main) {
   { "every", HELP_ONLY,
     HELPK("% \"<b>every clear</> <i>NUM</>\"\r\n"
           "%\r\n"
-          "% Clear counters : (hits count & timestamp) for given \"every\" condition\r\n"
-          "% Use \"<i>show ifs</>\" to list all conditions and see their ID)\r\n"
-          "% Use \"<i>every clear</>\" to reset conditions with \"max-exec\" attribute\r\n"
+          "% Clear counters (hit count & timestamp) for the given \"every\" condition\r\n"
+          "% Use \"<i>show ifs</>\" to list all conditions and see their IDs\r\n"
+          "% Use \"<i>every clear</>\" to reset conditions with the \"max-exec\" attribute\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>every clear 6</>        : Clear condition #6"), NULL },
 
-
-
   { "exec", cmd_exec, MANY_ARGS,
     HELPK("% \"<b>exec NAME [NAME NAME ... NAME ]</>\"\r\n"
           "%\r\n"
-          "% Execute alias (or aliases if more than one NAME is provided)\r\n"
-          "% Aliases are <u>list of commands</>; Use \"alias\" to create/edit one\r\n"
+          "% Execute an alias (or multiple aliases if more than one NAME is provided)\r\n"
+          "% Aliases are <u>lists of commands</u>; use \"alias\" to create or edit them\r\n"
           "%\r\n"
           "% <u>Examples</>>\r\n"
-          "%   <i>exec motor_on</> - Execute command list named \"motor_on\"\r\n"), "Execute scripts/aliases" },
+          "%   <i>exec motor_on</> - Execute command list named \"motor_on\"\r\n"), 
+    HELPK("Execute scripts/aliases") },
 #endif //ALIAS
 
   { "exec", cmd_exec, MANY_ARGS,
     HELPK("% \"<b>exec /FILE_NAME</>\"\r\n"
           "%\r\n"
-          "% Execute a shell script (from a filesystem), a file named /FILE_NAME\r\n"
-          "% Filesystem must be mounted and /FILE_NAME must start with \"/\"\r\n"
+          "% Execute a shell script from the filesystem, a file named /FILE_NAME\r\n"
+          "% The filesystem must be mounted, and /FILE_NAME must start with \"/\"\r\n"
           "%\r\n"
           "% <u>Examples</>>\r\n"
-          "%   <i>exec \"/ffat/Desktop/New Folder(1)/script.cfg\"</>"), "Execute scripts/aliases" },
+          "%   <i>exec \"/ffat/Desktop/New Folder(1)/script.cfg\"</>"), 
+    HELPK("Execute scripts/aliases") },
 
 
 #if WITH_HISTORY
@@ -1983,36 +2040,40 @@ KEYWORDS_DECL(main) {
   { "wifi", cmd_wifi_if, 1,
     HELPK("% \"<b>wifi ap|sta</>\"\r\n"
           "%\r\n"
-          "% Enter Wifi STA or Wifi AP configuration modes:\r\n"
-          "% \"<i>wifi sta</>\" - Station mode (WiFi client mode)\r\n"
-          "% \"<i>wifi ap</>\"  - SoftAP mode (WiFi Access Point mode)\r\n"
-        ), HELPK("WiFi interface commands") },
+          "% Enter WiFi STA or WiFi AP configuration modes:\r\n"
+          "%   \"<i>wifi sta</>\" - Station mode (WiFi client)\r\n"
+          "%   \"<i>wifi ap</>\"  - SoftAP mode (WiFi Access Point)\r\n"
+        ), 
+    HELPK("WiFi interface commands") },
 
   { "wifi", cmd_wifi_if, 2,
     HELPK("% \"<b>wifi storage flash|ram</>\"\r\n"
           "%\r\n"
-          "% Switch between RAM and FLASH when storing WiFi configuration\r\n"
-          "% so after reboot command \"up\" can be used without arguments:\r\n"
-          "% SSID, BSSID, passwords etc are retrieved from the flash\r\n"
-          "% Default value is RAM (discard all configs after reboot)\r\n"
+          "% Switch between RAM and FLASH for storing WiFi configuration\r\n"
+          "% so that after reboot the \"up\" command can be used without arguments:\r\n"
+          "% SSID, BSSID, passwords, etc. will be retrieved from flash.\r\n"
+          "% Default storage is RAM (all configuration is discarded after reboot).\r\n"
           "%\r\n"
           "% <u>Examples</>:\r\n"
-          "% \"<i>wifi storage flash</>\" - Enable auto-save STA/AP config\r\n"
-          "% \"<i>wifi storage ram</>\"   - Keep configs in RAM"
-        ), HELPK("WiFi interface commands") },
+          "%   <i>wifi storage flash</> - Enable auto-saving of STA/AP settings\r\n"
+          "%   <i>wifi storage ram</>   - Keep settings in RAM only\r\n"
+        ), 
+    NULL },
 
-  { "wifi", cmd_wifi_if, 2,
-    HELPK("% \"<b>wifi log enable|disable</>\"\r\n"
+  { "wifi", cmd_wifi_if, 2, // "wifi log" is handled by cmd_wifi_if as well
+    HELPK("% \"<b>wifi log [enable|disable]</>\"\r\n"
           "%\r\n"
-          "% Enable or disable WiFi events display: e.g. connection, disconnectio\r\n"
-          "% IP address obtained and so on\r\n"
+          "% Enable or disable WiFi events display: e.g. connection, disconnection\r\n"
+          "% IP address obtained and so on. It may be annoying so logging is disabled\r\n"
+          "% by default\r\n"
           "%\r\n"
           "% <u>Examples</>:\r\n"
           "% \"<i>wifi log enable</>\" - Enable logging"
-        ), HELPK("WiFi interface commands") },
+        ),
+    HELPK("WiFi interface commands") },
 
+  
 #endif
-
   KEYWORDS_END
 };
 KEYWORDS_REG(main);

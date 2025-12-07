@@ -650,6 +650,10 @@ static void display_ap_details(wifi_ap_record_t *ap, const char *requested_bssid
 // Set WiFi driver storage: NVS or RAM
 // "wifi storage ram|flash"
 //
+// NOTE: This handler MUST be called from cmd_wifi_if() is it is done right now, because only cmd_wifi_if() ensures 
+//       proper WiFi stack initialization
+// NOTE: This handler MUST NOT be used as is in "keywords.h"!
+//
 static int cmd_wifi_storage(int argc, char **argv) {
 
   wifi_storage_t storage = WIFI_STORAGE_RAM;
@@ -666,10 +670,20 @@ static int cmd_wifi_storage(int argc, char **argv) {
 // Enable/disable verbose event logging
 // "wifi log enable|disable"
 //
+// NOTE: This handler MUST be called from cmd_wifi_if() is it is done right now, because only cmd_wifi_if() ensures 
+//       proper WiFi stack initialization
+// NOTE: This handler MUST NOT be used as is in "keywords.h"!
+
 static int cmd_wifi_log(int argc, char **argv) {
 
-  if (argc < 3)
-    return CMD_MISSING_ARG;
+  if (argc < 3) {
+    const char *t0 = Wifi.log ? "en" : "dis";
+    const char *t1 = Wifi.log ? "dis" : "en";
+
+    q_printf("%% WiFi verbose log is <i>%sabled</>.\r\n"
+             "%% Use \"wifi log %sable\" to %sable it\r\n",t0 , t1, t1);
+    return 0;
+  }
   Wifi.log = !q_strcmp(argv[2],"enable");
   return 0;
 }
@@ -719,7 +733,7 @@ static int cmd_wifi_if(int argc, char **argv) {
   }
 
   if (!start_wifi_stack()) {
-    HELP(q_print("% Failed to start WiFi\r\n"));
+    HELP(q_print("% Failed to start WiFi; the WiFi interface may be non-functional\r\n"));
     return CMD_FAILED;
   }
 
@@ -728,8 +742,13 @@ static int cmd_wifi_if(int argc, char **argv) {
 
 
 
-
-// esp32-ap>kick AID
+// Kick STA from the AP interface.
+//
+// TODO: they will reconnect immediately. Must have some sort of auto-removable decay timer to stop them from reconnecting:
+// TODO: each connect attempt resets the decay timer (which is 1 minute) and when timer is >0 new connection attempts are blocked.
+// TODO: To block we must use STA's MAC because AID may be different every time
+//
+// esp32-ap>kick AID [auto]
 //
 static int cmd_wifi_kick(int argc, char **argv) {
 
@@ -742,11 +761,18 @@ static int cmd_wifi_kick(int argc, char **argv) {
   //"kick all"
   if (!q_strcmp(argv[1],"all"))
     aid = 0;
-  else { // kick NUMBER
+  else { // kick NUMBER [auto]
     if (0 == (aid = q_atol(argv[1],0)))
       q_print("% A valid AID is required (see \"show wifi clients\" output)\r\n");
-    else
+    else {
+      // if ((argc > 2) && !q_strcmp(argv[2],"auto")) {
+      //  char mac[6];
+      //  if (mac_of_aid(aid, mac))
+      //    if (block_list_add(mac, DEF_WIFI_BLOCKTIME))
+      //      q_printf("%% Client " MACSTR " has been added to a block list\r\n", MAC2STR(mac))
+      // }
       err = esp_wifi_deauth_sta(aid);
+    }
   }
 
   if (err != ESP_OK) {

@@ -129,20 +129,20 @@ static char Nv_cwd[NVS_NS_NAME_MAX_SIZE];
 // Temporary space to store a list of namespaces found by nv_list_namespaces()
 // along with number of entries in every namespace. Allocated and freed within nv_list_namespaces
 //
-static struct nvsnamespace {
+struct nvsnamespace {
   struct nvsnamespace *next;                        // pointer to the next namespace or NULL
   char                 name[NVS_NS_NAME_MAX_SIZE];  // name space
   int                  count;                       // number of key/value pairs in given namespace
-} *nvs_namespaces = NULL;
+};
 
 // Private functions
 
 // Add string /name/ to the global list of strings but only if that string is unique for the list
 // Returns /true/ if string was added and /false/ if it was not added (not unique or out of memory issues)
 //
-static bool add_unique(const char *name) {
-  if (name && *name) {
-    struct nvsnamespace *n = nvs_namespaces;
+static bool add_unique( struct nvsnamespace **nvs_namespaces, const char *name) {
+  if (likely(name && *name && nvs_namespaces)) {
+    struct nvsnamespace *n = *nvs_namespaces;
     while( n ) {
       if (!strcmp(n->name, name)) {
         n->count++;
@@ -156,9 +156,8 @@ static bool add_unique(const char *name) {
       n->count = 1;
       strlcpy(n->name, name, sizeof(n->name));
       // Link a new head
-      // TODO: must be atomic operation
-      n->next = nvs_namespaces;
-      nvs_namespaces = n;
+      n->next = *nvs_namespaces;
+      *nvs_namespaces = n;
       return true;
     }
   }
@@ -203,29 +202,21 @@ static size_t read_ctype(int argc, char **argv, int start, bool *is_str, bool *i
   return size;
 }
 
+_Static_assert((NVS_TYPE_U8 == 0x01) && (NVS_TYPE_I32 == 0x14), "Code review is required");
+
 // Convert decoded C-type to NVS data type
 //
 static __attribute__((const)) nvs_type_t ct2nt(uint8_t size, bool is_str, bool is_blob, bool is_signed) {
-  
-  if (is_str) return NVS_TYPE_STR;
-  if (is_blob) return NVS_TYPE_BLOB;
-  if (is_signed) {
-    switch(size) {
-      case 1: return NVS_TYPE_U8;
-      case 2: return NVS_TYPE_U16;
-      case 4: return NVS_TYPE_U32;
-      case 8: return NVS_TYPE_U64;
-    };
-  } else {
-    switch(size) {
-      case 1: return NVS_TYPE_I8;
-      case 2: return NVS_TYPE_I16;
-      case 4: return NVS_TYPE_I32;
-      case 8: return NVS_TYPE_I64;
-    };
-  }
-  
-  return NVS_TYPE_ANY; // Error
+
+  if (is_str)
+    return NVS_TYPE_STR;
+  if (is_blob)
+    return NVS_TYPE_BLOB;
+
+  if (size > 8)
+    return NVS_TYPE_ANY; // Error
+
+  return is_signed ? (0x10 | size) : size;
 }
 
 
@@ -292,7 +283,7 @@ static char *nv_set_cwd(const char *cwd) {
 
 
 // List all namespaces available
-//
+// this one is used by "ls"
 //
 static void nv_list_namespaces() {
 
@@ -303,10 +294,11 @@ static void nv_list_namespaces() {
     partition = DEF_NVS_PARTITION;
   
   if (nvs_entry_find(partition, NULL, NVS_TYPE_ANY, &it) == ESP_OK) {
+    struct nvsnamespace *nvs_namespaces = NULL;
     do {
         nvs_entry_info_t info;
         nvs_entry_info(it, &info);
-        if (add_unique(info.namespace_name))
+        if (add_unique(&nvs_namespaces, info.namespace_name))
           count++;
     } while (nvs_entry_next(&it) == ESP_OK);
     nvs_release_iterator(it); // Release the iterator
@@ -331,6 +323,7 @@ static void nv_list_namespaces() {
 
 // List key/values for the /namespace/
 // BLOBS are not displayed, strings are truncated to 42 characters
+// To view blobs and strings as is use command "dump"
 //
 static void nv_list_keys(const char *namespace) {
 
@@ -356,7 +349,7 @@ static void nv_list_keys(const char *namespace) {
 
         int count = 0;
 
-        q_print("%<r> # |     Key name     |  Type  | Value                                         </>\r\n"
+        q_print("%<r> # |     Key name     |  Type  | Value (strings may be truncated. use \"dump\") </>\r\n"
                    "% --+------------------+--------+-----------------------------------------------\r\n");
 
         do {
@@ -401,19 +394,115 @@ static void nv_list_keys(const char *namespace) {
 }
 
 
+static void nv_export_csv(FILE *fp, const char *namespace) {
+
+  esp_err_t err;
+  nvs_handle_t handle;
+  nvs_iterator_t it;
+  size_t length;
+  const char *partition;
+
+  uint64_t u64; int64_t i64;
+  uint32_t u32; int32_t i32;
+  uint16_t u16; int16_t i16;
+  uint8_t u8;   int8_t i8;
+  char *tmp = NULL;
+
+  if (namespace && *namespace) {
+
+    if (NULL == (partition = context_get_ptr(const char)))
+      partition = DEF_NVS_PARTITION;
+
+    if ((err = nvs_open_from_partition(partition,
+                                      *namespace == '*' ? NULL : namespace,
+                                      NVS_READONLY,
+                                      &handle)) == ESP_OK) {
+
+      if (nvs_entry_find_in_handle(handle, NVS_TYPE_ANY, &it) == ESP_OK) {
+
+        int count = 0;
+
+        fprintf(fp, "record_id,namespace,key_name,key_data_type,key_value\r\n");
+        do {
+          nvs_entry_info_t info;
+
+          
+          nvs_entry_info(it, &info);
+          if (*namespace != '*' && q_strcmp(namespace, info.namespace_name))
+            continue ;
+          count++;
+          fprintf(fp, "%d,%s,%s,%u,", count, namespace, info.key, info.type);
+
+          switch (info.type) {
+            case NVS_TYPE_U8:   nvs_get_u8(handle, info.key, &u8); fprintf(fp,"%u\r\n",u8); break;
+            case NVS_TYPE_I8:   nvs_get_i8(handle, info.key, &i8); fprintf(fp,"%d\r\n",i8); break;
+            case NVS_TYPE_U16:  nvs_get_u16(handle, info.key, &u16); fprintf(fp,"%u\r\n",u16); break;
+            case NVS_TYPE_I16:  nvs_get_i16(handle, info.key, &i16); fprintf(fp,"%d\r\n",i16); break;
+            case NVS_TYPE_U32:  nvs_get_u32(handle, info.key, &u32); fprintf(fp,"%lu\r\n",u32); break;
+            case NVS_TYPE_I32:  nvs_get_i32(handle, info.key, &i32); fprintf(fp,"%ld\r\n",i32); break;
+            case NVS_TYPE_U64:  nvs_get_u64(handle, info.key, &u64); fprintf(fp,"%llu\r\n",u64); break;
+            case NVS_TYPE_I64:  nvs_get_i64(handle, info.key, &i64); fprintf(fp,"%lld\r\n",i64); break;
+
+            case NVS_TYPE_STR:  length = 0;
+                                if (nvs_get_str(handle, info.key, NULL, &length) == ESP_OK) {
+                                  if ((tmp = (char *)q_malloc(length + 1, MEM_TMP)) != NULL) {
+                                    if (ESP_OK == nvs_get_str(handle, info.key, tmp, &length))
+                                      fprintf(fp,"\"%s\"\r\n", tmp);
+                                    else
+                                      fprintf(fp,"\"<invalid>\"\r\n");
+                                    q_free(tmp);
+                                    break;
+                                  }
+                                }
+                                fprintf(fp,"\"<invalid>\"\r\n");
+                                break;
+
+
+            case NVS_TYPE_BLOB:  length = 0;
+                                if (nvs_get_blob(handle, info.key, NULL, &length) == ESP_OK) {
+                                  if ((tmp = (char *)q_malloc(length + 1, MEM_TMP)) != NULL) {
+                                    if (ESP_OK == nvs_get_blob(handle, info.key, tmp, &length)) {
+                                      for (size_t i = 0; i < length; i++) {
+                                        fprintf(fp,"\\%02x", tmp[i]);
+                                      }
+                                      fprintf(fp,"\r\n");
+                                    } else
+                                      fprintf(fp,"\"<invalid>\"\r\n");
+                                    q_free(tmp);
+                                    break;
+                                  }
+                                }
+                                fprintf(fp,"\"<invalid>\"\r\n");
+                                break;
+
+            default:            q_print("<Unknown data>\r\n"); break;
+          };
+
+        } while (nvs_entry_next(&it) == ESP_OK);
+        nvs_release_iterator(it); // Release the iterator
+      } else
+        q_printf("%% Namespace \"%s\" (partition: \"%s\") is empty\r\n",namespace, partition);
+      nvs_close(handle);
+    } else
+      q_printf("%% Namespace \"%s\" (partition: \"%s\") is empty or does not exist\r\n",namespace, partition);
+  }
+}
+
+
 
 // Handlers
 
 
 // Switch to NVS editor.
-// /Context/ is not used here, but it is used to store CWD pointer (i.e. "/" or "NAMESPACE")
+// /Context/ stores a pointer to the NVS partition name (default value is "nvs")
 //
 static int cmd_nvs_if(int argc, char **argv) {
   static char partition[32]; //TODO: No magic numbers
   strlcpy( partition, 
-          (argc < 2) ? "nvs" : argv[1],
+          (argc < 2) ? DEF_NVS_PARTITION : argv[1],
           sizeof(partition));
-  change_command_directory(0, KEYWORDS(nvs), PROMPT, "NVS");
+  // TODO: check if partition exists!
+  change_command_directory(0, KEYWORDS(nvs), PROMPT, "NVS editor/viewer");
   context_set(partition);  
   nv_set_cwd(NULL);        // update prompt and set cwd to "/"
   return 0;
@@ -431,7 +520,7 @@ static int cmd_nvs_cd(int argc, char **argv) {
   //
   while (*p == '/' || *p == '.')
     p++;
-  if (strlen(p) > sizeof(nvs_namespaces->name)) {
+  if (strlen(p) >= NVS_NS_NAME_MAX_SIZE) {
     q_print("% Path is too long\r\n");
     return CMD_FAILED;
   }
@@ -541,6 +630,65 @@ erase_all_namespaces_and_exit:
 // set Str "Some text"
 // set Blob \11\22\33\44\55\66\aa\bb\cc\dd\ee\ff
 static int cmd_nvs_set(int argc, char **argv) {
+
+  esp_err_t err;
+  nvs_handle_t handle;
+  const char *partition, *namespace;
+
+  if (argc < 3)
+    return CMD_MISSING_ARG;
+
+  if (NULL == (partition = context_get_ptr(const char)))
+    partition = DEF_NVS_PARTITION;
+
+  namespace = nv_get_cwd();
+
+  if ((err = nvs_open_from_partition(partition, namespace, NVS_READWRITE, &handle)) == ESP_OK) {
+    nvs_type_t type;
+    if (ESP_OK == (err = nvs_find_key(handle, argv[1], &type))) {
+      switch(type) {
+        case NVS_TYPE_U8:   err = nvs_set_u8(handle,   argv[1], q_atol(argv[2], 0)); break; 
+        case NVS_TYPE_I8:   err = nvs_set_i8(handle,   argv[1], q_atoi(argv[2], 0)); break; 
+        case NVS_TYPE_U16:  err = nvs_set_u16(handle,  argv[1], q_atol(argv[2], 0)); break; 
+        case NVS_TYPE_I16:  err = nvs_set_i16(handle,  argv[1], q_atoi(argv[2], 0)); break; 
+        case NVS_TYPE_U32:  err = nvs_set_u32(handle,  argv[1], q_atol(argv[2], 0)); break; 
+        case NVS_TYPE_I32:  err = nvs_set_i32(handle,  argv[1], q_atoi(argv[2], 0)); break; 
+        case NVS_TYPE_U64:  err = nvs_set_u64(handle,  argv[1], q_atol(argv[2], 0)); break; 
+        case NVS_TYPE_I64:  err = nvs_set_i64(handle,  argv[1], q_atoi(argv[2], 0)); break; 
+        case NVS_TYPE_STR:   
+        case NVS_TYPE_BLOB:
+                            int siz;
+                            char *text = NULL;
+                            if ((siz = userinput_join(argc, argv, 2, &text)) >= 0) {
+                              if (type == NVS_TYPE_STR) {
+                                text[siz] = '\0'; // this buffer has extra bytes at the end which can be used to zero-terminate the string
+                                err = nvs_set_str(handle,  argv[1], text);
+                              } else if (siz)
+                                err = nvs_set_blob(handle, argv[1], text, siz);
+                              else {
+                                q_print("% Blob must be at least 1 byte long\r\n");
+                                err = ESP_FAIL;
+                              }
+                            }
+                            if (text)
+                              q_free(text);
+                            break;
+        default:            err = ESP_FAIL;
+      };
+    }
+
+    if (err == ESP_OK)
+      nvs_commit(handle);
+
+    nvs_close(handle);
+  }
+
+  if (err != ESP_OK) {
+    q_printf("%% Key %s does not exist (namespace \"%s\", partition \"%s\")\r\n", argv[1], namespace, partition);
+    q_print("% No changes were made to the NVS\r\n");
+    return CMD_FAILED;
+  }
+
   return 0;
 }
 
@@ -674,8 +822,8 @@ static int cmd_nvs_new(int argc, char **argv) {
         q_printf("%% The key has been created. Use \"set %s ...\" to set its value\r\n", argv[1]);
       } else
         q_print("% <e>Failed to commit changes (flash error?)</>\r\n");
-    } else
-      q_printf("%% <e>Failed, no changes were made to the NVS (error %u)</>\r\n",err);
+    } 
+      q_print("%% <e>Failed, no changes were made to the NVS</>\r\n");
     nvs_close(handle);
   } else
     q_printf("%% Can not open NVS partition \"%s\" (namespace: \"%s\")\r\n", partition, namespace);
@@ -684,9 +832,34 @@ static int cmd_nvs_new(int argc, char **argv) {
 
 #if WITH_FS
 // export NAMESPACE /PATH : export all keys from the NAMESPACE
-// export all /PATH       : export all NVS content
+// export * /PATH       : export all NVS content
 //
 static int cmd_nvs_export(int argc, char **argv) {
+
+  const char *namespace;
+  const char *filename;
+  FILE *fp;
+
+  if (argc < 3) {
+    if (nv_cwd_is_root()) {
+      HELP(q_print("% <e>No namespace selected</>\r\n"));
+      return CMD_FAILED;
+    }
+
+    namespace = nv_get_cwd();
+    filename = argv[1];
+  } else {
+    namespace = argv[1];
+    filename = argv[2];
+  }
+
+  if ((fp = files_fopen(filename,"a+")) == NULL) {
+    q_printf("%% <e>Can not open file \"%s\" for writing</>\r\n", filename);
+    return CMD_FAILED;
+  } 
+
+  nv_export_csv(fp, namespace);
+  fclose(fp);
   
   return 0;
 }
@@ -695,7 +868,7 @@ static int cmd_nvs_export(int argc, char **argv) {
 //
 //
 static int cmd_nvs_import(int argc, char **argv) {
-
+  NOT_YET();
   return 0;
 }
 #endif // #if WITH_FS
