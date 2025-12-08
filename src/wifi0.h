@@ -18,7 +18,6 @@
 // Creation/deletion/configuring of WiFi interfaces. Access Point and/or Station mode,
 // NAT router, NTP client and DHCP server. It is compatible with WiFi Arduino library.
 //
-// TODO: static_assert(WIFI_CIPHER_UNKNOWN == 12, "Code review is required");
 // TODO: check error codes for all esp-idf functions
 
 #include "freertos/event_groups.h"
@@ -41,6 +40,7 @@
 #include "dhcpserver/dhcpserver_options.h"
 #include "esp_netif_sntp.h"
 #include "esp_sntp.h"
+
 
 // -- MACROS --
 

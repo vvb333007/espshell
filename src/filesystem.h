@@ -12,6 +12,7 @@
 
 #if COMPILING_ESPSHELL
 
+
 // WARNING!!!  Hello, fellow software developer! If you’re about to modify this code, we have some bad news:
 // WARNING!!!  The code below relies heavily on shared read/write buffers. Many functions WILL modify their
 //             input buffers (paths, argv arrays, etc.).
@@ -43,8 +44,7 @@
 // Current working directory. Must start and end with "/". We don't use newlib's chdir()/getcwd() because
 // it can interfere with the sketch.
 //
-// CWD is a per-thread local variable, which must be q_free()d before task exits (just before task_finished())
-// TODO: add files_set_cwd(NULL) to task_finished()?
+// CWD is a per-thread local variable, which is q_free()d before task exits (see task_finished())
 //
 static __thread char *Cwd = NULL;  
 
@@ -1738,7 +1738,6 @@ finalize_mount:
     q_print(Failed);
   else {
     mountpoints[i].type = part->subtype;
-    static_assert(sizeof(mountpoints[0].label) >= sizeof(part->label), "Increase mountpoints[].label array size");
     strcpy(mountpoints[i].label, part->label);
 
     HELP(q_printf("%% %s on partition \"%s\" is mounted under \"%s\"\r\n", files_subtype2text(part->subtype), part->label, mp));

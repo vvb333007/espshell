@@ -1011,9 +1011,7 @@ static int cmd_pin_loop(int argc, char **argv,unsigned int pin, unsigned int *st
 
   // TODO: should we remove this? Printing creates a huge delay on a first pass. We can detect the loop before starting
   //       processing and show hint at that time. This delay can affect delay-sensetive "pin" commands
-  //
-  // TODO: should we make "loop" keyword be available for any command, like "&" symbol?
-  //       something like "@10" == "repeat 10 times",  "@" == "repeat infinitely" ?
+  
   if (*count)
     HELP(q_printf("%% Repeating whole command %u more times%s\r\n", *count - 1,is_foreground_task() ? ", press <Enter> to abort" : ""));
   else
@@ -1026,7 +1024,7 @@ static int cmd_pin_loop(int argc, char **argv,unsigned int pin, unsigned int *st
 // "pin NUM arg1 arg2 .. argn"
 //
 // Big fat "pin" command. Processes multiple arguments
-// TODO: Caching of arguments for looped commands
+// TODO: Caching of arguments for looped commands: should we use some sort of microcode?
 // TODO: join flags where possible to single call
 //
 static int cmd_pin(int argc, char **argv) {

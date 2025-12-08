@@ -200,7 +200,7 @@ static size_t read_ctype(int argc, char **argv, int start, bool *is_str, bool *i
   return size;
 }
 
-_Static_assert((NVS_TYPE_U8 == 0x01) && (NVS_TYPE_I32 == 0x14), "Code review is required");
+
 
 // Convert decoded C-type to NVS data type
 //

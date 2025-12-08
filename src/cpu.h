@@ -632,7 +632,15 @@ static int cmd_nap(int argc, char **argv) {
   Nap_alarm_time2 = Nap_alarm_time;
 
   HELP(q_printf("%% Entering %s sleep\r\n", deep ? "deep" : "light"));
-  HELP(q_delay(100));  // give a chance to the q_print above to do its job
+  // There is a bug in current version of ESP-IDF (5.5.1) which prevents USB-CDC from being correctly reinitialized 
+  // after the light sleep
+  if (console_here(-1) == 99 && !deep) {
+    q_print("% WARNING: console device is USB-CDC. Light sleep may fail to wake up\r\n"
+            "%          But lets hope for the best. Otherwise press the RST button\r\n");
+  }
+
+  // give a chance to the q_print above to do its job
+  q_delay(100);
 
   if (deep)
     esp_deep_sleep_start(); // does not return
@@ -643,7 +651,10 @@ static int cmd_nap(int argc, char **argv) {
   }
 
   HELP(q_print("% Resuming operation\r\n"));
+  
   // Reread wakeup cause, so subsequent "uptime" shows correct wakeup source
+  // TODO: there may be multiple wakeup sources triggered at the same time. Use wakeup_causeS API
+  //
   if ((Wakeup_source = (unsigned int )esp_sleep_get_wakeup_cause()) >= sizeof(Ws_desc)/sizeof(char *))
     Wakeup_source = 0;
 
@@ -665,10 +676,6 @@ static int cmd_uptime(UNUSED int argc, UNUSED char **argv) {
                sec = (uint32_t)(q_micros() / 1000000ULL), // better than 32bit millis, gives 136 years of uptime
                div = 60 * 60 * 24;
 
-  static_assert(ESP_RST_CPU_LOCKUP == 15, "Code review is required");
-#ifdef ESP_SLEEP_WAKEUP_VBAT_UNDER_VOLT  
-  static_assert(ESP_SLEEP_WAKEUP_VBAT_UNDER_VOLT == 14, "Code review is required");
-#endif  
 
 #define XX(_Text, _Divider) do {\
   if (sec >= div) { \

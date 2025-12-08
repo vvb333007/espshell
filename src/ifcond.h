@@ -1029,7 +1029,7 @@ static void ifc_task(void *arg) {
     }
   }
   /* UNREACHED */
-  files_set_cwd(NULL); // Free memory used for CWD
+  //files_set_cwd(NULL); // Free memory used for CWD
   task_finished();
   
 }

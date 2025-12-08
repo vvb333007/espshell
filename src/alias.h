@@ -406,7 +406,7 @@ static void alias_helper_task(void *arg) {
     ha_put(ha);
   }
   
-  files_set_cwd(NULL); // Free memory used for CWD
+  //files_set_cwd(NULL); // Free memory used for CWD
   task_finished();
 }
 

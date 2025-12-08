@@ -392,7 +392,7 @@ static void amp_helper_task(void *arg) {
   // its ok to unref null pointer
   userinput_unref(aa);
   
-  files_set_cwd(NULL); // Free memory used for CWD
+  //files_set_cwd(NULL); // Free memory used for CWD
   task_finished();
 }
 
@@ -728,7 +728,7 @@ static void espshell_task(const void *arg) {
     shell_task = NULL;
 
     // Sayonara
-    files_set_cwd(NULL); // Free memory used for CWD
+    //files_set_cwd(NULL); // Free memory used for CWD
     task_finished();
   }
 }
@@ -749,20 +749,40 @@ static INLINE bool espshell_started() {
 
 void STARTUP_HOOK espshell_start() {
 
-  static_assert(sizeof(unsigned long long) == 8);
-  static_assert(sizeof(signed long long) == 8);
-  static_assert(sizeof(unsigned short) == 2);
-  static_assert(sizeof(unsigned char) == 1);
-  static_assert(sizeof(signed short) == 2);
-  static_assert(sizeof(unsigned int) == 4);
-  static_assert(sizeof(signed char) == 1);
-  static_assert(sizeof(signed int) == 4);
-  static_assert(sizeof(void *) == 4); // TODO: get rid of it. We must not assume pointer size
-  static_assert(sizeof(float) == 4);
-  
   espshell_initonce();
   if (espshell_started())
     HELP(q_print("% ESPShell is started already, exiting\r\n"));
   else
     espshell_task((const void *)1);
 }
+
+
+// Static assert section is here, because at this point we have all files included
+// so we can reference any #define or variable
+//
+
+#ifdef ESP_SLEEP_WAKEUP_VBAT_UNDER_VOLT  
+_Static_assert(ESP_SLEEP_WAKEUP_VBAT_UNDER_VOLT == 14, "cpu.h code review is required");
+#endif
+_Static_assert(ESP_RST_CPU_LOCKUP == 15, "cpu.h code review is required");
+#if WITH_VAR || WITH_NVS
+_Static_assert(sizeof(unsigned long long) == 8, "Code review is required");
+_Static_assert(sizeof(signed long long) == 8, "Code review is required");
+_Static_assert(sizeof(unsigned short) == 2, "Code review is required");
+_Static_assert(sizeof(unsigned char) == 1, "Code review is required");
+_Static_assert(sizeof(signed short) == 2, "Code review is required");
+_Static_assert(sizeof(unsigned int) == 4, "Code review is required");
+_Static_assert(sizeof(signed char) == 1, "Code review is required");
+_Static_assert(sizeof(signed int) == 4, "Code review is required");
+_Static_assert(sizeof(void *) == 4, "Code review is required"); // TODO: get rid of it. We must not assume pointer size
+_Static_assert(sizeof(float) == 4, "Code review is required");
+#endif
+#if WITH_FS
+_Static_assert(sizeof(mountpoints[0].label) >= 17, "filesystem.h code review is required");
+#endif
+#if WITH_NVS
+_Static_assert((NVS_TYPE_U8 == 0x01) && (NVS_TYPE_I32 == 0x14), "nvs0.h code review is required");
+#endif
+#if WITH_WIFI
+_Static_assert(WIFI_CIPHER_TYPE_UNKNOWN == 12, "wifi0.h code review is required");
+#endif

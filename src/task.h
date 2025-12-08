@@ -178,7 +178,7 @@ static vsa_t *task_list = 0;            //  variable-sized array to hold active 
 // Must be called by a task to finish its execution:
 // FreeRTOS can not handle "return" from the task function. Instead, vTaskDelete must be called.
 // Dispose all per-thread variables here
-// TODO: Since Cwd is a thread-local variable, which is malloc()'ed, we dispose it here also
+//
 #define task_finished() \
   { \
     taskid_forget(taskid_self()); \
@@ -203,12 +203,12 @@ static vsa_t *task_list = 0;            //  variable-sized array to hold active 
       portYIELD_FROM_ISR(); \
   }
 
-// When task is created, there are some memory buffers get allocated: CWD for the filesystem, CWD for the NVS editor
+// When task is created, there are some memory buffers get allocated: CWD for the filesystem,
 // When task is destroyed we release that allocated memory to the system
-//
+// TODO: should use some sort of a callback to destroy all _Thread_local memory allocations
 static void task_return_memory() {
 #if WITH_FS  
-//files_set_cwd(NULL); //TODO: carefully check all calls to this befory commiting new changes
+  files_set_cwd(NULL);
 #endif
 }
 
@@ -591,8 +591,6 @@ static int cmd_priority(int argc, char **argv) {
     HELP(q_printf("%% Out of range. Range is [0..%u] (0 is the lowest priority)\r\n", configMAX_PRIORITIES - 1));
     return 1;
   }
-
-  // sizeof(task_t) must be equal to sizeof(uint32_t) - this is checked as static_assert in espshell.h
 
   if (argc > 2) {
 
