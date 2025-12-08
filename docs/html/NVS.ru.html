@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Энергонезависимая память в ESP32 : NVS</title>
+  <link rel="stylesheet" href="espshell.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="ESPShell : редактирование и просмотр содержимого NVS (Non Volatile Storage)">
+  <meta name="author" content="Viacheslav Logunov">
+  <meta name="repository" content="https://github.com/vvb333007/espshell">
+  <meta name="project" content="ESPShell">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "ESPShell WiFi Commands",
+    "description": "Detailed reference for using ESPShell NVS editor/viewer.",
+    "author": {
+      "@type": "Person",
+      "name": "Viacheslav Logunov"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "ESPShell Project",
+      "url": "https://github.com/vvb333007/espshell"
+    }
+}
+</script>
+
+</script>
+</head>
+<body>
+<p align=center><a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell для Ардуино :: Энергонезависимая память" width="70%" height="70%" /></a></p>
+<h3 align=center><a href="NVS.ru.html">[ На русском ]</a>&nbsp;&harr;&nbsp;<a href="NVS.html">[ English ]</a></h3>
+<p>
+  <ul>
+    <li><a href="#intro">NVS в ESP32</a></li>
+    <li><a href="#cdls">Отображение информации: cd и ls</a></li>
+    <li><a href="#newrmset">Создание, удаление и редактирование значений: new, rm и set</a></li>
+    <li><a href="#importexport">Экспорт и импорт: import, export</a></li>
+ </ul>
+</p>
+
+<p><h2 id=intro><a href="#top">&#8686;</a>NVS в ESP32</h2></p>
+<p>
+Хотя ESP-IDF (а так же Arduino Core) содержат функции для работы с NVS (библиотеки EEPROM и Preferences в Arduino),
+как таковой EEPROM в SoC от Espressif не предусмотрено: вместо этого EEPROM эмулируется на FLASH памяти и для этого
+на флеше есть специальный раздел, который по умолчанию называется "<b>nvs</b>".
+</p>
+<p>
+NVS в ESP устроена в виде линейной базы данных, с одним уровнем иерархии: помимо обычных "ключ=значение" в NVS
+так же сохраняется т.н. <i>namespace</i>. Ключи могут иметь одинаковые имена если он относятся к разым неймспейсам.
+</p>
+<p>
+ESPShell позволяет перемещаться по NVS образом, похожим на работу с фаловой системой: есть знакомые <b>ls, cd, rm</b>.
+Для создания новых и изменения существующих значений есть команды <b>new</b> и <b>set</b>, а для экспорта и импорта есть команды
+<b>import</b> и <b>export</b>, сохраняющие NVS в виде текстового CSV файла, что позволяет переносить NVS между разными устройствами 
+и версиями NVS
+</p>
+<p>
+Для запуска NVS редактора нужно выполнить команду <b>nvs</b>:
+<pre>
+  esp32#>nvs
+  esp32-nvs(/)>
+</pre>
+Появившееся приглашение говорит нам о том, что редактор запустился и мы находимся в корневом каталоге. В этом каталоге находятся <i>пространства имен</i> или namespaces,
+которые можно пролистать командой "<b>ls</b>" или активировать командой "<b>cd</b>": лучше всего думать о пространствах имен как о каталогах в фаловой системе.
+</p>
+
+<p><h2 id=cdls><a href="#top">&#8686;</a>Отображение информации: <b>cd</b>, <b>ls</b> и <b>dump</b></h2></p>
+<p>
+Команда <b>ls</b> имеет один необязательный параметр: пространство имен. Если параметр опущен, то используется то значение, которое было установлено командой <b>cd</b>.
+Команда <b>ls</b>, будучи выполненной в корневом каталоге пространства имен выведет список пространства имен:
+
+<pre>
+ esp32-nvs(/)><b>ls</b>
+ % NVS has 3 namespaces:
+ %  Namespace "espshell" : 2 keys
+ %  Namespace "phy" : 4 keys
+ %  Namespace "nvs.net80211" : 25 keys
+ esp32-nvs(/)>
+</pre>
+Если же зайти, скажем, в пространство имен phy (это WiFi драйвер) командой "<b>cd /phy</b>", то выполнив там команду ls без параметров, получим
+табличку-список ключей и их значений:
+<pre>
+  esp32-nvs(/)><b>cd phy</b>
+  esp32-nvs(/phy)<b>ls</b>
+  % # |     Key name     |  Type  | Value (strings may be truncated. use "dump")
+  % --+------------------+--------+-----------------------------------------------
+  %  1| cal_address      | char[] | &lt;A binary blob, not displayed&gt;, 1 bytes
+  %  2| cal_data         | char[] | &lt;A binary blob, not displayed&gt;, 1904 bytes
+  %  3| cal_mac          | char[] | &lt;A binary blob, not displayed&gt;, 6 bytes
+  %  4| cal_version      | uint32 | 701
+  % --+------------------+--------+-----------------------------------------------
+  % Total: 4 records
+</pre>
+ А можно - указать пространство имен непосредственно команде, ее первым аргументом:
+<pre>
+esp32-nvs(/phy)><b>ls ../espshell</b>
+% # |     Key name     |  Type  | Value (strings may be truncated. use "dump")
+% --+------------------+--------+-----------------------------------------------
+%  1| tz               | char*  | UTC-07:00
+%  2| hostid           | char*  | &lt;empty&gt;
+% --+------------------+--------+-----------------------------------------------
+% Total: 2 records
+esp32-nvs(/phy)>
+</pre>
+<b>ПРИМЕЧАНИЕ:</b> Для команды "<b>cd</b>" существование пространства имен не обязательно: если выполнить "<b>cd sdfgsdfg</b>"
+то никакой ошибки не произойдет и namespace будет установлено именно таким. При создании первого ключа в данном пространстве имен,
+оно появится в списке команды "<b>ls /</b>". Если же namespace будет пустым, то после выхода из него (например, командой <b>cd /</b>)
+пространство имен будет удалено.
+</p>
+<p>
+Как уже было указано, команда <b>ls</b> выводит содержимое NVS в виде таблицы: в ней указаны названия и типы ключей, а так же их значения,
+если эти значения являются числами. Строки отображаются целиком,только если они короче 42 символов, а бинарные данные (blob) не отображаются вовсе.
+Для отображения строк целиком, а так же бинарных данных существует команда <b>dump <i>KEY</i></b>.
+<pre>
+esp32-nvs(/phy)>dump cal_address
+10 11 22 33 44 55
+esp32-nvs(/phy)>
+</pre>
+Для данных небольшого размера (до 16 байт. лимит можно изменить с помощью команды "var tbl_min_len") отображение осуществляется в виде строчки. Для данных больщего размера включается форматированный табличный вывод:
+<pre>
+  esp32-nvs(/phy)>dump cal_data
+         0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F  |0123456789ABCDEF
+  ----------------------------------------------------------+----------------
+  0000: bd 02 00 00  f0 9e 9e 22  7b 2c 00 00  00 00 00 00  |......."{,......
+  0010: 00 00 00 00  00 00 00 00  00 00 7f 7f  7f 7f 7f 6f  |...............o
+  ...
+</pre>
+Команда dump так же позволяет выводить длинные строчки, которые могут быть обрезаны командой <b>ls</b>, целиком.
+Фомат вывода, впрочем, отличается от формата вывода бинарных данных:
+<pre>
+mars@esp32-nvs(/espshell)>dump hostid
+% "hostid" = "mars"
+
+mars@esp32-nvs(/espshell)>
+</pre>
+Команда <b>cd</b> позволяет "заходить" в пространства имен. Выбранное пространство имен будет отображаться в строке-преглашении:
+<pre>
+esp32-nvs(/)><b>cd espshell</b>
+esp32-nvs(<b>/espshell</b>)>
+</pre>
+</p>
+
+<p><h2 id=newrmset><a href="#top">&#8686;</a>Создание, удаление и редактирование значений: new, rm и set</h2></p>
+<p>
+Для удаления записей из NVS используется команда <b>rm</b>: она имеет один обязательный параметр. То, как работает эта команда станет понятнее из примеров.
+Предположим, что мы находимся в каталоге (namespace) "espshell":
+<pre>
+esp32-nvs(/)><b>cd espshell</b>
+esp32-nvs(<b>/espshell</b>)>
+</pre>
+Если же мы теперь выполним команду <b>rm tz</b>, то ключ <b>tz</b> из пространства имен <b>espshell</b> будет удален.
+Чтобы удалить ВСЕ ключи в данном пространстве имен, вместо имени ключа следует указать звездочку ("*")
+<pre>
+esp32-nvs(/)><b>cd espshell</b>
+esp32-nvs(/espshell)>
+esp32-nvs(/espshell)><b>rm *</b>
+% All keys in the namespace "espshell" were removed
+esp32-nvs(/espshell)>
+</pre>
+Для удаления пространства имен целиком так же можно задать его первым аргументом команды rm:
+<pre>
+esp32-nvs(/phy)>rm ../espshell
+</pre>
+Для удаления всех записей вообще, следует выполонить команду <b>rm *</b> непосредственно в корневом каталоге (в "/") или выполнить команду "<b>rm /</b>" в любом каталоге.
+
+</p>
+<p><h2 id=importexport><a href="#top">&#8686;</a>Экспорт и импорт: import, export</h2></p>
+<p>
+</p>
+
+</body>
+</html>
+</body>
+</html>

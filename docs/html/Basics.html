@@ -476,6 +476,24 @@ Other command directories ESPShell has are: <a href="UART.html">uart</a>,<a href
 <h3 id=index><a href="#top">&#8686;</a>Command Index / Brief with links to documentation pages</h3>
 </p><p>
 <table><tr><th>Command</th><th>Description</th></tr>
+
+
+
+<tr><td><p><a href="Aliases_And_Events.html">alias<br>if<br>every</a></p></td><td><p><b>alias <i>NAME</i>,<br>if ... exec <i>NAME</i>, every ... exec <i>NAME</i></b></p>
+            <p>Creating and executing aliases. Reacting to external events.<br>
+Users can create scripts consisting of espshell commands (so-called aliases) and run them either manually using the "<b>exec</b>" command, or automatically based on certain events or at a specified interval (the <b>if</b> and <b>every</b> commands).
+</p><p>
+More information and examples can be found on the <a href="Aliases_And_Events.html">corresponding page</a>
+</p></td></tr>
+
+
+<tr><td><p><a href="WiFi.html">wifi</a></p></td><td><p><b>wifi [ap|sta]<br>wifi log [enable|disable]<br>wifi storage flash|ram</b></p>
+            <p>Networking and WiFi<br>
+</p><p>
+Everything related to <b>IP, TCP, WiFi, DHCP, NTP</b>, etc., can be found on the <a href="WiFi.html">page dedicated to WiFi</a>
+</p></td></tr>
+
+
 <tr><td><p><a href="GPIO.html">pin</a></p></td><td><p><b>pin</b> <i>PIN</i> [<i>ARG1</i> | <i>ARG2</i> | ... | <i>ARGn</i> ]*</p><p>Various pin (GPIO) commands.<br>
 
             Set or read pin values, perform analogRead(), set pin modes, save/restore pin
@@ -513,6 +531,19 @@ Other command directories ESPShell has are: <a href="UART.html">uart</a>,<a href
 </p><p>
            Another use of this command is conerting numbers to/from binary/octal/dec/hex
 </p></td></tr>
+
+<tr><td><p><a href="Time.html">time</a></p></td><td><p><b>time set, time zone, show time</b></p>
+            <p>Setting and viewing the current time and time zone.<br>
+
+</p><p>
+            More information and examples can be found on the <a href="Time.html">corresponding page</a>  
+(see also: "show time")
+</p></td></tr>
+<tr><td><p><a href="NVS.html">nvs</a></p></td><td><p><b>nvs [<i>PARTITION_NAME</i>]</b></p>
+            <p>NVS viewer/editor<br>
+Non-volatile storage (the EEPROM and Preferences classes in Arduino) is implemented using flash memory. Running the <b>nvs</b> command opens the editor and viewer for the contents of this storage.
+</p><p>
+More information and examples can be found on the <a href="NVS.html">corresponding page</a></p></td></tr>
 
 
 <tr><td><p><a href="I2C.html">iic</a></p></td><td><p><b>iic</b> <i>NUM</i></p><p>Enter I<sup>2</sup>C bus/interface mode.<br> Configure and use (read/write/scan) specified 
@@ -558,6 +589,9 @@ Depending on a keyword used there may be 0, 1, 2 or more arguments:
 <li><b><a href="Filesystems.html#show">show mount</a></b></li>
 <li><b><a href="CPU.html#meminfo">show memory</a></b></li>
 <li><b><a href="Camera.html#show">show camera</a></b></li>
+<li><b><a href="WiFi.html#show">show wifi</a></b></li>
+<li><b><a href="Sleep.html#show">show nap</a></b></li>
+<li><b><a href="Time.html#show">show time</a></b></li>
 <li><b><a href="Kill_Suspend_And_Resume.html#show">show tasks</a></b></li>
 </ul>
 </p>
@@ -604,38 +638,19 @@ Depending on a keyword used there may be 0, 1, 2 or more arguments:
 <tr><td><p>reload</p></td><td><p><b>reload</b></p> <p>Reboots ESP32. This is a software restart which does not reset hardware
              (peripherial) registers
 </p></td></tr>
+<tr>
+  <td><a href="Sleep.html"><b>nap</b></a></td>
+  <td>
+    <p><b>nap [deep]</b></p>
+    <p>
+      Puts the processor into <b>light or deep sleep</b>.<br>
+      Without arguments, it puts the processor into light sleep.<br>
+      For more details, see <a href="Sleep.html">this file</a>.
+    </p>
+  </td>
+</tr>
 
 
-<tr><td><p>nap</p></td><td><p><b>nap</b> [<i>NUM</i> [seconds | minutes | hours]]</p> <p>Put CPU into <b>light sleep</b> mode.<br>
-             Without arguments: puts CPU into sleep until any UART activity:  
-             CPU wakes up by UART (press any key to wake up). Wake up condition is 3 
-             positive edges. It is recommended to use &lt;Enter&gt; as an abort key
-<pre>         
-             Example:   
-                 esp32#>nap
-                 % Entering light sleep
-</pre>
-</p><p>                                  
-
-             With argument: puts CPU into light sleep for <i>NUM</i> seconds, minutes or hours. CPU wakes up by timer only, there are
-             no other ways to cancel the sleep
-</p>
-<p>
-Example: put CPU into light sleep for 10 minutes:
-<pre>
-  esp32#>nap 10 min
-</pre>
-Example: put CPU into light sleep for 100 seconds:
-<pre>
-  esp32#>nap 100
-</pre>
-  or
-<pre>
-  esp32#>nap 100 seconds
-</pre>
-NOTE: You can not set wake up time like that: "<b>10 hours 50 minutes</b>". Instead, use either "<b>11 hours</b>" or "<b>650 minutes</b>"
-</p>
-</td></tr>
 </table></p>
 <p><h2 id=copyrights><a href="#top">&#8686;</a>COPYRIGHTS</h2></p>
 <p><pre>
