@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Sleep и Deep Sleep</title>
+  <link rel="stylesheet" href="espshell.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="ESPShell : легкий и глубокий сон">
+  <meta name="author" content="Viacheslav Logunov">
+  <meta name="repository" content="https://github.com/vvb333007/espshell">
+  <meta name="project" content="ESPShell">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "ESPShell WiFi Commands",
+    "description": "Detailed reference for the nap command",
+    "author": {
+      "@type": "Person",
+      "name": "Viacheslav Logunov"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "ESPShell Project",
+      "url": "https://github.com/vvb333007/espshell"
+    }
+}
+</script>
+
+</script>
+</head>
+<body>
+<p align=center><a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell для Ардуино :: Глубокий и легкий сон" width="70%" height="70%" /></a></p>
+<h3 align=center><a href="Sleep.ru.html">[ На русском ]</a>&nbsp;&harr;&nbsp;<a href="Sleep.html">[ English ]</a></h3>
+<p>
+  <ul>
+    <li><a href="#intro">Режимы сна в ESP32 и энергопотребление</a></li>
+    <li><a href="#nap">Засыпание: nap и nap deep</a></li>
+    <li><a href="#alarms">Просыпание: будильники и события</a></li>
+    <li><a href="#example">Пример: легкий сон на 5 секунд</a></li>
+    <li><a href="#ref">Список команд</a></li>
+ </ul>
+</p>
+
+<p><h2 id=intro><a href="#top">&#8686;</a>Режимы сна в ESP32 и энергопотребление</h2></p>
+<p>
+ESP32 имеет режим Light Sleep, при котором периферия отключается (clock-gating), но содержимое RAM и 
+состояние CPU сохраняются (быстрое пробуждение, переменные остаются в памяти). И есть Deep Sleep, 
+который отключает большинство компонентов, из-за чего при пробуждении требуется полноценная перезагрузка, 
+но при этом значительно экономится энергия; активными остаются только RTC-память и периферия 
+(пробуждение дольше, для сохранения данных требуется использовать RTC-память).
+</p>
+<p>
+Оба режима экономят энергию в устройствах на батарейном питании: Deep Sleep даёт максимальную экономию (единицы микроампер), 
+а Light Sleep (сотни микроампер) обеспечивает быстрое возобновление работы и часто используется вместе с режимом Modem-sleep 
+для Wi-Fi/Bluetooth в постоянно подключённых приложениях.
+</p>
+<p>
+В ESPShell сном управляет одна команда - "<b>nap</b>". С помощью нее можно посылать процессор в легкий или
+глубокий сон а так же задавать условия пробуждения. Ну и традиционная команда для просмотра состояния: "<b>show nap</b>"
+</p>
+
+<p><h2 id=nap><a href="#top">&#8686;</a>Засыпание: nap и nap deep</h2></p>
+<p>
+Для того, чтобы отправить процессор в легкий сон используется команда "<b>nap</b>" без аргументов, а для глубокого сна (с перезагрузкой по пробуждении)
+используется команда "<b>nap deep</b>". Впрочем, если вы попытаетесь ей воспользоваться, ESPShell откажется, сославшись на то, что не установлено <i>условие пробуждения</i>
+<pre>
+  esp32#>nap
+  % Wakeup source is not properly set, use "nap alarm" to set one
+  % When should we wakeup?
+  esp32#>
+</pre>
+Ну что же, давайте сначала установим будильник
+</p>
+
+<p><h2 id=alarms><a href="#top">&#8686;</a>Просыпание: будильники и события</h2></p>
+<p>
+ESPShell умеет будить процессор по трем разным событиям:
+<ul>
+<li>Активность на UART (задается номер UART и количество pos edges на линии TX для пробуждения)</li>
+<li>Активность на GPIO (задается уровень low/high и список пинов)</li>
+<li>Таймер</li>
+</ul>
+События, по которым следует будить процессор задаются командой "<b>nap alarm</b>". Обратите внимание на то, что последовательное
+исполнение команд nap alarm не заменяет один будильник другим, а суммирует их. Так, если выполнить команду "<b>nap alarm uart 0</b>" а затем - "<b>nap alarm 5 sec</b>",
+то будет задано <b>два</b> будильника - один по таймеру, через 5 секунд, а второй - по активности на UART.
+</p>
+<p>
+Чтобы отменить установленные будильники, следует воспользоваться командой "<b>nap alarm disable-all</b>":
+<pre>
+  esp32#>nap alarm disable-all
+  % All sleep wakeup sources were disabled
+  esp32#>
+</pre>
+Если вы просто меняете время просыпания на будильнике, то ничего отменять не нужно. Но если вы меняете источник пробуждения с таймера, на, скажем, UART0,
+то нужно будет сделать nap alarm disable-all перед nap alarm uart0 
+</p>
+
+<p><h2 id=example><a href="#top">&#8686;</a>Пример: погрузить процессор в легкий сон на 5 секунд,</h2></p>
+<p>
+Итак, отправим наш ESP32 в глубокий и не очень сон посредством команд ESPShell. Сначала сконфигурируем будильник - пусть это будет пять секунд:
+
+<pre>
+esp32#>nap alarm 5 sec
+% Sleep wakeup timer: 5000000 usec
+esp32#>
+</pre>
+
+А теперь - в глубокий или легкий сон:
+<pre>
+  esp32#>nap
+  % Entering light sleep
+</pre>
+По прошествии 5 секунд процессор проснется и продолжит свою работу. При выходе из глубокго (deep) сна процессор перезагрузится
+</p>
+
+<p><h2 id=ref><a href="#top">&#8686;</a>Список команд и примеры</h2></p>
+
+<table>
+  <tr><th>Команда</th><th>Описание и примеры</th></tr>
+
+  <tr>
+    <td><b>nap [deep]</b></td>
+    <td><b>nap</b><br>
+        <b>nap deep</b><br>
+         <p>
+          Посылает процессор в режим сна: глубокого (ключ "<b>deep</b>") или легкого (<b>nap</b> без параметров).
+          После возвращения процессора в рабочее состояние, можно выполнить команду "<b>uptime</b>", чтобы узнать причину пробуждения и количество циклов уснул-проснулся:
+<pre>
+  % Last boot was 6 seconds ago
+  % Reset reason: "returning from a deep sleep"
+  %    CPU0: Deep sleep reset the digital core
+  %    CPU1: Deep sleep reset the digital core
+  % Returned from sleep: 1 time (sequental), <b>wakeup caused by a timer</b>
+  % Slept for 5 seconds
+  % Firmware reload count: 2 (# of resets since power-on)
+</pre>
+        </p>
+</td></tr>
+
+  <tr>
+    <td><b>nap alarm ... </b></td>
+    <td><b>nap alarm uart <i>NUMBER</i> [<i>EDGES</i>]</b>
+         <p>
+        Источник пробуждения - UART номер NUMBER. Необязательный параметр EDGES (значение по умолчанию: 3) задает сколько раз должен "дернуться" пин RX, чтобы UART пробудил центральный процессор.
+        На платах-клонах DevKitC, UART0 выведен через микросхему-конвертер USB-UART. Из-за особенностей этого дизайна, когда процессор уходит в глубокий сон, проснутся по активности на UART он уже не может - микросхема-конвертер так же уходит в шатдаун.
+        При непосредственном подключении к UART такой проблемы не возникает. В режиме легкого сна эта проблема не озникает так же, т.к. микросхема-конвертер остается в работающем состоянии.
+        </p>
+        <b>nap alarm low|high <i>PIN1</i> [<i>PIN2 PIN3 ... PINn</i>]</b>
+        <p>
+        Источник пробуждения - сигнал LOW или HIGH на пинах PIN1, PIN2 ... PINn. Например, если нам нужно, чтобы процессор просыпался
+        когда на одном из пинов 2,4 или 1 вознкает значение логической единицы:
+        <pre>
+            esp32#>nap alarm <b>high 1 2 4</b>
+            % Sleep wakeup source: EXT1
+            esp32#>
+        </pre>
+        </p>
+
+        <b>nap alarm <i>TIMESPEC</i></b>
+        <p>
+        Задать интервал, по прошествии которого процессор будет выведен из состояния сна. TIMESPEC задает интервал в виде
+        дней, минут, часов,с екунд и миллисекунд, в свободном формате:
+<pre>
+  esp32#>nap alarm 25 days 1 hour 55 min 1 s
+  % Sleep wakeup timer: 2166901000000 usec
+  esp32#>
+</pre
+
+Если в качестве TIMESPEC указать просто одно число, например "nap alarm 1", то это число будет воспринято 
+сичтемой, как количество секунд: таким образом команда "<b>nap alarm 1</b>" пробудит процессор ровно через 
+1 секунду после засыпания.
+        </p>
+
+        <b>nap alarm disable-all</b>
+        <p>
+          Отменить все установленные ранее источники пробуждения.
+        </p>
+        
+</td>
+  </tr>
+  <tr id=show>
+    <td><b>show nap</b></td>
+    <td><b>show nap</b><br>
+         <p>
+Показывает, какие источники пробуждения сейчас активны:
+<pre>
+  esp32#>show nap
+  % Enabled wakeup source: TIMER, duration: 3888000 sec   &larr; обычный таймер на 45 дней
+  % Enabled wakeup source: EXT0 (single GPIO)             &larr; GPIO пин
+  % Enabled wakeup source: UART RX                        &larr; активность на UART
+  esp32#>
+</pre>
+        </p>
+</td></tr>
+</table>
+</body>
+</html>
+</body>
+</html>

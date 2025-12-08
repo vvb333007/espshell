@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Sleep and Deep Sleep</title>
+  <link rel="stylesheet" href="espshell.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="ESPShell : light and deep sleep">
+  <meta name="author" content="Viacheslav Logunov">
+  <meta name="repository" content="https://github.com/vvb333007/espshell">
+  <meta name="project" content="ESPShell">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "ESPShell Commands",
+    "description": "Detailed reference for the nap command",
+    "author": {
+      "@type": "Person",
+      "name": "Viacheslav Logunov"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "ESPShell Project",
+      "url": "https://github.com/vvb333007/espshell"
+    }
+}
+</script>
+
+</script>
+</head>
+<body>
+<p align=center><a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: Deep and Light Sleep" width="70%" height="70%" /></a></p>
+<h3 align=center><a href="Sleep.ru.html">[ Russian ]</a>&nbsp;&harr;&nbsp;<a href="Sleep.html">[ English ]</a></h3>
+<p>
+  <ul>
+    <li><a href="#intro">Sleep modes in ESP32 and power usage</a></li>
+    <li><a href="#nap">Sleeping: nap and nap deep</a></li>
+    <li><a href="#alarms">Waking up: alarms and events</a></li>
+    <li><a href="#example">Example: light sleep for 5 seconds</a></li>
+    <li><a href="#ref">Command reference</a></li>
+ </ul>
+</p>
+
+<p><h2 id=intro><a href="#top">&#8686;</a>Sleep modes in ESP32 and power consumption</h2></p>
+<p>
+ESP32 provides a Light Sleep mode, where peripheral clocks are gated off but RAM contents and CPU state remain preserved (fast wake-up, variables stay in memory).  
+It also supports Deep Sleep, which powers down most internal components; waking up from this mode requires a full reboot, but power consumption becomes dramatically lower.  
+Only the RTC memory and RTC peripherals remain powered (longer wake-up time, and persistent data must be stored explicitly in RTC memory).
+</p>
+<p>
+Both modes reduce power consumption in battery-powered devices: Deep Sleep yields the lowest consumption (single-digit microamps),  
+while Light Sleep (hundreds of microamps) allows fast resumption of operation and is often used together with Modem-sleep for Wi-Fi/Bluetooth in always-connected applications.
+</p>
+<p>
+In ESPShell, sleep is controlled by a single command: "<b>nap</b>".  
+With it, you can put the CPU into light or deep sleep and also configure wake-up conditions.  
+A traditional status command is available as well: "<b>show nap</b>".
+</p>
+
+<p><h2 id=nap><a href="#top">&#8686;</a>Sleeping: nap and nap deep</h2></p>
+<p>
+To put the processor into Light Sleep, use the "<b>nap</b>" command without arguments.  
+For Deep Sleep (which reboots the chip on wake-up), use "<b>nap deep</b>".  
+However, if you attempt this without configuring a wake-up source, ESPShell will refuse, pointing out that no <i>wake-up condition</i> is set:
+<pre>
+  esp32#>nap
+  % Wakeup source is not properly set, use "nap alarm" to set one
+  % When should we wakeup?
+  esp32#>
+</pre>
+So first, let’s configure an alarm.
+</p>
+
+<p><h2 id=alarms><a href="#top">&#8686;</a>Waking up: alarms and events</h2></p>
+<p>
+ESPShell can wake the processor from three kinds of events:
+<ul>
+<li>UART activity (you specify UART number and number of pos-edges on RX required to trigger wake-up)</li>
+<li>GPIO activity (you specify low/high level and a list of pins)</li>
+<li>Timer</li>
+</ul>
+Wake-up events are defined by the "<b>nap alarm</b>" command.  
+Note that running several nap alarm commands does not replace the previous alarm — they are cumulative.  
+For example, if you run "<b>nap alarm uart 0</b>" and then "<b>nap alarm 5 sec</b>",  
+you will end up with <b>two</b> wake-up sources: a timer (5 seconds) and UART activity.
+</p>
+<p>
+To clear all configured alarms, use "<b>nap alarm disable-all</b>":
+<pre>
+  esp32#>nap alarm disable-all
+  % All sleep wakeup sources were disabled
+  esp32#>
+</pre>
+If you are only changing a timer value, clearing alarms is unnecessary.  
+But if you switch the wake-up source from timer to something else (e.g. to UART0),  
+you must run nap alarm disable-all before defining the new source via nap alarm uart0.
+</p>
+
+<p><h2 id=example><a href="#top">&#8686;</a>Example: putting the CPU into light sleep for 5 seconds</h2></p>
+<p>
+Now let’s put ESP32 into either light or deep sleep using ESPShell.  
+First, configure an alarm — let’s set it to five seconds:
+<pre>
+esp32#>nap alarm 5 sec
+% Sleep wakeup timer: 5000000 usec
+esp32#>
+</pre>
+
+And now enter light or deep sleep:
+<pre>
+  esp32#>nap
+  % Entering light sleep
+</pre>
+After 5 seconds the processor will wake up and continue execution.  
+When waking up from deep sleep, the chip will reboot.
+</p>
+
+<p><h2 id=ref><a href="#top">&#8686;</a>Command list and examples</h2></p>
+
+<table>
+  <tr><th>Command</th><th>Description and examples</th></tr>
+
+  <tr>
+    <td><b>nap [deep]</b></td>
+    <td><b>nap</b><br>
+        <b>nap deep</b><br>
+         <p>
+          Puts the processor into sleep mode: deep sleep (using the "<b>deep</b>" key) or light sleep (plain <b>nap</b>).  
+          After the processor returns to normal operation, you can run "<b>uptime</b>" to check the wake-up reason and the number of sleep cycles:
+<pre>
+  % Last boot was 6 seconds ago
+  % Reset reason: "returning from a deep sleep"
+  %    CPU0: Deep sleep reset the digital core
+  %    CPU1: Deep sleep reset the digital core
+  % Returned from sleep: 1 time (sequental), <b>wakeup caused by a timer</b>
+  % Slept for 5 seconds
+  % Firmware reload count: 2 (# of resets since power-on)
+</pre>
+        </p>
+</td></tr>
+
+  <tr>
+    <td><b>nap alarm ... </b></td>
+    <td><b>nap alarm uart <i>NUMBER</i> [<i>EDGES</i>]</b>
+         <p>
+        Wake-up source: UART number NUMBER.  
+        Optional parameter EDGES (default: 3) defines how many rising edges on RX must occur to wake up the CPU.  
+        On DevKitC-clone boards, UART0 goes through a USB-UART converter chip.  
+        Due to this design, when the processor enters deep sleep, it cannot wake up on UART activity — the converter chip also shuts down.  
+        With a direct UART connection this issue does not occur.  
+        In Light Sleep this limitation also does not apply, since the converter chip remains powered.
+        </p>
+        <b>nap alarm low|high <i>PIN1</i> [<i>PIN2 PIN3 ... PINn</i>]</b>
+        <p>
+        Wake-up source: a LOW or HIGH signal on pins PIN1, PIN2… PINn.  
+        For example, if we want the processor to wake up when logical HIGH appears on any of pins 2, 4, or 1:
+        <pre>
+            esp32#>nap alarm <b>high 1 2 4</b>
+            % Sleep wakeup source: EXT1
+            esp32#>
+        </pre>
+        </p>
+
+        <b>nap alarm <i>TIMESPEC</i></b>
+        <p>
+        Sets a time interval after which the processor should leave sleep mode.  
+        TIMESPEC describes a duration using a free-form combination of days, hours, minutes, seconds, and milliseconds:
+<pre>
+  esp32#>nap alarm 25 days 1 hour 55 min 1 s
+  % Sleep wakeup timer: 2166901000000 usec
+  esp32#>
+</pre>
+
+If TIMESPEC is a single number (e.g. "nap alarm 1"), it is treated as seconds.  
+Thus, "<b>nap alarm 1</b>" wakes the processor exactly 1 second after entering sleep.
+        </p>
+
+        <b>nap alarm disable-all</b>
+        <p>
+          Disables all previously configured wake-up sources.
+        </p>
+        
+</td>
+  </tr>
+  <tr id=show>
+    <td><b>show nap</b></td>
+    <td><b>show nap</b><br>
+         <p>
+Displays all currently active wake-up sources:
+<pre>
+  esp32#>show nap
+  % Enabled wakeup source: TIMER, duration: 3888000 sec   &larr; regular 45-day timer
+  % Enabled wakeup source: EXT0 (single GPIO)             &larr; GPIO pin
+  % Enabled wakeup source: UART RX                        &larr; UART activity
+  esp32#>
+</pre>
+        </p>
+</td></tr>
+</table>
+</body>
+</html>
+</body>
+</html>
