@@ -55,7 +55,8 @@ static const char *Hints[] = {
   "% Use \"var ls_show_dir_size 0\" to disable directory size calculation in the \"ls\" command:\r\n"
   "% filesystems with a large number of files and directories may slow down.",
 
-  "% To use spaces in filenames, replace them with an asterisk (*): \"mkdir A*Path\".",
+  "% To use spaces in filenames, replace them with an asterisk (*): \"mkdir A*Path\"\r\n"
+  "% or just use double quotes(\"\"): mkdir \"A Path\"\r\n",
 
   "% Main commands are available in every command subdirectory: you can run\r\n"
   "% the \"pin\" command while in UART configuration mode without having to \"exit\".",
@@ -85,6 +86,11 @@ static const char *Hints[] = {
   "% Press @ at the beginning of the input prompt to hide your input.\r\n"
   "% The shell will return to normal operation after <Enter> is pressed.",
 
+  "% You can view/edit NVS keys and values with NVS editor: (command \"nvs\")",
+
+  "% You can synchronize system time with \"ntp enable\" WiFi command",
+
+  "% Use \"nat enable\" command to enable NAT router on the AP WiFi interface"
 };
 
 // Display useful hints. 
@@ -126,16 +132,6 @@ static int help_keys(UNUSED int argc, UNUSED char **argv) {
   return 0;
 }
 
-#if 0
-// 40 spaces asciiz string, used in formatting. It is located in PROGMEM 
-static const char Spaces[41] = {
-  ' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',
-  ' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',
-  ' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',
-  ' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',
-  '\0'
-};
-#endif
 
 // TODO: hidden command "screen WIDTH HEIGHT"
 //static uint8_t TermCols = 80, TermLines = 25;
@@ -161,6 +157,7 @@ try_one_more_time:
     if (key[i].help || key[i].brief) {
       if (!q_strcmp(argv[1], key[i].cmd)) {
 
+        // TODO: add page delay ("-- press Enter for the next page --")
         // Print header
         if (key[i].brief)
           brief = key[i].brief;

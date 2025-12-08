@@ -1545,8 +1545,10 @@ static unsigned int delay_interruptible(unsigned int duration) {
   // Called from a background task? Wait for the signal from "kill" command, ignore keypresses
   if (!is_foreground_task()) {
     uint32_t note;
-    if (task_wait_for_signal(&note, duration) == true)
-      return q_millis() - now; // Interrupted
+    if (task_wait_for_signal(&note, duration) == true) {
+      now = q_millis() - now; // Interrupted
+      return now ? now : (unsigned int)(-1);
+    }
     return duration;           // Success! (Important: return exactly what was passed as an argument, not real time!)
                                // This returned value is used to verify if delay was interrupted or timeouted on its own
   }

@@ -293,7 +293,7 @@ static int count_clear_counter(int pin) {
 // This function blocks until at least 1 of 3 conditions is true:
 //
 // 1. A task notification SIGNAL_PIN is received (which is sent by a GPIO interrupt handler) 
-// 2.                     SIGNAL_TERM is received (which means user issued "kill -9" command)
+// 2.                     SIGNAL_TERM is received (which means user issued "kill" command)
 // 3. A keypress is detected (not applicable for "background" commands)
 //
 // Returns /0/ when the further processing is better to be stopped
@@ -333,7 +333,7 @@ bool count_wait_for_the_first_pulse(unsigned int pin) {
   else
     // foreground tasks can be interrupted by a keypress, so we poll console with TRIGGER_POLL interval.
     while( (ret = task_wait_for_signal(&value, TRIGGER_POLL)) == false) {
-      printf("Checking for anykey_pressed()\r\n");
+//      printf("Checking for anykey_pressed()\r\n");
       if (anykey_pressed()) 
         break;
     }

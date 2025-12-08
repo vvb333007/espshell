@@ -696,6 +696,9 @@ static int cmd_wifi_if(int argc, char **argv) {
   if (argc < 2)
     return CMD_MISSING_ARG;
 
+  if (!q_strcmp(argv[1],"log"))
+    return cmd_wifi_log(argc, argv);
+
   if (!prepare_wifi_stack()) {
     q_print("% Failed to prepare the WiFi stack. WiFi is not available\r\n");
     return CMD_FAILED;
@@ -715,9 +718,8 @@ static int cmd_wifi_if(int argc, char **argv) {
   if (argc > 2) {
     if (!q_strcmp(argv[1],"storage"))
       return cmd_wifi_storage(argc, argv);
-    if (!q_strcmp(argv[1],"log"))
-      return cmd_wifi_log(argc, argv);
-
+//    if (!q_strcmp(argv[1],"log"))
+//      return cmd_wifi_log(argc, argv);
     return 1;
   }
 

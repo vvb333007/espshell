@@ -168,8 +168,8 @@ static int cmd_time_zone(int argc, char **argv) {
   q_printf("%% Set TZ=\"%s\", local time has been adjusted\r\n",Time.zone);
   // TimeZone must be saved to NVS: RTC keeps track of the time but knows nothing about timezones
   // so after reload "show time" will display UTC time instead of local time
-  // TODO: refactor config saving
-  nv_save_config(NULL);
+
+  nv_save_config();
 
   return 0;
 }

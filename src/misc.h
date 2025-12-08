@@ -230,7 +230,7 @@ static int cmd_hostid(int argc, char **argv) {
       }
     // Copy user input.
     strlcpy(PromptID,argv[1],sizeof(PromptID)); // TODO: unprotected
-    nv_save_config("espshell");
+    nv_save_config();
   }
   return 0;
 }

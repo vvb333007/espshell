@@ -44,7 +44,7 @@ static const char *files_set_cwd(const char *);
 
 extern task_t  loopTaskHandle; // task handle of a task which calls Arduino's loop().
 static task_t  shell_task = 0; // Main espshell task handle
-static uint8_t shell_prio = 0; // Default shell priority (IDLE. Inherited by spawned tasks)
+static uint8_t shell_prio = 2; // Default shell priority (Inherited by spawned tasks)
 
 // CPU core number ESPShell is running on. For a single core system it is always 0.
 // Tasks, that are created by ESPShell are pinned to the "shell_core"
@@ -567,6 +567,8 @@ static int cmd_kill(int argc, char **argv) {
     } else
       // -term, -hup and other signals are sent directly to the task
       task_signal(taskid, sig);
+      //task_signal(taskid, SIGNAL_KILL);
+
   } else
     return i;
   return 0;

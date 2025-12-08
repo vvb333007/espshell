@@ -1047,7 +1047,7 @@ KEYWORDS_DECL(files) {
   { "cd", cmd_files_cd, MANY_ARGS,
     HELPK("% \"<b>cd</> [<o>PATH | ..</>]\"\r\n"
           "%\r\n"
-          "% Change current directory. Paths having .. (i.e \"../dir/\") are not supported\r\n"
+          "% Change current directory\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>cd</>              - change current directory to filesystem's root\r\n"
@@ -1110,24 +1110,29 @@ KEYWORDS_DECL(files) {
   { "insert", cmd_files_insdel, MANY_ARGS,
     HELPK("% \"<b>insert</> <i>FILENAME LINE_NUM</> [<o>TEXT</>]\"\r\n"
           "%\r\n"
-          "% Insert TEXT to file FILENAME before line LINE_NUM\r\n"
+          "% Insert TEXT into file FILENAME before line LINE_NUM\r\n"
           "% \"\\n\" is appended to the string being inserted, \"\\r\" is not\r\n"
-          "% Escape sequences & ascii codes accepted just as in \"write\" command\r\n"
-          "% Lines are numbered starting from 0. Use \"cat\" command to find out line numbers\r\n"
+          "% Escape sequences and ASCII codes are accepted just as in the \"write\" command\r\n"
+          "% Lines are numbered starting from 1. Use the \"cat\" command to find\r\n"
+          "% the line numbers\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <i>insert 0 /ffat/test.txt Hello World!</>"),
+          "%   <i>insert /ffat/test.txt 1 Hello World!</> - insert before line #0"
+          ),
     HELPK("Insert lines to text file") },
 
   { "delete", cmd_files_insdel, 3,
     HELPK("% \"<b>delete</> <i>FILENAME LINE_NUM</> [<o>COUNT</>]\"\r\n"
           "%\r\n"
           "% Delete line LINE_NUM from a text file FILENAME\r\n"
-          "% Optionsl COUNT argument is the number of lines to remove (default is 1)"
-          "% Lines are numbered starting from 1. Use \"cat -n\" command to find out line numbers\r\n"
+          "% Optional COUNT argument specifies how many lines to remove (default is 1)\r\n"
+          "% Lines are numbered starting from 1. Use the \"cat -n\" command to find\r\n"
+          "% the line numbers\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <i>delete 10 /ffat/test.txt</> - remove line #10 from \"/ffat/test.txt\""),
+          "%   <i>delete /ffat/test.txt 10</>   - remove line #10 from \"/ffat/test.txt\""
+          "%   <i>delete /ffat/test.txt 10 3</> - remove lines #10,11 and 12"
+          ),
     HELPK("Delete lines from a text file") },
 
   { "delete", cmd_files_insdel, 2, HIDDEN_KEYWORD },
@@ -1141,13 +1146,13 @@ KEYWORDS_DECL(files) {
   { "cat", cmd_files_cat, MANY_ARGS,
     HELPK("% \"<b>cat</> [<o>-n|-b</>] <i>PATH</> [<o>START</> [<o>COUNT</>]] [<o>uart NUM</>]\"\r\n"
           "%\r\n"
-          "% Display (or send by UART) a binary or text file PATH\r\n"
+          "% Display (or send via UART) a binary or text file at PATH\r\n"
           "% -n : display line numbers\r\n"
-          "% -b : file is binary (mutually exclusive with \"-n\" option)\r\n"
+          "% -b : treat the file as binary (mutually exclusive with the \"-n\" option)\r\n"
           "% PATH  : path to the file\r\n"
-          "% START : text file line number (OR binary file offset if \"-b\" is used)\r\n"
-          "% COUNT : number of lines to display (OR bytes for \"-b\" option)\r\n"
-          "% NUM   : UART interface number to transmit file to\r\n"
+          "% START : line number for text files (OR byte offset for binary files when \"-b\" is used)\r\n"
+          "% COUNT : number of lines to display (OR number of bytes for the \"-b\" option)\r\n"
+          "% NUM   : UART interface number to send the file to\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>cat file</>              - display file \"file\"\r\n"
@@ -1158,20 +1163,23 @@ KEYWORDS_DECL(files) {
           "%   <i>cat -b file 0x1234</>    - display binary file starting at offset 0x1234\r\n"
           "%   <i>cat -b file 999 0x400</> - 999 bytes starting from offset 1024 of a binary file\r\n"
           "%   <i>cat file uart 1</>       - transmit a text file over UART1, strip \"\\r\" if any\r\n"
-          "%   <i>cat -b file uart 1</>    - transmit file over UART1 \"as-is\" byte by byte"),
+          "%   <i>cat -b file uart 1</>    - transmit file over UART1 \"as-is\" byte by byte"
+          ),
     HELPK("Display/transmit text/binary file") },
 
   { "touch", cmd_files_touch, MANY_ARGS,
     HELPK("% \"<b>touch</> <i>PATH1</> [<o>PATH2 PATH3 ... PATHn</>]\"\r\n"
           "%\r\n"
-          "% Ceate new files or \"touch\" existing"),
+          "% Ceate new files or \"touch\" existing"
+          ),
     HELPK("Create/touch files") },
 
   { "format", cmd_files_format, 1,
     HELPK("% \"<b>format</> [<o>LABEL</>]\"\r\n"
           "%\r\n"
-          "% Format partition LABEL. If LABEL is omitted then current working\r\n"
-          "% directory is used to determine partition label"),
+          "% Format the partition LABEL. If LABEL is omitted, the current working\r\n"
+          "% directory is used to determine the partition label\r\n"
+          ),
     HELPK("Erase old & create new filesystem") },
 
   { "format", cmd_files_format, 0, HIDDEN_KEYWORD },
@@ -1292,7 +1300,7 @@ KEYWORDS_DECL(nvs) {
           "% \"<b>export /FILE.csv</>\"\r\n"
           "%\r\n"
           "% Export the entire NVS partition or individual namespaces as a CSV (text) file\r\n"
-          "% The filesystem must be mounted to save files\r\n"
+          "% The filesystem must be mounted to save files; Files are appended, not overwritten!\r\n"
           "% Path may be relative (see files->cd) or absolute (starting with \"/\")\r\n"
           "%\r\n"
           "% <u>Examples</>:\r\n"
@@ -1338,6 +1346,8 @@ KEYWORDS_DECL(main) {
           "%   <i>time set 2025 april</>     : change year and month\r\n"
           "%   <i>time set 20 sep 11:20</>   : set month, day, and time\r\n"
           "%   <i>time set 1:2:23 am 2025</> : set time and year (12-hour format)\r\n"
+          "%   <i>time set 1</>              : the day of month\r\n"
+          "%   <i>time set 2025</>           : a year\r\n"
         ),
     HELPK("Set system time") },
 
@@ -1359,7 +1369,10 @@ KEYWORDS_DECL(main) {
   { "uptime", cmd_uptime, NO_ARGS,
     HELPK("% \"<b>uptime</>\"\r\n"
           "%\r\n"
-          "% Shows time passed since the last boot; shows restart cause"), "System uptime" },
+          "% Shows time passed since the last boot; shows restart cause\r\n"
+          "% firmware boot count, sleep count and so on"
+          ), 
+    HELPK("System uptime") },
 
   // cpu FREQ
   { "cpu", cmd_cpu, 1,
@@ -1368,7 +1381,8 @@ KEYWORDS_DECL(main) {
           "% Set CPU frequency to NUMBER Mhz\r\n"
           "%\r\n"
           "%<u>Examples:</>\r\n"
-          "%   <i>cpu 160</> - set CPU frequency to 160 MHz"),
+          "%   <i>cpu 160</> - set CPU frequency to 160 MHz"
+          ),
     HELPK("Set/show CPU frequency") },
 
   // cpu
@@ -1918,14 +1932,16 @@ KEYWORDS_DECL(main) {
     HELPK("% \"<b>if delete NUM\"\r\n"
           "% \"<b>if delete all\"\r\n"
           "% \"<b>if delete gpio</> NUM\"\r\n"
+          "% \"<b>if delete poll\"\r\n"
           "%\r\n"
           "% Delete an \"if\" condition: by its ID, by GPIO number, or all of them\r\n"
           "% (NOTE: Use \"show ifs\" to list all conditions and see their IDs)\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <b>if delete <i>6</></>        : delete condition #6\r\n"
-          "%   <b>if delete <i>all</></>      : delete all conditions (all means ALL)\r\n"
-          "%   <b>if delete <i>gpio 7</></>   : delete rising/falling conditions assigned to GPIO 7\r\n"
+          "%   <b>if delete <i>6</></>      : delete condition #6\r\n"
+          "%   <b>if delete <i>all</></>    : delete all conditions (all means ALL)\r\n"
+          "%   <b>if delete <i>gpio 7</></> : delete rising/falling conditions assigned to GPIO 7\r\n"
+          "%   <b>if delete <i>poll</></>   : delete all entries with the \"poll\" keyword\r\n"
           ), 
     NULL },
 
@@ -1940,9 +1956,10 @@ KEYWORDS_DECL(main) {
           "% Use \"<i>show ifs</>\" to list all conditions and see their IDs\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <i>if clear 6</>        : Clear counters for condition #6\r\n"
-          "%   <i>if clear all</>      : Clear counters for all conditions (all, means ALL)\r\n"
-          "%   <i>if clear gpio 7</>   : Clear counters for rising/falling conditions of GPIO#7"
+          "%   <i>if clear 6</>       : Clear counters for condition #6\r\n"
+          "%   <i>if clear all</>     : Clear counters for all conditions (all, means ALL)\r\n"
+          "%   <i>if clear gpio 7</>  : Clear counters for rising/falling conditions of GPIO#7"
+          "%   <i>if clear poll</></> : Clear counters for entries with the \"poll\" keyword\r\n"
           ),
     NULL },
 
@@ -1981,7 +1998,7 @@ KEYWORDS_DECL(main) {
           "%   <i>exec</> ALIAS     : alias to exec\r\n"
           "%\r\n"
           "% <u>Examples</>\r\n"
-          "%   <i>every 5 sec exec alias my_alias</>\r\n"
+          "%   <i>every 1 min 5 sec exec alias my_alias</>\r\n"
           "%   <i>every 5 sec delay 50000 exec my_alias</>\r\n"
           "%   <i>every 5 sec delay 50000 max-exec 7 exec my_alias</>"
           ), "Periodic events" },
@@ -2102,7 +2119,8 @@ KEYWORDS_DECL(camera) {
           "% <u>Examples:</>\r\n"
           "%   <i>up ai-thinker</> - Initialize Ai-Thinker ESP32Cam\r\n"
           "%   <i>up</>            - Camera assumed to be initialized by sketch, and used as is\r\n"
-          "%   <i>up custom clock <i>20000000</>  - Initialize custom pinout camera at 20Mhz"),
+          "%   <i>up custom clock <i>20000000</>  - Initialize custom pinout camera at 20Mhz"
+          ),
     HELPK("Camera commands")
   },
 
@@ -2305,6 +2323,54 @@ KEYWORDS_REG(camera);
 //
 static __thread const struct keywords_t *keywords = KEYWORDS(main);
 
+// All command directories. This array is populated by KEYWORDS_REG
+//
+static struct {
+  const struct keywords_t *key;
+  const char *name;
+  uint8_t count;
+} Subdirs[16] = { 0 }; // TODO: no raw numbers!
+
+// Register a command tree
+//
+static void keywords_register(const struct keywords_t *key, const char *name, int const count) {
+  static unsigned char idx = 0;
+  MUST_NOT_HAPPEN(idx > 14);
+  Subdirs[idx].key = key;
+  Subdirs[idx].name = name;
+  Subdirs[idx].count = count;
+  idx++;
+}
+
+// Check, if given name can be a command directory
+//
+static bool is_command_directory(const char *p) {
+  if (p && *p) {
+    int idx = 0;
+
+    while(Subdirs[idx].name) {
+      if (!q_strcmp(p, Subdirs[idx].name))
+        return true;
+      idx++;
+    }
+  }
+  return false;
+}
+
+
+static UNUSED void show_cmd_tree_stats() {
+  int idx = 0, total = 0;
+  while(Subdirs[idx].key) {
+    int i = 0;
+    while(Subdirs[idx].key[i].cmd) {
+      i++;
+    }
+    q_printf("Tree: \"%s\", %u entries\r\n", Subdirs[idx].name, i);
+    total += i;
+    idx++;
+  }
+  q_printf("Total: %u entries in %u trees\r\n", total, idx);
+}
 
 // Called from cmd_uart_if(), cmd_i2c_if(),cmd_seq_if() and cmd_files_if and others to set a new command list (command directory); 
 // displays user supplied text,  returns a pointer to the keywords tree used before
@@ -2349,52 +2415,6 @@ static int cmd_exit(int argc, char **argv) {
   return 0;
 }
 
-static struct {
-  const struct keywords_t *key;
-  const char *name;
-  uint8_t count;
-} Subdirs[16] = { 0 }; // TODO: no raw numbers!
-
-// Temporary.
-// Will be rewritten
-static void keywords_register(const struct keywords_t *key, const char *name, int const count) {
-  static unsigned char idx = 0;
-  MUST_NOT_HAPPEN(idx > 14);
-  Subdirs[idx].key = key;
-  Subdirs[idx].name = name;
-  Subdirs[idx].count = count;
-  idx++;
-}
-
-// Check, if given name can be a command directory
-//
-static bool is_command_directory(const char *p) {
-  if (p && *p) {
-    int idx = 0;
-
-    while(Subdirs[idx].name) {
-      if (!q_strcmp(p, Subdirs[idx].name))
-        return true;
-      idx++;
-    }
-  }
-  return false;
-}
-
-
-static UNUSED void show_cmd_tree_stats() {
-  int idx = 0, total = 0;
-  while(Subdirs[idx].key) {
-    int i = 0;
-    while(Subdirs[idx].key[i].cmd) {
-      i++;
-    }
-    q_printf("Tree: \"%s\", %u entries\r\n", Subdirs[idx].name, i);
-    total += i;
-    idx++;
-  }
-  q_printf("Total: %u entries in %u trees\r\n", total, idx);
-}
 
 #endif // #if COMPILING_ESPSHELL
 

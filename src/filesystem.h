@@ -2111,7 +2111,7 @@ static int cmd_files_insdel(int argc, char **argv) {
           continue;
         }
         fwrite(text, 1, tlen, t);
-        if (text != empty)
+        if (text != empty) // compare pointers, not strings!
           fwrite("\n", 1, 1, t);  // Add \n only if it was not empty string
         HELP(q_printf("%% Line %u inserted\r\n", line));
       }
@@ -2164,8 +2164,10 @@ static int cmd_files_mkdir(int argc, char **argv) {
       failed++;
   }
 
-  if (failed)
-    HELP(q_printf("%% <e>There were errors during directory creation. (%d fails)</>\r\n", failed));
+  if (failed) {
+    HELP(q_printf("%% <e>There were errors during directory creation. (%d fail%s)</>\r\n", PPA(failed)));
+    return CMD_FAILED;
+  }
 
   return 0;
 }
@@ -2191,7 +2193,13 @@ static int cmd_files_touch(int argc, char **argv) {
     else
       q_printf("%% Touched: \"%s\"\r\n",argv[i]);
   }
-  return err ? CMD_FAILED : 0;
+
+  if (err) {
+    HELP(q_printf("%% <e>There were errors during the process. (%d error%s)</>\r\n", PPA(err)));
+    return CMD_FAILED;
+  }
+
+  return 0;
 }
 
 // "format [LABEL]"
@@ -2199,9 +2207,6 @@ static int cmd_files_touch(int argc, char **argv) {
 // If LABEL is not given (argc < 2) then espshell attempts to derive
 // label name from current working directory
 //
-#define disableCore0WDT()
-#define enableCore0WDT()
-
 static int cmd_files_format(int argc, char **argv) {
 
   int i;
@@ -2262,16 +2267,12 @@ static int cmd_files_format(int argc, char **argv) {
 #endif
 #if WITH_LITTLEFS
     case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS:
-      disableCore0WDT();
       err = esp_littlefs_format(label);
-      enableCore0WDT();
       break;
 #endif
 #if WITH_SPIFFS
     case ESP_PARTITION_SUBTYPE_DATA_SPIFFS:
-      disableCore0WDT();
       err = esp_spiffs_format(label);
-      enableCore0WDT();
       break;
 #endif
     default:

@@ -350,6 +350,8 @@ static int userinput_join(int argc, char **argv, int i /* START */, char **out) 
 //         value of -1 means (process till the end). Pointer can be NULL which implies processing till the end
 //
 // Out: /stop/ is populated with index where processing stopped (i.e. element argv[stop] was not processed)
+//      processing stops when next token can not be understood. E.g. for input "1 say 2 week 3 apples" processing stops 
+//      on apples, stop==5
 //      Returned value is in microseconds.
 //      Returned value of 0 must be treated as error.
 //
@@ -361,6 +363,7 @@ static int64_t userinput_read_timespec(int argc, char **argv, int start, int *st
   uint64_t val = 0;
   int stop0 = -1;
   bool minus = false;
+  bool got_something = false;
 
   if (!stop)
     stop = &stop0;
@@ -368,8 +371,8 @@ static int64_t userinput_read_timespec(int argc, char **argv, int start, int *st
   for (; (start < argc) && (start != *stop); start++) {
 
     if (!q_isnumeric(argv[start])) {
-      q_printf("%% Numeric value expected instead of \"%s\"\r\n",argv[start]);
-      val = 0; //TODO: autostop on unknown token may be?
+      if (!got_something)
+        q_printf("%% Numeric value expected instead of \"%s\"\r\n",argv[start]);
       break;
     }
 
@@ -378,6 +381,9 @@ static int64_t userinput_read_timespec(int argc, char **argv, int start, int *st
       minus = true;
       t = -t;
     }
+
+    if (t != 0)
+      got_something = true;
 
     // We have a number but no more input. Treat as seconds, so timespec like "3" will read as "3 seconds"
     if ((start >= argc) || (start == *stop)) {
@@ -396,8 +402,6 @@ static int64_t userinput_read_timespec(int argc, char **argv, int start, int *st
     else if (!q_strcmp(argv[start],"days"))
       val += 1000000ULL * 24ULL * 60ULL * 60ULL * (uint64_t)t;
     else {
-      q_printf("%% Time specifier expected (e.g. \"days\", \"minutes\", \"millis\" ...)\r\n");
-      val = 0;
       break;
     }
   }

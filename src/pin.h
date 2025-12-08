@@ -1107,6 +1107,7 @@ static int cmd_pin(int argc, char **argv) {
                     }
                     seen_delay = true;
                     // Was interrupted by a keypress or by the "kill" command? Abort whole command then.
+                    // For interrupted duration of 0 (i.e. when duration is <1) the returned value is 0xffffffff
                     if (delay_interruptible(duration) != duration) {
 has_been_interrupted:                      
                       HELP(q_printf("%% Command \"%s\" has been interrupted\r\n", argv[0]));
@@ -1242,9 +1243,11 @@ pin_set_level:
     // A killpoint decreases "pin 2 low high loop infinite &" performance from 354kHz down to 151kHz
     if (!seen_delay) {
       uint32_t sig = 0;
-      if (task_wait_for_signal(&sig,0))
-        if (sig == SIGNAL_TERM)
+      if (task_wait_for_signal(&sig,0)) {
+        //q_print("% Termination signal\r\n");
+        if (sig == SIGNAL_TERM || sig == SIGNAL_KILL)
           goto has_been_interrupted;
+      }
     }
   } // while ( true )
   return 0;

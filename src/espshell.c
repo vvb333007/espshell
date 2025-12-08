@@ -81,6 +81,7 @@
 #include <rom/gpio.h>
 #include <esp_timer.h>
 #include <esp_chip_info.h>
+#include <esp_task_wdt.h>
 // Arduino Core
 #include <esp32-hal-periman.h>
 #include <esp32-hal-ledc.h>
@@ -184,7 +185,7 @@ static bool pin_exist_silent(unsigned char pin);
 static bool pin_is_reserved(unsigned char pin);
 static bool pin_can_wakeup(uint8_t pin);
 
-static bool nv_save_config(const char *nspace); // saves hostid and timezone
+static bool nv_save_config(); // saves sensitive espshell information: hostid and timezone
 
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 3, 0)
 extern bool esp_gpio_is_pin_reserved(unsigned int gpio);
@@ -621,6 +622,7 @@ static  void espshell_initonce() {
   if (!inited) {
     inited = true;
 
+
     // Set default prompt: e.g. "esp32#>"
     prompt = PROMPT;
 
@@ -659,20 +661,51 @@ static void espshell_task(const void *arg) {
     if ((shell_task = task_new(espshell_task, NULL, "ESPShell", shell_core)) == NULL)
       q_print("% ESPShell failed to start its task\r\n");
   } else {
-    // arg is NULL - we were called by task_new() and we are running as separate process now
-    // wait until user code calls Serial.begin() or otherwise initializes Serial.
+    // arg is NULL - we were called by task_new() and we are running as separate process now.
+    // shell_task is our task_id, shell_prio is our task priority and shell_core is the CPU core we are 
+    // runing on.
+    //
+    // Wait until user code calls Serial.begin() or otherwise initializes Serial, disable Task Watchdogs for
+    // IDLE tasks and for the loop()
+    //
+    // Check if our task priority is higher than that of the loop() task, so shell remains responsive
+    // even if loop() does not yield()
+    //
     while (!console_isup())
       q_delay(CONSOLE_UP_POLL_DELAY);
 
     // Check if Arduino's loop() task is already started. It must be
     if (loopTaskHandle == NULL)
-      q_print("% <e>Console is initialized but loop task is not started</>");
-    else
+      q_print("% <i>Console is initialized but Arduino loop() task is not started</>");
+    else {
+      int prio;
       taskid_remember(loopTaskHandle);
+
+      // Disable loop() task watchdog
+      esp_task_wdt_delete(loopTaskHandle);
+
+      // Check if our priority is higher than that of loop() and adjust if it is not
+      
+      if ( shell_prio <= (prio = task_get_priority(loopTaskHandle))) {
+        shell_prio = prio;
+        task_set_priority(shell_task, prio);
+        q_printf("%% Shell task priority has been raised to %u\r\n", shell_prio);
+      }
+
+      // disable IDLE Tasks watchdog
+#if 0      
+      for (int core = 0; core < portNUM_PROCESSORS; core++) {
+        TaskHandle_t idle;
+        if (NULL != (idle = xTaskGetIdleTaskHandleForCore(core)))
+          if (ESP_OK == esp_task_wdt_status(idle))
+            esp_task_wdt_delete(idle);
+      }
+#endif      
+    }
 
 
     // Read some startup data from nvram (if available)
-    nv_load_config("espshell");
+    nv_load_config();
 
     HELP(q_print(WelcomeBanner));
 
@@ -684,7 +717,7 @@ static void espshell_task(const void *arg) {
         espshell_command(line, NULL);
       else
         // if readline() starts to fail, we risk to end up in a spinloop, starving IDLE0 or IDLE1 tasks
-        // TODO: make exponential delay, with a cutoff at 10 seconds instead of callid q_yield(). 
+        // TODO: make exponential delay, with a cutoff at 10 seconds instead of calling q_yield(). 
         // TODO: Keep displaying messages "console problems"
         q_yield();  
     }

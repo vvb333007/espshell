@@ -549,14 +549,15 @@ static void ifc_show_single(unsigned int num) {
     while (ifc) {
       if (ifc->id == num) {
 
-        q_printf("%% \"%s\" condition#%u", ifc->trigger_pin == EVERY_IDX ? "Every" : "If", num);
+        const char *cname = ifc->trigger_pin == EVERY_IDX ? "every" : "if";
+
+        q_printf("%% \"%s\" condition #%u", cname, num);
         if (!ifc->hits)
           q_print(", never executed (triggered)");
         if (ifc->disabled)
-          q_printf(", <w>disabled</>, (\"if enable %u\" to enable)",num);
-        else
-        if (!ifc_not_expired(ifc))
-          q_printf(", <w>expired</>, (\"if clear %u\" to reset)",num);
+          q_printf(", <w>disabled</>, (\"%s enable %u\" to enable)",cname, num);
+        else if (!ifc_not_expired(ifc))
+          q_printf(", <w>expired</>, (\"%s clear %u\" to reset)",cname, num);
         q_print(CRLF);
 
         if (ifc->hits)
@@ -1150,7 +1151,7 @@ static int cmd_if_delete_clear(int argc, char **argv) {
 
       if (argc < 4) {
 bad_gpio_number:        
-        q_print("% A GPIO number is expected after \"gpio\" keyword\r\n");
+        q_print("% A GPIO number is expected after the \"gpio\" keyword\r\n");
         return CMD_FAILED;
       }
       if ((num = q_atoi(argv[3], -1)) < 0)
@@ -1232,10 +1233,12 @@ static int cmd_if_save(int argc, char **argv) {
 }
 
 
-// Create an "if" condition
+// Create an "if" or "every" condition and performs many other things
+// being a gateway to other cmd_if_... handlers.
 //
 // if rising|falling NUM [low|high NUM]* [max-exec NUM] [rate-limit MSEC] exec ALIAS_NAME
 // if low|high NUM [low|high NUM]* [poll MSEC] [max-exec NUM] [rate-limit MSEC] exec ALIAS_NAME
+// every ...
 //
 // TODO: this functions is huge. must be split in smaller routines
 //
@@ -1258,13 +1261,13 @@ static int cmd_if(int argc, char **argv) {
     return cmd_if_save(argc, argv);
 
   //////////////////////////////////////////////
-  // "disable" and "enable"
+  // if|every "disable" and "enable"
   //////////////////////////////////////////////
   if (!q_strcmp(argv[1],"disable") || !q_strcmp(argv[1],"enable"))
     return cmd_if_disable_enable(argc, argv);
 
   //////////////////////////////////////////////
-  // "delete" and "clear"
+  // if|every "delete" and "clear"
   //////////////////////////////////////////////
   if (!q_strcmp(argv[1],"delete") || !q_strcmp(argv[1],"clear"))
     return cmd_if_delete_clear(argc, argv);
@@ -1273,31 +1276,27 @@ static int cmd_if(int argc, char **argv) {
     return CMD_MISSING_ARG;
 
   ///////////////////////////////////////////////////////
-  // The "every" command start with TIME statement
+  // The "every" command start with a TIMESPEC statement
   ///////////////////////////////////////////////////////
   if (!q_strcmp(argv[0],"every")) {
-    trigger_pin = EVERY_IDX;
+
+    int stop = -1;
+    trigger_pin = EVERY_IDX;  // database index where to store this "every" entry
+
+    // first argument of the "every" command is a number
     if (!q_isnumeric(argv[1])) {
       q_print("% Numeric value expected (interval)\r\n");
       return 1;
     }
-    poll = q_atol(argv[1],1000);
-    if (!q_strcmp(argv[2],"days"))
-      poll *= 24*60*60*1000;
-    else if (!q_strcmp(argv[2],"hours"))
-      poll *= 60*60*1000;
-    else if (!q_strcmp(argv[2],"minutes"))
-      poll *= 60*1000;
-    else if (!q_strcmp(argv[2],"seconds"))
-      poll *= 1000;
-    else if (!q_strcmp(argv[2],"milliseconds"))
-      poll *= 1;
-    else {
-      q_print("% Time unit is expected (days, hours, minutes, seconds or milliseconds)\r\n");
-      return 2;
-    }
+    
+    // Internally, "every" statement uses the same mechanism "if .. poll" uses: "every" event is just
+    // and empty (conditionless) if:  "if poll 1000 exec alias". Read polling interval, make sure it is not zero
+    // TODO: make poll to be 64 bit
+    if (0 == (poll = (unsigned int)(userinput_read_timespec(argc, argv, 1, &stop) / 1000ULL)))
+      return stop > 1 ? stop : CMD_FAILED;
 
-    cond_idx += 2;
+    // cond_idx is the index in argv[] from which we scontinue our processing
+    cond_idx = stop;
   } else {
     /////////////////////////////////////////////////
     // Normal "if" statement
@@ -1348,46 +1347,58 @@ static int cmd_if(int argc, char **argv) {
       trigger_pin = EVERY_IDX;
   }
 
+  // Common part
   // Read "max-exec NUM", "rate-limit NUM", "poll NUM", "delay NUM" and "exec ALIAS_NAME"
   // all of them are 2-keywords statements
 
   while (cond_idx + 1 < argc) {
 
-    if ( !q_strcmp(argv[cond_idx],"delay")) {
+    // TODO: refactor to use userinput_read_timespec()
+    if ( !q_strcmp(argv[cond_idx],"delay")) { 
+
       if (0 == (delay_ms = q_atoi(argv[++cond_idx], 0))) {
         HELP(q_print("% <e>Delay value (milliseconds) is expected</>\r\n"));
         return cond_idx;
       }
+
     } else if ( !q_strcmp(argv[cond_idx],"poll")) {
+
       if (0 == (poll = q_atoi(argv[++cond_idx], 0))) {
         HELP(q_print("% <e>Polling value (milliseconds) is expected</>\r\n"));
         return cond_idx;
       }
 
     } else if ( !q_strcmp(argv[cond_idx],"max-exec")) {
+
       if (0 == (max_exec = q_atoi(argv[++cond_idx], 0))) {
         HELP(q_print("% <e>Numeric value is expected</>\r\n"));
         return cond_idx;
       }
 
     } else if ( !q_strcmp(argv[cond_idx],"rate-limit")) {
+
       if (0 == (rate_limit = q_atoi(argv[++cond_idx], 0))) {
         HELP(q_print("% <e>Time interval (milliseconds) is expected</>\r\n"));
         return cond_idx;
       }
 
     } else if ( !q_strcmp(argv[cond_idx],"exec")) {
+
       exec = argv[++cond_idx];
+
     } else {
-      q_print("% <e>\"max-exec\", \"poll\", \"rate-limit\", \"delay\" or \"exec\" keywords are expected</>\r\n");
+
+      q_print("% <e>Expected \"max-exec\", \"poll\", \"rate-limit\", \"delay\" or \"exec\" keyword</>\r\n");
       return cond_idx;
+
     }
+
     cond_idx++;
   }
 
   if (exec == NULL) {
-    q_print("<e>% \"exec ALIAS_NAME\" keyword expected</>\r\n");
-    return 0;
+    q_print("% <e>What should we execute? (\"exec\" keyword expected)</>\r\n");
+    return CMD_FAILED;
   }
 
   // Check if alias exist and show a warning if it doesn't: it helps 

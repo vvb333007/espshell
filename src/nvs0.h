@@ -26,6 +26,7 @@
 #include <nvs.h>
 
 #define DEF_NVS_PARTITION "nvs"
+#define DEF_ESPSHELL_NAMESPACE "espshell"
 
 // Initialize NVS library.
 // Upon startup it is called from a constructor function _nvs_init() and by that time q_print is not yet available
@@ -69,17 +70,14 @@ static void __attribute__((constructor)) _nv_storage_init() {
 // Save some vital configuration parameters to the NV storage:
 // hostid and the timezone information
 //
-static bool nv_save_config(const char *nspace) {
+static bool nv_save_config() {
 
     nvs_handle_t handle;
     esp_err_t err;
 
-    if (!nspace)
-      nspace = "espshell";
-
     // Open NVS storage
-    if ((err = nvs_open(nspace, NVS_READWRITE, &handle)) != ESP_OK) {
-        q_printf("%% Error opening NVS, namespace \"%s\": code %s",nspace, esp_err_to_name(err));
+    if ((err = nvs_open(DEF_ESPSHELL_NAMESPACE, NVS_READWRITE, &handle)) != ESP_OK) {
+        q_printf("%% Error during configuration saving (err=%08x)\r\n",err);
         return false;
     }
 
@@ -95,16 +93,13 @@ static bool nv_save_config(const char *nspace) {
 
 // Load some espshell parameters from the NV storage
 //
-static bool nv_load_config(const char *nspace) {
+static bool nv_load_config() {
 
     nvs_handle_t handle;
     esp_err_t err;
     
 
-    if (!nspace)
-      nspace = "espshell";
-
-    if ((err = nvs_open(nspace, NVS_READONLY, &handle)) != ESP_OK) {
+    if ((err = nvs_open(DEF_ESPSHELL_NAMESPACE, NVS_READONLY, &handle)) != ESP_OK) {
         q_printf("%% Error opening NVS: %s", esp_err_to_name(err));
         return false;
     }
@@ -124,6 +119,9 @@ static bool nv_load_config(const char *nspace) {
 #if WITH_NVS
 
 // nvs cwd. Contains either a namespace name or an empty string
+// NOTE: it is not a _Thread_local variable, so multiple tasks accessing NVS CWD can fall to
+// undefined behaviour. Don't run multiple instances of the editor and you will be safe
+//
 static char Nv_cwd[NVS_NS_NAME_MAX_SIZE];
 
 // Temporary space to store a list of namespaces found by nv_list_namespaces()
@@ -759,7 +757,7 @@ static int cmd_nvs_dump(int argc, char **argv) {
       q_print("% Empty value (length of the data is zero)\r\n");
     nvs_close(handle);
   } else
-    q_printf("%% Can not open NVS partition \"%s\" (namespace: \"%s\")\r\n", partition, namespace);
+     q_printf("%% Can not open NVS partition \"%s\" (namespace: \"%s\")\r\n", partition, namespace);
   return ret;
 }
 
@@ -793,8 +791,11 @@ static int cmd_nvs_new(int argc, char **argv) {
 
   // Read user type definition
   size = read_ctype(argc, argv, 2, &is_str, &is_blob, &is_signed);
-  if (size == 0 && !is_str && !is_blob) {
-    q_print("% Sorry, can not parse your type definition\r\n");
+  if (size > 8 || (size == 0 && !is_str && !is_blob)) {
+    q_print("% Sorry, can not parse your type definition\r\n"
+            "% Use C syntax: \"<i>char</>\", \"<i>unsigned long long int</>\", \"<i>char *</>\" and so on\r\n"
+            "% Use \"<i>char *</>\" to create strings; for blobs use \"<i>char []</>\"\r\n"
+);
     return CMD_FAILED;
   }
 
@@ -819,10 +820,10 @@ static int cmd_nvs_new(int argc, char **argv) {
     if (err == ESP_OK) {
       if (ESP_OK == nvs_commit(handle)) {
         ret = 0;
-        q_printf("%% The key has been created. Use \"set %s ...\" to set its value\r\n", argv[1]);
+        q_printf("%% Key created. Use \"set %s ...\" to set its value\r\n", argv[1]);
       } else
         q_print("% <e>Failed to commit changes (flash error?)</>\r\n");
-    } 
+    } else
       q_print("%% <e>Failed, no changes were made to the NVS</>\r\n");
     nvs_close(handle);
   } else
@@ -832,17 +833,20 @@ static int cmd_nvs_new(int argc, char **argv) {
 
 #if WITH_FS
 // export NAMESPACE /PATH : export all keys from the NAMESPACE
-// export * /PATH       : export all NVS content
-//
+// export * /PATH         : export all NVS content
+// export /PATH           : export current namespace
 static int cmd_nvs_export(int argc, char **argv) {
 
   const char *namespace;
   const char *filename;
   FILE *fp;
 
+  // only 1 argument: export current namespace
   if (argc < 3) {
     if (nv_cwd_is_root()) {
-      HELP(q_print("% <e>No namespace selected</>\r\n"));
+      HELP(q_print("% <e>No namespace selected</>\r\n"
+                   "% First argument of the \"export\" is used to select a namespace\r\n"
+                   "% Command \"cd\" is also used to select namespaces\r\n"));
       return CMD_FAILED;
     }
 
@@ -860,7 +864,7 @@ static int cmd_nvs_export(int argc, char **argv) {
 
   nv_export_csv(fp, namespace);
   fclose(fp);
-  
+
   return 0;
 }
 
