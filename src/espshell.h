@@ -23,7 +23,7 @@
 
 // -- Compile-time settings BEGIN --
 //
-#define ESPSHELL_VERSION "0.99.12-dev" // Code version
+#define ESPSHELL_VERSION "0.99.12" // Code version
 
 //#define MEMTEST 1              // Enable memory logger (extra output on "show memory"). For shell self-diagnostics
 #define WITH_TIME 1
