@@ -199,7 +199,6 @@ static int cmd_nvs_set(int, char **);
 static int cmd_nvs_new(int, char **);
 static int cmd_nvs_dump(int, char **);
 #  if WITH_FS
-static int cmd_nvs_import(int, char **);
 static int cmd_nvs_export(int, char **);
 #  endif
 #endif
@@ -1295,11 +1294,12 @@ KEYWORDS_DECL(nvs) {
 
 #if WITH_FS
   { "export", cmd_nvs_export, 2,
-    HELPK("% \"<b>export NAMESPACE /FILE.csv</>\"\r\n"
-          "% \"<b>export * /FILE.csv</>\"\r\n"
-          "% \"<b>export /FILE.csv</>\"\r\n"
+    HELPK("% \"<b>export NAMESPACE FILE.csv</>\"\r\n"
+          "% \"<b>export * FILE.csv</>\"\r\n"
+          "% \"<b>export / FILE.csv</>\"\r\n"
+          "% \"<b>export FILE.csv</>\"\r\n"
           "%\r\n"
-          "% Export the entire NVS partition or individual namespaces as a CSV (text) file\r\n"
+          "% Export the entire NVS partition or individual namespaces as a text file\r\n"
           "% The filesystem must be mounted to save files; Files are appended, not overwritten!\r\n"
           "% Path may be relative (see files->cd) or absolute (starting with \"/\")\r\n"
           "%\r\n"
@@ -1311,15 +1311,14 @@ KEYWORDS_DECL(nvs) {
     HELPK("Export NVS") },
   { "export", cmd_nvs_export, 1, HIDDEN_KEYWORD },
 
-  { "import", cmd_nvs_import, 1,
-    HELPK("% \"<b>import PATH/TO/FILE</>\"\r\n"
+  { "import", cmd_exec, 1,
+    HELPK("% \"<b>import /PATH/TO/FILE</>\"\r\n"
           "%\r\n"
           "% Import NVS partition from a CSV file\r\n"
-          "% Filesystem must be mounted in order to save files\r\n"
-          "% PATH can be relative (see files->cd) or absolute (starts with \"/\")\r\n"
+          "% Filesystem must be mounted in order to read files\r\n"
+          "% PATH must be absolute! (starts with \"/\")\r\n"
           "%\r\n"
           "% <u>Examples</>:\r\n"
-          "%   <i>import backups/nvs.csv<i>  - Import from $CWD/backups/nvs.csv\r\n"
           "%   <i>import /ffat/nvs.csv<i>    - Import from /ffat/nvs.csv\r\n"
           ),
     HELPK("Import NVS") },

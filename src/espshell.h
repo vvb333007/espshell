@@ -202,6 +202,7 @@ void pinForceMode(unsigned int pin, unsigned int flags);
 //
 
 // used internally by convar_add macro
+// TODO: refactor: use _Generic thus we can get rid of all but _varadd
 extern float dummy_float;
 void espshell_varadd (const char *, void *, int, bool, bool, bool);
 void espshell_varaddp(const char *, void *, int, bool, bool, bool);

@@ -346,6 +346,8 @@ ring_bell() {
 static int cmd_exit(int, char **);
 static int cmd_suspend(int, char **);
 
+
+
 // Ctrl+C handler: sends "suspend", disabled echo
 //
 static EL_STATUS
@@ -366,8 +368,13 @@ ctrlz_pressed() {
   const char *foo[] = { "exit" };
   cmd_exit(1, (char **)foo);
   
-  Line[0] = '\0'; // delete user input
+  // Don't make Line[0] == 0! Or it will be 1 byte memory leak per each Ctrl+Z!
+  Line[0] = '/';
+  Line[1] = '/';
+  Line[2] = '\0';
+
   return CSdone;  // simulate pressed <Enter>
+  //return redisplay();
 }
 
 

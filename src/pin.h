@@ -1024,7 +1024,7 @@ static int cmd_pin_loop(int argc, char **argv,unsigned int pin, unsigned int *st
 // "pin NUM arg1 arg2 .. argn"
 //
 // Big fat "pin" command. Processes multiple arguments
-// TODO: Caching of arguments for looped commands: should we use some sort of microcode?
+// TODO: Caching of arguments for looped commands: should we use some sort of microcode
 // TODO: join flags where possible to single call
 //
 static int cmd_pin(int argc, char **argv) {

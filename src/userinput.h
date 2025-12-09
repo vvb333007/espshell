@@ -280,16 +280,19 @@ one_more_try: // we get here if we wasn't able to find any suitable handler in a
 //
 static int userinput_join(int argc, char **argv, int i /* START */, char **out) {
 
-  int size = 0;
+  int size = 0, bsize = 0;
   char *b;
 
   if (i >= argc)
     return -1;
 
-  //instead of estimating buffer size just allocate 512 bytes buffer: espshell
-  // input strings are limited to 500 bytes. These 12 bytes there are to be able to zero-terminate the input buffer!
+  // Rough estimate for the required buffer size
   //
-  if ((*out = b = (char *)q_malloc(ESPSHELL_MAX_INPUT_LENGTH + 12, MEM_TEXT2BUF)) != NULL) {
+  for (int j = i; j < argc; j++)
+    bsize = bsize + strlen(argv[j]);
+  bsize += 16;
+
+  if ((*out = b = (char *)q_malloc(bsize, MEM_TEXT2BUF)) != NULL) {
     // go thru all the arguments and send them. the space is inserted between arguments
     do {
       char *p = argv[i];

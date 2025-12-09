@@ -307,8 +307,8 @@ static int espshell_command(char *p, argcargv_t *aa);
 #include "time0.h"
 #endif
 #include "misc.h"               // misc command handlers
-#include "nvs0.h"               // NVS editor/viewer
 #include "filesystem.h"         // file manager
+#include "nvs0.h"               // NVS editor/viewer
 #include "memory.h"             // memory component
 #include "espcam.h"             // Camera support
 #include "alias.h"

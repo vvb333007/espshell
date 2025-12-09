@@ -239,6 +239,26 @@ static __attribute__((const)) const char *nt2ct(nvs_type_t t) {
   return "undef!";
 }
 
+// Human-readable element type
+// 
+static __attribute__((const)) const char *nt2ctype(nvs_type_t t) {
+  switch(t) {
+    case NVS_TYPE_U8:   return "unsigned char";
+    case NVS_TYPE_I8:   return "char";
+    case NVS_TYPE_U16:  return "unsigned short";
+    case NVS_TYPE_I16:  return "short";
+    case NVS_TYPE_U32:  return "unsigned int";
+    case NVS_TYPE_I32:  return "int";
+    case NVS_TYPE_U64:  return "unsigned long long";
+    case NVS_TYPE_I64:  return "long long";
+    case NVS_TYPE_STR:  return "char *";
+    case NVS_TYPE_BLOB: return "char []";
+    default:
+  };
+  return "<unknown>";
+}
+
+
 // public API functions
 
 
@@ -278,31 +298,33 @@ static char *nv_set_cwd(const char *cwd) {
   return Nv_cwd;
 }
 
+static struct nvsnamespace *nv_get_namespaces(const char *partition) {
+  nvs_iterator_t it;
+  struct nvsnamespace *nvs_namespaces = NULL;
 
+  if (nvs_entry_find(partition, NULL, NVS_TYPE_ANY, &it) == ESP_OK) {
+    
+    do {
+        nvs_entry_info_t info;
+        nvs_entry_info(it, &info);
+        add_unique(&nvs_namespaces, info.namespace_name);
+    } while (nvs_entry_next(&it) == ESP_OK);
+
+    nvs_release_iterator(it); // Release the iterator
+  }
+
+  return nvs_namespaces;
+}
 
 // List all namespaces available
 // this one is used by "ls"
 //
-static void nv_list_namespaces() {
-
-  int count = 0;
-  nvs_iterator_t it;
-  const char *partition = context_get_ptr(const char);
-  if (!partition)
-    partition = DEF_NVS_PARTITION;
+static void nv_list_namespaces(const char *partition) {
   
-  if (nvs_entry_find(partition, NULL, NVS_TYPE_ANY, &it) == ESP_OK) {
-    struct nvsnamespace *nvs_namespaces = NULL;
-    do {
-        nvs_entry_info_t info;
-        nvs_entry_info(it, &info);
-        if (add_unique(&nvs_namespaces, info.namespace_name))
-          count++;
-    } while (nvs_entry_next(&it) == ESP_OK);
-    nvs_release_iterator(it); // Release the iterator
+  struct nvsnamespace *nvs_namespaces = nv_get_namespaces(partition);
 
-    q_printf("%% NVS has <i>%d</> namespaces:\r\n", count);
-
+  if (nvs_namespaces) {
+    q_print("%% NVS namespaces:\r\n");
     while (nvs_namespaces) {
 
       // TODO: unlink operation must be atomic
@@ -323,13 +345,12 @@ static void nv_list_namespaces() {
 // BLOBS are not displayed, strings are truncated to 42 characters
 // To view blobs and strings as is use command "dump"
 //
-static void nv_list_keys(const char *namespace) {
+static void nv_list_keys(const char *partition, const char *namespace) {
 
   esp_err_t err;
   nvs_handle_t handle;
   nvs_iterator_t it;
   size_t length;
-  const char *partition;
 
   uint64_t u64; int64_t i64;
   uint32_t u32; int32_t i32;
@@ -338,9 +359,6 @@ static void nv_list_keys(const char *namespace) {
   char val_str[256];
 
   if (namespace && *namespace) {
-
-    if (NULL == (partition = context_get_ptr(const char)))
-      partition = DEF_NVS_PARTITION;
 
     if ((err = nvs_open_from_partition(partition,namespace, NVS_READONLY, &handle)) == ESP_OK) {
       if (nvs_entry_find_in_handle(handle, NVS_TYPE_ANY, &it) == ESP_OK) {
@@ -391,14 +409,16 @@ static void nv_list_keys(const char *namespace) {
   }
 }
 
-
-static void nv_export_csv(FILE *fp, const char *namespace) {
+#if WITH_FS
+// Export a namespace to a file
+// Files can be executed by shell via "exec /PATH" so no dedicated "import" command is needed
+//
+static void nv_export_namespace(FILE *fp, const char *partition, const char *namespace) {
 
   esp_err_t err;
   nvs_handle_t handle;
   nvs_iterator_t it;
   size_t length;
-  const char *partition;
 
   uint64_t u64; int64_t i64;
   uint32_t u32; int32_t i32;
@@ -408,11 +428,20 @@ static void nv_export_csv(FILE *fp, const char *namespace) {
 
   if (namespace && *namespace) {
 
-    if (NULL == (partition = context_get_ptr(const char)))
-      partition = DEF_NVS_PARTITION;
+    if ((namespace[0] == '*' || namespace[0] == '/' || namespace[0] == '.') && (namespace[1] == '\0')) {
+      struct nvsnamespace *n = nv_get_namespaces(partition), *t;
+      while(n) {
+        t = n->next;
+        nv_export_namespace(fp, partition, n->name);
+        q_free(n);
+        n = t;
+      }
+      return ;
+    }
+
 
     if ((err = nvs_open_from_partition(partition,
-                                      *namespace == '*' ? NULL : namespace,
+                                      namespace,
                                       NVS_READONLY,
                                       &handle)) == ESP_OK) {
 
@@ -420,16 +449,18 @@ static void nv_export_csv(FILE *fp, const char *namespace) {
 
         int count = 0;
 
-        fprintf(fp, "record_id,namespace,key_name,key_data_type,key_value\r\n");
+        q_printf("%% Exporting namespace \"%s\"..\r\n", namespace);
+        fprintf(fp, "// Namespace %s:\r\nnvs\r\ncd \"/%s\"\r\n",namespace, namespace);
         do {
           nvs_entry_info_t info;
 
           
           nvs_entry_info(it, &info);
-          if (*namespace != '*' && q_strcmp(namespace, info.namespace_name))
+          if (q_strcmp(namespace, info.namespace_name))
             continue ;
           count++;
-          fprintf(fp, "%d,%s,%s,%u,", count, namespace, info.key, info.type);
+          
+          fprintf(fp, "new %s %s\r\nset %s ", info.key, nt2ctype(info.type), info.key);
 
           switch (info.type) {
             case NVS_TYPE_U8:   nvs_get_u8(handle, info.key, &u8); fprintf(fp,"%u\r\n",u8); break;
@@ -485,8 +516,7 @@ static void nv_export_csv(FILE *fp, const char *namespace) {
       q_printf("%% Namespace \"%s\" (partition: \"%s\") is empty or does not exist\r\n",namespace, partition);
   }
 }
-
-
+#endif // WITH_FS
 
 // Handlers
 
@@ -534,7 +564,11 @@ static int cmd_nvs_cd(int argc, char **argv) {
 static int cmd_nvs_ls(int argc, char **argv) {
 
   bool root;
-  const char *namespace;
+  const char *namespace, *partition;
+
+  // Determine the flash partition where NVS is located
+  if (NULL == (partition = context_get_ptr(const char)))
+    partition = DEF_NVS_PARTITION;
 
   if (argc > 1) {
     char *p = argv[1];
@@ -548,9 +582,9 @@ static int cmd_nvs_ls(int argc, char **argv) {
   }
 
   if (root)
-    nv_list_namespaces();
+    nv_list_namespaces(partition);
   else
-    nv_list_keys(namespace);
+    nv_list_keys(partition, namespace);
 
   return 0;
 }
@@ -838,8 +872,13 @@ static int cmd_nvs_new(int argc, char **argv) {
 static int cmd_nvs_export(int argc, char **argv) {
 
   const char *namespace;
-  const char *filename;
+  const char *filename, *partition;
   FILE *fp;
+
+  // Determine the flash partition where NVS is located
+  if (NULL == (partition = context_get_ptr(const char)))
+    partition = DEF_NVS_PARTITION;
+
 
   // only 1 argument: export current namespace
   if (argc < 3) {
@@ -855,6 +894,10 @@ static int cmd_nvs_export(int argc, char **argv) {
   } else {
     namespace = argv[1];
     filename = argv[2];
+    // "export * /PATH" in a directory: ignore *
+    // "export . /PATH" in a directory: ignore .
+    if ((*namespace == '*' || *namespace == '.') && (namespace[1] == '\0') && !nv_cwd_is_root())
+      namespace = nv_get_cwd();
   }
 
   if ((fp = files_fopen(filename,"a+")) == NULL) {
@@ -862,19 +905,12 @@ static int cmd_nvs_export(int argc, char **argv) {
     return CMD_FAILED;
   } 
 
-  nv_export_csv(fp, namespace);
+  nv_export_namespace(fp, partition, namespace);
   fclose(fp);
 
   return 0;
 }
 
-//
-//
-//
-static int cmd_nvs_import(int argc, char **argv) {
-  NOT_YET();
-  return 0;
-}
 #endif // #if WITH_FS
 #endif // #if WITH_NVS
 #endif // #if COMPILING_ESPSHELL
