@@ -1,3 +1,42 @@
+## Changes since 0.99.10 (latest is 0.99.12)
+
+### New features
+- HostID has been added (autosaved),  new command "hostid"
+- NVS editor: Access NVS, read/create/delete/set key-value pairs, export and import, new command directory "nvs"
+- WiFi support: Access Point, Station, Acesspoint+Station modes. DHCP client and server. NAT/P, NTP.
+  - new command directory "wifi"
+  - new command "wifi log enable|disable"
+  - new command "wifi storage flash | ram"
+- Time: commands to set/view current time added; timezone support; NTP can update local time
+  - new command "time zone TIME_OFFSET"
+  - new command "time" (and "show time")
+  - new command "time set TEXT"
+  - new command "show time"
+- Sleep: new command added to set up alarm(s). Deep sleep support added
+  - new command "nap alarm"
+  - new command "nap deep"
+  - new command "show nap"
+- Pulse generator: pulse sequences can be saved to a text file and later loaded with "exec"
+  - "tail" and "head" were added to the sequence configuration
+  - new command "head"
+  - new command "tail"
+  - new command "save"
+  - new command "loop"
+
+### Changes/Fixes/Updates
+- CLI: the "&" keyword (background execution) now accept CPU Core specifier along with Priority:
+  - "pin 2 low high loop inf &0.1" --> run command with Priority=0 on CPU#1
+- Internals: few mutexes were eliminated by using "lockless" approach (_Atomic)
+  - Context is now uintptr_t
+  - On SoCs with USB-CDC console espshell runs on the same core Arduino runs on (workaround for buggy USB-CDC)
+- UART: better error checking on input parameters
+  - new command added "show uart NUM" to display UART configuration
+  - new command added to the "uart" directory : "show" to display UART configuration
+- Tasks: Command "show tasks" now shows the CPU core
+- Bugfixes: looped background "pin" command without delays failed to stop via "kill" (had to use "kill -9")
+- Help system: "?" searches current AND main command directories
+
+
 ## Changes since 0.99.8
 
 ### Documentation
