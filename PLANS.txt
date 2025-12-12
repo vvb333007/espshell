@@ -2,11 +2,11 @@ Roadmap:
 
 1. Documentation is a bit outdated: new commands are missing, some screenshots are
    too old and do not match real command output.
-    a) Update main command index
-    b) Make documentation for the "nap" command
+    +a) Update main command index
+    +b) Make documentation for the "nap" command
     c) Make better docs on WiFi, add static NAT mapping commands
     d) Update docs on sequences (modulation, eot, head and tail commands)
-    e) Update docs on the file system
+    +e) Update docs on the file system
     f) Add documentation for the "time" command
     g) Review and update "uptime" docs
     h) Review and update screenshots
@@ -26,8 +26,6 @@ Roadmap:
 4. File manager: Implement "mv" command, make "cp" command to be able to copy 
    directory structure
 
-5.1. Port a single-user, single-threaded simple FTP server - to be able to 
+5.3 Port a single-user, single-threaded simple FTP server - to be able to 
    upload a premade filesystem (i.e. files and directories)
 
-5.1. Expose flash partitions when accessed via FTP as binary files in /flash
-   bootloader.bin, nvs.bin, firmware.bin etc, (RW except the main app partition, which is RO).
