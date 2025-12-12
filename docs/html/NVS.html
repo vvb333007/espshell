@@ -71,6 +71,13 @@ To exit the NVS editor, use <b>exit</b> or press Ctrl+Z.
 </p>
 
 <p><h2 id=cdls><a href="#top">&#8686;</a>Viewing information: <b>cd</b>, <b>ls</b> and <b>dump</b></h2></p>
+
+<p align=center>
+<img src="i/nvs_cd_ls.jpg" alt="NVS commands" width="80%" height="80%" />
+<br>
+<i>Fig. 1: Output of <b>cd</b> and <b>ls</b> commands</i>
+</p>
+
 <p>
 To view NVS data, three commands are used: <b>cd</b>, <b>ls</b>, and <b>dump</b>. The “dump” command is only necessary
 when <b>ls</b> is not enough: for example, <b>ls</b> shows only the first 42 characters of string values, and only
@@ -125,14 +132,13 @@ esp32-nvs(/phy)>dump cal_address
 esp32-nvs(/phy)>
 </pre>
 Small data (up to 16 bytes — configurable via “var tbl_min_len”) is displayed as a single line; larger blobs use formatted output:
-<pre>
-  esp32-nvs(/phy)>dump cal_data
-         0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F  |0123456789ABCDEF
-  ----------------------------------------------------------+----------------
-  0000: bd 02 00 00  f0 9e 9e 22  7b 2c 00 00  00 00 00 00  |......."{,......
-  0010: 00 00 00 00  00 00 00 00  00 00 7f 7f  7f 7f 7f 6f  |...............o
-  ...
-</pre>
+
+<p align=center>
+<img src="i/nvs_dump_blob.jpg" alt="NVS commands" width="80%" height="80%" />
+<br>
+<i>Fig. 2: Output of <b>dump sta.apinfo</b> command</i>
+</p>
+
 
 Long strings are also printed fully:
 <pre>
@@ -347,6 +353,7 @@ Example: change "cal_address" value to 00:11:22:33:44:55
 </p>
 <p><h2 id=importexport><a href="#top">&#8686;</a>Saving and loading data: <b>export</b> and <b>import</b></h2></p>
 <p>
+This section is not yet complete. Please use the built-in ESPShell help system (the “?” command) to learn more about how to use it.
 </p>
 </body>
 </html>

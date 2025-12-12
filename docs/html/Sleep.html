@@ -97,6 +97,12 @@ If you are only changing a timer value, clearing alarms is unnecessary.
 But if you switch the wake-up source from timer to something else (e.g. to UART0),  
 you must run nap alarm disable-all before defining the new source via nap alarm uart0.
 </p>
+<p>
+<b>IMPORTANT NOTE:</b> on ESP32-S3 chips (with USB-CDC support), the chip cannot properly wake up from light sleep: after waking up, USB-CDC stops functioning.
+This issue occurs only when USB is used for its primary purpose.  
+If the USB port is <b>not</b> used as a Hardware CDC interface, the chip wakes from light sleep correctly.  
+ESPShell will warn you whenever it detects that waking up from light sleep may fail.
+</p>
 
 <p><h2 id=example><a href="#top">&#8686;</a>Example: putting the CPU into light sleep for 5 seconds</h2></p>
 <p>
