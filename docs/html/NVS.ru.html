@@ -315,32 +315,6 @@ esp32-nvs(/phy)>rm ../espshell
 </pre>
 <table>
   <tr><th>Команда</th><th>Описание и примеры</th></tr>
-  <tr>
-    <td><b>ls [<i>PATH</i>]</b></td>
-    <td>
-      <p>Получить листинг каталога (пространства имен) или список пространств имен
-<pre>
-esp32-nvs(/)>ls
-%% NVS namespaces:
-%  Namespace "espshell" : 2 keys
-%  Namespace "phy" : 4 keys
-esp32-nvs(/)>
-</pre>
-<pre>
-esp32-nvs(/)>ls espshell
-% # |     Key name     |  Type  | Value (strings may be truncated. use "dump")
-% --+------------------+--------+-----------------------------------------------
-%  1| hostid           | char*  | <empty>
-%  2| tz               | char*  | UTC-07:00
-% --+------------------+--------+-----------------------------------------------
-% Total: 2 records
-esp32-nvs(/)>
-</pre>
-Если <i>PATH</i> не указан, то использется путь, который был задан до этого командой "cd"
-
-      </p>
-    </td>
-  </tr>
 
   <tr>
     <td><b>new <i>KEY_NAME</i> <i>KEY_TYPE</i></b></td>

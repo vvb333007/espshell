@@ -297,32 +297,6 @@ Example: set cal_data to bytes: 0x10, 0x20, "Hello", 0x20, 0x10:
 <table>
   <tr><th>Command</th><th>Description and examples</th></tr>
 
-  <tr>
-    <td><b>ls [<i>PATH</i>]</b></td>
-    <td>
-      <p>List namespaces or list keys within a namespace:
-<pre>
-esp32-nvs(/)>ls
-%% NVS namespaces:
-%  Namespace "espshell" : 2 keys
-%  Namespace "phy" : 4 keys
-esp32-nvs(/)>
-</pre>
-
-<pre>
-esp32-nvs(/)>ls espshell
-% # |     Key name     |  Type  | Value (strings may be truncated. use "dump")
-% --+------------------+--------+-----------------------------------------------
-%  1| hostid           | char*  | <empty>
-%  2| tz               | char*  | UTC-07:00
-% --+------------------+--------+-----------------------------------------------
-% Total: 2 records
-esp32-nvs(/)>
-</pre>
-If <i>PATH</i> is omitted, the path set by <b>cd</b> is used.
-      </p>
-    </td>
-  </tr>
 
   <tr>
     <td><b>new <i>KEY_NAME</i> <i>KEY_TYPE</i></b></td>
@@ -339,6 +313,35 @@ If the key already exists, it is reset (strings become empty, arrays become one-
       </p>
     </td>
   </tr>
+<tr>
+  <td><b>set <i>KEY_NAME</i> <i>KEY_VALUE</i></b></td>
+  <td>
+    <p>
+      Set a new value for the key <i>KEY_NAME</i>. The <i>KEY_VALUE</i> argument is either a number (for scalar C-types) or a string/byte array.  
+      Strings and byte arrays are specified in exactly the same format.
+    
+
+Example: change "cal_address" value to 00:11:22:33:44:55
+<pre>
+  esp32-nvs(/phy)><b>set cal_address \00\11\22\33\44\55</b>
+</pre>
+
+    </p>
+  </td>
+</tr>
+
+<tr>
+  <td><b>rm <i>PATH</i></b></td>
+  <td>
+    <p>
+      Delete keys or entire namespaces. The argument can be either a key name or a namespace name.<br>
+      If PATH is “/” (the root), then <b>all</b> NVS data will be deleted.<br>
+      If PATH is a namespace name, then all keys inside that namespace will be removed.<br>
+      And if you pass a specific key name, the command deletes only that key.
+    </p>
+  </td>
+</tr>
+
 
 </table>
 </p>
