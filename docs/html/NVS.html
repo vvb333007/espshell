@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Non-Volatile Storage on ESP32 : NVS</title>
+  <link rel="stylesheet" href="espshell.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="ESPShell: viewing and editing ESP32 NVS (Non-Volatile Storage)">
+  <meta name="author" content="Viacheslav Logunov">
+  <meta name="repository" content="https://github.com/vvb333007/espshell">
+  <meta name="project" content="ESPShell">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "ESP32 NVS",
+    "description": "Detailed reference for using ESPShell NVS editor/viewer.",
+    "author": {
+      "@type": "Person",
+      "name": "Viacheslav Logunov"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "ESPShell Project",
+      "url": "https://github.com/vvb333007/espshell"
+    }
+}
+</script>
+
+</script>
+</head>
+<body>
+<p align=center><a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: Non-Volatile Storage" width="70%" height="70%" /></a></p>
+<h3 align=center><a href="NVS.ru.html">[ На русском ]</a>&nbsp;&harr;&nbsp;<a href="NVS.html">[ English ]</a></h3>
+<p>
+  <ul>
+    <li><a href="#intro">NVS on ESP32</a></li>
+    <li><a href="#cdls">Viewing information: <b>cd</b> and <b>ls</b></a></li>
+    <li><a href="#newrmset">Creating, removing and editing values: <b>new</b>, <b>rm</b> and <b>set</b></a></li>
+    <li><a href="#importexport">Saving/loading to/from a file: <b>import</b>, <b>export</b></a></li>
+ </ul>
+</p>
+
+<p><h2 id=intro><a href="#top">&#8686;</a>NVS on ESP32</h2></p>
+<p>
+Although ESP-IDF (as well as Arduino Core) provide APIs for working with NVS (EEPROM and Preferences libraries in Arduino),
+there is no real EEPROM in Espressif SoCs. Instead, EEPROM is emulated in FLASH memory, and a special FLASH partition
+— usually named <b>"nvs"</b> — is used for this purpose.
+</p>
+<p>
+ESP32 NVS is a flat key-value database with a single-level hierarchy: besides regular “key=value” pairs, each entry
+also belongs to a <i>namespace</i>. Keys can be reused if they belong to different namespaces.
+<b>Throughout this document: the terms <i>namespace</i>, <i>name space</i>, <i>NVS directory</i>, and <i>folder</i> all refer to the same idea.</b>
+</p>
+<p>
+ESPShell lets you navigate NVS similarly to a filesystem: familiar commands such as <b>ls, cd, rm</b> are available.
+For creating and editing values you can use <b>new</b> and <b>set</b>. Import/export functionality is implemented via
+<b>import</b> and <b>export</b>, which save NVS to a text file that can be transferred between devices or NVS versions.
+The text file contains ESPShell commands that can be executed using <b>exec</b> or <b>import</b> (in fact, <b>import</b> is just an alias for <b>exec</b>).
+</p>
+<p>
+To start the NVS editor, use the command <b>nvs</b>:
+<pre>
+  esp32#>nvs
+  esp32-nvs(/)>
+</pre>
+The prompt indicates that the editor is active and you are now in the root directory. This “directory” contains only
+namespaces, which you can list using <b>ls</b> or enter with <b>cd</b>: think of namespaces as folders in a filesystem.
+To exit the NVS editor, use <b>exit</b> or press Ctrl+Z.
+</p>
+
+<p><h2 id=cdls><a href="#top">&#8686;</a>Viewing information: <b>cd</b>, <b>ls</b> and <b>dump</b></h2></p>
+<p>
+To view NVS data, three commands are used: <b>cd</b>, <b>ls</b>, and <b>dump</b>. The “dump” command is only necessary
+when <b>ls</b> is not enough: for example, <b>ls</b> shows only the first 42 characters of string values, and only
+the length and first 16 bytes of binary (blob) data.
+</p>
+<p>
+The <b>ls</b> command accepts a single optional parameter — a namespace. If omitted, the namespace set by <b>cd</b> is used.
+When executed in the root directory, <b>ls</b> prints all namespaces:
+<pre>
+ esp32-nvs(/)><b>ls</b>
+ % NVS has 3 namespaces:
+ %  Namespace "espshell" : 2 keys
+ %  Namespace "phy" : 4 keys
+ %  Namespace "nvs.net80211" : 25 keys
+ esp32-nvs(/)>
+</pre>
+If we enter, for example, the “phy” namespace (used by the WiFi driver) using <b>cd /phy</b>, and then run <b>ls</b>,
+we’ll get a table of keys and their values:
+<pre>
+  esp32-nvs(/)><b>cd phy</b>
+  esp32-nvs(/phy)<b>ls</b>
+  % # |     Key name     |  Type  | Value (strings may be truncated. use "dump")
+  % --+------------------+--------+-----------------------------------------------
+  %  1| cal_address      | char[] | &lt;A binary blob, not displayed&gt;, 1 bytes
+  %  2| cal_data         | char[] | &lt;A binary blob, not displayed&gt;, 1904 bytes
+  %  3| cal_mac          | char[] | &lt;A binary blob, not displayed&gt;, 6 bytes
+  %  4| cal_version      | uint32 | 701
+  % --+------------------+--------+-----------------------------------------------
+  % Total: 4 records
+</pre>
+You can also specify the namespace directly:
+<pre>
+esp32-nvs(/phy)><b>ls ../espshell</b>
+% # |     Key name     |  Type  | Value (strings may be truncated. use "dump")
+% --+------------------+--------+-----------------------------------------------
+%  1| tz               | char*  | UTC-07:00
+%  2| hostid           | char*  | &lt;empty&gt;
+% --+------------------+--------+-----------------------------------------------
+% Total: 2 records
+esp32-nvs(/phy)>
+</pre>
+<b>NOTE:</b> The <b>cd</b> command does not require the namespace to exist. Running <b>cd sdfgsdfg</b> will not produce an error,
+and the namespace will be set to that name. When the first key is created in it, it will appear in <b>ls /</b>.
+If the namespace remains empty and you leave it (e.g. <b>cd /</b>), it is automatically deleted.
+</p>
+<p>
+Since <b>ls</b> truncates long strings and hides blob contents entirely, the <b>dump</b> command is used to show full strings
+and to display binary data:
+<pre>
+esp32-nvs(/phy)>dump cal_address
+10 11 22 33 44 55
+esp32-nvs(/phy)>
+</pre>
+Small data (up to 16 bytes — configurable via “var tbl_min_len”) is displayed as a single line; larger blobs use formatted output:
+<pre>
+  esp32-nvs(/phy)>dump cal_data
+         0  1  2  3   4  5  6  7   8  9  A  B   C  D  E  F  |0123456789ABCDEF
+  ----------------------------------------------------------+----------------
+  0000: bd 02 00 00  f0 9e 9e 22  7b 2c 00 00  00 00 00 00  |......."{,......
+  0010: 00 00 00 00  00 00 00 00  00 00 7f 7f  7f 7f 7f 6f  |...............o
+  ...
+</pre>
+
+Long strings are also printed fully:
+<pre>
+  mars@esp32-nvs(/espshell)>dump hostid
+  % "hostid" = "mars"
+
+  mars@esp32-nvs(/espshell)>
+</pre>
+Namespaces are entered using <b>cd</b>:
+<pre>
+esp32-nvs(/)><b>cd espshell</b>
+esp32-nvs(<b>/espshell</b>)>
+</pre>
+Relative paths are also supported:
+<pre>
+esp32-nvs(<b>/espshell</b>)>cd ../phy
+</pre>
+The root directory does not contain keys — only namespaces. NVS has only a single hierarchy level, so “directories inside directories” do not exist.
+</p>
+
+<table>
+  <tr><th>Command</th><th>Description and examples</th></tr>
+  <tr>
+    <td><b>ls [<i>PATH</i>]</b></td>
+    <td>
+      <p>List a namespace (or all namespaces if run in the root directory):
+<pre>
+esp32-nvs(/)>ls
+%% NVS namespaces:
+%  Namespace "espshell" : 2 keys
+%  Namespace "phy" : 4 keys
+esp32-nvs(/)>
+</pre>
+<pre>
+esp32-nvs(/)>ls espshell
+% # |     Key name     |  Type  | Value (strings may be truncated. use "dump")
+% --+------------------+--------+-----------------------------------------------
+%  1| hostid           | char*  | <empty>
+%  2| tz               | char*  | UTC-07:00
+% --+------------------+--------+-----------------------------------------------
+% Total: 2 records
+esp32-nvs(/)>
+</pre>
+If <i>PATH</i> is omitted, the current namespace (set by <b>cd</b>) is used.
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td><b>cd <i>PATH</i></b></td>
+    <td>
+      <p>Change the current namespace to <i>PATH</i>. The namespace may already exist, or may not. If it does not exist,
+it is <i>created automatically</i>. This mechanism is used when creating new namespaces: run <b>cd</b> first, then add keys with <b>new</b>.
+If no keys are created and you leave the namespace, it is removed.
+<pre>
+  esp32-nvs(/)><b>cd my_prefs</b>
+  esp32-nvs(/my_prefs)><b>ls</b>
+  % Namespace "my_prefs" (partition: "nvs") is empty or does not exist
+
+  esp32-nvs(/my_prefs)><b>new TestKey char</b>
+  % Key created. Use "set TestKey ..." to set its value
+  esp32-nvs(/my_prefs)>
+</pre>
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td><b>dump <i>KEY_NAME</i></b></td>
+    <td>
+      Display the value of KEY_NAME in the <i>current namespace</i>. Works for strings and binary data only.
+<pre>
+  esp32-nvs(/)><b>cd phy</b>
+  esp32-nvs(/phy)><b>dump cal_address</b>
+  % f0 9e 9e 22 7b 2c
+</pre>
+      </p>
+    </td>
+  </tr>
+
+</table>
+
+<p><h2 id=newrmset><a href="#top">&#8686;</a>Creating, removing and editing values: new, rm, set</h2></p>
+<p>
+To create a new NVS entry (key), use the <b>new</b> command. It creates a new record and initializes it to 0 (for scalars)
+or to a one-byte buffer containing 0 (for arrays).
+<pre>
+  esp32-nvs(/)><b>cd phy</b>
+  esp32-nvs(/phy)><b>new Key unsigned char</b>
+  % Key created. Use "set Key ..." to set its value
+  esp32-nvs(/phy)>
+</pre>
+
+In this example, we created a key named “Key” in the “phy” namespace. The data type is <i>unsigned char</i>.
+The command accepts normal C/C++ type syntax. Supported types:
+<ul>
+  <li><b>signed</b>, <b>unsigned</b> (or no sign specifier)</li>
+  <li><b>char</b> — 8 bits</li>
+  <li><b>short</b> — 16 bits</li>
+  <li><b>int</b>, <b>long</b> — 32 bits</li> 
+  <li><b>long long</b> — 64 bits</li>
+  <li><b>char*</b> — null-terminated strings</li>
+  <li><b>char[]</b> — binary blobs</li>
+</ul>
+
+Pointers are always interpreted as <b>char*</b>. Arrays behave similarly: the type is forced to <b>char</b>.
+Array size may be specified (e.g., <b>char[10]</b>) or omitted (<b>char[]</b>). Actual size is determined when setting the value with <b>set</b>.
+</p>
+
+<p>
+The <b>rm</b> command deletes keys. Suppose we are in the “espshell” namespace:
+<pre>
+esp32-nvs(/)><b>cd espshell</b>
+esp32-nvs(<b>/espshell</b>)>
+</pre>
+Running <b>rm tz</b> removes the key <b>tz</b> from this namespace.
+
+To remove <i>all</i> keys in the current namespace, use “*”:
+<pre>
+esp32-nvs(/)><b>cd espshell</b>
+esp32-nvs(/espshell)>
+esp32-nvs(/espshell)><b>rm *</b>
+% All keys in the namespace "espshell" were removed
+esp32-nvs(/espshell)>
+</pre>
+
+You can delete an entire namespace by specifying its path:
+<pre>
+esp32-nvs(/phy)>rm ../espshell
+</pre>
+
+To remove all keys everywhere, run <b>rm *</b> in the root (/) or execute <b>rm /</b> from any namespace.
+Deletion requires no confirmation — ESPShell will not ask “are you sure?”.
+</p>
+
+<p>
+To set the value of an existing key (created earlier or via <b>new</b>), use <b>set</b>.
+It takes two parameters: key name and new value.
+
+Example — set the key “tz” in namespace “espshell” to “Hello World!”:
+<pre>
+ esp32-nvs(/espshell)><b>set tz Hello World!</b>
+ esp32-nvs(/espshell)><b>ls</b>
+ % # |     Key name     |  Type  | Value (strings may be truncated. use "dump")
+ % --+------------------+--------+-----------------------------------------------
+ %  1| hostid           | char*  | <empty>
+ %  2| tz               | char*  | <b>Hello World!</b>
+ % --+------------------+--------+-----------------------------------------------
+ % Total: 2 records
+ esp32-nvs(/espshell)>
+</pre>
+
+Binary data (<b>char[]</b>) uses C-style escapes: regular characters are used as-is, while <code>\r \n \t \v</code> behave like C/C++, and sequences like <code>\AB</code> (hex digits) produce a byte 0xAB.
+
+Example: set cal_data to bytes: 0x10, 0x20, "Hello", 0x20, 0x10:
+<pre>
+  esp32->nvs(/phy)set cal_data \10\20Hello\20\10
+</pre>
+
+</p>
+
+<table>
+  <tr><th>Command</th><th>Description and examples</th></tr>
+
+  <tr>
+    <td><b>ls [<i>PATH</i>]</b></td>
+    <td>
+      <p>List namespaces or list keys within a namespace:
+<pre>
+esp32-nvs(/)>ls
+%% NVS namespaces:
+%  Namespace "espshell" : 2 keys
+%  Namespace "phy" : 4 keys
+esp32-nvs(/)>
+</pre>
+
+<pre>
+esp32-nvs(/)>ls espshell
+% # |     Key name     |  Type  | Value (strings may be truncated. use "dump")
+% --+------------------+--------+-----------------------------------------------
+%  1| hostid           | char*  | <empty>
+%  2| tz               | char*  | UTC-07:00
+% --+------------------+--------+-----------------------------------------------
+% Total: 2 records
+esp32-nvs(/)>
+</pre>
+If <i>PATH</i> is omitted, the path set by <b>cd</b> is used.
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td><b>new <i>KEY_NAME</i> <i>KEY_TYPE</i></b></td>
+    <td>
+      <p>
+Create a key named <i>KEY_NAME</i> of type <i>KEY_TYPE</i>. <i>KEY_TYPE</i> may be any supported C scalar type (char, short, int, long, signed/unsigned, long long, char*, char[]).
+Example: create the key cal_address and assign the value 0011:2233:4455:
+<pre>
+  esp32-nvs(/)><b>cd phy</b>
+  esp32-nvs(/phy)><b>new cal_address char[]</b>
+  % Key created. Use "set TestKey ..." to set its value
+</pre>
+If the key already exists, it is reset (strings become empty, arrays become one-byte zero arrays).
+      </p>
+    </td>
+  </tr>
+
+</table>
+</p>
+<p><h2 id=importexport><a href="#top">&#8686;</a>Saving and loading data: <b>export</b> and <b>import</b></h2></p>
+<p>
+</p>
+</body>
+</html>
