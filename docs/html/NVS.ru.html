@@ -332,7 +332,7 @@ esp32-nvs(/phy)>rm ../espshell
 <pre>
   esp32-nvs(/)><b>cd phy</b>
   esp32-nvs(/phy)><b>new cal_address char[]</b>
-  % Key created. Use "set TestKey ..." to set its value
+  % Key created. Use "set cal_address ..." to set its value
 </pre>
 Если ключ уже существует, то он будет обнулен (строки превратятся в строчки нулевой длины а массивы - в массивы состоящие из одного байта, нуля)
       </p>
@@ -372,7 +372,13 @@ esp32-nvs(/phy)>rm ../espshell
 
 <p><h2 id=importexport><a href="#top">&#8686;</a>Экспорт и импорт: import, export</h2></p>
 <p>
-Этот раздел не дописан. Воспользуйтесь встренной системой помощи ESPShell (команда "?"), чтобы узнать подробности использования.
+Для того, чтобы сохранить содержимое NVS в файл существует команда "<b>export</b>": 
+<pre>
+esp32-nvs(/nvs.net80211)><b>export nvs_backup.txt</b>
+% Exporting namespace "nvs.net80211"..
+esp32-nvs(/nvs.net80211)>
+</pre>
+У 
 </p>
 
 </body>

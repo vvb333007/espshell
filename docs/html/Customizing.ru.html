@@ -21,38 +21,30 @@ ESPShell можно настроить (до компиляции), измени
 
 // -- Настройки ESPShell  --
 //
-#define AUTOSTART 1
-#define STACKSIZE (5 * 1024)
+#define WITH_TIME 1
+#define WITH_NVS 1
+#define WITH_ALIAS 1             // Set to 0 to disable alias support (commands "alias", "if", "every" and "exec")
+#define WITH_WIFI 1              // Enable WiFi/IP functions
+#define AUTOSTART 1              // Set to 0 for manual shell start via espshell_start().
+#define WITH_HELP 1              // Set to 0 to save some program space by excluding help strings/functions
+#define WITH_HISTORY 1           // Enable command history
+#define WITH_ESPCAM 0            // Include camera commands. Set to 0 if your board does not have camera
+#define WITH_VAR 1               // enable support for sketch variables (command "var")
+#define WITH_COLOR 1             // Enable terminal colors support. Set to 0 if your terminal doesn't support ANSI colors
+#define WITH_FS 1                // Filesystems (fat/spiffs/littlefs) support. Unlikely that you'll need all of them
+#define WITH_SPIFFS 1            // support SPIF filesystem
+#define WITH_LITTLEFS 1          //   --    LittleFS
+#define WITH_FAT 1               //   --    FAT
+#define WITH_SD 1                // Support FAT filesystem on SD/TF card over SPI
 
-#define WITH_HELP 1
-#define WITH_HISTORY 1
-#define HIST_SIZE 20
-
-#define WITH_ESPCAM 1
-
-#define WITH_VAR 1
-
-#define STARTUP_ECHO 1
-#define WITH_COLOR 1
-#define AUTO_COLOR 1
-
-#define WITH_FS 1
-#define MOUNTPOINTS_NUM 5
-#define WITH_SPIFFS 1
-#define WITH_LITTLEFS 1
-#define WITH_FAT 1
-#define WITH_SD 1
-#define DIR_RECURSION_DEPTH 127
-
-#define SEQUENCES_NUM 10
-
-#if ARDUINO_USB_CDC_ON_BOOT      
-#  define SERIAL_IS_USB 1        
-#  define STARTUP_PORT 99        
-#else                             
-#  define SERIAL_IS_USB 0
-#  define STARTUP_PORT 0
-#endif                            
+#define MOUNTPOINTS_NUM 5        // Max number of simultaneously mounted filesystems (must be >0)
+#define STARTUP_ECHO 1           // echo mode at espshell startup (-1=blackhole, 0=no echo or 1=echo)
+#define STACKSIZE (5 * 1024)     // Shell task stack size
+#define HIST_SIZE 20             // History buffer size (number of commands to remember)
+#define AUTO_COLOR 1             // Let ESPShell decide wheither to enable coloring or not. Command "color on|off|auto" is about that
+#define DIR_RECURSION_DEPTH 127  // Max directory depth TODO: make a test with long "/a/a/a/.../a" path
+#define SEQUENCES_NUM 10         // Max number of sequences available for the command "sequence"
+//#define STARTUP_PORT 0         // Console port number, where shell will be deployed at startup.
 ...
 ...
 </pre>
@@ -72,6 +64,10 @@ ESPShell можно настроить (до компиляции), измени
 <tr><td><p><b>WITH_HISTORY</b></p></td><td><p><b>1</b></td><td><p><b>0</b></p></td><td><p>Установите 0 для отключения истории команд. История может быть отключена, если вы используете ESPShell исключительно через Arduino Serial Monitor — у него есть собственная память истории, доступная по клавишам &uarr; и &darr;</p></td></tr>
 <tr><td><p><b>HIST_SIZE</b></p></td><td><p><b>20</b></td><td><p><b>1</b></p></td><td><p>Размер буфера истории (количество запоминаемых команд)</p></td></tr>
 <tr><td><p><b>WITH_ESPCAM</b></p></td><td><p><b>1</b></td><td><p><b>1</b></p></td><td><p>Установите 0, если не планируете использовать камеру на вашей плате</p></td></tr>
+<tr><td><p><b>WITH_NVS</b></p></td><td><p><b>1</b></td><td><p><b>1</b></p></td><td><p>Установите 0 для отключения редактора NVS</b>). </p></td></tr>
+<tr><td><p><b>WITH_ALIAS</b></p></td><td><p><b>1</b></td><td><p><b>1</b></p></td><td><p>Установите 0 для отключения поддержки алиасов</b>). </p></td></tr>
+<tr><td><p><b>WITH_WIFI</b></p></td><td><p><b>1</b></td><td><p><b>1</b></p></td><td><p>Установите 0 для отключения WiFi</b>). </p></td></tr>
+<tr><td><p><b>WITH_TIME</b></p></td><td><p><b>1</b></td><td><p><b>1</b></p></td><td><p>Установите 0 для отключения поддержки точного времени</b>). </p></td></tr>
 <tr><td><p><b>WITH_VAR</b></p></td><td><p><b>1</b></td><td><p><b>1</b></p></td><td><p>Установите 0 для отключения поддержки <a href="Sketch_Variables.ru.html">переменных скетча</a></p></td></tr>
 <tr><td><p><b>STARTUP_ECHO</b></p></td><td><p><b>1</b></td><td><p><b>0</b></p></td><td><p>Режим эхо при запуске оболочки (-1=тихий режим, 0=без эхо, 1=включено). Подробнее о режимах эхо — <a href="Automation.ru.html">здесь</a> </p></td></tr>
 <tr><td><p><b>WITH_COLOR</b></p></td><td><p><b>1</b></td><td><p><b>0</b></p></td><td><p>Включение поддержки цветного вывода. Установите 0, чтобы сэкономить память ИЛИ если ваш терминал не поддерживает цвета (например, Arduino Serial Monitor)</p></td></tr>

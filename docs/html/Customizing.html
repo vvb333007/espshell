@@ -15,48 +15,38 @@ These macros have <i>default</i> values, which are also the <i>recommended</i> s
 </p>
 
 <pre>
-#ifndef espshell_h
-#define espshell_h
-
-// Code version, don’t change. 
-#define ESPSHELL_VERSION "0.99.8"
-
-// -- Compile-time ESPShell settings --
+// -- Compile-time settings BEGIN --
 //
-#define AUTOSTART 1
-#define STACKSIZE (5 * 1024)
+#define ESPSHELL_VERSION "0.99.12"
 
-#define WITH_HELP 1
-#define WITH_HISTORY 1
-#define HIST_SIZE 20
+//#define MEMTEST 1              
+#define WITH_TIME 1
+#define WITH_NVS 1
+#define WITH_ALIAS 1             
+#define WITH_WIFI 1              
+#define AUTOSTART 1              
+#define WITH_HELP 1              
+#define WITH_HISTORY 1           
+#define WITH_ESPCAM 0            
+#define WITH_VAR 1               
+#define WITH_COLOR 1             
+#define WITH_FS 1                
+#define WITH_SPIFFS 1            
+#define WITH_LITTLEFS 1          
+#define WITH_FAT 1               
+#define WITH_SD 1                
 
-#define WITH_ESPCAM 1
+#define MOUNTPOINTS_NUM 5        
+#define STARTUP_ECHO 1           
+#define STACKSIZE (5 * 1024)     
+#define HIST_SIZE 20             
+#define AUTO_COLOR 1             
+#define DIR_RECURSION_DEPTH 127  
+#define SEQUENCES_NUM 10         
+                                 
 
-#define WITH_VAR 1
+// -- Compile-time settings END --
 
-#define STARTUP_ECHO 1
-#define WITH_COLOR 1
-#define AUTO_COLOR 1
-
-#define WITH_FS 1
-#define MOUNTPOINTS_NUM 5
-#define WITH_SPIFFS 1
-#define WITH_LITTLEFS 1
-#define WITH_FAT 1
-#define WITH_SD 1
-#define DIR_RECURSION_DEPTH 127
-
-#define SEQUENCES_NUM 10
-
-#if ARDUINO_USB_CDC_ON_BOOT      
-#  define SERIAL_IS_USB 1        
-#  define STARTUP_PORT 99        
-#else                             
-#  define SERIAL_IS_USB 0
-#  define STARTUP_PORT UART_NUM_0
-#endif                            
-...
-...
 </pre>
 
 <p>
@@ -72,6 +62,10 @@ By "automated access", we mean cases where another piece of software and/or hard
 
 <tr><td><p><b>AUTOSTART</b></p></td><td><p><b>1</b></p></td><td><p><b>1</b></p></td><td><p>Set to 0 for manual shell start (by calling <b>espshell_start()</b>).</p></td></tr>
 <tr><td><p><b>STACKSIZE</b></p></td><td><p><b>5000</b></p></td><td><p><b>4000</b></p></td><td><p>Shell task stack size in bytes.</p></td></tr>
+<tr><td><p><b>WITH_NVS</b></p></td><td><p><b>1</b></p></td><td><p><b>1</b></p></td><td><p>Set to 0 to disable the NVS editor.</p></td></tr>
+<tr><td><p><b>WITH_ALIAS</b></p></td><td><p><b>1</b></p></td><td><p><b>1</b></p></td><td><p>Set to 0 to disable alias support.</p></td></tr>
+<tr><td><p><b>WITH_WIFI</b></p></td><td><p><b>1</b></p></td><td><p><b>1</b></p></td><td><p>Set to 0 to disable WiFi.</p></td></tr>
+<tr><td><p><b>WITH_TIME</b></p></td><td><p><b>1</b></p></td><td><p><b>1</b></p></td><td><p>Set to 0 to disable timekeeping support.</p></td></tr>
 <tr><td><p><b>WITH_HELP</b></p></td><td><p><b>1</b></p></td><td><p><b>0</b></p></td><td><p>Set to 0 to save program space by excluding help subsystems and context-sensitive hints.</p></td></tr>
 <tr><td><p><b>WITH_HISTORY</b></p></td><td><p><b>1</b></p></td><td><p><b>0</b></p></td><td><p>Set to 0 to disable command history. This is safe if you're using the Arduino Serial Monitor, which provides its own history via ↑ and ↓ keys.</p></td></tr>
 <tr><td><p><b>HIST_SIZE</b></p></td><td><p><b>20</b></p></td><td><p><b>1</b></p></td><td><p>Number of commands stored in the history buffer.</p></td></tr>
