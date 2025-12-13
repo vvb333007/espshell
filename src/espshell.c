@@ -593,7 +593,7 @@ int espshell_exec(const char *p) {
   int ret = -1;
   if (likely((p0 = q_strdup(p, MEM_TMP)) != NULL)) {
     ret = espshell_command(p0, NULL);
-    q_free(p0);
+    //q_free(p0);
   }
   return ret;
 }
@@ -621,7 +621,6 @@ static  void espshell_initonce() {
 
   if (!inited) {
     inited = true;
-
 
     // Set default prompt: e.g. "esp32#>"
     prompt = PROMPT;
@@ -681,9 +680,13 @@ static void espshell_task(const void *arg) {
       int prio;
       taskid_remember(loopTaskHandle);
 
-      // Disable loop() task watchdog
-      esp_task_wdt_delete(loopTaskHandle);
-
+#if DISABLE_TWDT
+      // Disable TaskWatchdog
+      // We can't just unsubscribe IDLE0 and IDLE1 - if we do so then console will be flooded
+      // with error messages ("you can't feed this dog, you are not subscribed"). So instead we deinit
+      // TWDT subsystem completely.
+      esp_task_wdt_deinit();
+#endif
       // Check if our priority is higher than that of loop() and adjust if it is not
       
       if ( shell_prio <= (prio = task_get_priority(loopTaskHandle))) {
@@ -691,16 +694,6 @@ static void espshell_task(const void *arg) {
         task_set_priority(shell_task, prio);
         q_printf("%% Shell task priority has been raised to %u\r\n", shell_prio);
       }
-
-      // disable IDLE Tasks watchdog
-#if 0      
-      for (int core = 0; core < portNUM_PROCESSORS; core++) {
-        TaskHandle_t idle;
-        if (NULL != (idle = xTaskGetIdleTaskHandleForCore(core)))
-          if (ESP_OK == esp_task_wdt_status(idle))
-            esp_task_wdt_delete(idle);
-      }
-#endif      
     }
 
 
@@ -715,11 +708,14 @@ static void espshell_task(const void *arg) {
       char *line = readline(prompt ? prompt : "<null>");
       if (line && *line)
         espshell_command(line, NULL);
-      else
+      else {
         // if readline() starts to fail, we risk to end up in a spinloop, starving IDLE0 or IDLE1 tasks
         // TODO: make exponential delay, with a cutoff at 10 seconds instead of calling q_yield(). 
         // TODO: Keep displaying messages "console problems"
+        if (line)
+          q_free(line);
         q_yield();  
+      }
     }
     HELP(q_print(Bye));
 

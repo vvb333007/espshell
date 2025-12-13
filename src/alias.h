@@ -432,28 +432,39 @@ static int alias_exec_in_background_delayed(struct alias *al, uint32_t delay_ms)
 #endif // WITH_ALIAS
 
 // "exec NAME [ NAME2 NAME3 ... NAMEn]"
-// Execute files or/and aliases. Filenames start from "/".
-
+// "import NAME [ NAME2 NAME3 ... NAMEn]"
+// Execute files or/and aliases.
+// To specify a filename, this function must be called by the "import" command or NAME must start with "/"
+// (otherwise there is no way to determine if NAME is an alias name or a file name)
+//
 static int cmd_exec(int argc, char **argv) {
 
   int errors = 0;
+  bool import = false;
 
   if (argc < 2)
     return CMD_MISSING_ARG;
 
+  if (!q_strcmp(argv[0],"import"))
+    import = true;
+
   for (int i = 1; i < argc; i++) {
-    // file starts with /, aliases - not.
-    if (argv[i][0] == '/') {
-#if WITH_FS      
-      if (files_path_exist_file(argv[i])) {
+    // exec: file starts with /, aliases - not.
+    // import: only files, no aliases
+    if (argv[i][0] == '/' || import) {
+#if WITH_FS
+//      char *p = files_full_path(argv[i], PROCESS_ASTERISK);
+//      if (files_path_exist_file(p)) {
+        // files_exec() call full_path internally
         if (files_exec(argv[i]) != 0)
           errors++;
-      } else {
-        q_printf("%% \"<i>%s</>\" file not found. Is filesystem mounted?\r\n",argv[i]);
-        errors++;
-      }
+//      } else {
+//        q_printf("%% \"Can't read <i>%s</>\". Is filesystem mounted?\r\n",p);
+//        errors++;
+//      }
 #else
-      q_print("% No support for filesystems was compiled in\r\n");
+      HELP(q_print("% No support for filesystems was compiled in\r\n"
+                   "% Edit the espshell.h and set WITH_FS to \"1\"\r\n");
 #endif      
     } else {
 #if WITH_ALIAS      
@@ -466,7 +477,8 @@ static int cmd_exec(int argc, char **argv) {
         errors++;
       }
 #else
-      q_print("% No support for aliases was compiled in\r\n");
+      HELP(q_print("% No support for aliases was compiled in\r\n"
+                   "% Edit the espshell.h and set WITH_ALIAS to \"1\"\r\n");
 #endif      
     }
   }

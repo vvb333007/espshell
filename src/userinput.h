@@ -65,7 +65,7 @@ static void userinput_ref(argcargv_t *a) {
 //
 static void userinput_unref(argcargv_t *a) {
   if (a) {
-    mutex_lock(argv_mux);
+    mutex_lock(argv_mux); // TODO: try to make lockless version
     MUST_NOT_HAPPEN(a->ref < 1);
     a->ref--;
     // ref dropped to zero: delete everything
@@ -85,7 +85,7 @@ static void userinput_unref(argcargv_t *a) {
 
       q_free(a);
     }
-    mutex_unlock(argv_mux);
+    mutex_unlock(argv_mux); // TODO: execute immediately after ref--
   }
 }
 
@@ -131,7 +131,9 @@ static argcargv_t *userinput_tokenize(char *userinput) {
                      // and use this value on subsequent calls to "exec alias"
       a->argv = NULL;
       a->argc = argify((unsigned char *)userinput, (unsigned char ***)&(a->argv));
+
       if (a->argc > 0) {
+
         // successfully tokenized: we have at least 1 token (or more)
         // Keep /userinput/ : we have to free() it after command finishes its execution
         a->userinput = userinput;
@@ -156,27 +158,30 @@ static argcargv_t *userinput_tokenize(char *userinput) {
   return a;
 }
 
+
 // Display aa as a string
 //
-void userinput_show(argcargv_t *aa) {
+static void userinput_show(argcargv_t *aa) {
   if (aa) {
     for (int i = 0; i < aa->argc; i++) {
+      // TODO: quoted arguments will show up unqoted.
       q_print(aa->argv[i]);
       q_print(" ");
     }
     
     if (aa->has_amp) {
+      q_print("&");
       if (aa->has_prio)
-        q_printf("&%u",aa->prio);
-      else
-        q_print("&");
+        q_printf("%u",aa->prio);
+      if (aa->has_core)
+        q_printf(".%u",aa->core);
     }
   }
 }
 #if 0
 // Redisplay user input & prompt. 
 // TODO: unused for now: causes glitches; have to dive deeper in editline lib
-void userinput_redraw() {
+static void userinput_redraw() {
   redisplay(); 
   TTYflush();
 }

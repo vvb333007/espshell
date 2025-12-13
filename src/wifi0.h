@@ -690,6 +690,8 @@ static int cmd_wifi_log(int argc, char **argv) {
 
 
 // "wifi ap|sta"
+// "wifi log enable|disable"
+// "wifi storage flash|ram"
 //
 static int cmd_wifi_if(int argc, char **argv) {
 
@@ -718,8 +720,6 @@ static int cmd_wifi_if(int argc, char **argv) {
   if (argc > 2) {
     if (!q_strcmp(argv[1],"storage"))
       return cmd_wifi_storage(argc, argv);
-//    if (!q_strcmp(argv[1],"log"))
-//      return cmd_wifi_log(argc, argv);
     return 1;
   }
 

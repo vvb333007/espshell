@@ -367,11 +367,6 @@ ctrlz_pressed() {
   // Simulate "exit" command by direct call of the corresponding handler
   const char *foo[] = { "exit" };
   cmd_exit(1, (char **)foo);
-  
-  // Don't make Line[0] == 0! Or it will be 1 byte memory leak per each Ctrl+Z!
-  Line[0] = '/';
-  Line[1] = '/';
-  Line[2] = '\0';
 
   return CSdone;  // simulate pressed <Enter>
   //return redisplay();

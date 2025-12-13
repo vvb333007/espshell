@@ -1,3 +1,4 @@
+
 /* 
  * This file is a part of the ESPShell Arduino library (Espressif's ESP32-family CPUs)
  *
@@ -27,6 +28,7 @@
 //
 #include <Arduino.h>        // Types
 #include <HardwareSerial.h> // Serial macro
+#define COMPILING_ESPSHELL 1
 #include "espshell.h"       // SERIAL_IS_USB macro
 
 

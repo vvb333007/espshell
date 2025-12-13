@@ -23,14 +23,12 @@
 
 // -- Compile-time settings BEGIN --
 //
-#define ESPSHELL_VERSION "0.99.12" // Code version
-
-//#define MEMTEST 1              // Enable memory logger (extra output on "show memory"). For shell self-diagnostics
+#define ESPSHELL_VERSION "0.99.13-dev" // Code version
+#define AUTOSTART 1                    // Set to 0 for manual shell start via espshell_start().
 #define WITH_TIME 1
 #define WITH_NVS 1
 #define WITH_ALIAS 1             // Set to 0 to disable alias support (commands "alias", "if", "every" and "exec")
 #define WITH_WIFI 1              // Enable WiFi/IP functions
-#define AUTOSTART 1              // Set to 0 for manual shell start via espshell_start().
 #define WITH_HELP 1              // Set to 0 to save some program space by excluding help strings/functions
 #define WITH_HISTORY 1           // Enable command history
 #define WITH_ESPCAM 0            // Include camera commands. Set to 0 if your board does not have camera
@@ -41,16 +39,18 @@
 #define WITH_LITTLEFS 1          //   --    LittleFS
 #define WITH_FAT 1               //   --    FAT
 #define WITH_SD 1                // Support FAT filesystem on SD/TF card over SPI
-
-#define MOUNTPOINTS_NUM 5        // Max number of simultaneously mounted filesystems (must be >0)
-#define STARTUP_ECHO 1           // echo mode at espshell startup (-1=blackhole, 0=no echo or 1=echo)
-#define STACKSIZE (5 * 1024)     // Shell task stack size
-#define HIST_SIZE 20             // History buffer size (number of commands to remember)
-#define AUTO_COLOR 1             // Let ESPShell decide wheither to enable coloring or not. Command "color on|off|auto" is about that
-#define DIR_RECURSION_DEPTH 127  // Max directory depth TODO: make a test with long "/a/a/a/.../a" path
-#define SEQUENCES_NUM 10         // Max number of sequences available for the command "sequence"
-//#define STARTUP_PORT 0         // Console port number, where shell will be deployed at startup.
-                                 // Undefined=AUTO, 0=UART0, 1=UART1, 2=UART2, 99=USBCDC
+#if COMPILING_ESPSHELL
+#  define MOUNTPOINTS_NUM 5        // Max number of simultaneously mounted filesystems (must be >0)
+#  define STARTUP_ECHO 1           // echo mode at espshell startup (-1=blackhole, 0=no echo or 1=echo)
+#  define STACKSIZE (5 * 1024)     // Shell task stack size
+#  define DISABLE_TWDT 1           // Does not affect code size
+#  define HIST_SIZE 20             // History buffer size (number of commands to remember)
+#  define AUTO_COLOR 1             // Let ESPShell decide wheither to enable coloring or not. Command "color on|off|auto" is about that
+#  define DIR_RECURSION_DEPTH 127  // Max directory depth TODO: make a test with long "/a/a/a/.../a" path
+#  define SEQUENCES_NUM 10         // Max number of sequences available for the command "sequence"
+#  define MEMTEST 1              // Enable memory logger (extra output on "show memory"). For shell self-diagnostics
+//#  define STARTUP_PORT 0         // Console port number, where shell will be deployed at startup.
+                                   // Undefined=AUTO, 0=UART0, 1=UART1, 2=UART2, 99=USBCDC
 
 // -- Compile-time settings END --
 
@@ -73,10 +73,10 @@
 #  define WITH_SD 0
 #  warning "SD support is disabled (depends on FAT FS, which is disabled)"
 #endif
-
 // -- Developers section
 //
 //#define MPIPE_USES_MSGBUF // experimental MessagePipes using FreeRTOS MessageBuffers instead of Queues
+#endif // Compiling espshell
 
 
 // -- ESPShell public API --

@@ -776,12 +776,10 @@ KEYWORDS_DECL(ap) {
   { "up", cmd_wifi_up, MANY_ARGS,
     HELPK("% \"<b>up [NETWORK_NAME [PASSWORD] [max-sta NUM]</>\"\r\n" 
           "%\r\n"
-          "% Create an Access Point with NETWORK_NAME using password PASSWORD,\r\n"
-          "% limiting max number of connections to NUM.\r\n"
-          "% Once the interface is \"up\", the settings are locked and can not be\r\n"
-          "% changed on the fly: the interface must be shut down before configuring\r\n"
+          "% Create an Access Point with NETWORK_NAME using the password PASSWORD,\r\n"
+          "% limiting the maximum number of connections to NUM.\r\n"
           "%\r\n"
-          "% NOTE: use \"\" as NETWORK_NAME to create hidden networks\r\n"
+          "% NOTE: use \"\" as NETWORK_NAME to create a hidden network\r\n"
           "%\r\n"
           "%<u>Examples</>:\r\n"
           "%  up                          - create AP using system/saved WiFi config\r\n"
@@ -802,8 +800,8 @@ KEYWORDS_DECL(ap) {
     HELPK("% \"<b>scan</> [active|passive|bssid <o>AABB:CCDD:EEFF</>]*\"\r\n" 
           "%\r\n"
           "% Scan and display available networks.\r\n"
-          "% Performs a passive or an active scan (default is \"active\") and displays\r\n"
-          "% found networks or, if \"bssid\" is set, displays detailed information on\r\n"
+          "% Performs a passive or active scan (the default is \"active\") and displays\r\n"
+          "% the networks found or, if \"bssid\" is set, displays detailed information on\r\n"
           "% a specific Access Point\r\n"
           "%\r\n"
           "% <u>Examples</>:\r\n"
@@ -846,12 +844,12 @@ KEYWORDS_DECL(ap) {
     HELPK("% \"<b>dhcp A.B.C.D [<o>NUM</>] [<o>LEASE</>]\r\n" 
           "% \"<b>dhcp enable|disable\r\n" 
           "%\r\n"
-          "% Set IP address range for the DHCP and start/stop the server\r\n"
-          "% DHCP server IP pool must reside on the interface subnet\r\n"
-          "% <i>NOTE1: When changing DHCP address pool range</> make sure that\r\n"
-          "% <i> interface address is on the same subnet</> as new DHCP IP range!\r\n"
+          "% Set the IP address range for DHCP and start/stop the server\r\n"
+          "% The DHCP server IP pool must reside within the interface's subnet\r\n"
+          "% <i>NOTE1: When changing the DHCP address pool range</> make sure that\r\n"
+          "% <i> the interface address is on the same subnet</> as the new DHCP IP range!\r\n"
           "%\r\n"
-          "%<u>Examples (AP address is 192.168.0.1)</>:\r\n"
+          "%<u>Examples (AP address is 192.168.4.1)</>:\r\n"
           "%   <i>dhcp 192.168.4.8</>        : Lease addresses starting from 192.168.4.6\r\n"
           "%   <i>dhcp 192.168.4.2 2 3600</> : Only 2 IP addresses available, 1 hour lease\r\n"
           "%   <i>dhcp enable</>             : Enable DHCP server on the AP interface\r\n"
@@ -868,8 +866,9 @@ KEYWORDS_DECL(ap) {
           "% <i>dns A.B.C.D [A.B.C.D]</> : Override DNS (default: use STA's DNS)\r\n"
           "%\r\n"
           "%<u>Examples</>:\r\n"
-          "%   <i>ip address 192.168.0.2/24</> : Static IP with 255.255.255.0 mask\r\n"
-          "%   <i>ip ad 192.168.0.2/24 dns 8.8.8.8</>: Static IP and Google DNS\r\n"
+          "%   <i>ip address 192.168.0.2/24</>         : Static IP with 255.255.255.0 mask\r\n"
+          "%   <i>ip ad 192.168.0.2/24 dns 8.8.8.8</>  : Static IP and static DNS\r\n"
+          "%   <i>ip ad dhcp dns 8.8.8.8 dns 4.4.4.4</>: Dynamic IP and 2 static DNS\r\n"
           "%"),
     HELPK("IP information") },
   
@@ -930,12 +929,12 @@ KEYWORDS_DECL(alias) {
     HELPK("% \"<b>delete</> [all | LINE]\"\r\n" 
           "%\r\n"
           "% Delete lines from the alias:\r\n"
-          "% 1. No arguments. Means \"delete the last line\"\r\n"
-          "% 2. One argument, keyword \"all\". Deletes all lines\r\n"
-          "% 3. LINE is a line number, (use \"list\" to see line numbers)\r\n" 
+          "% 1. No arguments: means \"delete the last line\"\r\n"
+          "% 2. One argument, the keyword \"all\": deletes all lines\r\n"
+          "% 3. LINE is a line number (use \"list\" to see line numbers)\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <i>delete</>     - Removes last entered command from the alias\r\n"
-          "%   <i>delete all</> - Removes everything\r\n"
+          "%   <i>delete</>     - removes the last entered command from the alias\r\n"
+          "%   <i>delete all</> - removes everything\r\n"
           "%   <i>delete 4</>   - Removes line #4"),
     HELPK("Delete lines") },
 
@@ -983,19 +982,20 @@ KEYWORDS_DECL(files) {
   { "mount", cmd_files_mount0, NO_ARGS,
     HELPK("% \"<b>mount</>\"\r\n"
           "%\r\n"
-          "% Command \"mount\" <u>without arguments</> displays information about partitions\r\n"
-          "% and mounted file systems (mount point, FS type, total/used counters)"),
+          "% The command \"mount\" <u>without arguments</> displays information about partitions\r\n"
+          "% and mounted file systems (mount point, FS type, total/used counters)\r\n"
+          ),
     HELPK("Mount partition/Show partition table") },
 
   { "mount", cmd_files_mount, 2,
     HELPK("% \"<b>mount</> <i>LABEL</> [<o>/MOUNT_POINT</>]\"\r\n"
           "%\r\n"
-          "% Mount a filesystem located on built-in SPI FLASH\r\n"
+           "% Mount a filesystem located on the built-in SPI FLASH\r\n"
           "%\r\n"
           "% <i>LABEL</>        - SPI FLASH partition label\r\n"
-          "% <o>/MOUNT_POINT</> - A path, starting with \"/\" where filesystem will be mounted.\r\n"
-          "% If mount point is omitted then \"/\" + LABEL will be used as a mountpoint\r\n"
-          "%\r\n"
+          "% <o>/MOUNT_POINT</> - Path starting with \"/\" where the filesystem will be mounted\r\n"
+          "% If the mount point is omitted, then \"/\" + LABEL will be used as the mount point\r\n"
+         "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>mount ffat /fs</> - mount partition \"ffat\" at directory \"/fs\"\r\n"
           "%   <i>mount ffat</>     - mount partition \"ffat\" at directory \"/ffat\""),
@@ -1016,7 +1016,7 @@ KEYWORDS_DECL(files) {
           "% If mount point is omitted then autogenerated name will be used, like \"scard4\"\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>mount hspi 19 23 18 4 1000 /sd</> - 1 MHz SPI2 bus, mount to \"/sd\" directory\r\n"
-          "%   <i>mount hspi 19 23 18 4 400</>      - Same as above but SPI bus is at 400kHz\r\n"          
+          "%   <i>mount hspi 19 23 18 4 400</>      - Same as the above but SPI bus is at 400kHz\r\n"          
           "%   <i>mount vspi 19 23 18 4 /sdcard</>  - Mount an SD card located on VSPI pins 19,\r\n"
           "%                                  23, 18 and 4"), NULL},
 
@@ -1026,8 +1026,10 @@ KEYWORDS_DECL(files) {
   { "unmount", cmd_files_unmount, 1,
     HELPK("% \"<b>unmount</> [<o>/MOUNT_POINT</>]\"\r\n"
           "%\r\n"
-          "% Unmount file system specified by its mountpoint\r\n"
-          "% If mount point is omitted then current (by CWD) filesystem is unmounted\r\n"),
+          "% Unmount a file system specified by its mount point\r\n"
+          "% If the mount point is omitted, the file system of the\r\n"
+          "% current working directory is unmounted\r\n"
+          ),
     HELPK("Unmount partition") },
 
   { "unmount", cmd_files_unmount, NO_ARGS, HIDDEN_KEYWORD },
@@ -1058,8 +1060,9 @@ KEYWORDS_DECL(files) {
   { "rm", cmd_files_rm, MANY_ARGS,
     HELPK("% \"<b>rm</> <i>PATH1</> [<o>PATH2 PATH3 ... PATHn</>]\"\r\n"
           "%\r\n"
-          "% Remove files or a directories with files.\r\n"
-          "% When removing directories: removed with files and subdirs"),
+          "% Remove files or directories with their contents.\r\n"
+          "% When removing directories: all files and subdirectories are deleted as well\r\n"
+          ),
     HELPK("Delete files/dirs") },
 
   { "mv", cmd_files_mv, 2,
@@ -1078,19 +1081,20 @@ KEYWORDS_DECL(files) {
           "%\r\n"
           "% Copy file SOURCE to file DESTINATION.\r\n"
           "% Files SOURCE and DESTINATION can be on different filesystems\r\n"
+          "% Directories are autocreated\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <i>cp /ffat/test.txt /ffat/test2.txt</>       - copy file to file\r\n"
-          "%   <i>cp /ffat/test.txt /ffat/dir/</>            - copy file to directory\r\n"
-          "%   <i>cp /ffat/dir_src /ffat/dir/</>             - copy directory to directory\r\n"
-          "%   <i>cp /spiffs/test.txt /ffat/dir/test2.txt</> - copy between filesystems"),
+          "%   <i>cp /ffat/test.txt test2.txt</>         - copy file to file\r\n"
+          "%   <i>cp test.txt ../dir/</>                 - copy file to directory\r\n"
+          "%   <i>cp /ffat/dir_src /ffat/dir/</>         - copy directory to directory\r\n"
+          "%   <i>cp /spiffs/test.txt /ffat/test2.txt</> - copy between filesystems"),
     HELPK("Copy files/dirs") },
 
   { "write", cmd_files_write, MANY_ARGS,
     HELPK("% \"<b>write</> <i>FILENAME</> [<o>TEXT</>]\"\r\n"
           "%\r\n"
-          "% Write an ascii/hex string(s) to file\r\n"
-          "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t and \r\n"
-          "% hexadecimal numbers \\AB (A and B are hexadecimal digits)\r\n"
+          "% Write ASCII/hex string(s) to a file\r\n"
+          "% TEXT can include spaces, escape sequences: \\n, \\r, \\\\, \\t, and\r\n"
+          "% hexadecimal bytes \\AB (A and B are hexadecimal digits)\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>write /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff</>"),
@@ -1099,8 +1103,8 @@ KEYWORDS_DECL(files) {
   { "append", cmd_files_write, MANY_ARGS,
     HELPK("% \"<b>append</> <i>FILENAME</> [<o>TEXT</>]\"\r\n"
           "%\r\n"
-          "% Append an ascii/hex string(s) to file\r\n"
-          "% Escape sequences & ascii codes are accepted just as in \"write\" command\r\n"
+          "% Append ASCII/hex string(s) to a file\r\n"
+          "% Escape sequences and ASCII codes are accepted just as in the \"write\" command\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>append /ffat/test.txt \\n\\rMixed\\20Text and \\20\\21\\ff</>"),
@@ -1110,7 +1114,7 @@ KEYWORDS_DECL(files) {
     HELPK("% \"<b>insert</> <i>FILENAME LINE_NUM</> [<o>TEXT</>]\"\r\n"
           "%\r\n"
           "% Insert TEXT into file FILENAME before line LINE_NUM\r\n"
-          "% \"\\n\" is appended to the string being inserted, \"\\r\" is not\r\n"
+          "% \"\\n\" is appended to the inserted string, but \"\\r\" is not\r\n"
           "% Escape sequences and ASCII codes are accepted just as in the \"write\" command\r\n"
           "% Lines are numbered starting from 1. Use the \"cat\" command to find\r\n"
           "% the line numbers\r\n"
@@ -1123,8 +1127,8 @@ KEYWORDS_DECL(files) {
   { "delete", cmd_files_insdel, 3,
     HELPK("% \"<b>delete</> <i>FILENAME LINE_NUM</> [<o>COUNT</>]\"\r\n"
           "%\r\n"
-          "% Delete line LINE_NUM from a text file FILENAME\r\n"
-          "% Optional COUNT argument specifies how many lines to remove (default is 1)\r\n"
+          "% Delete line LINE_NUM from the text file FILENAME\r\n"
+          "% An optional COUNT argument specifies how many lines to remove (default is 1)\r\n"
           "% Lines are numbered starting from 1. Use the \"cat -n\" command to find\r\n"
           "% the line numbers\r\n"
           "%\r\n"
@@ -1149,8 +1153,8 @@ KEYWORDS_DECL(files) {
           "% -n : display line numbers\r\n"
           "% -b : treat the file as binary (mutually exclusive with the \"-n\" option)\r\n"
           "% PATH  : path to the file\r\n"
-          "% START : line number for text files (OR byte offset for binary files when \"-b\" is used)\r\n"
-          "% COUNT : number of lines to display (OR number of bytes for the \"-b\" option)\r\n"
+          "% START : line number for text files (or byte offset for binary files when \"-b\" is used)\r\n"
+          "% COUNT : number of lines to display (or number of bytes for the \"-b\" option)\r\n"
           "% NUM   : UART interface number to send the file to\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
@@ -1199,7 +1203,7 @@ KEYWORDS_DECL(nvs) {
     HELPK("% \"<b>ls [PATH]</>\r\n"
           "%\r\n"
           "% List keys under namespace PATH. If no PATH provided then listing\r\n"
-          "% for the current namespace is provided.\r\n"
+          "% for the current namespace is displayed.\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>ls /</>      - Displays list of a namespaces\r\n"
@@ -1214,8 +1218,8 @@ KEYWORDS_DECL(nvs) {
           "% \"<b>cd ..</>\r\n"
           "% \"<b>cd NAMESPACE</>\r\n"
           "%\r\n"
-          "% Change current namespace. To create a new namespace just \"cd\" to that namespace\r\n"
-          "% and it will be auto-created. Note that empty namespaces may be deleted by the system\r\n"
+          "% Change the current namespace. To create a new namespace, simply \"cd\" into it\r\n"
+          "% and it will be created automatically. Note that empty namespaces may be deleted by the system\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>cd /</>    - Go to the root directory\r\n"
           "%   <i>cd ..</>   - Go to the root directory\r\n"
@@ -1227,13 +1231,13 @@ KEYWORDS_DECL(nvs) {
   { "rm", cmd_nvs_rm, 1,
     HELPK("% \"<b>rm</> <i>* | NAMESPACE | KEY</>\"\r\n"
           "%\r\n"
-          "% Remove NVS entries. Removes namespaces or/and key/value pairs\r\n"
+          "% Remove NVS entries: namespaces and/or key/value pairs\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <i>rm phy</>  Remove namespace or a key in a current namespace\r\n"
-          "%   <i>rm /phy</> Remove namespace \"phy\"\r\n"
-          "%   <i>rm *</>    Remove content of a current directory\r\n"
-          "%                 Executed in the root (\"/\") directory wipes NVS\r\n"
-          "%   <i>rm /</>    Wipe NVS storage\r\n"
+          "%   <i>rm phy</>  Remove a namespace or a key in the current namespace\r\n"
+          "%   <i>rm /phy</> Remove the namespace \"phy\"\r\n"
+          "%   <i>rm *</>    Remove the contents of the current directory\r\n"
+          "%                 Executing this in the root (\"/\") directory wipes the NVS\r\n"
+          "%   <i>rm /</>    Wipe the entire NVS storage\r\n"
           ),
     HELPK("Remove entries") },
 
@@ -1250,19 +1254,20 @@ KEYWORDS_DECL(nvs) {
           "%   \"char []\" - creates a binary blob\r\n"
           "%\r\n"
           "% Newly created keys are initialized to zero for scalar types, or to an\r\n"
-          "% empty buffer for strings and blobs.\r\n"
+          "% empty buffer for strings and blobs. Set values with command \"set\"\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>new Version char</>         - Creates a key named \"Version\"\r\n"
-          "%   <i>new Z unsigned long long</> - 64-bit unsigned integer\r\n"
-          "%   <i>new Var2 char *</>          - String value\r\n"
-          "%   <i>new Var3 char[]</>          - Binary blob\r\n"
+          "%   <i>new Z unsigned long long</> - 64-bit unsigned integer key \"Z\"\r\n"
+          "%   <i>new Var2 char *</>          - Create string key \"Var2\"\r\n"
+          "%   <i>new Var3 char[]</>          - Create binary blob key \"Var3\"\r\n"
           ),
     HELPK("Create keys") },
 
 
   { "set", cmd_nvs_set, MANY_ARGS,          // TEXT can be quoted (1 arg) or as is (many args)
-    HELPK("% \"<b>set KEY TEXT</>\"\r\n"
+    HELPK(
+          "% \"<b>set KEY TEXT</>\"\r\n"
           "%\r\n"
           "% Set a new value for the KEY. Numerical values are entered as-is.\r\n"
           "% Strings and blobs accept either ASCII text or special escape sequences \\AB\r\n"
@@ -1276,7 +1281,7 @@ KEYWORDS_DECL(nvs) {
           "%   <i>set Name -234567810</>          - Set an integer value\r\n"
           "%   <i>set Str \"Text with  spaces\"</> - Set a string\r\n"
           "%   <i>set Str Some other text</>      - Set a string\r\n"
-          "%   <i>set Str \"\"</>                  - Set a string to empty\r\n"
+          "%   <i>set Str \"\"</>                  - Set a string to empty value\r\n"
           "%   <i>set Blob \\12\\bb\\fd\\55\\44\\55</>  - Set binary data\r\n"
         ),
     HELPK("Set new value") },
@@ -1294,32 +1299,33 @@ KEYWORDS_DECL(nvs) {
 
 #if WITH_FS
   { "export", cmd_nvs_export, 2,
-    HELPK("% \"<b>export NAMESPACE FILE.csv</>\"\r\n"
-          "% \"<b>export * FILE.csv</>\"\r\n"
-          "% \"<b>export / FILE.csv</>\"\r\n"
-          "% \"<b>export FILE.csv</>\"\r\n"
+    HELPK("% \"<b>export [NVS_PATH] FILE_PATH</>\"\r\n"
           "%\r\n"
           "% Export the entire NVS partition or individual namespaces as a text file\r\n"
-          "% The filesystem must be mounted to save files; Files are appended, not overwritten!\r\n"
-          "% Path may be relative (see files->cd) or absolute (starting with \"/\")\r\n"
+          "% The filesystem must be mounted to save files; files are appended, not overwritten!\r\n"
+          "% NVS_PATH and FILE_PATH can be relative or absolute (starting with \"/\")\r\n"
+          "% Use \"*\" or \".\" to specify current namespace\r\n"
           "%\r\n"
           "% <u>Examples</>:\r\n"
-          "%   <i>export * /ffat/nvs.csv</>        - Export all NVS entries to a CSV file\r\n"
-          "%   <i>export phy /ffat/nvs_phy.csv</>  - Export NVS entries from the \"phy\" namespace\r\n"
-          "%   <i>export nvs_phy.csv</>            - Export current NVS namespace to nvs_phy.csv\r\n"
+          "%   <i>export / /ffat/nvs.txt</>        - Export all NVS entries to a text file\r\n"
+          "%   <i>export phy /ffat/nvs_phy.txt</>  - Export NVS entries from the \"phy\" namespace\r\n"
+          "%   <i>export nvs_phy.txt</>            - Export current NVS namespace to nvs_phy.csv\r\n"
+          "%   <i>export . test.txt</>             - As the above\r\n"
+          "%   <i>export * ../test.txt</>          - As the above, but file path is relative"
           ),
     HELPK("Export NVS") },
+
   { "export", cmd_nvs_export, 1, HIDDEN_KEYWORD },
 
   { "import", cmd_exec, 1,
-    HELPK("% \"<b>import /PATH/TO/FILE</>\"\r\n"
+    HELPK("% \"<b>import FILE_PATH</>\"\r\n"
           "%\r\n"
-          "% Import NVS partition from a CSV file\r\n"
+          "% Import NVS records from a text file (created with \"export\")\r\n"
           "% Filesystem must be mounted in order to read files\r\n"
-          "% PATH must be absolute! (starts with \"/\")\r\n"
           "%\r\n"
           "% <u>Examples</>:\r\n"
-          "%   <i>import /ffat/nvs.csv<i>    - Import from /ffat/nvs.csv\r\n"
+          "%   <i>import /ffat/nvs.txt<i> - Import from /ffat/nvs.txt\r\n"
+          "%   <i>import nvs.txt<i>       - Import from $CWD/nvs.txt\r\n"
           ),
     HELPK("Import NVS") },
 #endif //WITH_FS
@@ -1337,21 +1343,23 @@ KEYWORDS_DECL(main) {
   KEYWORDS_BEGIN
 #if WITH_TIME  
   { "time", cmd_time, MANY_ARGS,
-    HELPK("% \"<b>time</>\" <i>set</> (<i>YEAR</>|<i>MONTH</>|<i>DAY</>|<i>TIME</>|<b>am|pm</>)*\r\n"
+    HELPK(
+          "% \"<b>time</>\" <i>set</> (<i>YEAR</>|<i>MONTH</>|<i>DAY</>|<i>TIME</>|<b>am|pm</>)*\r\n"
           "%\r\n"
-          "% Set or change the system time.\r\n"
-          "% The order of arguments does not matter; omitted values are left unchanged.\r\n"
+          "% Set or adjust the system time.\r\n"
+          "% The order of the arguments does not matter; omitted values remain unchanged.\r\n"
           "% <u>Examples</>:\r\n"
-          "%   <i>time set 2025 april</>     : change year and month\r\n"
-          "%   <i>time set 20 sep 11:20</>   : set month, day, and time\r\n"
-          "%   <i>time set 1:2:23 am 2025</> : set time and year (12-hour format)\r\n"
-          "%   <i>time set 1</>              : the day of month\r\n"
-          "%   <i>time set 2025</>           : a year\r\n"
+          "%   <i>time set 2025 april</>     : change the year and month\r\n"
+          "%   <i>time set 20 sep 11:20</>   : set the day, month, and time\r\n"
+          "%   <i>time set 1:2:23 am 2025</> : set the time and year (12-hour format)\r\n"
+          "%   <i>time set 1</>              : set the day of the month\r\n"
+          "%   <i>time set 2025</>           : set the year\r\n"
         ),
     HELPK("Set system time") },
 
   { "time", HELP_ONLY,
-    HELPK("% \"<b>time</>\" <i>zone TIMESPEC</>|none\r\n"
+    HELPK(
+          "% \"<b>time</>\" <i>zone TIMESPEC</>|none\r\n"
           "%\r\n"
           "% Set the time zone (time offset) or reset it to the default value.\r\n"
           "% TIMESPEC consists of numbers and time specifiers:\r\n"
@@ -1368,8 +1376,8 @@ KEYWORDS_DECL(main) {
   { "uptime", cmd_uptime, NO_ARGS,
     HELPK("% \"<b>uptime</>\"\r\n"
           "%\r\n"
-          "% Shows time passed since the last boot; shows restart cause\r\n"
-          "% firmware boot count, sleep count and so on"
+          "% Shows the time elapsed since the last boot, the restart cause,\r\n"
+          "% the firmware boot count, sleep count, and so on\r\n"
           ), 
     HELPK("System uptime") },
 
@@ -2066,9 +2074,9 @@ KEYWORDS_DECL(main) {
     HELPK("% \"<b>wifi storage flash|ram</>\"\r\n"
           "%\r\n"
           "% Switch between RAM and FLASH for storing WiFi configuration\r\n"
-          "% so that after reboot the \"up\" command can be used without arguments:\r\n"
-          "% SSID, BSSID, passwords, etc. will be retrieved from flash.\r\n"
-          "% Default storage is RAM (all configuration is discarded after reboot).\r\n"
+          "% so that after a reboot the \"up\" command can be used without arguments:\r\n"
+          "% SSID, BSSID, passwords, etc. will be retrieved from FLASH.\r\n"
+          "% The default storage is RAM (all configuration is discarded after reboot).\r\n"
           "%\r\n"
           "% <u>Examples</>:\r\n"
           "%   <i>wifi storage flash</> - Enable auto-saving of STA/AP settings\r\n"
@@ -2079,9 +2087,9 @@ KEYWORDS_DECL(main) {
   { "wifi", cmd_wifi_if, 2, // "wifi log" is handled by cmd_wifi_if as well
     HELPK("% \"<b>wifi log [enable|disable]</>\"\r\n"
           "%\r\n"
-          "% Enable or disable WiFi events display: e.g. connection, disconnection\r\n"
-          "% IP address obtained and so on. It may be annoying so logging is disabled\r\n"
-          "% by default\r\n"
+          "% Enable or disable WiFi event display: e.g., connection, disconnection,\r\n"
+          "% IP address obtained, and so on. This can be annoying, so logging is\r\n"
+          "% disabled by default\r\n"
           "%\r\n"
           "% <u>Examples</>:\r\n"
           "% \"<i>wifi log enable</>\" - Enable logging"

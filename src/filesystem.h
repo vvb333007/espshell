@@ -1102,14 +1102,20 @@ static int files_exec(const char *name) {
 
   // Open the file. Read it line by line and execute. Count lines and errors
   if ((f = fopen(path, "rb")) != NULL) {
+    // We don't want the history to be updated with these commands
+    // TODO: make better mechanism to disable history on demand or, at least, make access to the History
+    // TODO: here to be atomic; or may be better add 1 extra arg to espshell_command( ... , bool dont_add_to_history)
+    int h = History;
+    History = 0;
     while (!feof(f) && (r = files_getline(&p, &plen, f)) >= 0) {
       cline++;
       if (r > 0 && p && *p) {
-        char *pp = strdup(p); //espshell_command frees the buffer
+        char *pp = q_strdup(p, MEM_TMP); //espshell_command frees the buffer
         if (pp && espshell_command(pp, NULL) != 0)
           errors++;
       }
     }
+    History = h;
     if (p)
       q_free(p);
     fclose(f);
