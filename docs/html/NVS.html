@@ -351,9 +351,69 @@ Example: change "cal_address" value to 00:11:22:33:44:55
 
 </table>
 </p>
-<p><h2 id=importexport><a href="#top">&#8686;</a>Saving and loading data: <b>export</b> and <b>import</b></h2></p>
+
+<p><h2 id=importexport><a href="#top">&#8686;</a>Export and Import</h2></p>
 <p>
-This section is not yet complete. Please use the built-in ESPShell help system (the “?” command) to learn more about how to use it.
+To save the contents of NVS to a file, use the "<b>export</b>" command:
+<pre>
+esp32-nvs(/nvs.net80211)><b>export nvs_backup.txt</b>
+% Exporting namespace "nvs.net80211"..
+esp32-nvs(/nvs.net80211)>
+</pre>
+The command can be used to export individual namespaces, or to export the entire NVS contents at once.
+The last argument of the command is always the name of the file to which the NVS data should be saved.
+The namespace can be specified explicitly, or it can be omitted. In the latter case, the current namespace will be used as the export source.
+The command syntax becomes clearer from the following examples:
+<pre>
+esp32-nvs(/phy)#>export /ffat/data.txt        &larr; export the current namespace (i.e. "phy")
+esp32-nvs(/phy)#>export ../espshell /ffat/data.txt &larr; export the "espshell" namespace
+esp32-nvs(/phy)#>export / /ffat/data.txt     &larr; export the entire NVS contents
+esp32#>
+</pre>
 </p>
+<p>
+A previously saved NVS data file can be restored using the "import" command:
+<pre>
+esp32-nvs(/phy)#>import /ffat/data.txt        &larr; import data from the file into NVS
+</pre>
+When importing, the current directory does not matter — the import can be performed from the root directory or from any namespace (for example, "phy"); the result will be exactly the same.
+When exporting, the current directory only matters if the "export" command is invoked with a single argument — the file name.
+<table>
+  <tr><th>Command</th><th>Description and examples</th></tr>
+
+  <tr>
+    <td><b>export [<i>NVS_PATH</i>] <i>FILE_PATH</i></b></td>
+    <td><p>Export NVS contents to a text file (the filesystem must be mounted; see "<a href="Filesystems.html#mount">mount</a>").
+If <i>NVS_PATH</i> is set to "/" (the root directory), all NVS data (all namespaces) will be exported.
+      <pre>
+       esp32-nvs(/espshell)>export / file.txt   &larr; export the entire NVS contents to a file
+      </pre>
+
+If <i>NVS_PATH</i> specifies a namespace name, only that namespace will be exported.
+      <pre>
+       esp32-nvs(/espshell)>export /phy file.txt &larr; export the contents of the "phy" namespace
+      </pre>
+
+If the <i>NVS_PATH</i> parameter is omitted, the current namespace will be exported:
+      <pre>
+       esp32-nvs(/espshell)>export file.txt     &larr; export the "espshell" namespace
+      </pre>
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td><b>import <i>FILE_PATH</i></b></td>
+    <td><p>Import the contents of a text file (the filesystem must be mounted; see "<a href="Filesystems.html#mount">mount</a>").
+      <pre>
+       esp32-nvs(/espshell)>import file.txt
+      </pre>
+      </p>
+    </td>
+  </tr>
+
+</table>
+</p>
+
 </body>
 </html>
