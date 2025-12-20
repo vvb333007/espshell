@@ -673,6 +673,10 @@ static void espshell_task(const void *arg) {
     while (!console_isup())
       q_delay(CONSOLE_UP_POLL_DELAY);
 
+    console_flush();
+    q_delay(1000);
+    console_flush();
+
     // Check if Arduino's loop() task is already started. It must be
     if (loopTaskHandle == NULL)
       q_print("% <i>Console is initialized but Arduino loop() task is not started</>");
@@ -701,7 +705,7 @@ static void espshell_task(const void *arg) {
     nv_load_config();
 
     HELP(q_print(WelcomeBanner));
-
+    console_flush();
     // The main REPL : read & execute commands until "exit ex" is entered
     //
     while (!Exit) {

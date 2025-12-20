@@ -281,7 +281,7 @@ one_more_try: // we get here if we wasn't able to find any suitable handler in a
 // /i/    - first argv to start collecting text from
 
 // Returns number of bytes in buffer /*out/
-// /out/  - allocated buffer
+// /out/  - allocated buffer, must be q_free()ed
 //
 static int userinput_join(int argc, char **argv, int i /* START */, char **out) {
 
@@ -292,9 +292,13 @@ static int userinput_join(int argc, char **argv, int i /* START */, char **out) 
     return -1;
 
   // Rough estimate for the required buffer size
-  //
+  // "buffer" --> 6 bytes required; "\01\02\03" --> 3 bytes required
+  // Assume the worst case: no escapes, only characters. Multiple arguments are joined with speces inserted between them
+  // thats one extra byte
   for (int j = i; j < argc; j++)
-    bsize = bsize + strlen(argv[j]);
+    bsize = bsize + strlen(argv[j]) + 1;
+
+  // Extra bytes at the end to be able to insert \0
   bsize += 16;
 
   if ((*out = b = (char *)q_malloc(bsize, MEM_TEXT2BUF)) != NULL) {
@@ -304,14 +308,15 @@ static int userinput_join(int argc, char **argv, int i /* START */, char **out) 
       while (*p) {
         char c = *p;
         p++;
+        // a backslash: escape sequence
         if (c == '\\') {
           switch (*p) {
             case '\\':             p++;              c = '\\';              break;
             case 'n':              p++;              c = '\n';              break;
             case 'r':              p++;              c = '\r';              break;
             case 't':              p++;              c = '\t';              break;
-            case '"':              p++;              c = '"';              break;
-            //case 'e':              p++;              c = '\e';              break;  //interferes with \HEX numbers
+            case '"':              p++;              c = '"';               break;
+            //case 'e':              p++;              c = '\e';            break;  //interferes with \HEX numbers
             case 'v':              p++;              c = '\v';              break;
             //case 'b':              p++;              c = '\b';              break;  //interferes with \HEX numbers
             default:
@@ -336,10 +341,11 @@ static int userinput_join(int argc, char **argv, int i /* START */, char **out) 
         *b++ = ' ';
         size++;
       }
-      // input line length limiting. just in case. normally editline() must not accept lines which are too long
-      // TODO: editline() does not care about limiting :(
-      if (size > ESPSHELL_MAX_INPUT_LENGTH)
+      // input line length limiting.
+      // should not happen but just to be sure. bsize shoould be big enough
+      if (size >= (bsize - 16))
         break;
+
     } while (i < argc);
   }
   return size;

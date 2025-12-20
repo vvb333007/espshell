@@ -1776,15 +1776,25 @@ static int cmd_files_mount0(int argc, char **argv) {
       if (part->subtype == ESP_PARTITION_SUBTYPE_DATA_FAT || part->subtype == ESP_PARTITION_SUBTYPE_DATA_SPIFFS || part->subtype == ESP_PARTITION_SUBTYPE_DATA_LITTLEFS) {
         usable++;
         mountable = true;
-      } else
+      } else {
+        if (part->subtype == ESP_PARTITION_SUBTYPE_DATA_NVS)
+          usable++;
         mountable = false;
+      }
 
 #if WITH_COLOR
       if (mountable)
         q_print("<i>");
 #endif
       //"label" "fs type" "partition size"
-      q_printf("%%%16s|%s|%s| %6luK | ", part->label, mountable ? "+" : " ", files_subtype2text(part->subtype), part->size / 1024);
+      // TODO: UTF8 mark sign
+      q_printf("%%%16s|%s|%s| %6luK | ", 
+                  part->label, 
+                  mountable ? "+" 
+                            : (ESP_PARTITION_SUBTYPE_DATA_NVS == part->subtype ? "*"
+                                                                               : " "),
+                  files_subtype2text(part->subtype),
+                  part->size / 1024);
 
       if ((i = files_mountpoint_by_label(part->label)) >= 0)
         // "mountpoint" "total fs size" "available fs size"
@@ -1800,13 +1810,14 @@ static int cmd_files_mount0(int argc, char **argv) {
   }
 #if WITH_SD
   // display mounted SD cards (SD over SPI)
-  // TODO: files_space...() does not work with FAT on SD. Must fix files_space_total() and files_space_free()
+  //
   for (i = 0; i < MOUNTPOINTS_NUM; i++) {
     if (files_mountpoint_is_sdspi(i)) {
       sdmmc_card_t *card = (sdmmc_card_t *)mountpoints[i].gpp;
       if (card) {
         q_printf("%% %s: <i>%9s|+|%s| %6uM | ",sd_type(i), mountpoints[i].label, files_subtype2text(mountpoints[i].type), sd_capacity_mb(i));
-        q_printf("%16s |   N/A   |  N/A </>\r\n", mountpoints[i].mp/*, files_space_total(i), files_space_free(i)*/);
+        // TODO: check if it works
+        q_printf("%16s | %6uK | %6uK</>\r\n", mountpoints[i].mp, files_space_total(i) / 1024, files_space_free(i) / 1024);
         usable++;
       }
     }
@@ -1816,8 +1827,12 @@ static int cmd_files_mount0(int argc, char **argv) {
   q_print("%\r\n");
   if (!usable)
     q_print("% <e>No usable partitions were found. Use (Tools->Partition Scheme) in Arduino IDE</>\r\n");
-  else
-    HELP(q_printf("%% <i>%u</> mountable partition%s found. (+) - mountable partition\r\n", PPA(usable)));
+  else 
+    HELP(q_printf("%% <i>%u</> mountable partition%s found.\r\n", PPA(usable)));
+
+  HELP(q_print("% Legend:\r\n"
+               "%  <i>+</> : mountable partition\r\n"
+               "%  <i>*</> : partition accessible via the \"nvs\" command\r\n"));
 
   if (it)
     esp_partition_iterator_release(it);
@@ -1910,7 +1925,7 @@ static int cmd_files_ls(int argc, char **argv) {
       struct dirent *ent;
 
       q_print("%    Size        Modified          *  Name\r\n"
-              "%               -- level up --    DIR [<i>..</>]\r\n");
+              "%               -- level up --    <f> [<i>..</>]\r\n");
       while ((ent = readdir(dir)) != NULL) {
 
         struct stat st;
@@ -1932,13 +1947,13 @@ static int cmd_files_ls(int argc, char **argv) {
             total_d++;
             total_fsize += dir_size;
             
-            q_printf("%% %9u  %s  DIR [<i>%s</>]\r\n", dir_size, files_time2text(st.st_mtime), ent->d_name);
+            q_printf("%% %9u  %s  <f>  [<i>%s</>]\r\n", dir_size, files_time2text(st.st_mtime), ent->d_name);
             
           } else {
             total_f++;
             total_fsize += st.st_size;
 
-            q_printf("%% %9u  %s      <g>%s</>\r\n", (unsigned int)st.st_size, files_time2text(st.st_mtime), ent->d_name);
+            q_printf("%% %9u  %s     <g>%s</>\r\n", (unsigned int)st.st_size, files_time2text(st.st_mtime), ent->d_name);
 
           }
         } else

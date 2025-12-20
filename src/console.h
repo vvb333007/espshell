@@ -25,6 +25,7 @@ static uart_port_t uart = STARTUP_PORT; // either UART number OR 99 for USB-CDC
 // Arduino Nano ESP32 and many others use USB as their primary serial port, in hardware CDC mode.
 // Here are console functions for such cases (implemented in hwcdc.cpp)
 //
+extern void console_flush();
 extern bool console_isup();
 extern int  console_write_bytes(const void *buf, size_t len);
 extern int  console_available();
@@ -33,6 +34,12 @@ extern int  console_read_bytes(void *buf, uint32_t len, TickType_t wait);
 // Generic ESP32 boards usually use UART0 as their default console device.
 // Below is the console interface for this
 //
+
+// Flush console IO
+// TODO: implement
+static INLINE void console_flush() {
+  
+}
 
 
 // Send characters to user terminal

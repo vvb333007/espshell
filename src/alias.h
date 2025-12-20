@@ -164,7 +164,7 @@ static int alias_show_lines(argcargv_t *s) {
 // Lockless version
 //
 struct alias *alias_by_name(const char *name) {
-  struct alias *al = atomic_load(&Aliases);
+  struct alias *al = atomic_load_explicit(&Aliases, memory_order_acquire);
   // once al is loaded it is safe to walk through the list even if it is being modified: modification happens
   // only to the /Aliases/ variable itself, no existing ->next pointers are modified
   if (likely(name && *name))
@@ -190,12 +190,12 @@ struct alias *alias_create_or_find(const char *name) {
     if ((al = (struct alias *)q_malloc(sizeof(struct alias) + siz + 1, MEM_ALIAS)) != NULL) {
       strlcpy(al->name, name, siz + 1);
       al->lines = NULL;
-      rwlock_t tmp = RWLOCK_INIT;
+      rwlock_t tmp = RWLOCK_INITIALIZER_UNLOCKED;
       al->rw = tmp;
       // insert into the list head, lockless version
       do {
-        al->next = atomic_load(&Aliases);
-      } while(!atomic_compare_exchange_strong( &Aliases, &al->next, al));
+        al->next = atomic_load_explicit(&Aliases, memory_order_relaxed);
+      } while(!atomic_compare_exchange_strong_explicit( &Aliases, &al->next, al, memory_order_release, memory_order_relaxed));
     }
   }
 
@@ -266,7 +266,7 @@ static int cmd_show_alias(int argc, char **argv) {
   int i;
 
   if (argc < 3) {
-    if ((al = atomic_load(&Aliases)) != NULL) {
+    if ((al = atomic_load_explicit(&Aliases, memory_order_acquire)) != NULL) {
       q_print("% List of defined aliases:\r\n");
       for (i = 1; al != NULL ; ++i, al = al->next)
         q_printf("%% %d. \"%s\"%s\r\n",i,al->name,al->lines ? "" : ", empty");

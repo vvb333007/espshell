@@ -1100,6 +1100,8 @@ argify(unsigned char *line, unsigned char ***avp) {
           continue;
 
         // Quote processing step #1
+        // TODO: support for escaped quotes i.e. \". must track previous symbol and don't treat quotes as quotes if
+        // TODO: "previous" symbol was 
         if (*c == '\"') {
           in_quote = true;
           c++;

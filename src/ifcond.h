@@ -107,7 +107,7 @@ static struct ifcond *ifconds[NUM_PINS + 2] = { 0 };   // plus 1 for the NO_TRIG
 // Others are "readers", including the GPIO ISR (which traverses these lists). Obtaining a writer lock
 // thus is not enough: interrupts for the GPIO must be disabled (ISR does not have any locking mechanism at all).
 //
-static rwlock_t ifc_rw = RWLOCK_INIT;
+static rwlock_t ifc_rw = RWLOCK_INITIALIZER_UNLOCKED;
 
 // Defines the size of the message pipe. If the ISR below matches more than MPIPE_CAPACITY
 // ifconds, any additional ones will be dropped. For example, if you have 17 "if" statements
@@ -703,7 +703,7 @@ static void ifc_show_all() {
 
 static _Atomic(struct ifcond *) ifc_unused = NULL;  // list of free entries. entries are reused, ID is retained
 
-// Allocate an ifcond.
+// Allocate an ifcond. (this function is a twin brother of ha_get() in task.h)
 // It is either allocated via malloc() or, if available, reused from the pool of deleted ifconds.
 // When deleted, ifconds are not physically removed: instead, such unused ifconds go on "ifc_unused" list
 // and can be reused. Mainly to reuse ID's which otherwise start to grow
@@ -713,13 +713,19 @@ static struct ifcond *ifc_get() {
   static _Atomic uint16_t id = 1;
   struct ifcond *ret = NULL;
   do {
-    if ((ret = atomic_load(&ifc_unused)) == NULL)
+    if ((ret = atomic_load_explicit(&ifc_unused, memory_order_acquire)) == NULL)
       break;
-  } while(!atomic_compare_exchange_strong( &ifc_unused, &ret, ret->next));
+  } while(!atomic_compare_exchange_strong_explicit( &ifc_unused,
+                                                    &ret,
+                                                    ret->next,
+                                                    memory_order_acquire,
+                                                    memory_order_relaxed));
 
   // New entries get new ID; Reused entries must use their previously assigned ID.
   // ifc_get() only guarantees that /->id/ and /->alive/ fields are initialized, while 
   // all other fields MAY contain some old data (if entry is reused)
+  //
+  // TODO: Yes this can introduce ABA problem but right now I don't experience it 
   if (!ret) {
 
     uint16_t new_id = atomic_fetch_add(&id, 1); 
@@ -727,6 +733,7 @@ static struct ifcond *ifc_get() {
 
     if ((ret = (struct ifcond *)q_malloc(sizeof(struct ifcond),MEM_IFCOND)) == NULL)
       return NULL;
+
     ret->exec = NULL;
     ret->timer = TIMER_INIT;
     ret->id = new_id;
@@ -753,9 +760,11 @@ static void ifc_put(struct ifcond *ifc) {
     // entry is removed, because corresponding timers are removed also. It is an extra layer of safety
     ifc->alive = 0;
     ifc->disabled = 1;
+
+    // Return /ifc/ to the /ifc_unused/ list
     do {
-      ifc->next = atomic_load(&ifc_unused);
-    } while(!atomic_compare_exchange_strong( &ifc_unused, &ifc->next, ifc));
+      ifc->next = atomic_load_explicit(&ifc_unused, memory_order_relaxed);
+    } while(!atomic_compare_exchange_strong_explicit( &ifc_unused, &ifc->next, ifc, memory_order_release, memory_order_relaxed));
   }
 }
 
@@ -1023,6 +1032,7 @@ static void ifc_task(void *arg) {
 //          alias_exec_in_background_delayed(ifc->exec,ifc->delay_ms);
 //        else
           alias_exec_in_background(ifc->exec);
+
         ifc->hits++;
       } else
         ifc->drops++;

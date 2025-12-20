@@ -21,17 +21,14 @@
 // 3. Bunch of number->string and string->number conversion functions
 // 4. Core functions like q_printf(), core variables etc
 //
-// TODO: find every place where pointers are assumed to be uint32_t in size and refactor using intptr_t.
-//       Most of them are in var.h and task.h tho
-// TODO: implement "static uintptr_t hex2uintptr(const char *hex_string, uintptr_t def)". Now we use 
-//       hex2uint32 to convert pointers (user input, e.g. TASK_ID) to uint32_t which is not portable
-//       across 32/64 bit architectures.
 //
 // TODO: consider implementing q_delay via NotifyWait: then every q_delay becomes interruptible and we can get rid
 //       of this ugly delay_interruptible() logic? How to implement keypress interruption then?
 #if COMPILING_ESPSHELL
 
 #include <stdatomic.h>
+
+static bool q_utf8 = false;
 
 // GCC-specific branch prediction optimization macros 
 // Arduino Core is shipped with precompiled ESP-IDF where they have redefined likely() and unlikely() to be 
@@ -59,13 +56,13 @@ enum {
   MEM_HISTORY,   // command history entry
   MEM_TEXT2BUF,  // TEXT argument (fs commands write,append,insert or uart's write are examples) converted to byte array
   MEM_PATH,      // path (c-string)
-  MEM_GETLINE,   // memory allocated by files_getline()
+  MEM_GETLINE,   // memory allocated by files_getline() TODO: use MEM_TMP here
   MEM_SEQUENCE,  // sequence-related allocations
-  MEM_TASKID,    // Task remap entry
+  MEM_TASKID,    // Task remap entry                     TODO: get rid of it
   MEM_ALIAS,     // Aliases and related allocation
   MEM_IFCOND,    // "if" and "every" conditions
   MEM_SERVER,    // server(s) name or address
-  MEM_UNUSED15
+  MEM_HA
   // NOTE: only values 0..15 are allowed, do not add more!
 };
 
@@ -206,94 +203,103 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
 
 // -- Readers/Writer lock --
 //
-// Implements classic "Many readers, One writer" scheme, write-preferring, simple RW locks
-// Queued write requests prevent new readers from acquiring the lock
-// Queued writers are blocking on a semaphore if there are active readers;
-// Queued readers will spin if there are active writers
+// Implements the classic "many readers, one writer" scheme - write-preferring RW locks.
+// Synchronization is lockless, but we also use a binary semaphore to make readers or writers wait:
+// instead of spinning in a q_yield() loop, we take the semaphore, effectively removing our task
+// from the scheduler's "active" list.
 //
-// RWLocks are used mostly with lists: one example is the alias.h where RWLocks are used 
-// to protect aliases list, another is ifcond.c, where we have array of lists, which is traversed from within an ISR
-// TODO: stress test with multiple reader/writer tasks
+// RWLock rules:
+// 1. Queued write requests (/rw->wreq/) prevent new readers from acquiring the lock
+//    (readers will block on /rw->sem/).
+// 2. Queued writers block on the semaphore if there are active readers or other writers.
+//
+// RWLocks are used mostly with lists. For example, alias.h uses an RWLock
+// to protect the aliases list. Another example is ifcond.h, where we have an array
+// of lists traversed from within an ISR.
+//
+// TODO: stress-test with multiple reader/writer tasks
 
-// RWLock type
+
+// RWLock initializer
+#define RWLOCK_INITIALIZER_UNLOCKED { 0, 0, SEM_INIT } 
+
+
+// RWLock type:
+// Declare and initialize: "static rwlock_t my_lock = RWLOCK_INITIALIZER_UNLOCKED;"
+//
 typedef struct {
-  _Atomic uint32_t wreq; // Number of pending write requests
+  _Atomic uint32_t wreq; // Number of pending write requests (soft-stop for new readers)
   _Atomic int      cnt;  // <0 : write_lock, 0: unlocked, >0: reader_lock
   sem_t            sem;  // binary semaphore, acts like blocking object
 } rwlock_t;
 
-// initializer: rwlock_t a = RWLOCK_INIT;
-#define RWLOCK_INIT { 0, 0, SEM_INIT} 
 
-// Obtain exclusive ("Writer") access.
+// void rw_lockw(rwlock_t *rw);
 //
-// If there were readers or writers, this function will block on /rw->sem/ and signal that further read requests
-// must be postponed.
-// If there are no readers/writers, then we grab a binary semaphore /rw->sem/ and change /cnt/ to negative
-// value meaning "Write" lock has been acquired
+// Obtain exclusive (i.e. "writer") access.
+//
+// If there are active readers or writers, this function blocks on /rw->sem/ and signals
+// that further read requests must be postponed (via /rw->wreq++/).
+// If there are no readers or writers, we grab the binary semaphore /rw->sem/ and set the /cnt/
+// to a negative value, meaning that a write lock has been acquired.
 //
 void rw_lockw(rwlock_t *rw) {
 
-  // Set "Write Lock Request" flag before acquiring /rw->sem/: this will stop new readers to obtain the reader lock
-  atomic_fetch_add(&rw->wreq,1);
-try_again:  
-  // Grab main sync object. 
-  // If it is held by readers or other writer then we simply block here
-  sem_lock(rw->sem); 
-
-  // Ok, we just acquired the semaphore; lets check if a
-  // reader somehow sneaked in during the process: if it happened, then we retry whole procedure
-  if (atomic_load(&rw->cnt) != 0) {
-    sem_unlock(rw->sem);
-    q_yield();
-    goto try_again;
-  }
-  atomic_fetch_sub(&rw->cnt,1); //  i.e. rw->cnt = -1, "active writer" TODO: replace with atomic_store(.., -1)
-  atomic_fetch_sub(&rw->wreq,1);
+  atomic_fetch_add_explicit(&rw->wreq, 1, memory_order_release); // Signal write intent.
+  sem_lock(rw->sem);                                             // Acquire the semaphore (or block).
+  atomic_store_explicit(&rw->cnt, -1, memory_order_release);     // Mark an exclusive writer
+  atomic_fetch_sub_explicit(&rw->wreq, 1, memory_order_release); // Clear our write intent.
 }
 
-// WRITE unlock
-// /cnt/ is expected to be -1 (Write Lock). If it isn't then we have bugs in out RW code
+// void rw_unlockw(rwlock_t *rw)
+//
+// Release the exclusive ("writer") lock previously acquired with rw_lockw(rwlock_t *).
+//
+// TODO: in DEBUG, verify that /cnt/ == -1 (it’s expected to be -1 at this point)
 //
 void rw_unlockw(rwlock_t *rw) {
-  atomic_fetch_add(&rw->cnt,1); //same as rw->cnt = 0;
-  sem_unlock(rw->sem);
+  atomic_store_explicit(&rw->cnt, 0, memory_order_release); // /cnt/ == "no readers, no writers"
+  sem_unlock(rw->sem);                                      // Unblock pending reader and/or writer
 }
 
-// Obtain reader lock.
-// Yield if theres writer lock obtained already
-// 
-// Dominant type of lock
+// void rw_lockr(rwlock_t *rw)
 //
-// probably a race condition,results in erroneous sem_lock(), but it is not critical,
-// just one reader will be blocked as if he is writer
-
+// Obtain a shared, non-exclusive ("reader") lock.
+// The first reader also grabs the main sync object to block additional writers (and readers).
+//
+// This is the most frequently used lock type.
+//
 void rw_lockr(rwlock_t *rw) {
 
   int cnt;
+  while ( true ) {
 
-  // Wait until there are no readers and no writers and no writelock request is queued
-  // Let "writer" task to do its job
-  //
-  while (atomic_load_explicit(&rw->cnt, memory_order_acquire) < 0 ||
-         atomic_load_explicit(&rw->wreq, memory_order_acquire) > 0)
-    q_yield(); 
+    // Spinloop here if we have active writer or we see writing intent
+    // 
+    if (0 < atomic_load_explicit(&rw->wreq, memory_order_acquire) ||
+        0 > (cnt = atomic_load_explicit(&rw->cnt, memory_order_acquire))) {
+      // let other tasks do their job and retry
+      q_yield();
+      continue;
+    }
 
-  // Atomically increment READERS count
-  cnt = atomic_fetch_add_explicit(&rw->cnt, 1, memory_order_acq_rel);
-
-  // First of readers acquires rw->sem, so subsequent rw_lockw() will block immediately
-  // If concurrent wr_lockw() obtains /sem/ just after rw->cnt++ then we simply block here,
-  // for a tiny amount of time while rw_lockw() goes through its "try_again:"
-  //
-  if (!cnt)
-      sem_lock(rw->sem);
+    // Try to increment readers count
+    if (atomic_compare_exchange_weak_explicit(&rw->cnt, &cnt, cnt + 1, memory_order_acq_rel, memory_order_relaxed)) {
+      // First reader grabs semaphore
+      if (cnt == 0)
+        sem_lock(rw->sem);
+      break;    
+    }
+  }
 }
 
-// Reader unlock
+// void rw_unlockr(rwlock_t *rw);
+//
+// Reader unlock. Last reader releases the semaphore
 //
 void rw_unlockr(rwlock_t *rw) {
-  if (atomic_fetch_sub(&rw->cnt, 1) == 1)
+  // If we were the last reader -> release the semaphore
+  if (atomic_fetch_sub_explicit(&rw->cnt, 1, memory_order_acq_rel) == 1)
     sem_unlock(rw->sem);
 }
 
@@ -528,8 +534,20 @@ static const char *ansi_tags['z' - 'a' + 1] = {
   ['z' - 'a'] = "\05\033[96m",     // [z]yan. bright
 
   // Background color
-  ['x' - 'a'] = "\05\033[41m",     // red background ( X - no no no)
-  ['y' - 'a'] = "\05\033[42m",     // green background ( Y - yes yes yes)
+  ['m' - 'a'] = "\05\033[41m",     // red background
+  ['y' - 'a'] = "\05\033[42m",     // green background
+
+#if WITH_UTF8
+  // UTF8 Icons:
+  ['f' - 'a'] = "\04📁",
+  ['v' - 'a'] = "\03✔",
+  ['x' - 'a'] = "\03✖",
+#else
+  ['f' - 'a'] = "\03DIR",
+  ['v' - 'a'] = "\03[V]",
+  ['x' - 'a'] = "\03[X]",
+#endif  
+   
   //other definitions can be added here as well as long as they are in [a-z] range
 };
 
@@ -540,9 +558,11 @@ static const char *ansi_tags['z' - 'a' + 1] = {
 // NOTE: tag </> is a synonym for <n>, i.e. a "normal" text attributes
 static __attribute__((const)) const char *tag2ansi(char tag) {
 
-  return tag == '/' ? ansi_tags['n' - 'a'] + 1
-                    : (tag >= 'a' && tag <= 'z' ? ansi_tags[tag - 'a'] + 1
-                                                : NULL);
+  if (Color || (tag == 'f' || tag == 'v' || tag == 'x'))
+    return (tag == '/') ? ansi_tags['n' - 'a'] + 1
+                        : (tag >= 'a' && tag <= 'z' ? ansi_tags[tag - 'a'] + 1
+                                                    : NULL);
+  return NULL;
 }
 
 // PPA(Number) generates 2 arguments for a printf ("%u%s",PPA(Number)), adding an "s" where its needed:
@@ -617,7 +637,7 @@ static const char *memtags[] = {
   "ALIAS",
   "IFCOND",
   "SERVER",
-  "UNUSED15"
+  "HA"
 };
 
 // allocated blocks
@@ -807,8 +827,8 @@ static void q_memleaks(const char *text) {
   if ((counters[MEM_HISTORY] > HIST_SIZE) ||
       (counters[MEM_LINE] > 1) ||
       (counters[MEM_TMP] > 0) ||
-      (counters[MEM_ARGIFY] > 1) ||
-      (counters[MEM_ARGCARGV] > 1))
+      (counters[MEM_ARGIFY] > (1 + counters[MEM_ALIAS]) ) ||
+      (counters[MEM_ARGCARGV] > (1 + counters[MEM_ALIAS])))
     q_printf("%% <i>WARNING: possible memory leak(s) detected</>\r\n");
 
 #if WITH_HELP
@@ -1387,7 +1407,7 @@ static int q_print(const char *str) {
       //
       if (p[1] && p[2] == '>') {
 
-        ins = Color ? tag2ansi(p[1]) : NULL; // NOTE: ins can only have values returned by tag2ansi() as they are of special format (pascal-like)
+        ins = tag2ansi(p[1]); // NOTE: ins can only have values returned by tag2ansi() as they are of special format (pascal-like)
 
         // Send everything _before _the tag to the console
         len += console_write_bytes(pp, p - pp);

@@ -41,6 +41,7 @@
 
 // forwards
 static const char *files_set_cwd(const char *);
+static inline const char *files_get_cwd();
 
 extern task_t  loopTaskHandle; // task handle of a task which calls Arduino's loop().
 static task_t  shell_task = 0; // Main espshell task handle
@@ -320,26 +321,31 @@ struct helper_arg {
 //
 static _Atomic(struct helper_arg *) ha_unused = NULL;
 
-static inline const char *files_get_cwd();
-
-// Allocate / Reuse
+// Allocate new helper_arg - either via malloc() or reuse entries from the LIFO buffer
+// We don't care about ABA problem: it is handled outside of this code
 //
 static struct helper_arg *ha_get() {
 
   struct helper_arg *ret;
-  
-  // ret = ha_unused
-  // ha_unused = ret->next
+
+  // If we have anything on our "unused" list - reuse (pop) its first element.
+  // If "unused" list is empty - just use malloc()
   do {
-    if ((ret = atomic_load(&ha_unused)) == NULL)
+    ret = atomic_load_explicit(&ha_unused, memory_order_acquire);
+    if (!ret)
       break;
-  } while(!atomic_compare_exchange_strong( &ha_unused, &ret, ret->next));
+  } while (!atomic_compare_exchange_strong_explicit(&ha_unused,            // store to
+                                                    &ret,                  // .. if ret == ha_unused
+                                                    ret->next,             // store what
+                                                    memory_order_relaxed,  // Success mo
+                                                    memory_order_relaxed   // Failure mo
+                                                   ));
 
   if (!ret)
-    ret = (struct helper_arg *)q_malloc(sizeof(struct helper_arg ), MEM_TMP); // TODO: use dedicated MEM_HA
+    ret = (struct helper_arg *)q_malloc(sizeof(struct helper_arg ), MEM_HA); // TODO: use dedicated MEM_HA
 
   // Fill common fields: /Context/, /keywords/ and /Cwd/. These fields will be used by a spawned task,
-  // to set corresponding "global" (actually, __thread) variables.
+  // to set its corresponding "global" (actually, __thread) variables.
   if (ret) {
     ret->context = context_get();
     ret->keywords = keywords_get();
@@ -349,16 +355,24 @@ static struct helper_arg *ha_get() {
   return ret;
 }
 
-// Deallocate / Put on the unused list
+// Put /ha/ on unused list.
 //
 static void ha_put(struct helper_arg *ha) {
   // code below does this:
   //   ha->next = ha_unused;
   //   ha_unused = ha;
-  if (ha != NULL)
+
+  if (likely(ha != NULL)) {
+    
     do {
-      ha->next = atomic_load(&ha_unused);
-    } while(!atomic_compare_exchange_strong( &ha_unused, &ha->next, ha));
+      ha->next = atomic_load_explicit(&ha_unused, memory_order_relaxed);
+    } while (!atomic_compare_exchange_strong_explicit(&ha_unused,
+                                                   &ha->next,
+                                                    ha,
+                                                    memory_order_release,
+                                                    memory_order_relaxed
+                                                  ));
+  }
 }
 
 // Older versions of  ESP-IDF had FreeRTOS Trace Facility disabled, so we had to use an ugly workaround 
@@ -418,7 +432,7 @@ static int cmd_show_tasks(int argc, char **argv) {
       if (tasks[j].eCurrentState > 5)
         tasks[j].eCurrentState = 5;
 
-      const char *warn = "<x>!";
+      const char *warn = "<m>!";
       if (tasks[j].usStackHighWaterMark > 1023)
         warn = " ";
 
@@ -447,7 +461,7 @@ static int cmd_show_tasks(int argc, char **argv) {
     }
   }
   q_printf("%%----+------------+------------------+------+-----------+------------------+-----\r\n"
-           "%% Total: %u tasks. <x>low HighWM</> values MAY indicate stack overflow risks\r\n",j);
+           "%% Total: %u tasks. <m>low HighWM</> values MAY indicate stack overflow risks\r\n",j);
   return 0;
 }
 #else //!CONFIG_FREERTOS_USE_TRACE_FACILITY

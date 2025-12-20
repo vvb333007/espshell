@@ -169,6 +169,7 @@ static bool add_unique( struct nvsnamespace **nvs_namespaces, const char *name) 
 // "long long int"
 // "char*" "char *"
 // "char[123]", "char[]"
+// TODO: refactor convar.h to use read_ctype()
 //
 static size_t read_ctype(int argc, char **argv, int start, bool *is_str, bool *is_blob, bool *is_signed) {
   if ((start >= argc) ||
@@ -186,12 +187,16 @@ static size_t read_ctype(int argc, char **argv, int start, bool *is_str, bool *i
     if (!q_strcmp(argv[start],"unsigned")) *is_signed = false;    else
     if (!q_strcmp(argv[start],"char"))      size = 1;             else
     if (!q_strcmp(argv[start],"short"))     size = 2;             else
+    // "int" means 32 bit ONLY if there are no other specifiers.
+    // e.g. unsigned short int is still 16 bit
     if (!q_strcmp(argv[start],"int"))       size = size < 2 ? 4
                                                           : size; else
     if (!q_strcmp(argv[start],"long"))      size = 4 * (++ll);    else
+    // Detect arrays
     if (!q_strcmp("char[", argv[start]) ||
         argv[start][0] == '[' ||
         argv[start][0] == ']')             *is_blob = true;       else
+    // Detect strings
     if (argv[start][0] == '*' ||
         !q_strcmp(argv[start],"char*"))    *is_str = true;
     start++;
@@ -202,7 +207,9 @@ static size_t read_ctype(int argc, char **argv, int start, bool *is_str, bool *i
 
 
 
-// Convert decoded C-type to NVS data type
+// Convert decoded C-type to NVS data type:
+// 1. call read_ctype()
+// 2. call ct2nt()
 //
 static __attribute__((const)) nvs_type_t ct2nt(uint8_t size, bool is_str, bool is_blob, bool is_signed) {
 
@@ -220,7 +227,7 @@ static __attribute__((const)) nvs_type_t ct2nt(uint8_t size, bool is_str, bool i
 
 
 
-// Human-readable element type
+// Human-readable element type, short form
 // 
 static __attribute__((const)) const char *nt2ct(nvs_type_t t) {
   switch(t) {
@@ -239,7 +246,7 @@ static __attribute__((const)) const char *nt2ct(nvs_type_t t) {
   return "undef!";
 }
 
-// Human-readable element type
+// Human-readable element type, long form
 // 
 static __attribute__((const)) const char *nt2ctype(nvs_type_t t) {
   switch(t) {
@@ -411,7 +418,7 @@ static void nv_list_keys(const char *partition, const char *namespace) {
 
 #if WITH_FS
 // Export a namespace to a file
-// Files can be executed by shell via "exec /PATH" so no dedicated "import" command is needed
+// Files can be executed by shell via "exec /PATH"
 //
 static void nv_export_namespace(FILE *fp, const char *partition, const char *namespace) {
 
@@ -615,6 +622,7 @@ static int cmd_nvs_rm(int argc, char **argv) {
 
   // "rm /"
   // "rm ." in the root
+  // "rm *" in the root
   if ((*p == '/' && p[1] == '\0') ||
       (*namespace == '/' && (*p == '.' || *p == '*') && p[1] == '\0')) {
 erase_all_namespaces_and_exit:    
@@ -625,6 +633,9 @@ erase_all_namespaces_and_exit:
   }
 
   // "rm .|*"
+  // Normalize path, remove leading dots and path separators
+  // If there were only double dots, slashes and path separators then remove root
+  // Single dot and an asterisk resolve to current namespace
   if ((*p == '.' || *p == '*') && (*(p+1) == '\0'))
     p = namespace;
   else while(*p == '/' || *p == '.')
@@ -632,8 +643,10 @@ erase_all_namespaces_and_exit:
   if (*p == '\0')
     goto erase_all_namespaces_and_exit;
 
-  // Check if argv[1] is a key or a namespace: if CWD is "/" then argv[1] can't be a key
-  // if argv[1] ahd .././../ in it - then it can't be a key
+  // Check if argv[1] is a key or a namespace: 
+  // if CWD is "/" then argv[1] can't be a key
+  // if argv[1] had .././../ in it - then it can't be a key
+  // Erase whole namespace
   if (*namespace == '/' ||  p != argv[1]) {
     if (nvs_open_from_partition(partition, p, NVS_READWRITE, &handle) == ESP_OK) {    
       nvs_erase_all(handle);
@@ -647,7 +660,8 @@ erase_all_namespaces_and_exit:
       if (ESP_OK == nvs_erase_key(handle, p)) {
         q_printf("%% Key \"%s\" has been erased (namespace: \"%s\", partition: \"%s\")\r\n", argv[1], namespace, partition);
         nvs_commit(handle);
-      }
+      } else
+        q_printf("%% Key \"%s\": not found, no changes were made to the NVS\r\n",p);
       nvs_close(handle);
       return 0;
     }
@@ -659,7 +673,7 @@ erase_all_namespaces_and_exit:
 }
 
 // set Name 10
-// set Str "Some text"
+// set Str "Some text\r\n"
 // set Blob \11\22\33\44\55\66\aa\bb\cc\dd\ee\ff
 static int cmd_nvs_set(int argc, char **argv) {
 
@@ -685,8 +699,8 @@ static int cmd_nvs_set(int argc, char **argv) {
         case NVS_TYPE_I16:  err = nvs_set_i16(handle,  argv[1], q_atoi(argv[2], 0)); break; 
         case NVS_TYPE_U32:  err = nvs_set_u32(handle,  argv[1], q_atol(argv[2], 0)); break; 
         case NVS_TYPE_I32:  err = nvs_set_i32(handle,  argv[1], q_atoi(argv[2], 0)); break; 
-        case NVS_TYPE_U64:  err = nvs_set_u64(handle,  argv[1], q_atol(argv[2], 0)); break; 
-        case NVS_TYPE_I64:  err = nvs_set_i64(handle,  argv[1], q_atoi(argv[2], 0)); break; 
+        case NVS_TYPE_U64:  err = nvs_set_u64(handle,  argv[1], q_atol(argv[2], 0)); break; // TODO: q_atoll
+        case NVS_TYPE_I64:  err = nvs_set_i64(handle,  argv[1], q_atoi(argv[2], 0)); break; // TODO: q_atoii
         case NVS_TYPE_STR:   
         case NVS_TYPE_BLOB:
                             int siz;
@@ -819,7 +833,7 @@ static int cmd_nvs_new(int argc, char **argv) {
   namespace = nv_get_cwd();
   if (*namespace == '/') {
     q_print("% Can not create keys without a namespace\r\n"
-            "% Change to desired namespace (\"cd My_Preferences\") and try again\r\n");
+            "% Change to desired namespace (e.g. \"cd My_Preferences\") and try again\r\n");
     return CMD_FAILED;
   }
 
@@ -854,7 +868,10 @@ static int cmd_nvs_new(int argc, char **argv) {
     if (err == ESP_OK) {
       if (ESP_OK == nvs_commit(handle)) {
         ret = 0;
-        q_printf("%% Key created. Use \"set %s ...\" to set its value\r\n", argv[1]);
+        q_printf("%% Key \"%s/%s/%s\" has been created\r\n", 
+                  partition, 
+                  namespace,
+                  argv[1]);
       } else
         q_print("% <e>Failed to commit changes (flash error?)</>\r\n");
     } else
@@ -882,6 +899,8 @@ static int cmd_nvs_export(int argc, char **argv) {
 
   // only 1 argument: export current namespace
   if (argc < 3) {
+    // TODO: "export file.txt" in the root directory must call "export * file.txt"
+    // TODO: now it is treated as error
     if (nv_cwd_is_root()) {
       HELP(q_print("% <e>No namespace selected</>\r\n"
                    "% First argument of the \"export\" is used to select a namespace\r\n"
@@ -900,11 +919,10 @@ static int cmd_nvs_export(int argc, char **argv) {
       namespace = nv_get_cwd();
   }
 
-  if ((fp = files_fopen(filename,"a+")) == NULL) {
+  if ((fp = files_fopen(filename,"w")) == NULL) {
     q_printf("%% <e>Can not open file \"%s\" for writing</>\r\n", filename);
     return CMD_FAILED;
-  } 
-
+  }
   nv_export_namespace(fp, partition, namespace);
   fclose(fp);
 

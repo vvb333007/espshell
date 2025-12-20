@@ -37,6 +37,13 @@
 //
 #if SERIAL_IS_USB
 
+// Flush console IO
+//
+extern "C" void console_flush() {
+  Serial.flush();
+}
+
+
 // Check if Serial is up and running.
 //
 extern "C" bool console_isup() {
