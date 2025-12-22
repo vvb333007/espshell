@@ -182,23 +182,6 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
 #define sem_destroy(_Name) \
   mutex_destroy(_Name)
 
-// -- Memory access barrier --
-//
-// Code behind the barrier (i.e. the code between barrier_lock() / barrier_unlock()) must be kept small and linear.
-// Defenitely not call q_printf() or q_delay() while in the barrier, or watchdog will bark (interruptas are disabled!)
-//
-// Barrier lock is the only way to guarantee exclusive access both from tasks and interrupts on a multicore system
-//
-// TODO: refactor to use spinlock_t 
-//
-#define barrier_t portMUX_TYPE
-
-// Initializer: barrier_t mux = BARRIER_INIT;
-#define BARRIER_INIT portMUX_INITIALIZER_UNLOCKED
- 
-// Enter/Exit critical sections. On ESP32 these can be called from both ISR and TASK context.
-#define barrier_lock(_Name) portENTER_CRITICAL(&_Name)
-#define barrier_unlock(_Name) portEXIT_CRITICAL(&_Name)
 
 
 // -- Readers/Writer lock --
@@ -493,6 +476,8 @@ void rw_unlockr(rwlock_t *rw) {
 
 
 // Some globals as well.
+//TODO: fold it to single uint16_t (bitfields)
+//
 static bool Exit = false;            // True == close the shell and kill its FreeRTOS task. Can be restarted again with espshell_start()
 
 static bool ColorAuto = AUTO_COLOR;  // Autoenable coloring if terminal permits
@@ -505,7 +490,7 @@ static signed char  Echop = 0;               // "Previous" state of the /Echo/. 
 
 
 // -- Coloring / ANSI sequences --
-// ESPShell messages can have **color tags** embedded into them like in example below:
+// ESPShell messages can have **formatting tags** and "icon tags" embedded into them like in example below:
 //       "This <b>text is bold</><u><g>And this one green and underlined</>"
 //
 // The HTML-looking tags we use are single-letter tags: <b> <e> <i> ... 

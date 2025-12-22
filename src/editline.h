@@ -398,6 +398,23 @@ do_forward(EL_STATUS move) {
 }
 
 
+// <TAB> (Ctrl+I) handler. Jump to next argument
+// until end of line is reached. start to jump back
+//
+static EL_STATUS tab_pressed() {
+
+  if (Point < End)
+    return do_forward(CSmove);
+  else {
+    if (Point) {
+      Point = 0;
+      return CSmove;
+    }
+    return CSstay;
+  }
+}
+
+
 
 static void
 ceol() {

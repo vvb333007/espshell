@@ -278,6 +278,7 @@ KEYWORDS_DECL(uart) {   // Declares the "uart" command directory.
     HELPK("% \"<b>baud</> <i>SPEED</>\"\r\n"
           "%\r\n"
           "% Set speed for the uart (uart must be initialized)\r\n"
+          "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>baud 115200</> - Set uart baud rate to 115200"),
     HELPK("Set baudrate") },
@@ -358,6 +359,7 @@ KEYWORDS_DECL(iic) {
     HELPK("% \"<b>up</> <i>SDA SCL CLOCK</>\"\r\n"
           "%\r\n"
           "% Initialize I2C interface X, use pins SDA/SCL, clock rate CLOCK\r\n"
+          "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>up 21 22 100000</> - enable i2c at pins sda=21, scl=22, 100kHz clock"),
     HELPK("Initialize interface (pins and speed)") },
@@ -366,6 +368,7 @@ KEYWORDS_DECL(iic) {
     HELPK("% \"<b>clock</> <i>SPEED</>\"\r\n"
           "%\r\n"
           "% Set I2C master clock (i2c must be initialized)\r\n"
+          "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>clock 100000</> - Set i2c clock to 100kHz"),
     HELPK("Set clock") },
@@ -373,13 +376,18 @@ KEYWORDS_DECL(iic) {
   { "scan", cmd_i2c_scan, NO_ARGS,
     HELPK("% \"<b>scan</>\"\r\n"
           "%\r\n"
-          "% Scan I2C bus for devices. (i2c must be initialized)"),
+          "% Scan I2C bus for devices. (i2c must be initialized)"
+          "%\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>scan</> - Scan I2C bus"),
+
     HELPK("Scan i2c bus for devices") },
 
   { "write", cmd_i2c_write, MANY_ARGS,
     HELPK("% \"<b>write</> <i>ADDR D1<i> [<o>D2 ... Dn</>]</>\"\r\n"
           "%\r\n"
           "% Write bytes D1..Dn (hex values) to address ADDR on I2C bus X\r\n"
+          "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>write 0x57 0 0xff</> - write 2 bytes to address 0x57: 0 and 255"),
     HELPK("Send bytes to the device") },
@@ -388,6 +396,7 @@ KEYWORDS_DECL(iic) {
     HELPK("% \"<b>read</> <i>ADDR SIZE</></>\"\r\n"
           "%\r\n"
           "% Read SIZE bytes from a device at address ADDR\r\n"
+          "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>read 0x68 7</> - read 7 bytes from device address 0x68"),
     HELPK("Read data from an I2C device") },
@@ -395,7 +404,8 @@ KEYWORDS_DECL(iic) {
   { "down", cmd_i2c_down, NO_ARGS,
     HELPK("% \"<b>down</>\"\r\n"
           "%\r\n"
-          "% Shutdown I2C interface X"),
+          "% <u>Examples:</>\r\n"
+          "%   <i>down</> - Deinitialize I2C interface"),
     HELPK("Shutdown i2c interface") },
 
 
@@ -1029,6 +1039,10 @@ KEYWORDS_DECL(files) {
           "% Unmount a file system specified by its mount point\r\n"
           "% If the mount point is omitted, the file system of the\r\n"
           "% current working directory is unmounted\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>unmount</>         - unmount current filesystem\r\n"
+          "%   <i>unmount /ffat</>   - unmount by mountpoint path\r\n"
+          "%   <i>unmount /ff/dir1</>- mountpoint is derived from the path\r\n"
           ),
     HELPK("Unmount partition") },
 
@@ -1040,7 +1054,13 @@ KEYWORDS_DECL(files) {
     HELPK("% \"<b>ls</> [<o>PATH</>]\"\r\n"
           "%\r\n"
           "% Show directory listing at PATH given\r\n"
-          "% If PATH is omitted then current directory list is shown"),
+          "% If PATH is omitted then current directory list is shown"
+          "% <u>Examples:</>\r\n"
+          "%   <i>ls</>              - current directory list\r\n"
+          "%   <i>ls ../dir</>       - relative path \r\n"
+          "%   <i>ls /ffat/dir</>    - absolute path \r\n"
+          "%   <i>ls /</>            - list mountpoints\r\n"
+          ),
     HELPK("List directory") },
 
   { "ls", cmd_files_ls, 0, HIDDEN_KEYWORD },
@@ -1054,7 +1074,7 @@ KEYWORDS_DECL(files) {
           "%   <i>cd</>              - change current directory to filesystem's root\r\n"
           "%   <i>cd ..</>           - go one directory up\r\n"
           "%   <i>cd /ffat/test/</>  - change to \"/ffat/test/\"\r\n"
-          "%   <i>cd test2/test3/</> - change to \"/ffat/test/test2/test3\""),
+          "%   <i>cd ../test2/test3/</> - change to \"/ffat/test2/test3\""),
     HELPK("Change directory") },
 
   { "rm", cmd_files_rm, MANY_ARGS,
@@ -1062,6 +1082,9 @@ KEYWORDS_DECL(files) {
           "%\r\n"
           "% Remove files or directories with their contents.\r\n"
           "% When removing directories: all files and subdirectories are deleted as well\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>rm /ffat/dir1</>  - remove directory and its content\"/ffat/dir1\"\r\n"
+          "%   <i>rm .</>           - remove directory content, keep the directory\r\n"
           ),
     HELPK("Delete files/dirs") },
 
@@ -1073,6 +1096,7 @@ KEYWORDS_DECL(files) {
           "%   <i>mv /ffat/dir1 /ffat/dir2</>             - rename directory \"dir1\" to \"dir2\"\r\n"
           "%   <i>mv /ffat/fileA.txt /ffat/fileB.txt</>   - rename file \"fileA.txt\" to \"fileB.txt\"\r\n"
           "%   <i>mv /ffat/dir1/file1 /ffat/dir2</>       - move file to directory\r\n"
+          "%   <i>mv . ../dir/</>                         - move directory content to another dir\r\n"
           "%   <i>mv /ffat/fileA.txt /spiffs/fileB.txt</> - move file between filesystems"),
     HELPK("Move/rename files and/or directories") },
 
@@ -1086,6 +1110,7 @@ KEYWORDS_DECL(files) {
           "%   <i>cp /ffat/test.txt test2.txt</>         - copy file to file\r\n"
           "%   <i>cp test.txt ../dir/</>                 - copy file to directory\r\n"
           "%   <i>cp /ffat/dir_src /ffat/dir/</>         - copy directory to directory\r\n"
+          "%   <i>cp . ../dir/</>                        - copy directory content\r\n"
           "%   <i>cp /spiffs/test.txt /ffat/test2.txt</> - copy between filesystems"),
     HELPK("Copy files/dirs") },
 
@@ -1133,7 +1158,7 @@ KEYWORDS_DECL(files) {
           "% the line numbers\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <i>delete /ffat/test.txt 10</>   - remove line #10 from \"/ffat/test.txt\""
+          "%   <i>delete /ffat/test.txt 10</>   - remove line #10 from \"/ffat/test.txt\"\r\n"
           "%   <i>delete /ffat/test.txt 10 3</> - remove lines #10,11 and 12"
           ),
     HELPK("Delete lines from a text file") },
@@ -1143,7 +1168,11 @@ KEYWORDS_DECL(files) {
   { "mkdir", cmd_files_mkdir, MANY_ARGS,
     HELPK("% \"<b>mkdir</> <i>PATH1</> [<o>PATH2 PATH3 ... PATHn</>]\"\r\n"
           "%\r\n"
-          "% Create empty directories PATH1 ... PATHn"),
+          "% Create empty directories PATH1 ... PATHn\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>mkdir ../a/b/c</>    - create ../a/b/c\r\n"
+          "%   <i>mkdir ../a ../b ../c - create ../a, ../b and ..c"
+          ),
     HELPK("Create directories") },
 
   { "cat", cmd_files_cat, MANY_ARGS,
@@ -1173,7 +1202,9 @@ KEYWORDS_DECL(files) {
   { "touch", cmd_files_touch, MANY_ARGS,
     HELPK("% \"<b>touch</> <i>PATH1</> [<o>PATH2 PATH3 ... PATHn</>]\"\r\n"
           "%\r\n"
-          "% Ceate new files or \"touch\" existing"
+          "% Ceate new files or \"touch\" existing\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>touch file1.txt ../file2.txt</> - touch/create two files"
           ),
     HELPK("Create/touch files") },
 
@@ -1182,6 +1213,13 @@ KEYWORDS_DECL(files) {
           "%\r\n"
           "% Format the partition LABEL. If LABEL is omitted, the current working\r\n"
           "% directory is used to determine the partition label\r\n"
+          "%\r\n"
+          "% <i>NOTE</>: SD card over SPI is not supported yet\r\n"
+          "%\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>format</>           - format current partition\r\n"
+          "%   <i>format ffat</>      - format partition \"ffat\"\r\n"
+          "%   <i>format /abc/dir2</> - format partition where /abc/dir2 is located\r\n"
           ),
     HELPK("Erase old & create new filesystem") },
 
@@ -1214,12 +1252,11 @@ KEYWORDS_DECL(nvs) {
     HELPK("Show NVS directory content") },
 
   { "cd", cmd_nvs_cd, 1,
-    HELPK("% \"<b>cd /</>\r\n"
-          "% \"<b>cd ..</>\r\n"
-          "% \"<b>cd NAMESPACE</>\r\n"
+    HELPK("% \"<b>cd [<o>PATH</>]/</>\r\n"
           "%\r\n"
           "% Change the current namespace. To create a new namespace, simply \"cd\" into it\r\n"
           "% and it will be created automatically. Note that empty namespaces may be deleted by the system\r\n"
+          "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>cd /</>    - Go to the root directory\r\n"
           "%   <i>cd ..</>   - Go to the root directory\r\n"
@@ -1598,6 +1635,17 @@ KEYWORDS_DECL(main) {
           "% Displays an IO_MUX function currently assigned for every pin"),"Display system information"},
 
   // Entries below are only for the /full/ help line (/brief/ line is copied from the first "show" entry 
+#if WITH_WIFI
+  { "show", HELP_ONLY,
+    HELPK("% \"<b>show <i>wifi ap|sta</> NUM\"\r\n"
+          "%\r\n"
+          "% Display WiFi interface parameters (AP or STA)"),NULL},
+#endif
+  { "show", HELP_ONLY,
+    HELPK("% \"<b>show <i>nap</> NUM\"\r\n"
+          "%\r\n"
+          "% Display CPU sleep parameters"),NULL},
+
   { "show", HELP_ONLY,
     HELPK("% \"<b>show <i>uart</> NUM\"\r\n"
           "%\r\n"
@@ -1638,14 +1686,14 @@ KEYWORDS_DECL(main) {
           "%\r\n"
           "% Display sequence configuration for given index:\r\n"
           "% \"show sequence 6\"  - display Sequence #6 configuration"),NULL},
-
+#if WITH_FS
   { "show", HELP_ONLY,
     HELPK("% \"<b>show <i>mount</> [<o>/PATH</>]\"\r\n"
           "%\r\n"
           "% Display information about mounted filesystems, partitions.\r\n"
           "% \"show mount\"           - display filesystem information\r\n"
           "% \"show mount /my_disk\"  - display information about mountpoint \"/my_disk\""), NULL},
-
+#endif
   { "show", HELP_ONLY,
     HELPK("% \"<b>show <i>memory</>\"\r\n"
           "%\r\n"

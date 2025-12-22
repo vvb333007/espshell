@@ -78,7 +78,13 @@ static void __attribute__((constructor)) _files_init() {
   }
 }
 
-
+static bool files_path_is_dot(const char *path) {
+  if (path)
+    if (path[0] == '.')
+      if (path[1] == '\0' || (path[1] == '/' && path[2] == '\0'))
+        return true;
+  return false;
+}
 
 // Remove trailing path separators, if any
 // Writes to /p/, replacing trailing /// or \\\ with '\0'
@@ -165,18 +171,17 @@ static int files_getline(char **buf, unsigned int *size, FILE *fp) {
 // Convert time_t to char * "31-01-2024 10:40:07". It is used by command "ls" when displaying
 // directory listings
 // 
-// TODO: make it reentrant: add second arg pointer to the buffer
-//
-static char *files_time2text(time_t t) {
-  static char buf[32]; // WARNING: not reentrant!
+static char *files_time2text(char *buf, size_t bufsiz, time_t t) {
+  
   struct tm *info;
   info = localtime(&t);
-
-  // TODO: review all sprintf, strcat and strcpy's for buffer overruns
-  // TODO: may be implement q_  safe versions of these
-  sprintf(buf, "%u-%02u-%02u %02u:%02u:%02u", info->tm_year + 1900, info->tm_mon + 1, info->tm_mday, info->tm_hour, info->tm_min, info->tm_sec);
-  //strftime(buf, sizeof(buf), "%b %d %Y", info);
-  //strftime(buf, sizeof(buf), "%b %d %H:%M", info);
+  snprintf(buf, bufsiz, "%u-%02u-%02u %02u:%02u:%02u", 
+                          info->tm_year + 1900,
+                          info->tm_mon + 1,
+                          info->tm_mday,
+                          info->tm_hour,
+                          info->tm_min,
+                          info->tm_sec);
   return buf;
 }
 
@@ -200,8 +205,11 @@ static const char *files_set_cwd(const char *cwd) {
           strcpy(Cwd, cwd);
           len--;
           // append "/" if not there
-          if (Cwd[len] != '/' && cwd[len] != '\\')
-            strcat(Cwd, "/"); // TODO: Cwd[len] = '/' maybe?
+          if (Cwd[len] != '/' && cwd[len] != '\\') {
+            //strcat(Cwd, "/");
+            Cwd[len + 1] = '/';
+            Cwd[len + 2] = '\0';
+          }
         }
   }
 
@@ -317,16 +325,21 @@ static int files_mountpoint_by_path(const char *path, bool reverse) {
 const esp_partition_t *files_partition_by_label(const char *label) {
 
   esp_partition_iterator_t it;
+  const esp_partition_t *part = NULL;
 
-  if ((it = esp_partition_find(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, NULL)) != NULL)
+  if ((it = esp_partition_find(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, NULL)) != NULL) {
     do {
-      const esp_partition_t *part = esp_partition_get(it);
-      if (part && (part->type == ESP_PARTITION_TYPE_DATA) && !q_strcmp(label, part->label)) {
-        esp_partition_iterator_release(it);
-        return part;
-      }
+      part = esp_partition_get(it);
+      if (part &&
+          (part->type == ESP_PARTITION_TYPE_DATA) &&
+          !q_strcmp(label, part->label))
+        break;
     } while ((it = esp_partition_next(it)) != NULL);
-  return NULL;
+  
+    // NULL is ok here
+    esp_partition_iterator_release(it);
+  }
+  return part;
 }
 
 //
@@ -357,7 +370,7 @@ static char *normalize_path(char *path) {
     // the "if" condition below can not happen at the beginning of the path: the first symbol is always '/'
     //
     // Process "/..": remove the last path element in dst
-    //
+    // TODO: remove repeating *src == '.', use switch/case
     if (*src == '.' && src[1] == '.' && *(src - 1) == '/') {
       src += 2;
       // remove last element from dst
@@ -378,6 +391,7 @@ static char *normalize_path(char *path) {
   }
   
   *dst = 0;
+
   return path;
 }
 
@@ -397,12 +411,14 @@ static char *normalize_path(char *path) {
 #define PROCESS_ASTERISK true
 #define IGNORE_ASTERISK false
 
+// TODO: replace direct access to /Cwd/ with files_get_cwd() calls
+// TODO: and remove redundant NULL check (get_cwd() never return NULL)
 static char *files_full_path(const char *path, bool do_asterisk) {
 
   static char out[MAX_PATH + 16];
   int len, cwd_len;
   // default /full path/ when something fails is "/": the reason for that
-  // is that it is not possible to do any damage to the root path "/"
+  // is that it is not possible to do any damage to the root path "/" (it is read-only)
   out[0] = '/';
   out[1] = '\0';
 
@@ -420,6 +436,7 @@ static char *files_full_path(const char *path, bool do_asterisk) {
     }
 
   } else {  // path is relative. add CWD
+  
     cwd_len = strlen(Cwd);
     if ((len + cwd_len) < sizeof(out)) {
       strcpy(out, Cwd);
@@ -612,7 +629,16 @@ typedef int (*files_walker_t)(const char *path, void *aux);
 // on every file entry file_cb() is called, on every directory entry dir_cb() is called
 // Callbacks (if not NULL) must return an integer value, which is accumulated and then returned as a result of this
 // function
-static unsigned int files_dirwalk(const char *path0, files_walker_t files_cb, files_walker_t dirs_cb, void *arg, int depth) {
+//
+// dirs_first cpntrols the order of calling file_cb and dir_cb: if /false/ then dirs reported after files (rm scenario)
+// if it set to /true/ then dirs reported before files (cp scenario)
+//
+static unsigned int files_dirwalk(const char *path0, 
+                                  files_walker_t files_cb,
+                                  files_walker_t dirs_cb,
+                                  void *arg,
+                                  bool dirs_first,
+                                  int depth) {
 
   char *path = NULL;
   int len;
@@ -637,6 +663,7 @@ static unsigned int files_dirwalk(const char *path0, files_walker_t files_cb, fi
 
       // Walk through the directory, entering all subdirs in a recursive way
       if ((dir = opendir(path)) != NULL) {
+
         struct dirent *de;
         while ((de = readdir(dir)) != NULL) {
 
@@ -646,16 +673,19 @@ static unsigned int files_dirwalk(const char *path0, files_walker_t files_cb, fi
             strcat(path, de->d_name);  // add entry name to our path
 
             // if its a directory - call recursively
-            if (de->d_type == DT_DIR)
-              processed += files_dirwalk(path, files_cb, dirs_cb, NULL, depth - 1);
-            else if (files_cb)
+            if (de->d_type == DT_DIR) {
+              if (dirs_first && dirs_cb)
+                processed += dirs_cb(path, arg);
+              processed += files_dirwalk(path, files_cb, dirs_cb, arg, dirs_first, depth - 1);
+            } else if (files_cb)
               processed += files_cb(path, arg);
           }
         }
         closedir(dir);
-        path[len] = '\0';
-        if (dirs_cb)
+        if (!dirs_first && dirs_cb) {
+          path[len] = '\0';
           processed += dirs_cb(path, arg);
+        }
       }
     }
   }
@@ -694,18 +724,32 @@ static int remove_dir_callback(const char *path, UNUSED void *aux) {
 // Returns number of items removed (files+directories)
 //
 static int files_remove(const char *path0, int depth) {
-  char path[MAX_PATH + 16];  // TODO: use dynamic memory
+
+  char path[MAX_PATH + 16];  
+  bool src_is_dot;
 
   if (depth < 1)
     return 0;
+
+  // Detect ".". If dot is used as SRC then we don't delete the container directory
+  if ((src_is_dot = files_path_is_dot(path0)) == true)
+    path0 = "./";
 
   // make a copy of full path as files_full_path()'s buffer is not reentrant (static)
   strcpy(path, files_full_path(path0, PROCESS_ASTERISK));
 
   if (files_path_exist_file(path))  // a file?
     return unlink(path) == 0 ? 1 : 0;
-  else if (files_path_exist_dir(path))  // a directory?
-    return files_dirwalk(path, remove_file_callback, remove_dir_callback, NULL, DIR_RECURSION_DEPTH);
+  else if (files_path_exist_dir(path)) { // a directory?
+    
+    int x = files_dirwalk(path, remove_file_callback, remove_dir_callback, NULL, false, DIR_RECURSION_DEPTH);
+    if (src_is_dot) {
+      // if SRC is a DOT, then we remove the CWD content, not CWD itself
+      q_printf("%% Recovering directory %s\r\n", path);
+      mkdir(path,0777);
+    }
+    return x;
+  }
   else  // bad path
     q_printf("%% <e>File/directory \"%s\" does not exist</>\r\n", path);
   return 0;
@@ -742,7 +786,7 @@ static unsigned int files_size(const char *path) {
 
   // size of a directory requested
   if (files_path_exist_dir(p)) {
-    return files_dirwalk(path, size_file_callback, NULL, NULL, DIR_RECURSION_DEPTH);
+    return files_dirwalk(path, size_file_callback, NULL, NULL,false, DIR_RECURSION_DEPTH);
   }
 
   q_printf("%% <e>Path \"%s\" does not exist\r\n", p);
@@ -782,7 +826,7 @@ static int files_cat_binary(const char *path0, unsigned int line, unsigned int c
           if (line) {
             if (fseek(f, line, SEEK_SET) != 0) {
               q_printf("%% <e>Can't position to offset %u (0x%x)\r\n", line, line);
-              goto fail;  //TODO: rewrite
+              goto fail;
             }
           }
           while (!feof(f) && (count > 0)) {
@@ -939,9 +983,12 @@ static const char *files_path_last_component(const char *path) {
   return path;
 }
 
-
+// Copy file named /src/ to a file named /dst/
+//
+//
 static bool files_copy(const char *src, const char *dst) {
-  const int blen = 5 * 1024;
+
+  const int blen = 5 * 1024; // TODO: use SPIRAM if available 64k buffer
   ssize_t rd = -1, wr = -1;
 
   if (src && dst && (*src == '/' || *src == '\\') && (*dst == '/' || *dst == '\\')) {
@@ -989,6 +1036,10 @@ static bool files_copy(const char *src, const char *dst) {
 #    define dma_for_spi(_X) SPI_DMA_CH_AUTO
 #  endif
 
+
+#ifndef SPI3_HOST
+#  define SPI3_HOST 255;
+#endif
 
 // Mount an SD card (FAT filesystem is implied).
 // /mp/  - asciiz mountpoint 
@@ -1077,7 +1128,9 @@ static const char *sd_type(int mpi) {
                                                         : "SDHC"));
 }
 
-// SD capacity in MB. TODO: files_total_size() does not work correctly for FAT on SDSPI. Probably sector size issue
+// SD capacity in MB. 
+// NOTE: files_total_size() does not work correctly for FAT on SDSPI. Probably sector size issue
+//
 static unsigned int sd_capacity_mb(int mpi) {
   sdmmc_card_t *card = (sdmmc_card_t *)mountpoints[mpi].gpp;
   return card ? (unsigned int)(((uint64_t) card->csd.capacity) * card->csd.sector_size / (1024 * 1024))
@@ -1085,6 +1138,7 @@ static unsigned int sd_capacity_mb(int mpi) {
 }
 
 #endif //WITH_SD
+
 
 // Twin brother of alias_exec() but for files.
 // Supposed to be called by the shell handlers. If called directly, then will have no effect on user prompt
@@ -1127,23 +1181,6 @@ static int files_exec(const char *name) {
            : -1;     // "File is not accessible"
 }
 
-// <TAB> (Ctrl+I) handler. Jump to next argument
-// until end of line is reached. start to jump back
-//
-// In file manager mode try to perform basic autocomplete (TODO: not implemented yet)
-//
-static EL_STATUS tab_pressed() {
-
-  if (Point < End)
-    return do_forward(CSmove);
-  else {
-    if (Point) {
-      Point = 0;
-      return CSmove;
-    }
-    return CSstay;
-  }
-}
 
 // API for "cd .."
 // Changes CWD (cwd is thread-local)
@@ -1327,7 +1364,7 @@ static FILE *files_fopen(const char *name, const char *mode) {
       return NULL;
     }
 
-  name = files_full_path(name, PROCESS_ASTERISK); // TODO: not reentrant!
+  name = files_full_path(name, PROCESS_ASTERISK);
   if ((fp = fopen(name,mode)) == NULL)
     q_printf("%% Failed to open \"%s\"\r\n",name);
   return fp;
@@ -1490,7 +1527,7 @@ static int cmd_files_mount_sd(int argc, char **argv) {
     default : HELP(q_print("% Use \"fspi\", \"hspi\", \"vspi\", \"spi1\", \"spi2\" and \"spi3\" as the SPI bus name\r\n"));
               return 1;
   };
-  // TODO: define non existent SPIx_HOST as 255 
+  
   if (bus == 255) {
     q_printf("%% SPI bus \"%s\" is not available on this SoC\r\n",argv[1]);
     return 0;
@@ -1572,7 +1609,6 @@ static int cmd_files_mount_sd(int argc, char **argv) {
 
 // "mount LABEL [/MOUNTPOINT"]
 // TODO: "mount sdmmc PIN_CMD PIN_CLK PIN_D0 [D1 D2 D3]
-// TODO: "mount [sdspi|spi] PIN_MISO PIN_MOSI PIN_CLK PIN_CS
 //
 // mount a filesystem. filesystem type is defined by its label (see partitions.csv file).
 // supported filesystems: fat, littlefs, spiffs
@@ -1787,7 +1823,7 @@ static int cmd_files_mount0(int argc, char **argv) {
         q_print("<i>");
 #endif
       //"label" "fs type" "partition size"
-      // TODO: UTF8 mark sign
+      
       q_printf("%%%16s|%s|%s| %6luK | ", 
                   part->label, 
                   mountable ? "+" 
@@ -1816,7 +1852,7 @@ static int cmd_files_mount0(int argc, char **argv) {
       sdmmc_card_t *card = (sdmmc_card_t *)mountpoints[i].gpp;
       if (card) {
         q_printf("%% %s: <i>%9s|+|%s| %6uM | ",sd_type(i), mountpoints[i].label, files_subtype2text(mountpoints[i].type), sd_capacity_mb(i));
-        // TODO: check if it works
+        // TODO: check if it works after the last FAT update in ESP-IDF
         q_printf("%16s | %6uK | %6uK</>\r\n", mountpoints[i].mp, files_space_total(i) / 1024, files_space_free(i) / 1024);
         usable++;
       }
@@ -1877,18 +1913,26 @@ static int cmd_files_ls(int argc, char **argv) {
   char path[MAX_PATH + 16], *p;
   int plen;
 
-  p = (argc > 1) ? files_full_path(argv[1], PROCESS_ASTERISK) : files_full_path(Cwd, IGNORE_ASTERISK);
+  if (argc > 1) { //TODO: use is_src_dot() here
+    if (argv[1][0] == '.' && argv[1][1] == '\0')
+      argv[1] = "./";
+    p = files_full_path(argv[1], PROCESS_ASTERISK);
+  } else
+    p = files_full_path(Cwd, IGNORE_ASTERISK); // TODO: use just Cwd
 
   if ((plen = strlen(p)) == 0)
     return 0;
 
   if (plen > MAX_PATH)
-    return 0;
-
+    return 0; 
   strcpy(path, p);
 
-  // if it is Cwd then it MUST end with "/" so we dont touch it
-  // if it is full_path then it MAY or MAY NOT end with "/" but full_path is writeable and expandable
+  //q_printf("full path is \"%s\"\r\n", path);
+
+  // path:
+  // if it is derived from the Cwd then it MUST end with "/" so we dont touch it
+  // if it is derived from user input then it MAY or MAY NOT end with "/" but 
+  // in this case the /path/ is 1) writeable and 2) expandable (has extra 16 bytes at the end)
   if (path[plen - 1] != '\\' && path[plen - 1] != '/') {
     path[plen++] = '/';
     path[plen] = '\0';
@@ -1908,7 +1952,8 @@ static int cmd_files_ls(int argc, char **argv) {
         
       }
     if (!found)
-      q_printf("%% <i>Root (\"%s\") directory is empty</>: no fileystems mounted\r\n%% Use command \"mount\" to list & mount available partitions\r\n", path);
+      q_printf("%% <i>Root (\"%s\") directory is empty</>: no fileystems mounted\r\n"
+               "%% Use command \"mount\" to list & mount available partitions\r\n", path);
     return 0;
   }
 
@@ -1917,7 +1962,7 @@ static int cmd_files_ls(int argc, char **argv) {
     q_printf("%% <e>Path \"%s\" does not exist</>\r\n", path);
   else {
 
-    // TODO: use scandir() with alphasort
+    
     unsigned int total_f = 0, total_d = 0, total_fsize = 0;
     DIR *dir;
 
@@ -1942,22 +1987,24 @@ static int cmd_files_ls(int argc, char **argv) {
         strcat(path0, ent->d_name);
 
         if (0 == stat(path0, &st)) {
+          char buf[32];
+          files_time2text(buf, sizeof(buf), st.st_mtime);
           if (ent->d_type == DT_DIR) {
             unsigned int dir_size = ls_show_dir_size ? files_size(path0) : 0;
             total_d++;
             total_fsize += dir_size;
             
-            q_printf("%% %9u  %s  <f>  [<i>%s</>]\r\n", dir_size, files_time2text(st.st_mtime), ent->d_name);
+            q_printf("%% %9u  %s  <f>[<i>%s</>]\r\n", dir_size, buf, ent->d_name);
             
           } else {
             total_f++;
             total_fsize += st.st_size;
 
-            q_printf("%% %9u  %s     <g>%s</>\r\n", (unsigned int)st.st_size, files_time2text(st.st_mtime), ent->d_name);
+            q_printf("%% %9u  %s     <g>%s</>\r\n", (unsigned int)st.st_size, buf, ent->d_name);
 
           }
         } else
-          q_printf("<e>stat() : failed %d, name %s</>\r\n", errno, path0);
+          q_printf("%% <e>stat() : failed (errno=%d), name=\"%s\"</>\r\n", errno, path0);
       }
       closedir(dir);
     }
@@ -1988,7 +2035,6 @@ static int cmd_files_rm(int argc, char **argv) {
     HELP(q_print("% No changes to the filesystem were made\r\n"));
 
   // change to the maintpoint dir if path we had as CWD does not exist anymore.
-  // TODO: may be it is better to change up until existing directory is reached?
   if (!files_path_exist_dir(files_get_cwd()))
 #if 0  
     espshell_exec("cd .."); // "go to the first existing dir" strategy
@@ -2079,7 +2125,7 @@ static int cmd_files_insdel(int argc, char **argv) {
   }
 
   if (!files_path_exist_file((path = files_full_path(argv[1], PROCESS_ASTERISK)))) {
-    HELP(q_printf("%% <e>Path \"%s\" does not exist</>\r\n", path));  //TODO: Path does not exist is a common string.
+    HELP(q_printf("%% <e>Path \"%s\" does not exist</>\r\n", path));
     return 1;
   }
 
@@ -2113,8 +2159,12 @@ static int cmd_files_insdel(int argc, char **argv) {
       tlen = 1;
       text = empty;
     }
-  } else
-    count = q_atol(argv[3], 1);  //TODO: check if argc > 3
+  } else {
+    if (argc > 3)
+      count = q_atol(argv[3], 1);
+    else
+      goto free_memory_and_return;
+  }
 
   while (!feof(f)) {
     int r;
@@ -2265,8 +2315,9 @@ static int cmd_files_format(int argc, char **argv) {
     reset_dir = mountpoints[i].mp;
   }
 
-  // find partition user wants to format
+  // find partition user wants to format. this is for internal SPIFLASH, not for SD cards
   if ((part = files_partition_by_label(label)) == NULL) {
+    /// TODO: SDcard support.
     q_printf("%% <e>Partition \"%s\" does not exist</>\r\n", label);
     return argc > 1 ? 1 : 0;
   }
@@ -2281,7 +2332,6 @@ static int cmd_files_format(int argc, char **argv) {
 #if WITH_FAT
     case ESP_PARTITION_SUBTYPE_DATA_FAT:
       sprintf(path0, "/%s", label);
-      // TODO: SDcard support
       err = esp_vfs_fat_spiflash_format_rw_wl(path0, label);
       break;
 #endif
@@ -2341,9 +2391,75 @@ static int cmd_files_mv(int argc, char **argv) {
   return 0;
 }
 
-static int UNUSED file_cp_callback(const char *src, void *aux) {
+struct cpmv_arg {
+  int src_len;
+  int dst_len;
+  const char *src_path; //  /ffat/dir/
+  const char *dst_path; // /ffat/subdir/dir/
+};
 
-  //char *dst = (char *)aux;
+// Callback to be used by files_cp() when it calls files_dirwalk()
+// This callback gets called for every file that needs to be removed
+//
+static int file_cp_callback(const char *path, void *aux) {
+
+  char dst[MAX_PATH + 1];
+  struct cpmv_arg *cma = (struct cpmv_arg *)aux;
+  
+  size_t a,b;
+
+  a = strlen(cma->dst_path);
+  b = strlen(path + cma->src_len);
+
+  if ((a + b) >= sizeof(dst)) {
+    q_printf("% cp: skipped \"%s\". dst path is too long\r\n");
+    return 0;
+  }
+
+  // Construct destination path: base is taken from the /cma/ and mutable part is taken from the
+  // path with the src base excluded.
+  strcpy(dst, cma->dst_path);
+  strcpy(dst + a, path + cma->src_len);
+
+  q_printf("%% Copy file: %s -> %s.. ",path, dst);
+
+  if (files_copy(path, dst)) {
+    q_print("Done\r\n");
+    return 1;
+  }
+  q_print("Failed\r\n");
+  return 0;
+}
+
+// Callback to be used by files_cp() when it calls to files_dirwalk()
+// This callback gets called for every DIRECTORY that needs to be removed
+//
+static int dir_cp_callback(const char *path, void *aux) {
+
+  char dst[MAX_PATH + 1];
+  struct cpmv_arg *cma = (struct cpmv_arg *)aux;
+  
+  size_t a,b;
+
+  a = strlen(cma->dst_path);
+  b = strlen(path + cma->src_len);
+
+  if ((a + b) >= sizeof(dst)) {
+    q_printf("% cp: skipped \"%s\". dst path is too long\r\n");
+    return 0;
+  }
+
+  // Construct destination path: base is taken from the /cma/ and mutable part is taken from the
+  // path with the src base excluded.
+  strcpy(dst, cma->dst_path);
+  strcpy(dst + a, path + cma->src_len);
+
+  q_printf("%% Create directory: %s..",dst);
+  if (mkdir(dst, 0777) == 0)
+    q_print("Done\r\n");
+  else
+    q_print("Failed\r\n");
+
   return 0;
 }
 
@@ -2352,14 +2468,40 @@ static int UNUSED file_cp_callback(const char *src, void *aux) {
 // "cp DIRNAME1 DIRNAME2"
 //
 // Copy files/directories
+//
+// Dir to dir copy:
+// 1. We can create a list of files (full path) and then cp file to file
+// 2. We create the fullpath for SRC directory and take the last component (LAST)
+// 3. We create directory LAST in DST
+// 4. Copy files from the list [1]
+//
+// cp /ffat/test/subdir/dir  -->  /ffat/    , LAST="dir", mkdir /ffat/$LAST, SRC="/ffat/test/subdir/dir/", DST="/ffat/dir/"
+//  /ffat/test/subdir/dir/file1.txt      -->  /ffat/dir/file1.txt
+//  /ffat/test/subdir/dir/mir/file2.txt  -->  /ffat/dir/mir/file2.txt
+//
+// struct filelist {
+//    struct filelist *next;    
+//    char *path;
+// };
+//
 static int cmd_files_cp(int argc, char **argv) {
+
+  bool src_is_dot;
 
   if (argc < 3)
     return CMD_MISSING_ARG;
 
   char spath[MAX_PATH], dpath[MAX_PATH];
+
+  // Detect ".". If dot is used as SRC then we don't create first directory.
+  // We replace argv[1] with a generic dot because user may omit trailing "/". argvs can be manipulated
+  // and set to any values
+  if ((src_is_dot = files_path_is_dot(argv[1])) == true)
+    argv[1] = "./";
+
   strcpy(spath, files_full_path(argv[1], PROCESS_ASTERISK));
   strcpy(dpath, files_full_path(argv[2], PROCESS_ASTERISK));
+
   files_strip_trailing_slash(spath);
   files_strip_trailing_slash(dpath);
 
@@ -2381,19 +2523,24 @@ file_to_file:
     }
   } else if (files_path_exist_dir(spath)) {  // src is a directory
     if (files_path_exist_dir(dpath)) {
-      q_printf("%% copy dir to dir is not implemented yet\r\n");
-#if 1
-      strcat(dpath, "/");
-      strcat(dpath, files_path_last_component(spath));
-      if (mkdir(dpath, 0777) == 0) {
 
-      } else
-        q_printf("%% Failed to create directory \"%s\"\r\n", dpath);
-#endif
-      // TODO: Copy directory to directory
+      if (!src_is_dot) {
+        //q_print("% SRC is NOT DOT, creating dir\r\n");
+        strcat(dpath, "/");
+        strcat(dpath, files_path_last_component(spath));
+        mkdir(dpath, 0777);
+      } //else
+        //q_printf("%% SRC is DOT, dpath=%s\r\n",dpath);
+
+      struct cpmv_arg cma;
+      cma.src_len = strlen(spath);
+      cma.dst_len = strlen(dpath);
+      cma.src_path = spath;
+      cma.dst_path = dpath;
+      files_dirwalk(spath, file_cp_callback, dir_cp_callback, &cma,true, 127);
 
     } else {
-      q_printf("%% Path \"%s\" is not a directory\r\n", dpath);
+      q_printf("%% \"%s\" must be a directory\r\n", dpath);
       return 2;
     }
   } else {
@@ -2463,7 +2610,7 @@ static int cmd_files_cat(int argc, char **argv) {
         }
 
         if (!uart_isup((device = atol(argv[i])))) {
-          q_printf("%% <e>UART%d is not initialized</>\r\n", device);  // TODO: common string
+          q_printf("%% <e>UART%d is not initialized</>\r\n", device);
           HELP(q_printf("%% Configure it by command \"uart %d\"</>\r\n", device));
           return 0;
         }
