@@ -28,7 +28,7 @@
 
 #include <stdatomic.h>
 
-static bool q_utf8 = false;
+//static bool q_utf8 = false;
 
 // GCC-specific branch prediction optimization macros 
 // Arduino Core is shipped with precompiled ESP-IDF where they have redefined likely() and unlikely() to be 

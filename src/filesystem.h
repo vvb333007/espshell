@@ -552,7 +552,7 @@ static unsigned int files_space_total(int i) {
       if (f_getfree(drv, &free_clust, &fs) != FR_OK)
         return 0;
       tot_sect = (fs->n_fatent - 2) * fs->csize;
-      sect_size = CONFIG_WL_SECTOR_SIZE;
+      sect_size = CONFIG_WL_SECTOR_SIZE; //TODO: SDSPI has different sector size!
       return tot_sect * sect_size;
 #endif
 #if WITH_LITTLEFS
@@ -598,7 +598,7 @@ static unsigned int files_space_free(int i) {
         return 0;
 
       free_sect = free_clust * fs->csize;
-      sect_size = files_mountpoint_is_sdspi(i) ? 512 : CONFIG_WL_SECTOR_SIZE;
+      sect_size = files_mountpoint_is_sdspi(i) ? 512 : CONFIG_WL_SECTOR_SIZE; // TODO:
       return free_sect * sect_size;
 #endif
 #if WITH_LITTLEFS
@@ -727,13 +727,14 @@ static int files_remove(const char *path0, int depth) {
 
   char path[MAX_PATH + 16];  
   bool src_is_dot;
+  char dot_slash[] = "./";
 
   if (depth < 1)
     return 0;
 
   // Detect ".". If dot is used as SRC then we don't delete the container directory
   if ((src_is_dot = files_path_is_dot(path0)) == true)
-    path0 = "./";
+    path0 = dot_slash;
 
   // make a copy of full path as files_full_path()'s buffer is not reentrant (static)
   strcpy(path, files_full_path(path0, PROCESS_ASTERISK));
@@ -1795,7 +1796,7 @@ static int cmd_files_mount0(int argc, char **argv) {
 
   int usable = 0, i;
   bool mountable;
-  esp_partition_iterator_t it = esp_partition_find(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, NULL);
+  esp_partition_iterator_t it = esp_partition_find(ESP_PARTITION_TYPE_ANY, ESP_PARTITION_SUBTYPE_ANY, NULL);
 
   if (!it) {
     q_print("% <e>Can not read partition table</>\r\n");
@@ -1805,17 +1806,29 @@ static int cmd_files_mount0(int argc, char **argv) {
   q_print("<r>% Disk partition |M|File system| Size on |    Mounted on    |Capacity |  Free   \r\n"
           "%    label       |?|   type    |  flash  |                  |  total  |  space  </>\r\n");
   q_print("% ---------------+-+-----------+---------+------------------+---------+---------\r\n");
-  while (it) {
-    const esp_partition_t *part = esp_partition_get(it);
-    if (part && (part->type == ESP_PARTITION_TYPE_DATA)) {
 
-      if (part->subtype == ESP_PARTITION_SUBTYPE_DATA_FAT || part->subtype == ESP_PARTITION_SUBTYPE_DATA_SPIFFS || part->subtype == ESP_PARTITION_SUBTYPE_DATA_LITTLEFS) {
-        usable++;
-        mountable = true;
-      } else {
-        if (part->subtype == ESP_PARTITION_SUBTYPE_DATA_NVS)
-          usable++;
-        mountable = false;
+  while (it) {
+
+    const esp_partition_t *part = esp_partition_get(it);
+
+    if (part) {
+      mountable = false;
+      switch(part->type) {
+        case ESP_PARTITION_TYPE_DATA:
+          switch(part->subtype) {
+            case ESP_PARTITION_SUBTYPE_DATA_FAT:
+            case ESP_PARTITION_SUBTYPE_DATA_SPIFFS:
+            case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS:
+                mountable = true;
+                //FALL THROUGH
+            case ESP_PARTITION_SUBTYPE_DATA_NVS:                
+                usable++;
+                //FALL THROUGH
+            default:
+                break;
+          };
+        default:
+          break;
       }
 
 #if WITH_COLOR
@@ -1823,27 +1836,53 @@ static int cmd_files_mount0(int argc, char **argv) {
         q_print("<i>");
 #endif
       //"label" "fs type" "partition size"
-      
-      q_printf("%%%16s|%s|%s| %6luK | ", 
-                  part->label, 
-                  mountable ? "+" 
-                            : (ESP_PARTITION_SUBTYPE_DATA_NVS == part->subtype ? "*"
-                                                                               : " "),
-                  files_subtype2text(part->subtype),
-                  part->size / 1024);
+      if (part->type == ESP_PARTITION_TYPE_DATA) {
+        q_printf("%%%16s|%s|%s| %6luK | ", 
+                    part->label, 
+                    mountable ? "+" 
+                              : (ESP_PARTITION_SUBTYPE_DATA_NVS == part->subtype ? "*"
+                                                                                 : " "),
+                    files_subtype2text(part->subtype),
+                    part->size / 1024);
 
-      if ((i = files_mountpoint_by_label(part->label)) >= 0)
-        // "mountpoint" "total fs size" "available fs size"
-        q_printf("%16s | %6uK | %6uK\r\n", mountpoints[i].mp, files_space_total(i) / 1024, files_space_free(i) / 1024);
-      else
-        q_print("                 |         |\r\n");
+        if ((i = files_mountpoint_by_label(part->label)) >= 0)
+          // "mountpoint" "total fs size" "available fs size"
+          q_printf("%16s | %6uK | %6uK\r\n", mountpoints[i].mp, files_space_total(i) / 1024, files_space_free(i) / 1024);
+        else
+          q_print("                 |         |\r\n");
 #if WITH_COLOR
-      if (mountable)
-        q_print("</>");
+        if (mountable)
+          q_print("</>");
 #endif
-    }
+      } 
+/*
+      else if (part->type == ESP_PARTITION_TYPE_APP)
+        q_printf("%%%16s| | APP  (%02x) | %6luK | FLASH @ %p, Application\r\n", 
+                    part->label, 
+                    part->subtype,
+                    part->size / 1024,
+                    part->address);
+      else if (part->type == ESP_PARTITION_TYPE_BOOTLOADER)
+        q_printf("%%%16s| | BOOT (%02x) | %6luK | FLASH @ %p, Bootloader\r\n", 
+                    part->label, 
+                    part->subtype,
+                    part->size / 1024,
+                    part->address);
+      else if (part->type == ESP_PARTITION_TYPE_PARTITION_TABLE)
+        q_printf("%%%16s| | PRT  (%02x) | %6lu  | FLASH @ %p , Partition table\r\n", 
+                    part->label, 
+                    part->subtype,
+                    part->size / 1024,
+                    part->address);
+*/                    
+      else {
+        VERBOSE(q_printf("%% Unknown partition type %u, name %s\r\n",part->type, part->label));
+      }
+    } // if part != NULL
     it = esp_partition_next(it);
-  }
+  } // while (it)
+
+
 #if WITH_SD
   // display mounted SD cards (SD over SPI)
   //
@@ -1914,8 +1953,9 @@ static int cmd_files_ls(int argc, char **argv) {
   int plen;
 
   if (argc > 1) { //TODO: use is_src_dot() here
+    char dot_slash[] = "./";
     if (argv[1][0] == '.' && argv[1][1] == '\0')
-      argv[1] = "./";
+      argv[1] = dot_slash;
     p = files_full_path(argv[1], PROCESS_ASTERISK);
   } else
     p = files_full_path(Cwd, IGNORE_ASTERISK); // TODO: use just Cwd
@@ -2195,7 +2235,7 @@ static int cmd_files_insdel(int argc, char **argv) {
   t = f = NULL;
 
   unlink(path);
-  if (rename(upath, path) == 0) {
+  if (rename(upath, path) != 0) {
     q_printf("%% Failed to rename files. File saved as \"%s\", rename it\r\n", upath);
     q_free(upath);
     upath = NULL;
@@ -2315,16 +2355,23 @@ static int cmd_files_format(int argc, char **argv) {
     reset_dir = mountpoints[i].mp;
   }
 
-  // find partition user wants to format. this is for internal SPIFLASH, not for SD cards
+#if WITH_SD
+  i = files_mountpoint_by_label(label);
+  if (i >= 0)
+    if (files_mountpoint_is_sdspi(i)) {
+      q_print("% SD card can not be formatted: not implemented\r\n");
+      return 0;
+    }
+#endif  
+
+  // Find SPIFLASH partition user wants to format.
   if ((part = files_partition_by_label(label)) == NULL) {
-    /// TODO: SDcard support.
     q_printf("%% <e>Partition \"%s\" does not exist</>\r\n", label);
     return argc > 1 ? 1 : 0;
   }
 
   // handle shortened label names
   label = part->label;
-
 
   HELP(q_printf("%% Formatting partition \"%s\", file system type is \"%s\"\r\n", label, files_subtype2text(part->subtype)));
 
@@ -2364,30 +2411,57 @@ static int cmd_files_format(int argc, char **argv) {
 // "mv DIRNAME1 DIRNAME2"
 // "mv FILENAME DIRNAME" --> "cp FILENAME DIRNAME/FILENAME", "rm FILENAME"
 // Move/rename files or directories
+// TODO: mv . .. moves whole directory, not just content
 //
 static int cmd_files_mv(int argc, char **argv) {
-  q_print("% Not implemented yet\r\n");
-  // TODO: implement "mv" command
-#if 0
-  bool src_file, dst_file, same_fs;
-  ...
-  if (dst_file && !src_file) {
-    q_print("% Can not move directory to a file\r\n");
-    return CMD_FAILED;
-  }
 
-  // If both src and dst are on the same file system and we are moving
-  // 1. dir -> dir
-  // 2. file -> file
-  // then we can use old good rename() here
-  if ((src_file == dst_file) && same_fs) {
-    rename(src, dst);
-  } else {
-    // Either different filesystems or src and dst types mismatch (file->dir)
-    // Emulate mv via cp & rm
-  }
-    
-#endif  
+  UNUSED bool src_is_dot;
+  char dot_slash[] = "./";
+
+  if (argc < 3)
+    return CMD_MISSING_ARG;
+
+  char spath[MAX_PATH], dpath[MAX_PATH];
+
+  // Detect ".". If dot is used as SRC then we don't create first directory.
+  // We replace argv[1] with a generic dot because user may omit trailing "/". argvs can be manipulated
+  // and set to any values
+  if ((src_is_dot = files_path_is_dot(argv[1])) == true)
+    argv[1] = dot_slash;
+
+  strlcpy(spath, files_full_path(argv[1], PROCESS_ASTERISK), sizeof(spath));
+  strlcpy(dpath, files_full_path(argv[2], PROCESS_ASTERISK), sizeof(dpath));
+
+  files_strip_trailing_slash(spath);
+  files_strip_trailing_slash(dpath);
+
+  // determine move/rename algorithm:
+  // file to file, file to dir or dir to dir
+  if (files_path_exist_file(spath)) {    // src is a file?
+    if (!files_path_exist_dir(dpath)) {  // dst is a file?
+                                         // file to file copy
+file_to_file:
+      unlink(dpath);                                   // remove destination file if it exists TODO: -f to force deletion
+dir_to_dir:      
+      q_printf("%% Moving/renaming \"%s\" to \"%s\".. ", spath, dpath);  // report
+      int err = rename(spath, dpath);
+      q_print(err < 0 ? "Failed" : "Done");
+    } else {                                            // dst is a directory?
+                                                        // file to directory copy
+      strcat(dpath, "/");                               // add the filename (last component of the src path)
+      strcat(dpath, files_path_last_component(spath));  // to destination path.
+      goto file_to_file;                                // proceed with file to file algorithm
+    }
+  } else if (files_path_exist_dir(spath)) {  // src is a directory
+    if (!files_path_exist_dir(dpath))
+      goto dir_to_dir;
+    else {
+      strcat(dpath, "/");
+      strcat(dpath, files_path_last_component(spath));
+      goto dir_to_dir;                                
+    }
+  } else
+    q_print("% Source does not exist\r\n");
   return 0;
 }
 
@@ -2412,7 +2486,7 @@ static int file_cp_callback(const char *path, void *aux) {
   b = strlen(path + cma->src_len);
 
   if ((a + b) >= sizeof(dst)) {
-    q_printf("% cp: skipped \"%s\". dst path is too long\r\n");
+    q_printf("%% cp: skipped \"%s\". resulting path is too long\r\n", path);
     return 0;
   }
 
@@ -2445,7 +2519,7 @@ static int dir_cp_callback(const char *path, void *aux) {
   b = strlen(path + cma->src_len);
 
   if ((a + b) >= sizeof(dst)) {
-    q_printf("% cp: skipped \"%s\". dst path is too long\r\n");
+    q_printf("%% cp: skipped \"%s\". resulting path is too long\r\n", path);
     return 0;
   }
 
@@ -2454,11 +2528,9 @@ static int dir_cp_callback(const char *path, void *aux) {
   strcpy(dst, cma->dst_path);
   strcpy(dst + a, path + cma->src_len);
 
-  q_printf("%% Create directory: %s..",dst);
-  if (mkdir(dst, 0777) == 0)
-    q_print("Done\r\n");
-  else
-    q_print("Failed\r\n");
+  HELP(q_printf("%% Create directory: %s..",dst));
+  UNUSED int err = mkdir(dst, 0777);
+  HELP(q_print(err == 0 ? "Done\r\n" : "Failed\r\n"));
 
   return 0;
 }
@@ -2487,6 +2559,7 @@ static int dir_cp_callback(const char *path, void *aux) {
 static int cmd_files_cp(int argc, char **argv) {
 
   bool src_is_dot;
+  char dot_slash[] = "./";
 
   if (argc < 3)
     return CMD_MISSING_ARG;
@@ -2497,7 +2570,7 @@ static int cmd_files_cp(int argc, char **argv) {
   // We replace argv[1] with a generic dot because user may omit trailing "/". argvs can be manipulated
   // and set to any values
   if ((src_is_dot = files_path_is_dot(argv[1])) == true)
-    argv[1] = "./";
+    argv[1] = dot_slash;
 
   strcpy(spath, files_full_path(argv[1], PROCESS_ASTERISK));
   strcpy(dpath, files_full_path(argv[2], PROCESS_ASTERISK));
