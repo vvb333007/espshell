@@ -25,8 +25,8 @@
 //
 #define ESPSHELL_VERSION "0.99.13-dev" // Code version
 #define AUTOSTART 1                    // Set to 0 for manual shell start via espshell_start().
-#define WITH_TIME 1
-#define WITH_NVS 1
+#define WITH_TIME 1              // Time support (commands "time" and "ntp")
+#define WITH_NVS 1               // NVS editor/viewer
 #define WITH_ALIAS 1             // Set to 0 to disable alias support (commands "alias", "if", "every" and "exec")
 #define WITH_WIFI 1              // Enable WiFi/IP functions
 #define WITH_HELP 1              // Set to 0 to save some program space by excluding help strings/functions
@@ -48,7 +48,7 @@
 #  define AUTO_COLOR 1             // Let ESPShell decide wheither to enable coloring or not. Command "color on|off|auto" is about that
 #  define DIR_RECURSION_DEPTH 127  // Max directory depth TODO: make a test with long "/a/a/a/.../a" path
 #  define SEQUENCES_NUM 10         // Max number of sequences available for the command "sequence"
-#  define MEMTEST 1              // Enable memory logger (extra output on "show memory"). For shell self-diagnostics
+//#  define MEMTEST 1              // Enable memory logger (extra output on "show memory"). For shell self-diagnostics
 //#  define STARTUP_PORT 0         // Console port number, where shell will be deployed at startup.
                                    // Undefined=AUTO, 0=UART0, 1=UART1, 2=UART2, 99=USBCDC
 

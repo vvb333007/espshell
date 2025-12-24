@@ -37,7 +37,7 @@
 //
 // Command handlers are named with the `cmd_files_...` prefix; utility and helper functions use the
 // `files_...` prefix.
-// TODO: fix non-reentrant code. specifically: files_full_path(), may be use __thread variables
+// TODO: fix non-reentrant code. specifically: files_full_path()
 //
 #if WITH_FS
 
@@ -202,7 +202,7 @@ static const char *files_set_cwd(const char *cwd) {
     if (cwd)
       if ((len = strlen(cwd)) > 0)
         if ((Cwd = (char *)q_malloc(len + 2, MEM_PATH)) != NULL) {
-          strcpy(Cwd, cwd);
+          strcpy(Cwd, cwd); // size checked
           len--;
           // append "/" if not there
           if (Cwd[len] != '/' && cwd[len] != '\\') {
@@ -405,8 +405,6 @@ static char *normalize_path(char *path) {
 // Returns a pointer to an internal buffer (auto-expandable up to 16 bytes).  
 // On error, the function returns "/".
 //
-// TODO: there are multiple potential buffer overruns in this function: when CWD is long and path is long too
-// TODO: must be refactored -> get rid of strcat and strcpy, replace them with strlcat and strlcpy
 #define PROCESS_ASTERISK true
 #define IGNORE_ASTERISK false
 
@@ -429,7 +427,7 @@ static char *files_full_path(const char *path, bool do_asterisk) {
 
   if (path[0] == '/' || path[0] == '\\') {  // path is absolute. nothing to do - just return a copy
     if (len < sizeof(out))
-      strcpy(out, path);
+      strcpy(out, path); // size checked
     else {
       VERBOSE(q_print("% Path is too long\r\n"));
     }
@@ -438,8 +436,8 @@ static char *files_full_path(const char *path, bool do_asterisk) {
   
     cwd_len = strlen(Cwd);
     if ((len + cwd_len) < sizeof(out)) {
-      strcpy(out, Cwd);
-      strcat(out, path);
+      strcpy(out, Cwd); // size checked
+      strcat(out, path);// size checked
     }
   }
 
@@ -470,7 +468,7 @@ static bool files_path_exist(const char *path, bool directory) {
   int len = strlen(path);
   char path0[len + 1];
 
-  strcpy(path0, path);
+  strcpy(path0, path); // size checked
   files_strip_trailing_slash(path0);
 
   // try stat().. (FAT & LittleFS)
@@ -737,7 +735,7 @@ static int files_remove(const char *path0, int depth) {
     path0 = dot_slash;
 
   // make a copy of full path as files_full_path()'s buffer is not reentrant (static)
-  strcpy(path, files_full_path(path0, PROCESS_ASTERISK));
+  strlcpy(path, files_full_path(path0, PROCESS_ASTERISK), MAX_PATH);
 
   if (files_path_exist_file(path))  // a file?
     return unlink(path) == 0 ? 1 : 0;
@@ -775,7 +773,7 @@ static unsigned int files_size(const char *path) {
   struct stat st;
   char p[MAX_PATH + 16] = { 0 };
 
-  strcpy(p, files_full_path(path, PROCESS_ASTERISK));
+  strlcpy(p, files_full_path(path, PROCESS_ASTERISK), MAX_PATH);
 
   // size of a file requested
   if (files_path_exist_file(p)) {
@@ -816,7 +814,7 @@ static int files_cat_binary(const char *path0, unsigned int line, unsigned int c
     return 0;
   }
 
-  strcpy(path,path0);
+  strlcpy(path,path0, MAX_PATH);
 
   if ((size = files_size(path)) > 0) {
     if (line < size) {
@@ -929,9 +927,9 @@ static int files_create_dirs(const char *path0, bool last_is_file) {
       if (argc > 0) {
         // walk thru all path components and create them if do not exist
         for (i = 0; i < argc; i++) {
-          strcat(buf, "/");
+          strlcat(buf, "/", MAX_PATH);
           files_asterisk2spaces(argv[i]);
-          strcat(buf, argv[i]);
+          strlcat(buf, argv[i], MAX_PATH);
           if (!files_path_exist_dir(buf)) {
             if (mkdir(buf, 0777) != 0) {
               ret = -1;
@@ -1421,7 +1419,7 @@ static int cmd_files_unmount(int argc, char **argv) {
     if ((path = (char *)files_get_cwd()) == NULL)
       return 0;
     MUST_NOT_HAPPEN(strlen(path) >= sizeof(path0));
-    strcpy(path0, path);
+    strlcpy(path0, path, MAX_PATH);
     path = path0;
   } else
     path = argv[1];
@@ -1781,7 +1779,7 @@ finalize_mount:
     q_print(Failed);
   else {
     mountpoints[i].type = part->subtype;
-    strcpy(mountpoints[i].label, part->label);
+    strlcpy(mountpoints[i].label, part->label, sizeof(mountpoints[0].label));
 
     HELP(q_printf("%% %s on partition \"%s\" is mounted under \"%s\"\r\n", files_subtype2text(part->subtype), part->label, mp));
   }
@@ -1955,16 +1953,7 @@ static int cmd_files_ls(int argc, char **argv) {
   if (argc > 1) { //TODO: use is_src_dot() here
     char dot_slash[] = "./";
     if (argv[1][0] == '.' && argv[1][1] == '\0')
-      argv[1] = 
-    
-    
-    
-    
-    
-    
-    
-    
-    dot_slash;
+      argv[1] = dot_slash;
     p = files_full_path(argv[1], PROCESS_ASTERISK);
   } else
     p = files_full_path(Cwd, IGNORE_ASTERISK); // TODO: use just Cwd
@@ -1974,7 +1963,7 @@ static int cmd_files_ls(int argc, char **argv) {
 
   if (plen > MAX_PATH)
     return 0; 
-  strcpy(path, p);
+  strlcpy(path, p, MAX_PATH);
 
   //q_printf("full path is \"%s\"\r\n", path);
 
@@ -2637,7 +2626,7 @@ cp_dir_to_new_dir:
       return 0;
     }
   } else {
-    q_printf("%% cp: ath \"%s\" does not exist\r\n", spath);
+    q_printf("%% cp: path \"%s\" does not exist\r\n", spath);
     return 1;
   }
   q_printf("%% Copied %u file%s\r\n",PPA(processed));
