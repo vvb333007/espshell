@@ -2617,6 +2617,7 @@ file_to_file:
         if (mkdir(dpath, 0777) != 0)
           q_printf("%% cp: failed to create \"%s\"\r\n", dpath);
       }
+cp_dir_to_new_dir:
 
       struct cpmv_arg cma;
       cma.src_len = strlen(spath);
@@ -2630,11 +2631,13 @@ file_to_file:
                                 true,    // walk directories first (cp strategy: we want to create dirs before we copy files)
                                 DIR_RECURSION_DEPTH);
     } else {
-      q_printf("%% \"%s\" must be a directory\r\n", dpath);
-      return 2;
+      if (mkdir(dpath,0777) == 0)
+        goto cp_dir_to_new_dir;
+      q_printf("%% cp: can not create \"%s\"\r\n", dpath);
+      return 0;
     }
   } else {
-    q_printf("%% Path \"%s\" does not exist\r\n", spath);
+    q_printf("%% cp: ath \"%s\" does not exist\r\n", spath);
     return 1;
   }
   q_printf("%% Copied %u file%s\r\n",PPA(processed));
