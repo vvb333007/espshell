@@ -206,7 +206,6 @@ static const char *files_set_cwd(const char *cwd) {
           len--;
           // append "/" if not there
           if (Cwd[len] != '/' && cwd[len] != '\\') {
-            //strcat(Cwd, "/");
             Cwd[len + 1] = '/';
             Cwd[len + 2] = '\0';
           }
@@ -668,6 +667,7 @@ static unsigned int files_dirwalk(const char *path0,
         while ((de = readdir(dir)) != NULL) {
 
           // path buffer has 256 bytes extra space
+          // TODO: refactor this. and ugly strdup256 too
           if (strlen(de->d_name) < MAX_FILENAME) {
             path[len] = '\0';          // cut off previous addition
             strcat(path, de->d_name);  // add entry name to our path
@@ -1955,7 +1955,16 @@ static int cmd_files_ls(int argc, char **argv) {
   if (argc > 1) { //TODO: use is_src_dot() here
     char dot_slash[] = "./";
     if (argv[1][0] == '.' && argv[1][1] == '\0')
-      argv[1] = dot_slash;
+      argv[1] = 
+    
+    
+    
+    
+    
+    
+    
+    
+    dot_slash;
     p = files_full_path(argv[1], PROCESS_ASTERISK);
   } else
     p = files_full_path(Cwd, IGNORE_ASTERISK); // TODO: use just Cwd
@@ -2014,17 +2023,20 @@ static int cmd_files_ls(int argc, char **argv) {
       while ((ent = readdir(dir)) != NULL) {
 
         struct stat st;
-        char path0[MAX_PATH + 16] = { 0 };
+        char path0[MAX_PATH + 16] = { 0 }; // extra bytes for path separator and for '\0'
 
+        // Check for strcpy below
         if (strlen(ent->d_name) + 1 + plen > MAX_PATH) {
           q_print("% <e>Path is too long</>\r\n");
           continue;
         }
 
         // d_name entries are simply file/directory names without path so
-        // we need to prepend a valid path to d_name
-        strcpy(path0, path);
-        strcat(path0, ent->d_name);
+        // we need to prepend a valid path to d_name.
+        // Buffer size was checked above
+        //
+        strlcpy(path0, path, MAX_PATH);
+        strlcat(path0, ent->d_name, MAX_PATH);
 
         if (0 == stat(path0, &st)) {
           char buf[32];
@@ -2421,7 +2433,7 @@ static int cmd_files_mv(int argc, char **argv) {
   if (argc < 3)
     return CMD_MISSING_ARG;
 
-  char spath[MAX_PATH], dpath[MAX_PATH];
+  char spath[MAX_PATH+16], dpath[MAX_PATH+16];
 
   // Detect ".". If dot is used as SRC then we don't create first directory.
   // We replace argv[1] with a generic dot because user may omit trailing "/". argvs can be manipulated
@@ -2445,19 +2457,19 @@ file_to_file:
 dir_to_dir:      
       q_printf("%% Moving/renaming \"%s\" to \"%s\".. ", spath, dpath);  // report
       int err = rename(spath, dpath);
-      q_print(err < 0 ? "Failed" : "Done");
+      q_print(err < 0 ? "Failed\r\n" : "Done\r\n");
     } else {                                            // dst is a directory?
                                                         // file to directory copy
-      strcat(dpath, "/");                               // add the filename (last component of the src path)
-      strcat(dpath, files_path_last_component(spath));  // to destination path.
+      strlcat(dpath, "/", MAX_PATH);                               // add the SRC filename (last component of the src path)
+      strlcat(dpath, files_path_last_component(spath), MAX_PATH);  // to the destination path.
       goto file_to_file;                                // proceed with file to file algorithm
     }
   } else if (files_path_exist_dir(spath)) {  // src is a directory
     if (!files_path_exist_dir(dpath))
       goto dir_to_dir;
     else {
-      strcat(dpath, "/");
-      strcat(dpath, files_path_last_component(spath));
+      strlcat(dpath, "/", MAX_PATH);
+      strlcat(dpath, files_path_last_component(spath), MAX_PATH);
       goto dir_to_dir;                                
     }
   } else
@@ -2485,6 +2497,7 @@ static int file_cp_callback(const char *path, void *aux) {
   a = strlen(cma->dst_path);
   b = strlen(path + cma->src_len);
 
+  // Check if our buffer is of right size
   if ((a + b) >= sizeof(dst)) {
     q_printf("%% cp: skipped \"%s\". resulting path is too long\r\n", path);
     return 0;
@@ -2492,6 +2505,7 @@ static int file_cp_callback(const char *path, void *aux) {
 
   // Construct destination path: base is taken from the /cma/ and mutable part is taken from the
   // path with the src base excluded.
+  // strcpy is ok here, sizes are checked above
   strcpy(dst, cma->dst_path);
   strcpy(dst + a, path + cma->src_len);
 
@@ -2499,6 +2513,7 @@ static int file_cp_callback(const char *path, void *aux) {
 
   if (files_copy(path, dst)) {
     q_print("Done\r\n");
+    // Return the number of processed files
     return 1;
   }
   q_print("Failed\r\n");
@@ -2532,86 +2547,88 @@ static int dir_cp_callback(const char *path, void *aux) {
   UNUSED int err = mkdir(dst, 0777);
   HELP(q_print(err == 0 ? "Done\r\n" : "Failed\r\n"));
 
+  // We return 0 here because we don't want directories to be counted as copied opbjects
   return 0;
 }
 
 // "cp FILENAME1 FILENAME2"
 // "cp FILENAME DIRNAME"
 // "cp DIRNAME1 DIRNAME2"
+// "cp . DIRNAME2"
 //
 // Copy files/directories
-//
-// Dir to dir copy:
-// 1. We can create a list of files (full path) and then cp file to file
-// 2. We create the fullpath for SRC directory and take the last component (LAST)
-// 3. We create directory LAST in DST
-// 4. Copy files from the list [1]
-//
-// cp /ffat/test/subdir/dir  -->  /ffat/    , LAST="dir", mkdir /ffat/$LAST, SRC="/ffat/test/subdir/dir/", DST="/ffat/dir/"
-//  /ffat/test/subdir/dir/file1.txt      -->  /ffat/dir/file1.txt
-//  /ffat/test/subdir/dir/mir/file2.txt  -->  /ffat/dir/mir/file2.txt
-//
-// struct filelist {
-//    struct filelist *next;    
-//    char *path;
-// };
 //
 static int cmd_files_cp(int argc, char **argv) {
 
   bool src_is_dot;
-  char dot_slash[] = "./";
+  char dot_slash[] = "./"; // autoreplace user's "." (a single dot) with "./"
+  unsigned int processed = 0;
 
   if (argc < 3)
     return CMD_MISSING_ARG;
 
-  char spath[MAX_PATH], dpath[MAX_PATH];
+  char  spath[MAX_PATH],   // SRC path (full path)
+        dpath[MAX_PATH];   // DST path (full path)
 
-  // Detect ".". If dot is used as SRC then we don't create first directory.
-  // We replace argv[1] with a generic dot because user may omit trailing "/". argvs can be manipulated
-  // and set to any values
+  // Detect a single dot (".")
+  // If dot is used as SRC then we copy SRC directory content rather than copy directory itself. In Linux this
+  // dot corresponds to "*" (all files)
+  //
+  // We replace argv[1] with a generic dot because user may omit trailing "/" (argvs can be manipulated
+  // and set to any value)
+  //
   if ((src_is_dot = files_path_is_dot(argv[1])) == true)
     argv[1] = dot_slash;
 
-  strcpy(spath, files_full_path(argv[1], PROCESS_ASTERISK));
-  strcpy(dpath, files_full_path(argv[2], PROCESS_ASTERISK));
+  strlcpy(spath, files_full_path(argv[1], PROCESS_ASTERISK),sizeof(spath));
+  strlcpy(dpath, files_full_path(argv[2], PROCESS_ASTERISK),sizeof(dpath));
 
   files_strip_trailing_slash(spath);
   files_strip_trailing_slash(dpath);
 
   // determine copy algorithm:
-  // file to file, file to dir or dir to dir
-  if (files_path_exist_file(spath)) {    // src is a file?
+  // file to file, file to dir, dir to dir or dir_content to dir
+  if (files_path_exist_file(spath)) {    // SRC is a file?
     if (!files_path_exist_dir(dpath)) {  // dst is a file?
                                          // file to file copy
 file_to_file:
-      unlink(dpath);                                   // remove destination file if it exists
-      q_printf("%% Copy %s to %s\r\n", spath, dpath);  // report
-      files_copy(spath, dpath);                        // copy src->dst (single file)
+      unlink(dpath);                                  // remove destination file if it exists
+      q_printf("%% Copy %s to %s.. ", spath, dpath);  // report
+      if (files_copy(spath, dpath)) {                 // copy src->dst (single file)
+        q_print("Done\r\n");
+        processed++;
+      } else
+        q_print("Failed\r\n");
 
-    } else {                                            // dst is a directory?
+    } else {                                            // src is a file, but dst is a directory
                                                         // file to directory copy
-      strcat(dpath, "/");                               // add the filename (last component of the src path)
-      strcat(dpath, files_path_last_component(spath));  // to destination path.
-      goto file_to_file;                                // proceed with file to file algorithm
+      strlcat(dpath, "/", MAX_PATH);                               // add the filename (last component of the src path)
+      strlcat(dpath, files_path_last_component(spath), MAX_PATH);  // to the destination path.
+      goto file_to_file;                                // proceed with the "file to file" algorithm
     }
-  } else if (files_path_exist_dir(spath)) {  // src is a directory
+  }  // SRC is a directory
+  else if (files_path_exist_dir(spath)) {  
     if (files_path_exist_dir(dpath)) {
 
+      // Copy a directory or its content?
       if (!src_is_dot) {
-        //q_print("% SRC is NOT DOT, creating dir\r\n");
-        strcat(dpath, "/");
-        strcat(dpath, files_path_last_component(spath));
-        mkdir(dpath, 0777);
-      } //else
-        //q_printf("%% SRC is DOT, dpath=%s\r\n",dpath);
+        strlcat(dpath, "/", MAX_PATH);
+        strlcat(dpath, files_path_last_component(spath), MAX_PATH);
+        if (mkdir(dpath, 0777) != 0)
+          q_printf("%% cp: failed to create \"%s\"\r\n", dpath);
+      }
 
       struct cpmv_arg cma;
       cma.src_len = strlen(spath);
       cma.dst_len = strlen(dpath);
       cma.src_path = spath;
       cma.dst_path = dpath;
-      files_dirwalk(spath, file_cp_callback, dir_cp_callback, &cma,true, 127);
-
+      processed = files_dirwalk(spath,   // start from spath
+                                file_cp_callback, // call this on every file found
+                                dir_cp_callback,  // call this on every directory found
+                                &cma,    // arg for file_cp_callback and for the dir_cp_callback
+                                true,    // walk directories first (cp strategy: we want to create dirs before we copy files)
+                                DIR_RECURSION_DEPTH);
     } else {
       q_printf("%% \"%s\" must be a directory\r\n", dpath);
       return 2;
@@ -2620,6 +2637,7 @@ file_to_file:
     q_printf("%% Path \"%s\" does not exist\r\n", spath);
     return 1;
   }
+  q_printf("%% Copied %u file%s\r\n",PPA(processed));
   return 0;
 }
 
