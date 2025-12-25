@@ -355,6 +355,7 @@ Deletes the file or directory specified by PATH.
 <ul>
   <li>If PATH is a file, it will be deleted.</li>
   <li>If PATH is a directory, the directory and all of its contents will be deleted recursively, <b>with no confirmation!</b></li>
+  <li>If PATH is a dot ("." or "./"), the entire contents of the current directory will be removed recursively, <b>without confirmation</b></li>.
 </ul>
 <pre>
   esp32#(/)>ls wwwroot/test_dir
