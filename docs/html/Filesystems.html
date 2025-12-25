@@ -637,8 +637,37 @@ over LTE. The transfer is handled by the module itself, reducing CPU load on the
 </p>
 
 
-<p><h3 id=mv><a href="#top">&#8686;</a>MOVE/RENAME FILES OR DIRECTORIES : "mv"</h3></p>
-<p><h3 id=cp><a href="#top">&#8686;</a>COPY FILES OR DIRECTORIES : "cp"</h3></p>
+<p><h3 id=mv><a href="#top">&#8686;</a>MOVE / RENAME FILES AND DIRECTORIES: "mv"</h3></p>
+<p>
+TBD. The "<b>mv</b>" command is similar to its Linux counterpart, but with some differences:
+the command cannot move the *contents* of a directory. For example, if you run (while being in the /ffat/5 directory)
+something like:
+"mv . ../6", then instead of moving the files from the directory, the entire /ffat/5 directory will be moved.
+</p>
+
+<pre>
+esp32#(/ffat/5/)>mv . ../6
+% Moving/renaming "/ffat/5" to "/ffat/6".. Done
+esp32#(/ffat/5/)>
+</pre>
+
+<p>
+As a temporary workaround, you can use "cp" and "rm" — these commands interpret the dot (".") specifically as
+"the contents of the directory".
+</p>
+
+<p><h3 id=cp><a href="#top">&#8686;</a>COPY FILES AND DIRECTORIES: "cp"</h3></p>
+<p>
+TBD. The "<b>cp</b>" command is similar to its Linux counterpart, but with some differences:
+since ESPShell does not support wildcards (i.e. names like "*.txt" or "backup.?bk"),
+copying the contents of a directory is done as follows:
+<pre>
+  esp32#(/wwwroot/)>cp . ../dir
+</pre>
+To specify the source as the contents of the current directory, use a dot (".").
+</p>
+
+
 <p><h3 id=show><a href="#top">&#8686;</a>DISPLAYING INFORMATION</h3></p>
 
 <p>
