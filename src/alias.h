@@ -15,7 +15,7 @@
 // A "command alias" is a named sequence of shell commands. 
 // It acts as a shortcut that lets you run multiple commands by entering a single new command.
 //
-// Aliases are created but never destroyed: a user can clear the contents of an alias, but the alias 
+// Aliases are created but never destroyed: an user can clear the contents of an alias, but the alias 
 // descriptor itself will remain permanently. 
 
 // This ensures that pointers to aliases always stay valid. 
@@ -321,7 +321,7 @@ static int cmd_alias_asterisk(int argc, char **argv) {
     return CMD_FAILED;
   }
 
-  // Reset GPP: Right now it points to cmd_alias_asterisk()
+  // Reset GPP: Right now it points to cmd_alias_asterisk() (i.e. this function)
   // AA global variable is created and maintained by espshell_command(); its only use is to temporary hold currently
   // processing argcargv_t.
   // This pointer *must not* be used outside of this (alias editing) scope
@@ -335,8 +335,11 @@ static int cmd_alias_asterisk(int argc, char **argv) {
   // subdirectory: we don't track directories. In such cases command handler is not precached and will be found on
   // a first alias use
   //
-  // TODO: KNOWN BUG: if command is a subdir command (say "up") it will be wrongly precached as the "uptime"
-  //                  solutions is not to precache commands which are similar to "uptime" (loose strcmp)
+  // TODO: KNOWN BUG: if command is a subdir command (say wifi's "up") it will be wrongly precached as the "uptime".
+  // This happens because precacher does not keep track of the currently used keywords array: keywords are always searched from the keywords_main.
+  // If we have "wifi sta" and "up" in our alias, the precacher does not know that command "up" must be searched within "keywords_sta".
+  //
+  //                  solution1: add "!" flag to the command: "don't precache"
   //
   // TODO: Add a parameter to userinput_find_handler() to specify search directories
   //
@@ -399,7 +402,7 @@ static void alias_helper_task(void *arg) {
     keywords_set_ptr(ha->keywords);
     files_set_cwd(ha->cwd);
 
-    // delay, if required (see alias_exec_in_background_delayed())
+    // delay, if required
     if (ha->delay_ms)
       q_delay(ha->delay_ms);
     alias_exec(ha->al);

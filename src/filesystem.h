@@ -1943,14 +1943,22 @@ static int cmd_files_cd(int argc, char **argv) {
 
 // "ls [PATH]"
 // Directory listing for current working directory or PATH if specified
-//
+// TODO: command line options that somwhat mimic Linux's "ls"
+// -ctime : ctime
+// -atime
+// -mtime
+// -m : comma separated names
+// -Q : quote entries
+// -h : human-readable sizes
+// -l, -o, -a : ignored
+
 static int ls_show_dir_size = true;
 
 static int cmd_files_ls(int argc, char **argv) {
   char path[MAX_PATH + 16], *p;
   int plen;
 
-  if (argc > 1) { //TODO: use is_src_dot() here
+  if (argc > 1) { //TODO: files_path_is_dot() here
     char dot_slash[] = "./";
     if (argv[1][0] == '.' && argv[1][1] == '\0')
       argv[1] = dot_slash;
@@ -2007,7 +2015,7 @@ static int cmd_files_ls(int argc, char **argv) {
     if ((dir = opendir(path)) != NULL) {
       struct dirent *ent;
 
-      q_print("%    Size        Modified          *  Name\r\n"
+      q_print("%<r>    Size        Modified          *  Name                      </>\r\n"
               "%               -- level up --    <f> [<i>..</>]\r\n");
       while ((ent = readdir(dir)) != NULL) {
 
@@ -2035,7 +2043,7 @@ static int cmd_files_ls(int argc, char **argv) {
             total_d++;
             total_fsize += dir_size;
             
-            q_printf("%% %9u  %s  <f>[<i>%s</>]\r\n", dir_size, buf, ent->d_name);
+            q_printf("%% %9u  %s  <f> [<i>%s</>]\r\n", dir_size, buf, ent->d_name);
             
           } else {
             total_f++;

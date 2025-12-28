@@ -524,13 +524,16 @@ static const char *ansi_tags['z' - 'a' + 1] = {
 
 #if WITH_UTF8
   // UTF8 Icons:
-  ['f' - 'a'] = "\04📁",
+  ['f' - 'a'] = "\05 📁",
   ['v' - 'a'] = "\03✔",
   ['x' - 'a'] = "\03✖",
+  ['a' - 'a'] = "\09⚠️⚠"
 #else
   ['f' - 'a'] = "\03DIR",
-  ['v' - 'a'] = "\03[V]",
-  ['x' - 'a'] = "\03[X]",
+  ['v' - 'a'] = "\03[v]",
+  ['x' - 'a'] = "\03[x]",
+  ['a' - 'a'] = "\03[!]"
+
 #endif  
    
   //other definitions can be added here as well as long as they are in [a-z] range
