@@ -294,7 +294,7 @@ void rw_unlockr(rwlock_t *rw) {
 // -- Message Pipes --
 //
 // A machinery to send messages from an ISR to a task, or from a task to another task
-// Messages are fixed in size (4 bytes, sizeof(void *)).
+// Messages are fixed in size ( sizeof(void *)).
 //
 // Main idea around mpipes is to be able "to send" a pointer from an ISR to a task: e.g. GPIO ISR sends 
 // messages to some processing task, but it is not limited to it.
@@ -323,7 +323,7 @@ void rw_unlockr(rwlock_t *rw) {
 //
 
 #ifdef MPIPE_USES_MSGBUF
-
+// NOTE: THIS CODE IS NOT TESTED!
 // Message Pipe type, Message Pipe initializer
 #  define mpipe_t MessageBufferHandle_t
 #  define MPIPE_INIT NULL
@@ -383,7 +383,7 @@ void rw_unlockr(rwlock_t *rw) {
 // If pipe is empty then mpipe_recv() will block, spinning in while() with portMAX_DELAY.
 // Not suitable for use in ISR.
 // _Pipe : pointer to a mpipe or NULL
-// Returns a message, 4 bytes, as a void*: "void *value = mpipe_recv(ThePipe);"
+// Returns a message, 4 bytes on esp32, as a void*: "void *value = mpipe_recv(ThePipe);"
 //
 #  define mpipe_recv(_Pipe) \
     ({ \
@@ -522,7 +522,7 @@ static const char *ansi_tags['z' - 'a' + 1] = {
   ['m' - 'a'] = "\05\033[41m",     // red background
   ['y' - 'a'] = "\05\033[42m",     // green background
 
-#if WITH_UTF8
+#if 1 //WITH_UTF8
   // UTF8 Icons:
   ['f' - 'a'] = "\05 📁",
   ['v' - 'a'] = "\03✔",

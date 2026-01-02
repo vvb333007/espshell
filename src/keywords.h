@@ -274,6 +274,9 @@ KEYWORDS_DECL(uart) {   // Declares the "uart" command directory.
     { "up", cmd_uart_up, 5, HIDDEN_KEYWORD },
     { "up", cmd_uart_up, 6, HIDDEN_KEYWORD },
 
+    // TODO: this is a workaround to catch "up", not "uptime". Should generate "missing argument error"
+    { "up", cmd_uart_up, 0, HIDDEN_KEYWORD },
+
   { "baud", cmd_uart_baud, 1,
     HELPK("% \"<b>baud</> <i>SPEED</>\"\r\n"
           "%\r\n"
@@ -364,6 +367,9 @@ KEYWORDS_DECL(iic) {
           "%   <i>up 21 22 100000</> - enable i2c at pins sda=21, scl=22, 100kHz clock"),
     HELPK("Initialize interface (pins and speed)") },
 
+  // TODO: workaround against "uptime"
+  { "up", cmd_i2c_up, 0, HIDDEN_KEYWORD },
+
   { "clock", cmd_i2c_clock, 1,
     HELPK("% \"<b>clock</> <i>SPEED</>\"\r\n"
           "%\r\n"
@@ -427,6 +433,8 @@ KEYWORDS_DECL(spi) {
           "% <u>Examples:</>\r\n"
           "%   <i>up 23 19 18</> - Initialize SPI at pins 23,19,18"),
     HELPK("Initialize interface") },
+
+  { "up", cmd_spi_up, 0, HIDDEN_KEYWORD },
 
   { "clock", cmd_spi_clock, 1,
     HELPK("% \"<b>clock</> <i>SPEED</>\"\r\n"
@@ -1279,25 +1287,22 @@ KEYWORDS_DECL(nvs) {
     HELPK("Remove entries") },
 
   { "new", cmd_nvs_new, MANY_ARGS,
-    HELPK("% \"<b>new</> KEY C-TYPE\"\r\n"
+    HELPK("% \"<b>new</> NAME (unsigned | char | short | long )* [<o>VALUE</>]\"\r\n"
           "%\r\n"
-          "% Create a new KEY/VALUE pair in the current namespace.\r\n"
-          "%\r\n"
-          "% C-TYPE must be one of the basic scalar C types, such as \"char\"\r\n"
-          "% or \"unsigned long long\".\r\n"
-          "%\r\n"
+          "% Create a new KEY and optionally set its VALUE\r\n"
           "% Two special types are also supported:\r\n"
           "%   \"char *\"  - creates a string value\r\n"
           "%   \"char []\" - creates a binary blob\r\n"
           "%\r\n"
-          "% Newly created keys are initialized to zero for scalar types, or to an\r\n"
-          "% empty buffer for strings and blobs. Set values with command \"set\"\r\n"
+          "% Unless <o>VALUE</> is specified all newly created keys are initialized to\r\n"
+          "% zero for scalar types, or to an empty buffer for strings and blobs\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <i>new Version char</>         - Creates a key named \"Version\"\r\n"
+          "%   <i>new Version char</>         - Creates an empty key named \"Version\"\r\n"
           "%   <i>new Z unsigned long long</> - 64-bit unsigned integer key \"Z\"\r\n"
-          "%   <i>new Var2 char *</>          - Create string key \"Var2\"\r\n"
-          "%   <i>new Var3 char[]</>          - Create binary blob key \"Var3\"\r\n"
+          "%   <i>new Var2 char * \"Hello World\"</> - Create & set string value\r\n"
+          "%   <i>new Var3 char[]</>          - Create an empty binary blob \r\n"
+          "%   <i>new Var4 char[] \\10\\20\\30</>- Create & set blob value"
           ),
     HELPK("Create keys") },
 
@@ -2356,21 +2361,6 @@ KEYWORDS_REG(camera);
 #endif // WITH_ESPCAM
 
 
-// Pointer to a keywords array by its "name": KEYWORDS(main), KEYWORDS(files) ...
-#define KEYWORDS(_Key) \
-  keywords_ ## _Key
-
-// Set keywords list by its name: keywords_set(main), keywords_set(files) ...
-#define keywords_set(_Key) \
-  keywords = KEYWORDS(_Key)
-
-// Set keywords list by ptr: keywords_set_ptr(KEYWORDS(main))
-#define keywords_set_ptr(_Ptr) \
-  keywords = _Ptr
-
-// Pointer to a keywords array currently active
-#define keywords_get() \
-  keywords
 
 // Current keywords list in use, 
 // It is an thread-specific variable (every task has its own copy of this variable)
@@ -2378,19 +2368,15 @@ KEYWORDS_REG(camera);
 //
 static __thread const struct keywords_t *keywords = KEYWORDS(main);
 
-// All command directories. This array is populated by KEYWORDS_REG
-//
-static struct {
-  const struct keywords_t *key;
-  const char *name;
-  uint8_t count;
-} Subdirs[16] = { 0 }; // TODO: no raw numbers!
 
-// Register a command tree
+////////////////////////////// functions and command handlers ///////////////////////
+
+// Register a command tree. This one called by a C startup code as part of KEYWORDS_REG() macro
+// well before app_main(), setup() or loop()
 //
 static void keywords_register(const struct keywords_t *key, const char *name, int const count) {
   static unsigned char idx = 0;
-  MUST_NOT_HAPPEN(idx > 14);
+  MUST_NOT_HAPPEN(idx >= MAX_CMD_SUBDIRS);
   Subdirs[idx].key = key;
   Subdirs[idx].name = name;
   Subdirs[idx].count = count;
@@ -2413,22 +2399,8 @@ static bool is_command_directory(const char *p) {
 }
 
 
-static UNUSED void show_cmd_tree_stats() {
-  int idx = 0, total = 0;
-  while(Subdirs[idx].key) {
-    int i = 0;
-    while(Subdirs[idx].key[i].cmd) {
-      i++;
-    }
-    q_printf("Tree: \"%s\", %u entries\r\n", Subdirs[idx].name, i);
-    total += i;
-    idx++;
-  }
-  q_printf("Total: %u entries in %u trees\r\n", total, idx);
-}
-
-// Called from cmd_uart_if(), cmd_i2c_if(),cmd_seq_if() and cmd_files_if and others to set a new command list (command directory); 
-// displays user supplied text,  returns a pointer to the keywords tree used before
+// Called from cmd_uart_if(), cmd_i2c_if(),cmd_seq_if() and others to set a new command list (command directory); 
+// Displays user supplied text,  returns a pointer to the keywords tree used before
 //
 static const struct keywords_t *change_command_directory(
                                     uintptr_t context,            // An arbitrary number which will be stored until next directory change
@@ -2438,8 +2410,10 @@ static const struct keywords_t *change_command_directory(
   static uint8_t count = 0;                                    
   const struct keywords_t *old_dir;
 
+  // Save user-supplied Context into thread-local variable
   context_set(context);
   old_dir = keywords_get();
+  // Set a new pointer to currently used keywords array; set the prompt
   keywords_set_ptr(dir);
   prompt_set(prom);
 
@@ -2462,13 +2436,39 @@ static int cmd_exit(int argc, char **argv) {
   // If "exit" was executed from the main tree, then either exit the shell or display a hint
   if (change_command_directory(0, KEYWORDS(main), PROMPT, NULL) == KEYWORDS(main)) {
     if (argc > 1 && !q_strcmp(argv[1], "exit"))
-      Exit = true;
+      Exit = true; // Causes REPL to abort
     else {
       HELP(q_print("% Not in a subdirectory; (to close the shell type \"exit ex\")\r\n"));
     }
   }
   return 0;
 }
+
+
+// Developer command "show subdirs"
+// Shows **registered** command directories.
+//
+static int cmd_show_subdirs(int argc, char **argv) {
+
+  int idx = 0, total = 0, hidden = 0;
+
+  // Go through all registered subdirs (see how KEYWORDS_REG() is used)
+  while(Subdirs[idx].key) {
+    int i = 0, ih = 0; // Number of commands/hidden commands
+    while(Subdirs[idx].key[i].cmd) {
+      i++;
+      if (Subdirs[idx].key[i].help == NULL && Subdirs[idx].key[i].brief == NULL)
+        ih++;
+    }
+    q_printf("Dir: \"%s\", %u entries, %u hidden\r\n", Subdirs[idx].name, i, ih);
+    total += i;
+    hidden += ih;
+    idx++;
+  }
+  q_printf("Total: %u entries (%u of them are hidden) in %u subdirs\r\n", total, hidden, idx);
+  return 0;
+}
+
 
 
 #endif // #if COMPILING_ESPSHELL

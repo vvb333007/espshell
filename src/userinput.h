@@ -347,6 +347,7 @@ static int userinput_join(int argc, char **argv, int i /* START */, char **out) 
         break;
 
     } while (i < argc);
+    *b = '\0';
   }
   return size;
 }
@@ -560,5 +561,64 @@ bad:
   *stop = start;
   return val;
 }
+
+
+// This function reads scalar C types and pointers and returns element size, and type specifiers (signedness, pointer or array etc)
+// Returns the index X of first element which can not be parsed (returns 4):
+// "unsigned long long int hello char"
+//  0        1    2    3   4     5
+//
+// Examples of valid inputs:
+// "char"
+// "unsigned short int"
+// "long long int"
+// "char*" "char *"
+// "char[123]", "char[]"
+// TODO: refactor convar.h to use userinput_read_ctype()
+//
+static int userinput_read_ctype(int     argc,      // IN
+                                char  **argv,      // IN
+                                int     start,     // IN
+                                size_t *size0,     // OUT
+                                bool   *is_str,    // OUT
+                                bool   *is_blob,   // OUT
+                                bool   *is_signed  // OUT
+                                ) {
+
+  size_t size = 0;
+  uint8_t ll = 0;   // how many times did we see "long" keyword
+
+  if ((start >= argc) || !is_str || !is_blob || !is_signed || !size0)
+    return start;
+
+  *is_str = *is_blob = false;
+  *is_signed = true;
+
+  while (start < argc) {
+    if (!q_strcmp(argv[start],"signed"))   { *is_signed = true; size = 1; } else
+    if (!q_strcmp(argv[start],"unsigned")) { *is_signed = false; size = 1; } else
+    if (!q_strcmp(argv[start],"char"))      size = 1;             else
+    if (!q_strcmp(argv[start],"short"))     size = 2;             else
+    // "int" means 32 bit ONLY if there are no other specifiers.
+    // e.g. unsigned short int is still 16 bit
+    if (!q_strcmp(argv[start],"int"))       size = size < 2 ? 4
+                                                          : size; else
+    if (!q_strcmp(argv[start],"long"))      size = 4 * (++ll);    else
+    // Detect arrays
+    if (!q_strcmp("char[", argv[start]) ||
+        argv[start][0] == '[' ||
+        argv[start][0] == ']')             *is_blob = true;       else
+    // Detect strings
+    if (argv[start][0] == '*' ||
+        !q_strcmp(argv[start],"char*"))    *is_str = true;        else break;
+
+    start++;
+  }
+
+  *size0 = size;
+
+  return start;
+}
+
 #endif // WITH_TIME
 #endif //#if COMPILING_ESPSHELL

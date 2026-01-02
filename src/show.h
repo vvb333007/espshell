@@ -55,6 +55,8 @@ static const struct {
 #endif
   { "cpuid", cmd_show_cpuid },
   { "version", cmd_show_version },
+  { "subdirs", cmd_show_subdirs },   // hidden developer command, implemented in keywords.h-
+  
   {NULL,NULL}
 };
 

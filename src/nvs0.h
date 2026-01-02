@@ -161,7 +161,7 @@ static bool add_unique( struct nvsnamespace **nvs_namespaces, const char *name) 
   }
   return false;
 }
-
+#if 0
 // This function reads scalar C types and pointers and returns element size
 // Examples of valid inputs:
 // "char"
@@ -204,7 +204,7 @@ static size_t read_ctype(int argc, char **argv, int start, bool *is_str, bool *i
 
   return size;
 }
-
+#endif
 
 
 // Convert decoded C-type to NVS data type:
@@ -467,7 +467,7 @@ static void nv_export_namespace(FILE *fp, const char *partition, const char *nam
             continue ;
           count++;
           
-          fprintf(fp, "new %s %s\r\nset %s ", info.key, nt2ctype(info.type), info.key);
+          fprintf(fp, "new %s %s ", info.key, nt2ctype(info.type));
 
           switch (info.type) {
             case NVS_TYPE_U8:   nvs_get_u8(handle, info.key, &u8); fprintf(fp,"%u\r\n",u8); break;
@@ -809,16 +809,18 @@ static int cmd_nvs_dump(int argc, char **argv) {
   return ret;
 }
 
-// new KEY C-TYPE
+// new KEY C-TYPE [VALUE]
 // Create a zero record. For scalar types, blobs and strings it is just 0 written
-//
+// unless VALUE is provided
 static int cmd_nvs_new(int argc, char **argv) {
 
-  int ret = CMD_FAILED;
+  int ret = CMD_FAILED, end;
   esp_err_t err;
   nvs_handle_t handle;
   const char *partition, *namespace;
   char foo[] = { 0 };
+  char *blob = &foo[0];
+  char *str = &foo[0];
   size_t size;
   bool is_str, is_blob, is_signed;
   
@@ -838,12 +840,12 @@ static int cmd_nvs_new(int argc, char **argv) {
   }
 
   // Read user type definition
-  size = read_ctype(argc, argv, 2, &is_str, &is_blob, &is_signed);
+  end = userinput_read_ctype(argc, argv, 2, &size, &is_str, &is_blob, &is_signed);
+
   if (size > 8 || (size == 0 && !is_str && !is_blob)) {
     q_print("% Sorry, can not parse your type definition\r\n"
             "% Use C syntax: \"<i>char</>\", \"<i>unsigned long long int</>\", \"<i>char *</>\" and so on\r\n"
-            "% Use \"<i>char *</>\" to create strings; for blobs use \"<i>char []</>\"\r\n"
-);
+            "% Use \"<i>char *</>\" to create strings; for blobs use \"<i>char []</>\"\r\n");
     return CMD_FAILED;
   }
 
@@ -851,16 +853,36 @@ static int cmd_nvs_new(int argc, char **argv) {
   // Convert user type definition to nvs_type_t, and call corresponding "setter" with dummy value
   if (nvs_open_from_partition(partition,namespace, NVS_READWRITE, &handle) == ESP_OK) {
     switch(ct2nt(size,is_str, is_blob, is_signed)) {
-      case NVS_TYPE_U8:   err = nvs_set_u8(handle,   argv[1], 0);   break; 
-      case NVS_TYPE_I8:   err = nvs_set_i8(handle,   argv[1], 0);   break; 
-      case NVS_TYPE_U16:  err = nvs_set_u16(handle,  argv[1], 0);   break; 
-      case NVS_TYPE_I16:  err = nvs_set_i16(handle,  argv[1], 0);   break; 
-      case NVS_TYPE_U32:  err = nvs_set_u32(handle,  argv[1], 0);   break; 
-      case NVS_TYPE_I32:  err = nvs_set_i32(handle,  argv[1], 0);   break; 
-      case NVS_TYPE_U64:  err = nvs_set_u64(handle,  argv[1], 0);   break; 
-      case NVS_TYPE_I64:  err = nvs_set_i64(handle,  argv[1], 0);   break; 
-      case NVS_TYPE_STR:  err = nvs_set_str(handle,  argv[1], foo); break; 
-      case NVS_TYPE_BLOB: err = nvs_set_blob(handle, argv[1], foo, 1); break;
+      case NVS_TYPE_U8:   err = nvs_set_u8(handle,   argv[1], (end < argc ? q_atol(argv[end], 0) : 0));   break; 
+      case NVS_TYPE_I8:   err = nvs_set_i8(handle,   argv[1], (end < argc ? q_atoi(argv[end], 0) : 0));   break; 
+      case NVS_TYPE_U16:  err = nvs_set_u16(handle,  argv[1], (end < argc ? q_atol(argv[end], 0) : 0));   break; 
+      case NVS_TYPE_I16:  err = nvs_set_i16(handle,  argv[1], (end < argc ? q_atoi(argv[end], 0) : 0));   break; 
+      case NVS_TYPE_U32:  err = nvs_set_u32(handle,  argv[1], (end < argc ? q_atol(argv[end], 0) : 0));   break; 
+      case NVS_TYPE_I32:  err = nvs_set_i32(handle,  argv[1], (end < argc ? q_atoi(argv[end], 0) : 0));   break; 
+      case NVS_TYPE_U64:  err = nvs_set_u64(handle,  argv[1], (end < argc ? q_atol(argv[end], 0) : 0));   break; // TODO: q_atoll
+      case NVS_TYPE_I64:  err = nvs_set_i64(handle,  argv[1], (end < argc ? q_atoi(argv[end], 0) : 0));   break; // TODO: q_atoii
+      case NVS_TYPE_STR:  if (end < argc)
+                            userinput_join(argc, argv, end, &str);
+                          err = nvs_set_str(handle,  argv[1], str);
+                          if (str != foo)
+                            q_free(str);
+                          break; 
+
+      case NVS_TYPE_BLOB: int l = 1;
+                          if (end < argc) {
+                            l = userinput_join(argc, argv, end, &blob);
+                            if (l < 1) {
+                              blob = foo;
+                              l = 1;
+                            }
+                          }
+                          err = nvs_set_blob(handle, argv[1], blob, l); break;
+                          if (blob != foo)
+                            q_free(blob);
+                          break; 
+      
+      
+      
       default:            err = ESP_FAIL;
     };
 

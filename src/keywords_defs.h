@@ -93,7 +93,35 @@ static void keywords_register(const struct keywords_t *key, const char *name, in
  /* Each keywords array has its own constructor which registers this particular array */ \
   static void __attribute__((constructor)) __init_kwd_ ## _Key () { \
     keywords_register(keywords_ ## _Key, # _Key, sizeof(keywords_ ## _Key) / sizeof(keywords_ ## _Key[0])); \
-  } \
+  }
+
+// Pointer to a keywords array by its "name": KEYWORDS(main), KEYWORDS(files) ...
+#define KEYWORDS(_Key) \
+  keywords_ ## _Key
+
+// Set keywords list by its name: keywords_set(main), keywords_set(files) ...
+#define keywords_set(_Key) \
+  keywords = KEYWORDS(_Key)
+
+// Set keywords list by ptr: keywords_set_ptr(KEYWORDS(main))
+#define keywords_set_ptr(_Ptr) \
+  keywords = _Ptr
+
+// Pointer to a keywords array currently active
+#define keywords_get() \
+  keywords
+
+
+// Max number of command directories (including "main")
+#define MAX_CMD_SUBDIRS 16
+
+// All command directories. This array is populated by KEYWORDS_REG. A keyword array is not required to be registered
+static struct {
+  const struct keywords_t *key;
+  const char *name;
+  uint8_t count;
+} Subdirs[MAX_CMD_SUBDIRS] = { 0 };
+
 
 #endif // #if COMPILING_ESPSHELL
 
