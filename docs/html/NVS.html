@@ -229,10 +229,13 @@ or to a one-byte buffer containing 0 (for arrays).
   esp32-nvs(/)><b>cd phy</b>
   esp32-nvs(/phy)><b>new Key unsigned char</b>
   % Key created. Use "set Key ..." to set its value
+  esp32-nvs(/phy)><b>new Key2 char* Hello, World!</b>
+  % Key created. Use "set Key2 ..." to set its value
   esp32-nvs(/phy)>
 </pre>
 
-In this example, we created a key named “Key” in the “phy” namespace. The data type is <i>unsigned char</i>.
+In this example, we created an empty key named “Key” in the “phy” namespace. The data type is <i>unsigned char</i>.
+We also created an initialized key named "Key2", which is set to "Hello, World!" after creation.
 The command accepts normal C/C++ type syntax. Supported types:
 <ul>
   <li><b>signed</b>, <b>unsigned</b> (or no sign specifier)</li>
@@ -305,17 +308,18 @@ Example: set cal_data to bytes: 0x10, 0x20, "Hello", 0x20, 0x10:
 
 
   <tr>
-    <td><b>new <i>KEY_NAME</i> <i>KEY_TYPE</i></b></td>
+    <td><b>new <i>KEY_NAME</i> <i>KEY_TYPE</i> [<i>VALUE</i>] </b></td>
     <td>
       <p>
 Create a key named <i>KEY_NAME</i> of type <i>KEY_TYPE</i>. <i>KEY_TYPE</i> may be any supported C scalar type (char, short, int, long, signed/unsigned, long long, char*, char[]).
 Example: create the key cal_address and assign the value 0011:2233:4455:
 <pre>
   esp32-nvs(/)><b>cd phy</b>
-  esp32-nvs(/phy)><b>new cal_address char[]</b>
+  esp32-nvs(/phy)><b>new cal_address char[] \00\11\22\33\44\55</b>
   % Key created. Use "set cal_address ..." to set its value
 </pre>
-If the key already exists, it is reset (strings become empty, arrays become one-byte zero arrays).
+NOTE: If VALUE is omitted, then an empty key is created which later can be set with the "set" command;<br>
+NOTE: If VALUE is omitted and the key already exists, it is reset (strings become empty, arrays become one-byte zero arrays).
       </p>
     </td>
   </tr>
