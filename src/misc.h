@@ -229,7 +229,7 @@ static int cmd_hostid(int argc, char **argv) {
         return 1;
       }
     // Copy user input.
-    strlcpy(PromptID,argv[1],sizeof(PromptID)); // TODO: unprotected
+    strlcpy(PromptID,argv[1],sizeof(PromptID));
     nv_save_config();
   }
   return 0;

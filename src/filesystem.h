@@ -397,7 +397,6 @@ static char *normalize_path(char *path) {
 // Build a full path from the given path and return a pointer to the resulting string.
 // This function uses a static buffer to store the result, so it must not be called
 // recursively unless the caller copies the result to a local buffer first.
-// TODO: get rid of this static buffer: add 1 more out arg
 //
 // /path/       — an absolute or relative path
 // /do_asterisk/ — whether '*' characters should be converted to spaces
@@ -518,40 +517,21 @@ static int files_show_mountpoint(const char *path) {
   return -1;
 }
 
-
-// return total bytes available on mounted filesystem index i (index in mountpoints[i])
-//
+// Return total bytes available on mounted filesystem index i (index in mountpoints[i])
+// esp_err_t esp_vfs_fat_info(const char* base_path, uint64_t* out_total_bytes, uint64_t* out_free_bytes);
 static unsigned int files_space_total(int i) {
 
   switch (mountpoints[i].type) {
 #if WITH_FAT
     case ESP_PARTITION_SUBTYPE_DATA_FAT:
-
-      FATFS *fs;
-      DWORD free_clust, tot_sect, sect_size;
-      BYTE pdrv = 0; 
-
-      if (files_mountpoint_is_sdspi(i)) {
-//#warning "Developer reminder #1"
-
-#if 1 // Set to 0 if it does not compile. This code works with newer versions of ESP-IDF
-      // 
-        vfs_fat_sd_ctx_t *ctx = get_vfs_fat_get_sd_ctx((sdmmc_card_t *)mountpoints[i].gpp);
-        MUST_NOT_HAPPEN(ctx == NULL); // Or should we just return 0?
-        pdrv = ctx->pdrv;
-#else
-        //return 0;
-#endif        
-      } else
-        pdrv = ff_diskio_get_pdrv_wl(mountpoints[i].wl_handle);
-
-      char drv[3] = { (char)(48 + pdrv), ':', 0 };
-      if (f_getfree(drv, &free_clust, &fs) != FR_OK)
+    // FAT is special: its info getter returns /total/ and /free/ unlike spiffs and littlefs
+    // which return /total/ and /used/. Also, the first arg is a mountpoint, not partition
+      uint64_t total0, free0;
+      if (ESP_OK != esp_vfs_fat_info(mountpoints[i].mp, &total0, &free0))
         return 0;
-      tot_sect = (fs->n_fatent - 2) * fs->csize;
-      sect_size = CONFIG_WL_SECTOR_SIZE; //TODO: SDSPI has different sector size!
-      return tot_sect * sect_size;
+      return total0;
 #endif
+
 #if WITH_LITTLEFS
     case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS:
       size_t total, used;
@@ -574,30 +554,17 @@ static unsigned int files_space_total(int i) {
 //
 static unsigned int files_space_free(int i) {
   switch (mountpoints[i].type) {
+
 #if WITH_FAT
     case ESP_PARTITION_SUBTYPE_DATA_FAT:
-      FATFS *fs;
-      DWORD free_clust, free_sect, sect_size;
-      BYTE pdrv = 0;
-
-      if (files_mountpoint_is_sdspi(i)) {
-#if 1 // Set to 0 if it does not compile. TODO: #if (ESP_VERSION...)
-        vfs_fat_sd_ctx_t *ctx = get_vfs_fat_get_sd_ctx((sdmmc_card_t *)mountpoints[i].gpp);
-        MUST_NOT_HAPPEN(ctx == NULL);
-        pdrv = ctx->pdrv;
-#else
-        //return 0;
-#endif        
-      } else
-        pdrv = ff_diskio_get_pdrv_wl(mountpoints[i].wl_handle);
-      char drv[3] = { (char)(48 + pdrv), ':', 0 };
-      if (f_getfree(drv, &free_clust, &fs) != FR_OK)
+      // FAT is special: its info getter returns /total/ and /free/ unlike spiffs and littlefs
+      // which return /total/ and /used/. Also, the first arg is a mountpoint, not partition
+      uint64_t total0, free0;
+      if (ESP_OK != esp_vfs_fat_info(mountpoints[i].mp, &total0, &free0))
         return 0;
-
-      free_sect = free_clust * fs->csize;
-      sect_size = files_mountpoint_is_sdspi(i) ? 512 : CONFIG_WL_SECTOR_SIZE; // TODO:
-      return free_sect * sect_size;
+      return free0;
 #endif
+
 #if WITH_LITTLEFS
     case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS:
       size_t total, used;
@@ -605,6 +572,7 @@ static unsigned int files_space_free(int i) {
         return 0;
       return total - used;
 #endif
+
 #if WITH_SPIFFS
     case ESP_PARTITION_SUBTYPE_DATA_SPIFFS:
       if (esp_spiffs_info(mountpoints[i].label, &total, &used))
@@ -1872,10 +1840,11 @@ static int cmd_files_mount0(int argc, char **argv) {
                     part->subtype,
                     part->size / 1024,
                     part->address);
-*/                    
+                    
       else {
         VERBOSE(q_printf("%% Unknown partition type %u, name %s\r\n",part->type, part->label));
       }
+*/      
     } // if part != NULL
     it = esp_partition_next(it);
   } // while (it)

@@ -357,6 +357,8 @@ static int convar_value_as_string(struct convar *var, char *out, int olen) {
 }
 
 
+#if 0
+
 static void inline __attribute__((always_inline))
 _memcpy(char *dst, char *src, uint8_t count) {
   switch(count) {
@@ -367,7 +369,7 @@ _memcpy(char *dst, char *src, uint8_t count) {
     default:
   };
 }
-#if 0
+
 // Compare two variables
 // We need this for our ifcond.h module, which performs logic operations on variables
 //
