@@ -120,6 +120,14 @@
 #include <esp_timer.h>
 #include <esp_chip_info.h>
 #include <esp_task_wdt.h>
+
+// Low-level Xtensa and RISCV API
+#ifdef __XTENSA__
+#  include "xt_utils.h"
+#elif __riscv
+#  include "riscv/rv_utils.h"
+#endif
+
 // Arduino Core
 #include <esp32-hal-periman.h>
 #include <esp32-hal-ledc.h>

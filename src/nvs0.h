@@ -525,20 +525,26 @@ static void nv_export_namespace(FILE *fp, const char *partition, const char *nam
 }
 #endif // WITH_FS
 
-// Handlers
-
+// -- NVS Command Handlers --
 
 // Switch to NVS editor.
 // /Context/ stores a pointer to the NVS partition name (default value is "nvs")
 //
 static int cmd_nvs_if(int argc, char **argv) {
+
   static char partition[32]; //TODO: No magic numbers
+
   strlcpy( partition, 
           (argc < 2) ? DEF_NVS_PARTITION : argv[1],
           sizeof(partition));
-  // TODO: check if partition exists!
+
+  
+  if (NULL == esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_NVS, partition)) {
+    q_printf("%% <e>Partition \"%s\" can not be accessed as NV Storage\r\n", partition);
+    return CMD_FAILED;
+  }
   change_command_directory(0, KEYWORDS(nvs), PROMPT, "NVS editor/viewer");
-  context_set(partition);  
+  context_set(partition);  // ptr to a static buffer
   nv_set_cwd(NULL);        // update prompt and set cwd to "/"
   return 0;
 }
@@ -603,12 +609,9 @@ static int cmd_nvs_ls(int argc, char **argv) {
 //
 static int cmd_nvs_rm(int argc, char **argv) {
   
-  //int ret = CMD_FAILED;
-  //esp_err_t err;
   nvs_handle_t handle;
   const char *partition, *namespace;
   const char *p;
-  //bool is_key = false;
 
   if (argc < 2)
     return CMD_MISSING_ARG;
@@ -699,8 +702,8 @@ static int cmd_nvs_set(int argc, char **argv) {
         case NVS_TYPE_I16:  err = nvs_set_i16(handle,  argv[1], q_atoi(argv[2], 0)); break; 
         case NVS_TYPE_U32:  err = nvs_set_u32(handle,  argv[1], q_atol(argv[2], 0)); break; 
         case NVS_TYPE_I32:  err = nvs_set_i32(handle,  argv[1], q_atoi(argv[2], 0)); break; 
-        case NVS_TYPE_U64:  err = nvs_set_u64(handle,  argv[1], q_atol(argv[2], 0)); break; // TODO: q_atoll
-        case NVS_TYPE_I64:  err = nvs_set_i64(handle,  argv[1], q_atoi(argv[2], 0)); break; // TODO: q_atoii
+        case NVS_TYPE_U64:  err = nvs_set_u64(handle,  argv[1], q_atoll(argv[2], 0)); break;
+        case NVS_TYPE_I64:  err = nvs_set_i64(handle,  argv[1], q_atoii(argv[2], 0)); break;
         case NVS_TYPE_STR:   
         case NVS_TYPE_BLOB:
                             int siz;
@@ -850,7 +853,7 @@ static int cmd_nvs_new(int argc, char **argv) {
   }
 
   // Open corresponding NVS partition in read/write mode
-  // Convert user type definition to nvs_type_t, and call corresponding "setter" with dummy value
+  // Convert user type definition to nvs_type_t, and call corresponding "setter"
   if (nvs_open_from_partition(partition,namespace, NVS_READWRITE, &handle) == ESP_OK) {
     switch(ct2nt(size,is_str, is_blob, is_signed)) {
       case NVS_TYPE_U8:   err = nvs_set_u8(handle,   argv[1], (end < argc ? q_atol(argv[end], 0) : 0));   break; 
@@ -859,8 +862,8 @@ static int cmd_nvs_new(int argc, char **argv) {
       case NVS_TYPE_I16:  err = nvs_set_i16(handle,  argv[1], (end < argc ? q_atoi(argv[end], 0) : 0));   break; 
       case NVS_TYPE_U32:  err = nvs_set_u32(handle,  argv[1], (end < argc ? q_atol(argv[end], 0) : 0));   break; 
       case NVS_TYPE_I32:  err = nvs_set_i32(handle,  argv[1], (end < argc ? q_atoi(argv[end], 0) : 0));   break; 
-      case NVS_TYPE_U64:  err = nvs_set_u64(handle,  argv[1], (end < argc ? q_atol(argv[end], 0) : 0));   break; // TODO: q_atoll
-      case NVS_TYPE_I64:  err = nvs_set_i64(handle,  argv[1], (end < argc ? q_atoi(argv[end], 0) : 0));   break; // TODO: q_atoii
+      case NVS_TYPE_U64:  err = nvs_set_u64(handle,  argv[1], (end < argc ? q_atoll(argv[end], 0) : 0));   break;
+      case NVS_TYPE_I64:  err = nvs_set_i64(handle,  argv[1], (end < argc ? q_atoii(argv[end], 0) : 0));   break;
       case NVS_TYPE_STR:  if (end < argc)
                             userinput_join(argc, argv, end, &str);
                           err = nvs_set_str(handle,  argv[1], str);

@@ -110,7 +110,6 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
 #define q_yield() vPortYield()                    // run next task
 #define q_yield_from_isr() portYIELD_FROM_ISR()   // reschedule tasks
 
-
 //  -- Mutexes and Semaphores--
 
 // Mutexes and semaphores are initialized on first use (i.e. on first mutex_lock() / sem_lock() call)
@@ -1264,6 +1263,16 @@ static inline int q_atoi(const char *p, int def) {
   return isnum(p) ? atoi(p) : def;
 }
 
+// TODO: implement 64bit (long long int) version of q_atol
+static uint64_t q_atoll(const char *p, uint64_t def) {
+  return (uint64_t )q_atol(p, (unsigned int)def);
+}
+
+// TODO: implement 64bit (long long int) version of q_atoi
+static int64_t q_atoii(const char *p, uint64_t def) {
+  return (int64_t )q_atoi(p, (int)def);
+}
+
 
 // Safe conversion to /float/ type. Returns /def/ if conversion can not be done
 //
@@ -1532,9 +1541,6 @@ static void q_printhex(const unsigned char *p, unsigned int len) {
   }
 }
 
-
-
-
 // version of delay() which can be interrupted by user input (terminal
 // keypress)or by a "kill" command. If called from a different context (i.e. from a "background" command or
 // any task which is not an espshell_task) then it can not be interrupted by a keypress.
@@ -1587,7 +1593,8 @@ static unsigned int delay_interruptible(unsigned int duration) {
 }
 
 
-// Variable Sized Array.
+// -- Variable Sized Array --.
+//
 // Consist of blocks 256 bytes in size, linked into list.
 // Currently it is used only by task.h to keep track of running tasks and is the subject for removal
 //
@@ -1682,6 +1689,7 @@ vsa_t *vsa_find_slot(vsa_t **vsa0, int *slot0, vsaval_t value, bool create) {
 // Setting them to the same value results in a fully preallocated pool with no further calls to malloc().
 //
 
+// TODO: add "show pools" to dump() all memory pools info
 
 // Pool (struct mb_pool).
 //  each CPU core works with its own freelist;  a block is always returned to its owner core list;
@@ -1769,7 +1777,7 @@ static UNUSED bool mb_initialize(struct mb_pool *pool,
     for (cpu = 0; reserve > 0; reserve--) {
 
         // Allocate a buffer (one pool element) plus one extra byte to store the owner CPU ID
-        uint8_t *buf = (uint8_t *)malloc(pool->size + 1);
+        uint8_t *buf = (uint8_t *)q_malloc(pool->size + 1, MEM_MB);
         if (buf) {
 
             // Store the owner CPU ID at the very end of the buffer; cycle the CPU number
@@ -1801,54 +1809,61 @@ static UNUSED bool mb_initialize(struct mb_pool *pool,
 //
 static void *mb_get(struct mb_pool *mb) {
 
-    struct node_link *n;
-    uint8_t *ret = NULL;
-    size_t old;
-    int cpu = xPortGetCoreID();
+  struct node_link *n;
+  uint8_t *ret = NULL;
+  size_t old;
+  uint32_t cpu;
 
-    // Fast path: try to take a block from the local list
-    portENTER_CRITICAL(&mb->lock[cpu]);
+#ifdef __XTENSA__
+  cpu = xt_utils_get_core_id();
+#elif __riscv
+  cpu = rv_utils_get_core_id();
+#else
+#  error "Don't know how to read CPU core id :("
+#endif
 
-    if ((n = mb->local[cpu]) != NULL) {
-        mb->local[cpu] = n->next; // pop the list head
-        portEXIT_CRITICAL(&mb->lock[cpu]);
+  // Fast path: try to take a block from the local list
+  portENTER_CRITICAL(&mb->lock[cpu]);
 
-        // mark block owner
-        ret = (uint8_t *)n;
-        ret[mb->size] = cpu;   
-
-        // Fast path: success!
-        return ret;
-    }
-
-    // Slow path: freelist is empty, fall back to malloc()
+  if ((n = mb->local[cpu]) != NULL) {
+    mb->local[cpu] = n->next; // pop the list head
     portEXIT_CRITICAL(&mb->lock[cpu]);
 
-    // Atomically increment malloc counter and check against the limit.
-    do {
-        old = atomic_load_explicit(&mb->count, memory_order_relaxed); // TODO: can we move it out of the do/while() loop? Have to ask ChatGPT
-        if (mb->max_count && old >= mb->max_count) {
-            atomic_fetch_add_explicit(&mb->drops, 1, memory_order_relaxed);
-            return NULL;
-        }
-    } while (!atomic_compare_exchange_weak_explicit(&mb->count,
-                                                    &old,
-                                                    old + 1,
-                                                    memory_order_relaxed,
-                                                    memory_order_relaxed));
+    // mark block owner
+    ret = (uint8_t *)n;
+    ret[mb->size] = cpu;   
 
-    // Allocate block + 1 byte for owner CPU.
-    // The byte is placed at the end so pointer alignment is preserved
-    if (NULL != (ret = (uint8_t *)q_malloc(mb->size + 1, MEM_MB))) {
-        ret[mb->size] = cpu;
-        return ret;
+    // Fast path: success!
+    return ret;
+  }
+
+  // Slow path: freelist is empty, fall back to malloc()
+  portEXIT_CRITICAL(&mb->lock[cpu]);
+
+  // Atomically increment malloc counter and check against the limit.
+  do {
+    old = atomic_load_explicit(&mb->count, memory_order_relaxed);
+    if (mb->max_count && old >= mb->max_count) {
+      atomic_fetch_add_explicit(&mb->drops, 1, memory_order_relaxed);
+      return NULL;
     }
+  } while (!atomic_compare_exchange_weak_explicit(&mb->count,
+                                                  &old,
+                                                  old + 1,
+                                                  memory_order_relaxed,
+                                                  memory_order_relaxed));
 
-    // malloc() failed - roll back the counter
-    atomic_fetch_sub_explicit(&mb->count, 1, memory_order_relaxed);
-    return NULL;
+  // Allocate block + 1 byte for owner CPU.
+  // The byte is placed at the end so pointer alignment is preserved
+  if (NULL != (ret = (uint8_t *)q_malloc(mb->size + 1, MEM_MB))) {
+    ret[mb->size] = cpu;
+    return ret;
+  }
+
+  // malloc() failed - roll back the counter
+  atomic_fetch_sub_explicit(&mb->count, 1, memory_order_relaxed);
+  return NULL;
 }
-
 
 // Return an MB to the pool.
 // The memory returned to the pool must have been previously allocated via mb_get().
@@ -1858,36 +1873,38 @@ static void *mb_get(struct mb_pool *mb) {
 // (owner CPU), even if mb_put() is called from a different core.
 //
 // ISR NOTE:
-//  In the Xtensa FreeRTOS port, portENTER_CRITICAL is equivalent to
+//  In the Xtensaand RISCV FreeRTOS port, portENTER_CRITICAL is equivalent to
 //  portENTER_CRITICAL_ISR, so this function may be called from ISR,
 //  provided the MB resides in internal RAM (not SPIRAM).
 //
 static void mb_put(struct mb_pool *mb, void *p) {
 
-    if (!p)
-        return;
+  struct node_link *n = (struct node_link *)p;
+  uint8_t *c = (uint8_t *)p;
+  uint8_t cpu;
 
-    struct node_link *n = (struct node_link *)p;
-    uint8_t *c = (uint8_t *)p;
-    uint8_t cpu = c[mb->size];
+  if (unlikely(p == NULL))
+    return;
 
-    // Validate owner CPU
-    if (likely(cpu < portNUM_PROCESSORS)) {
+  cpu = c[mb->size];
 
-        portENTER_CRITICAL(&mb->lock[cpu]);
+  // Validate owner CPU
+  if (likely(cpu < portNUM_PROCESSORS)) {
 
-        // insert to the list head
-        n->next = mb->local[cpu];
-        mb->local[cpu] = n;
+    portENTER_CRITICAL(&mb->lock[cpu]);
 
-        portEXIT_CRITICAL(&mb->lock[cpu]);
+    // insert to the list head
+    n->next = mb->local[cpu];
+    mb->local[cpu] = n;
 
-    } else {
-        VERBOSE(abort());
-    }
+    portEXIT_CRITICAL(&mb->lock[cpu]);
+  } else {
+    // CPU ID field is damaged. Probably buffer overrun
+    MUST_NOT_HAPPEN(cpu >= portNUM_PROCESSORS);
+  }
 }
 
-// Debugging
+// Dump mb_pool information
 //
 static UNUSED void mb_dump(struct mb_pool *pool) {
 
