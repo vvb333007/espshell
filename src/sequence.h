@@ -10,26 +10,47 @@
  * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
-//  -- RMT Sequences --
+// -- RMT Sequences --
 //
-// THERMINOLOGY: A "level" : either logic 1 or logic 0 for a duration of X ticks
-//               A "pulse" : two levels: e.g. logic 0 for X ticks THEN logic 1 for Y ticks
-//               "bits"    : user defined asciiz string consisting of "1" and "0"
-//               "bytes"   : user defined asciiz string representing a byte string: "1af4c675..."
-//                 "one"   : what is "1" - can be a simple level or a pulse
-//                 "zero"  : what is "0" -        -- // --
-//               "levels"  : manually entered levels (instead of entering "bits", "one" and "zero")
-//                           NOTE: when used, "bits"/"bytes" are compiled to "levels" automatically
-//           "modulation"  : levels can be modulated with a carrier frequency. either 1's or 0's gets modulated
-//                  "eot"  : End OF Transmission behaviour - hold line HIGH or LOW after the transmission is done
+// TERMINOLOGY:
 //
-// Sequences: the data structure defining a sequence of pulses (levels) to
-// be transmitted. Sequences are used to generate an user-defined LOW/HIGH
-// pulses train on an arbitrary GPIO pin using ESP32's hardware RMT peri
+// A "level"  : a logic 1 or logic 0 held for X ticks
+// A "pulse"  : two consecutive levels,
+//              e.g. logic 0 for X ticks, then logic 1 for Y ticks
 //
-// These are used by "sequence X" command (and by a sequence subdirectory
-// commands as well) (see seq_...() functions and cmd_sequence_if() function)
+// "bits"    : a user-defined ASCIIZ string consisting of '1' and '0'
+// "bytes"   : a user-defined ASCIIZ string representing a byte stream,
+//              e.g. "1af4c675..."
 //
+// "one"     : representation of logical '1'
+//              (can be a single level or a pulse)
+// "zero"    : representation of logical '0'
+//              (can be a single level or a pulse)
+//
+// "head"    : a pulse prepended before the main sequence body
+// "tail"    : a level appended to the end of the main sequence body
+//
+// "levels"  : manually specified levels
+//              (instead of using "bits", "one", and "zero")
+//              NOTE: when used, "bits"/"bytes" are automatically
+//              compiled into "levels"
+//
+// "modulation":
+//              levels can be modulated with a carrier frequency.
+//              Either logical '1' or '0' can be modulated.
+//
+// "eot"     : End Of Transmission behavior —
+//              whether the line is held HIGH or LOW
+//              after transmission is complete
+//
+// Sequences:
+// A data structure defining a sequence of pulses (levels)
+// to be transmitted. Sequences are used to generate a
+// user-defined LOW/HIGH pulse train on an arbitrary GPIO
+// using the ESP32 hardware RMT peripheral.
+//
+// Used by the "sequence X" command (and sequence subcommands).
+// See seq_*() functions and cmd_sequence_if().
 
 // TODO: When padding, use zero rmt item, so user input will not be altered
 // TODO: RMT RX, RMT decode
@@ -42,7 +63,7 @@
 // structure holding a sequence description
 struct sequence {
 
-  float tick;                  // uSeconds.  1000000 = 1 second.   0.1 = 0.1uS
+  float tick;                  // Tick length in microseconds. Valid range is 1/[APB_freq .. APB_freq / 256]
   float mod_duty;              // modulator duty
   unsigned int mod_freq : 30;  // modulator frequency
   unsigned int mod_high : 1;   // modulate "1"s or "0"s
@@ -52,7 +73,7 @@ struct sequence {
   unsigned int loop_count;     // only used if >1, specifies loop count for the sequence
                                // value of (unsigned int)(-1) means loop infinitely
   int seq_len;                 // how many rmt_data_t items is in "seq"
-  rmt_data_t *seq;             // array of rmt_data_t TODO: preallocate +2 symbols for, possible, tail & head
+  rmt_data_t *seq;             // array of rmt_data_t
   rmt_data_t alph[2];          // alphabet. representation of "0" and "1"
   rmt_data_t ht[2];            // "head" [0] and "tail" [1]. TODO: make 2 members with proper names
   
@@ -71,13 +92,17 @@ struct sequence {
 // sequences
 static struct sequence sequences[SEQUENCES_NUM] = { 0 };
 
-// calculate frequency from the tick length
+// calculate frequency from the tick length.
+// NOTE: Frequency ranges from 312Khz to ~80MHz so unsigned long is enough here
 // 0.1uS = 10Mhz
-unsigned long __attribute__((const)) seq_tick2freq(const float tick_us) {
+static unsigned long __attribute__((const)) seq_tick2freq(const float tick_us) {
 
   return tick_us ? (unsigned long)((float)1000000 / tick_us) : 0;
 }
 
+// Free memory used to store compiled RMT data (.seq) only
+//
+//
 static void seq_drop_levels(int seq) {
   if (seq >= 0 && seq < SEQUENCES_NUM)
     if (sequences[seq].seq) {
@@ -86,31 +111,36 @@ static void seq_drop_levels(int seq) {
     }
 }
 
-// free memory buffers associated with the sequence:
-// ->"bits" and ->"seq"
+// Free memory buffers associated with the sequence:
+// ->"bits" and ->"seq" (Everything)
+//
 static void seq_freemem(int seq) {
 
-  if (sequences[seq].bits) {
-    q_free(sequences[seq].bits);
-    sequences[seq].bits = NULL;
-  }
-  if (sequences[seq].bytes) {
-    q_free(sequences[seq].bytes);
-    sequences[seq].bytes = NULL;
-  }
-  if (sequences[seq].seq) {
-    q_free(sequences[seq].seq);
-    sequences[seq].seq = NULL;
+  if (seq >= 0 && seq < SEQUENCES_NUM) {
+
+    if (sequences[seq].bits) {
+      q_free(sequences[seq].bits);
+      sequences[seq].bits = NULL;
+    }
+    if (sequences[seq].bytes) {
+      q_free(sequences[seq].bytes);
+      sequences[seq].bytes = NULL;
+    }
+    if (sequences[seq].seq) {
+      q_free(sequences[seq].seq);
+      sequences[seq].seq = NULL;
+    }
   }
 }
 
 // initialize/reset sequences to default values
+// called by CRT on startup
 //
 static void __attribute__((constructor)) _seq_init() {
   rmt_data_t zero = { 0 };
   for (int i = 0; i < SEQUENCES_NUM; i++) {
     sequences[i].tick = 1;
-    seq_freemem(i);
+    seq_freemem(i); // TODO: ???
     sequences[i].alph[0] = zero;
     sequences[i].alph[1] = zero;
     sequences[i].ht[0] = zero;
@@ -225,18 +255,18 @@ static void seq_show(unsigned int seq) {
 }
 
 
-
-// convert a level string to numerical values:
-// "1/500" gets converted to level=1 and duration=500
-// level is either 0 or 1, duration IS IN RANGE  0..32767. If duration is "/" then
-// it is set to the maximum value of 32767
+// Convert a level string into numeric values:
+// "1/500" is parsed as level = 1 and duration = 500.
 //
-// called with first two arguments set to NULL performs
-// syntax check on arguments only
+// Level is either 0 or 1: anything else will be treated as an error.
+// Duration must be in the range 0..32767.
+// If the duration part is "/" only, it is set to the maximum value (32767).
 //
-// returns 0 on success, <0 - syntax error
+// If called with the first two arguments set to NULL,
+// the function performs syntax checking only.
 //
-
+// Returns 0 on success, < 0 on syntax error.
+//
 static int seq_atol(int *level, int *duration, char *p) {
   if (p && (p[0] == '0' || p[0] == '1') && (p[1] == '/' || p[1] == '\\')) {
     unsigned int d;
@@ -804,10 +834,6 @@ static int cmd_show_sequence(int argc, char **argv) {
   return 0;
 }
 
-static int cmd_seq_bytes(int argc, char **argv) {
-  q_print("% Not implemented yet, use \"bits\"\r\n");
-  return 0;
-}
 
 // "loop [NUM|none]"
 //
@@ -904,16 +930,33 @@ static int cmd_seq_save(int argc, char **argv) {
 }
 #endif // WITH_FS
 
+// "bytes Hello \21\22\23\45"
+//
+//
+static int cmd_seq_bytes(int argc, char **argv) {
+  q_print("% Not implemented yet, use \"bits\"\r\n");
+  return 0;
+}
+
+// decode 
+//
+//
 static UNUSED int cmd_seq_decode(int argc, char **argv) {
   q_print("% RTM-RX: Not implemented yet, wait for the next version\r\n");
   return 0;
 }
 
+// capture SYM_NUM|all [TIMEOUT_MILLIS]
+//
+//
 static UNUSED int cmd_seq_capture(int argc, char **argv) {
   q_print("% RTM-RX: Not implemented yet, wait for the next version\r\n");
   return 0;
 }
 
+// "profile nec|samsung|lg|lg32"
+//
+//
 static UNUSED int cmd_seq_profile(int argc, char **argv) {
   q_print("% RTM-RX: Not implemented yet, wait for the next version\r\n");
   return 0;

@@ -29,9 +29,11 @@
 // to initialize their environment (Context, keywords and Cwd). Case 3 does not do any setup and as a result, these
 // generic tasks must not access Context, keywords or Cwd thread-local variables
 //
-// TODO: disable task watchdogs on all cores!
+//
 
 #if COMPILING_ESPSHELL
+
+
 
 #define task_t     TaskHandle_t
 #define taskfunc_t TaskFunction_t
@@ -49,8 +51,6 @@ static uint8_t shell_prio = 2; // Default shell priority (Inherited by spawned t
 
 // CPU core number ESPShell is running on. For a single core system it is always 0.
 // Tasks, that are created by ESPShell are pinned to the "shell_core"
-//
-// TODO: make it a convar;
 //
 
 // Workaround for USB-CDC (see https://github.com/espressif/arduino-esp32/issues/11959)
@@ -85,6 +85,7 @@ static uint8_t shell_core = 0;
 #  define taskid_remember(value) {}     //  do nothing
 #  define taskid_forget(value) {}       //  do nothing
 #else                                   // Old Arduino Core
+// TODO: remove by 1.0.0
 static vsa_t *task_list = 0;            //  variable-sized array to hold active tasks list
 #  warning "TraceFacility is disabled in ESP-IDF: Limited task module functionality"
 #  define taskid_remember(value) \
@@ -161,7 +162,7 @@ static vsa_t *task_list = 0;            //  variable-sized array to hold active 
 // Start a new thread on the same core espshell is running, remember the task_id.
 // With trace facility enabled, this and other macros here have zero overhead comparing to plain FreeRTOS API
 //
-//
+// _Core can be 0, 1 or tskNO_AFFINITY
 #define task_new(_Func, _Arg, _Name, _Core) \
   ({ \
     task_t handle = NULL; \
@@ -279,10 +280,10 @@ static INLINE bool is_background_task() {
 
 
 // A task argument structure passed to newly created tasks (e.g., amp_helper_task(void *arg)
-// or alias_helper_task(void *arg)).
+// or alias_helper_task(void *arg))
 //
 // The last three members (keywords, cwd, and context) hold the current keyword tree, the Context value, 
-// and the filesystem’s current working directory.
+// and the filesystem's current working directory (freed by task_finished()).
 //
 // These members are populated by ha_get(), which copies the current values of /Context/, /keywords/, 
 // and /Cwd/ into the corresponding fields of helper_arg. 
@@ -299,13 +300,13 @@ static INLINE bool is_background_task() {
 // Using a union would technically work but defeats the idea of having "permanent pointers"
 //
 struct helper_arg {
-    struct helper_arg       *next;     // Only relevant for items on the "unused" list
+    struct helper_arg       *next;     // TODO: remove. mb_get()/mb_put() manage this
     struct alias            *al;
     argcargv_t              *aa;
     uint32_t                 delay_ms;
     __typeof__(Context)      context;  // Task must copy this into the /Context/ thread variable
     const struct keywords_t *keywords; // Task must copy this into the /keywords/ thread variable
-    const char              *cwd;      // Thread-local /Cwd/ variable. Allocated via malloc(), must be freed before call to task_finished()
+    char                    *cwd;      // Task must call files_set_cwd( ha->cwd )
 };
 
 
@@ -319,37 +320,21 @@ struct helper_arg {
 // Second reason is to keep pointers persistent - so any stored pointer always points 
 // to a valid memory region
 //
-static _Atomic(struct helper_arg *) ha_unused = NULL;
+static struct mb_pool ha_pool = MB_POOL(sizeof(struct helper_arg),0);
 
-// Allocate new helper_arg - either via malloc() or reuse entries from the LIFO buffer
-// We don't care about ABA problem: it is handled outside of this code
+// Allocate new helper_arg, copy current Context, keywords and the CWD
 //
 static struct helper_arg *ha_get() {
 
   struct helper_arg *ret;
 
-  // If we have anything on our "unused" list - reuse (pop) its first element.
-  // If "unused" list is empty - just use malloc()
-  do {
-    ret = atomic_load_explicit(&ha_unused, memory_order_acquire);
-    if (!ret)
-      break;
-  } while (!atomic_compare_exchange_strong_explicit(&ha_unused,            // store to
-                                                    &ret,                  // .. if ret == ha_unused
-                                                    ret->next,             // store what
-                                                    memory_order_relaxed,  // Success mo
-                                                    memory_order_relaxed   // Failure mo
-                                                   ));
-
-  if (!ret)
-    ret = (struct helper_arg *)q_malloc(sizeof(struct helper_arg ), MEM_HA); // TODO: use dedicated MEM_HA
-
-  // Fill common fields: /Context/, /keywords/ and /Cwd/. These fields will be used by a spawned task,
-  // to set its corresponding "global" (actually, __thread) variables.
-  if (ret) {
+  // Populate common fields: /Context/, /keywords/ and /Cwd/. These fields will be used by a spawned task,
+  // to set its corresponding "global" (actually, __thread) variables. The rest is populated by the caller
+  //
+  if (NULL != (ret = mb_get(&ha_pool))) {
     ret->context = context_get();
     ret->keywords = keywords_get();
-    ret->cwd = files_get_cwd();
+    ret->cwd = q_strdup(files_get_cwd(), MEM_TMP); // its ok if strdup() return NULL; files_get_cwd() never return NULL
   }
 
   return ret;
@@ -357,22 +342,9 @@ static struct helper_arg *ha_get() {
 
 // Put /ha/ on unused list.
 //
-static void ha_put(struct helper_arg *ha) {
-  // code below does this:
-  //   ha->next = ha_unused;
-  //   ha_unused = ha;
+static inline void ha_put(struct helper_arg *ha) {
 
-  if (likely(ha != NULL)) {
-    
-    do {
-      ha->next = atomic_load_explicit(&ha_unused, memory_order_relaxed);
-    } while (!atomic_compare_exchange_strong_explicit(&ha_unused,
-                                                   &ha->next,
-                                                    ha,
-                                                    memory_order_release,
-                                                    memory_order_relaxed
-                                                  ));
-  }
+    mb_put(&ha_pool, ha);
 }
 
 // Older versions of  ESP-IDF had FreeRTOS Trace Facility disabled, so we had to use an ugly workaround 
@@ -581,7 +553,6 @@ static int cmd_kill(int argc, char **argv) {
     } else
       // -term, -hup and other signals are sent directly to the task
       task_signal(taskid, sig);
-      //task_signal(taskid, SIGNAL_KILL);
 
   } else
     return i;

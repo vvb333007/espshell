@@ -62,10 +62,11 @@ static void userinput_ref(argcargv_t *a) {
 // Decrease refcounter
 // When refcounter hits zero the whole argcargv gets freed
 // a == NULL is ok
-//
+// TODO: make lockless version
+// TODO: make aa_get() and aa_put()
 static void userinput_unref(argcargv_t *a) {
   if (a) {
-    mutex_lock(argv_mux); // TODO: try to make lockless version
+    mutex_lock(argv_mux); 
     MUST_NOT_HAPPEN(a->ref < 1);
     a->ref--;
     // ref dropped to zero: delete everything
@@ -80,12 +81,9 @@ static void userinput_unref(argcargv_t *a) {
         q_free(a->userinput);
 
       // AA itself.
-      // TODO: do not q_free(), but instead return to the pool of "free" entries
-      //       where userinput_tokenize() can reuse them
-
       q_free(a);
     }
-    mutex_unlock(argv_mux); // TODO: execute immediately after ref--
+    mutex_unlock(argv_mux);
   }
 }
 
@@ -123,6 +121,7 @@ static argcargv_t *userinput_tokenize(char *userinput) {
   if (userinput && *userinput) {
 
     // allocate argcargv
+    // TODO: use aa_get() / _put() semantics
     if ((a = (argcargv_t *)q_malloc(sizeof(argcargv_t), MEM_ARGCARGV)) != NULL) {
 
       // use editline's argify() to extract tokens
@@ -194,6 +193,7 @@ static void userinput_redraw() {
 //         CMD_NOT_FOUND on "no such command"
 //         CMD_MISSING_ARG on "wrong number of arguments"
 //
+
 static int userinput_find_handler(argcargv_t *aa) {
 
   int i;

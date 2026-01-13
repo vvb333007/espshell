@@ -193,7 +193,6 @@ static const char *files_set_cwd(const char *cwd) {
   int len;
   static char prom[MAX_PATH + MAX_PROMPT_LEN] = { 0 };  // TODO: make it dynamic, it is too big
 
-  // TODO: allocate Cwd buffer once. Set its size to MAX_PATH+16
   if (Cwd != cwd) {
     if (Cwd) {
       q_free(Cwd);
@@ -491,13 +490,71 @@ static INLINE bool files_mountpoint_is_sdspi(int mpi) {
   return mountpoints[mpi].gpp != NULL;
 }
 
+// Return total bytes available on mounted filesystem index i (index in mountpoints[i])
+// 
+static bool files_usage_stats(int i, uint64_t *total, uint64_t *used, uint64_t *avail) {
+
+  size_t total0, used0;
+
+  // Guarantees no unitialized values
+  if (total) *total = 0;
+  if (used)  *used = 0;
+  if (avail) *avail = 0;
+  
+  MUST_NOT_HAPPEN(i >= MOUNTPOINTS_NUM);
+
+  switch (mountpoints[i].type) {
+#if WITH_FAT
+    case ESP_PARTITION_SUBTYPE_DATA_FAT:
+    // FAT is special: its info getter returns /total/ and /free/ unlike spiffs and littlefs
+    // which return /total/ and /used/. Also, the first arg is a mountpoint, not partition
+      if (ESP_OK != esp_vfs_fat_info(mountpoints[i].mp, total, avail))
+        return false;
+      if (used)
+        *used = total - avail;
+      break;
+#endif
+
+#if WITH_LITTLEFS
+    case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS:
+      if (esp_littlefs_info(mountpoints[i].label, &total0, &used0))
+        return false;
+      if (avail)
+        *avail = total0 - used0;
+      break;
+#endif
+
+#if WITH_SPIFFS
+    case ESP_PARTITION_SUBTYPE_DATA_SPIFFS:
+      if (esp_spiffs_info(mountpoints[i].label, &total0, &used0))
+        return false;
+      if (avail)
+        *avail = total0 - used0;
+      break;
+#endif
+    default:
+      return false;
+  }
+  return true;
+}
+
+
+// Called as a part of "show mount PATH" command
+//
+//
 static int files_show_mountpoint(const char *path) {
+  
   int mpi;
   if ((mpi = files_mountpoint_by_path(path, true)) >= 0) {
 
-    q_printf("%% Mount point \"%s\", %s, (partition label is \"%s\")\r\n",mountpoints[mpi].mp,files_subtype2text(mountpoints[mpi].type), mountpoints[mpi].label);
+    q_printf("%% Mount point \"%s\", %s, (partition label is \"%s\")\r\n",
+                mountpoints[mpi].mp,
+                files_subtype2text(mountpoints[mpi].type),
+                mountpoints[mpi].label);
 #if WITH_FAT
-    q_printf("%% Wear-levelling layer is %sactive on this media\r\n",mountpoints[mpi].wl_handle == WL_INVALID_HANDLE ? "NOT " : "");
+    q_printf("%% Wear-levelling layer is %sactive on this media\r\n",
+              mountpoints[mpi].wl_handle == WL_INVALID_HANDLE ? "NOT "
+                                                              : "");
 #endif
 #if WITH_SD
     if (files_mountpoint_is_sdspi(mpi)) {
@@ -508,84 +565,27 @@ static int files_show_mountpoint(const char *path) {
       sdmmc_card_print_info(stdout, card);
     } else
 #endif  
-    q_print("% Filesystem is located on internal SPI FLASH\r\n");
-    // TODO: display sizes/usage
-    // TODO: for FAT partition display sector size, number of FAT's
+    {
+      uint64_t avail, used, total;
+      q_print("% Filesystem is located on internal SPI FLASH\r\n");
+      if (files_usage_stats(mpi, &total, &used, &avail))
+        q_printf("%% Total: %uK, used: %uK, available: %uK\r\n",
+                  (unsigned int)(total / 1024),
+                  (unsigned int)(used / 1024),
+                  (unsigned int)(avail / 1024));
+    }
+
     return 0;
   } else
-    q_printf("%% Can't find anything simialr to \"%s\"\r\n",path);
+    q_printf("%% Mount point \"%s\" does not exist\r\n",path);
   return -1;
 }
 
-// Return total bytes available on mounted filesystem index i (index in mountpoints[i])
-// esp_err_t esp_vfs_fat_info(const char* base_path, uint64_t* out_total_bytes, uint64_t* out_free_bytes);
-static unsigned int files_space_total(int i) {
 
-  switch (mountpoints[i].type) {
-#if WITH_FAT
-    case ESP_PARTITION_SUBTYPE_DATA_FAT:
-    // FAT is special: its info getter returns /total/ and /free/ unlike spiffs and littlefs
-    // which return /total/ and /used/. Also, the first arg is a mountpoint, not partition
-      uint64_t total0, free0;
-      if (ESP_OK != esp_vfs_fat_info(mountpoints[i].mp, &total0, &free0))
-        return 0;
-      return total0;
-#endif
-
-#if WITH_LITTLEFS
-    case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS:
-      size_t total, used;
-      if (esp_littlefs_info(mountpoints[i].label, &total, &used))
-        return 0;
-      return total;
-#endif
-#if WITH_SPIFFS
-    case ESP_PARTITION_SUBTYPE_DATA_SPIFFS:
-      if (esp_spiffs_info(mountpoints[i].label, &total, &used))
-        return 0;
-      return total;
-#endif
-    default:
-  }
-  return 0;
-}
-
-// return amount of space available for allocating
-//
-static unsigned int files_space_free(int i) {
-  switch (mountpoints[i].type) {
-
-#if WITH_FAT
-    case ESP_PARTITION_SUBTYPE_DATA_FAT:
-      // FAT is special: its info getter returns /total/ and /free/ unlike spiffs and littlefs
-      // which return /total/ and /used/. Also, the first arg is a mountpoint, not partition
-      uint64_t total0, free0;
-      if (ESP_OK != esp_vfs_fat_info(mountpoints[i].mp, &total0, &free0))
-        return 0;
-      return free0;
-#endif
-
-#if WITH_LITTLEFS
-    case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS:
-      size_t total, used;
-      if (esp_littlefs_info(mountpoints[i].label, &total, &used))
-        return 0;
-      return total - used;
-#endif
-
-#if WITH_SPIFFS
-    case ESP_PARTITION_SUBTYPE_DATA_SPIFFS:
-      if (esp_spiffs_info(mountpoints[i].label, &total, &used))
-        return 0;
-      return total - used;
-#endif
-    default:
-  }
-  return 0;
-}
-
-// handy macro
-#define files_space_used(I) (files_space_total(I) - files_space_free(I))
+// TODO: these were functions. Refactor the code to use files usage_stats instead of files_space_XXX()
+#define files_space_total(I) ({ uint64_t total; files_usage_stats(I, &total, NULL, NULL); total; })
+#define files_space_free(I)  ({ uint64_t avail; files_usage_stats(I, NULL, NULL, &avail); avail; })
+#define files_space_used(I)  ({ uint64_t used;  files_usage_stats(I, NULL, &used, NULL); used; })
 
 // callback which is called by files_walkdir() on every entry it founds.
 typedef int (*files_walker_t)(const char *path, void *aux);
@@ -597,6 +597,10 @@ typedef int (*files_walker_t)(const char *path, void *aux);
 //
 // dirs_first cpntrols the order of calling file_cb and dir_cb: if /false/ then dirs reported after files (rm scenario)
 // if it set to /true/ then dirs reported before files (cp scenario)
+//
+// Every nested call consumes strlen(path) + 256 bytes of DRAM i.e. can reach tenth of kbytes for deeply
+// nested directories.
+// 
 //
 static unsigned int files_dirwalk(const char *path0, 
                                   files_walker_t files_cb,
@@ -613,8 +617,9 @@ static unsigned int files_dirwalk(const char *path0,
   if (depth < 1)
     return 0;
 
-  // figure out full path, if needed
-  if ((path = q_strdup256(files_full_path(path0, PROCESS_ASTERISK), MEM_PATH)) == NULL)
+  // figure out full path, allocate a buffer which has enough room to append a filename/dirname.
+  //
+  if ((path = q_strdup_tailroom(files_full_path(path0, PROCESS_ASTERISK), MAX_FILENAME, MEM_PATH)) == NULL)
     return 0;
 
   if ((len = strlen(path)) > 0) {
@@ -632,31 +637,46 @@ static unsigned int files_dirwalk(const char *path0,
         struct dirent *de;
         while ((de = readdir(dir)) != NULL) {
 
-          // path buffer has 256 bytes extra space
-          // TODO: refactor this. and ugly strdup256 too
-          if (strlen(de->d_name) < MAX_FILENAME) {
-            path[len] = '\0';          // cut off previous addition
-            strcat(path, de->d_name);  // add entry name to our path
+          size_t len_de = strlen(de->d_name);
 
-            // if its a directory - call recursively
-            if (de->d_type == DT_DIR) {
-              if (dirs_first && dirs_cb)
-                processed += dirs_cb(path, arg);
-              processed += files_dirwalk(path, files_cb, dirs_cb, arg, dirs_first, depth - 1);
-            } else if (files_cb)
-              processed += files_cb(path, arg);
+          // Invalid entries are filtered out: path buffer only has MAX_FILENAME bytes as its tailroom
+          if (len_de >= MAX_FILENAME) {
+            VERBOSE(q_print("% len_de > MAX_FILENAME\r\n"));
+            continue;
           }
+
+          // Path buffer has tailroom but we still limit total path length to be MAX_PATH
+          if (len_de + len >= MAX_PATH) {
+            VERBOSE(q_printf("%% path=\"%s\", d_name=\"%s\", path is too long\r\n", path, de->d_name));
+            continue;
+          }
+
+          path[len] = '\0';          // cut off previous addition (made by this recursive function)
+          strcat(path, de->d_name);  // add entry name to our path.
+
+          // if its a directory - call recursively
+          if (de->d_type == DT_DIR) {
+            // If dirs go first, then we process dirs here
+            if (dirs_first && dirs_cb)
+              processed += dirs_cb(path, arg);
+            processed += files_dirwalk(path, files_cb, dirs_cb, arg, dirs_first, depth - 1);
+          } else if (files_cb)
+            processed += files_cb(path, arg);
         }
         closedir(dir);
+
+        // If dirs go last, then we process this here, after we have all files enumerated
         if (!dirs_first && dirs_cb) {
           path[len] = '\0';
           processed += dirs_cb(path, arg);
         }
-      }
-    }
-  }
+      } // if opendir was ok
+    } // if path exists (dir)
+  } // if path is not empty string
+
   if (path)
     q_free(path);
+
   return processed;
 }
 
@@ -1813,7 +1833,10 @@ static int cmd_files_mount0(int argc, char **argv) {
 
         if ((i = files_mountpoint_by_label(part->label)) >= 0)
           // "mountpoint" "total fs size" "available fs size"
-          q_printf("%16s | %6uK | %6uK\r\n", mountpoints[i].mp, files_space_total(i) / 1024, files_space_free(i) / 1024);
+          q_printf("%16s | %6uK | %6uK\r\n", 
+                    mountpoints[i].mp,
+                    (unsigned int)(files_space_total(i) / 1024),
+                    (unsigned int)(files_space_free(i) / 1024));
         else
           q_print("                 |         |\r\n");
 #if WITH_COLOR
@@ -1857,9 +1880,17 @@ static int cmd_files_mount0(int argc, char **argv) {
     if (files_mountpoint_is_sdspi(i)) {
       sdmmc_card_t *card = (sdmmc_card_t *)mountpoints[i].gpp;
       if (card) {
-        q_printf("%% %s: <i>%9s|+|%s| %6uM | ",sd_type(i), mountpoints[i].label, files_subtype2text(mountpoints[i].type), sd_capacity_mb(i));
+        q_printf("%% %s: <i>%9s|+|%s| %6uM | ",
+                sd_type(i),
+                mountpoints[i].label,
+                files_subtype2text(mountpoints[i].type),
+                sd_capacity_mb(i));
+
         // TODO: check if it works after the last FAT update in ESP-IDF
-        q_printf("%16s | %6uK | %6uK</>\r\n", mountpoints[i].mp, files_space_total(i) / 1024, files_space_free(i) / 1024);
+        q_printf("%16s | %6uK | %6uK</>\r\n",
+                  mountpoints[i].mp,
+                  (unsigned int)(files_space_total(i) / 1024),
+                  (unsigned int)(files_space_free(i) / 1024));
         usable++;
       }
     }
@@ -1959,11 +1990,13 @@ static int cmd_files_ls(int argc, char **argv) {
     for (int i = 0; i < MOUNTPOINTS_NUM; i++)
       if (mountpoints[i].mp) {
         if (!found) {
-          q_print("%-- USED --        *  Mounted on\r\n");
+          q_print("%-- Used space, Kbytes --        *  Mounted on\r\n");
           found = true;
         }
         
-        q_printf("%% <b>%9u</>       MP  [<i>%s</>]\r\n", files_space_used(i), mountpoints[i].mp);
+        q_printf("%%         <b>%9u K</>               MP  [<i>%s</>]\r\n",
+                  (unsigned int)(files_space_used(i) / 1024),
+                  mountpoints[i].mp);
         
       }
     if (!found)

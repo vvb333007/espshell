@@ -1989,28 +1989,28 @@ KEYWORDS_DECL(main) {
     NULL },
 
   { "if", HELP_ONLY,
-    HELPK("% \"<b>if delete NUM\"\r\n"
-          "% \"<b>if delete all\"\r\n"
-          "% \"<b>if delete gpio</> NUM\"\r\n"
-          "% \"<b>if delete poll\"\r\n"
+    HELPK("% \"<b>if delete NUM | all | poll | gpio NUM\"\r\n"
+          "% \"<b>every delete NUM | all\"\r\n"
           "%\r\n"
-          "% Delete an \"if\" condition: by its ID, by GPIO number, or all of them\r\n"
-          "% (NOTE: Use \"show ifs\" to list all conditions and see their IDs)\r\n"
+          "% Delete an \"if\" or \"every\" condition: by its ID, by GPIO number,\r\n"
+          "% only polled entries or all of them. (NOTE: Use \"show ifs\" to list all\r\n"
+          "% conditions and see their IDs)\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <b>if delete <i>6</></>      : delete condition #6\r\n"
           "%   <b>if delete <i>all</></>    : delete all conditions (all means ALL)\r\n"
           "%   <b>if delete <i>gpio 7</></> : delete rising/falling conditions assigned to GPIO 7\r\n"
           "%   <b>if delete <i>poll</></>   : delete all entries with the \"poll\" keyword\r\n"
+          "%   <b>every delete <i>8</></>   : delete vondition #8\r\n"
           ), 
     NULL },
 
   { "if", HELP_ONLY,
-    HELPK("% \"<b>if clear [<o>gpio</>] NUM\"\r\n"
-          "% \"<b>if clear all\"\r\n"
+    HELPK("% \"<b>if clear NUM | all | poll | gpio NUM\"\r\n"
+          "% \"<b>every clear NUM | all\"\r\n"
           "%\r\n"
-          "% Clear counters (hit count & timestamp) for a given \"if\" condition\r\n"
-          "% Clear by its ID, by a GPIO number, or clear all of them\r\n"
+          "% Clear counters (hit count and timestamp) for a given \"if\" or \"every\"\r\n"
+          "% Clear by its ID, by a GPIO number, only polled entries or clear all of them\r\n"
           "% Main use is to reset conditions that have hit their \"max-exec\" limit\r\n"
           "%\r\n"
           "% Use \"<i>show ifs</>\" to list all conditions and see their IDs\r\n"
@@ -2020,6 +2020,7 @@ KEYWORDS_DECL(main) {
           "%   <i>if clear all</>     : Clear counters for all conditions (all, means ALL)\r\n"
           "%   <i>if clear gpio 7</>  : Clear counters for rising/falling conditions of GPIO#7"
           "%   <i>if clear poll</></> : Clear counters for entries with the \"poll\" keyword\r\n"
+          "%   <i>every clear 8</>       : Clear counters for condition #6\r\n"
           ),
     NULL },
 
@@ -2032,8 +2033,9 @@ KEYWORDS_DECL(main) {
           "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <b>if disable <i>6</>      : disable condition #6\r\n"
-          "%   <b>every disable <i>all</> : disable all \"every\" conditions\r\n"
+          "%   <b>if disable <i>all</>    : disable all conditions\r\n"
           "%   <b>if enable <i>all</>     : Enable processing of all \"if\" conditions"
+          "%   <b>every disable <i>8</>   : disable condition #8\r\n"
           ),
     NULL },
 
@@ -2044,8 +2046,8 @@ KEYWORDS_DECL(main) {
           "% Save if/every statements to a file\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <b>if save <i>* /ffat/test.txt</> : Save all entries\r\n"
-          "%   <b>if save <i>1 /ffat/test2</>    : Save \"if\" entry #1"), NULL },
+          "%   <b>if save <i>* /ffat/test.txt</> : Save all \"if\" entries\r\n"
+          "%   <b>every save <i>1 /ffat/test2</> : Save \"every\" entry #1"), NULL },
 // TODO: must use read_timespec()
   { "every", cmd_if, MANY_ARGS,
     HELPK("% \"<b>every <i>TIME</> [<o>delay MILLIS</>] [<o>max-exec NUM</>] exec <i>ALIAS</>\"\r\n"
@@ -2062,47 +2064,26 @@ KEYWORDS_DECL(main) {
           "%   <i>every 5 sec delay 50000 exec my_alias</>\r\n"
           "%   <i>every 5 sec delay 50000 max-exec 7 exec my_alias</>"
           ), "Periodic events" },
-
-  { "every", HELP_ONLY,
-    HELPK("% \"<b>every delete</> <i>NUM</>\"\r\n"
-          "%\r\n"
-          "% Delete an \"every\" condition by its ID\r\n"
-          "% (NOTE: Use \"show ifs\" to list all conditions and see their IDs)\r\n"
-          "%\r\n"
-          "% <u>Examples:</>\r\n"
-          "%   <b>every delete <i>6</>        : delete condition #6"), NULL },
-
-  { "every", HELP_ONLY,
-    HELPK("% \"<b>every clear</> <i>NUM</>\"\r\n"
-          "%\r\n"
-          "% Clear counters (hit count & timestamp) for the given \"every\" condition\r\n"
-          "% Use \"<i>show ifs</>\" to list all conditions and see their IDs\r\n"
-          "% Use \"<i>every clear</>\" to reset conditions with the \"max-exec\" attribute\r\n"
-          "%\r\n"
-          "% <u>Examples:</>\r\n"
-          "%   <i>every clear 6</>        : Clear condition #6"), NULL },
-
+#endif //ALIAS
+#if WITH_ALIAS || WITH_FS
   { "exec", cmd_exec, MANY_ARGS,
     HELPK("% \"<b>exec NAME [NAME NAME ... NAME ]</>\"\r\n"
           "%\r\n"
-          "% Execute an alias (or multiple aliases if more than one NAME is provided)\r\n"
-          "% Aliases are <u>lists of commands</u>; use \"alias\" to create or edit them\r\n"
+          "% a) Execute an alias (or multiple aliases if more than one NAME is provided)\r\n"
+          "%    Aliases are <u>lists of commands</u>; use \"alias\" to create or edit them\r\n"
+          "%\r\n"
+          "% b) Execute a shell script from the filesystem, a file named /NAME\r\n"
+          "%    The filesystem must be mounted, and /FILE_NAME must start with \"/\"\r\n"
+          "%    (File path must be absolute hence the \"/\")\r\n"
           "%\r\n"
           "% <u>Examples</>>\r\n"
-          "%   <i>exec motor_on</> - Execute command list named \"motor_on\"\r\n"), 
+          "%   <i>exec motor_on</>                              : execute alias \"motor_on\"\r\n"
+          "%   <i>exec \"/ff/Desktop/New Folder/script.cfg\"</> : execute script\r\n"
+          "%   <i>exec /ff/file.txt /ff/file2.txt motor_off</>  : files and aliases\r\n"
+          
+          ),
     HELPK("Execute scripts/aliases") },
-#endif //ALIAS
-
-  { "exec", cmd_exec, MANY_ARGS,
-    HELPK("% \"<b>exec /FILE_NAME</>\"\r\n"
-          "%\r\n"
-          "% Execute a shell script from the filesystem, a file named /FILE_NAME\r\n"
-          "% The filesystem must be mounted, and /FILE_NAME must start with \"/\"\r\n"
-          "%\r\n"
-          "% <u>Examples</>>\r\n"
-          "%   <i>exec \"/ffat/Desktop/New Folder(1)/script.cfg\"</>"), 
-    HELPK("Execute scripts/aliases") },
-
+#endif // WITH_FS || WITH_ALIAS
 
 #if WITH_HISTORY
   { "history", cmd_history, 1, HIDDEN_KEYWORD },
@@ -2157,9 +2138,6 @@ KEYWORDS_REG(main);
 
 #if WITH_ESPCAM
 // Commands for dealing with video camera (ai-thinker, m5stack, dfrobot etc or custom)
-// Main commands are located in keywords_main and handled by cmd_cam(). Keywords below is extra commands 
-// under "camera settings" subdirectory
-//
 // Handlers are implemented in espcam.h
 //
 KEYWORDS_DECL(camera) {

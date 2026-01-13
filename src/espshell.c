@@ -10,16 +10,54 @@
  * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
-// HELLO DEAR RANDOM PROGRAMMER!
-// ACTUAL SOURCE CODE IS IN .H FILES (SCROLL DOWN TO LINE 256) 
-// THIS FILE JUST JOINS ALL MODULES TOGETHER, DEFINES GLOBALS, DECLARES FORWARDS AND PROCESSES USER INPUT
-// Flow: espshell_start() -> espshell_task() -> readline() -> espshell_command()
+// Hello, dear random programmer!
+//
+// The actual implementation lives in the .h files (scroll down to around line 299).
+// This file only ties all modules together, defines globals, declares forward
+// declarations, and processes user input.
+//
+// Flow: espshell_start() -> espshell_task() -> readline() -> espshell_command() -> repeat -+
+//                                                ^_____________ REPL ____________________|
+//
+// During startup (CRT phase — before app_main(), before loop() and setup()),
+// the C runtime executes a number of functions declared with
+// "__attribute__((constructor))". The espshell_start() function itself is one of
+// these constructors: it is executed automatically on startup and creates the
+// espshell_task() ("ESPShell"), which runs the REPL. At this point the 
+// FreeRTOS scheduler is not running: tasks are created but not executed.
+// Later, when FreeRTOS scheduler start, the execution flow proceeds:
+//
+// (Everything below is done from ESPShell task)
+// Before entering the REPL, ESPShell waits for the user sketch to initialize the
+// Serial object. A valid Serial instance means the user can actually see our output.
+// The main reason for this delay is that we do not want to fully start too early:
+// when called by the CRT, before main(), the system is not yet fully initialized,
+// and entering the REPL at that stage usually results in a crash.
+//
+// Once ESPShell enters the REPL, it reads user input, tokenizes it, looks up the
+// requested command (commands are declared as "keyword arrays", see keywords.h
+// and keywords_defs.h), and finally invokes the corresponding command handler.
+// Command handlers are functions whose names start with "cmd_",
+// e.g. cmd_exit() or cmd_wifi_up().
+//
+// Depending on user input, each command is executed either in the REPL task context
+// ("foreground execution") or in the context of a separate task created by the
+// shell specifically to handle that command ("background execution").
+//
+// The shell uses several "global" variables which are not truly global — they are
+// declared as _Thread_local. These include (but are not limited to) the filesystem
+// path (CWD), the current command directory, and the command "context"
+// (task-specific data). As a result, each command handler is free to modify its
+// own _Thread_local copies of these variables.
+//
+// Still reading this? Let's go through the code together.
+// Find the espshell_start() function below and continue from there.
 //
 #define COMPILING_ESPSHELL 1
 
 #pragma GCC diagnostic warning "-Wformat"  
-#pragma GCC optimize ("O2")
-//#pragma GCC optimize ("Os")
+#pragma GCC optimize ("O2")            // Optimize for speed
+//#pragma GCC optimize ("Os")          // Optimize for size
 
 // Limits
 #define CONSOLE_UP_POLL_DELAY 1000     // 1000ms. How often to check if Serial is up
@@ -28,11 +66,11 @@
 #define MAX_PATH 256                   // max filesystem path len
 #define MAX_FILENAME MAX_PATH          // max filename len (equal to MAX_PATH for now)
 #define UART_DEF_BAUDRATE 115200
-#define UART_RXTX_BUF 512
+#define UART_RXTX_BUF 512              
 #define I2C_RXTX_BUF 1024
 #define I2C_DEF_FREQ 100000            
-#define ESPSHELL_MAX_INPUT_LENGTH 500  // Maximum input length (strlen()). User input greater than 500 characters will be silently discarded
-#define ESPSHELL_MAX_CNLEN 10          // Maximum length (strlen()) of a command name. 
+
+#define ESPSHELL_MAX_CNLEN 10          // Maximum length (strlen()) of a command name. This is for formatting of "?" command output
                                        // NOTE!! If you change this, make sure initializer string is changed too in question.h:help_command_list()
 
 // Prompts used by command subdirectories.
@@ -87,6 +125,7 @@
 #include <esp32-hal-ledc.h>
 #include <esp32-hal-rmt.h>
 #include <esp32-hal-uart.h>
+
 // Filesystems
 #include <sys/unistd.h>
 #include <sys/stat.h>
@@ -102,8 +141,10 @@
 #include <vfs_fat_internal.h>
 #include <wear_levelling.h>
 #include <sdmmc_cmd.h>
+
 // Camera
-#include <esp_camera.h>
+#  include <esp_camera.h>
+
 
 // Espressif devteam has changed their core API once again
 #if __has_include("esp_private/esp_gpio_reserve.h")
@@ -137,6 +178,7 @@
 #  define DEBUG 1
 #  define VERBOSE( ... ) __VA_ARGS__ 
 #else
+#  undef DEBUG
 #  define VERBOSE( ... ) { /* Nothing here */ }
 #endif
 
@@ -197,20 +239,24 @@ static INLINE bool esp_gpio_is_pin_reserved(unsigned int gpio) {
 
 // -- Globals & constants
 
-// "Context": an user-defined value (a number or a pointer) which is set by change_command_directory() when 
-// switching to a new command subtree. 
-// This is how command "uart 1" passes its argument  (the number "1") to the subtree commands like "write" or "read". 
-// Used to store: sequence number, uart,i2c interface number,pointer to aliases, nvs partition name, probably something else
+// "Context": a user-defined value (either a number or a pointer) that is set by
+// change_command_directory() when switching to a new command subtree.
 //
-// NOTE: thread-local variable
+// This is how a command like "uart 1" passes its argument (the number 1) to
+// subtree commands such as "write" or "read".
+//
+// Used to store things like: sequence numbers, UART/I2C interface indices,
+// pointers to alias tables, NVS partition names, and potentially other data.
+//
+// NOTE: This is a thread-local variable.
 //
 static __thread uintptr_t Context = 0;
 
 typedef __typeof__(Context) context_t;
 
-// Macros to set/get Context values. Since it is a simple C typecast here, make sure that
-// arguments you pass are of simple types (scalar or pointer)
-//
+// Macros to set/get Context values. This is just a plain C cast,
+// so only pass simple types (scalars or pointers).
+
 #define context_get()        (Context)                         // Get Context as is (no typecasting)
 #define context_get_uint()   ((unsigned int )Context)          // Get Context as an unsigned value
 #define context_get_int()    ((int )Context)                   //                a signed value
@@ -218,19 +264,16 @@ typedef __typeof__(Context) context_t;
 #define context_set(_New)    { Context = (context_t)_New; }    // Set new value
 
 
-// Currently used prompt. It is shared between tasks, but only foreground tasks are allowed to change it
+// Currently active prompt. It is shared between tasks, but only
+// foreground tasks are allowed to modify it.
 static const char * prompt = PROMPT;
 
-// Prompts are locally maintained by modules, usually as a static buffer declared on a stack.
+// Prompts are module-local, usually implemented as a static buffer
+// allocated on the stack.
 //
 static void prompt_set(const char *new_prompt) {
-  
-  if (is_foreground_task()) {
-    //VERBOSE(q_printf("%% Changing prompt from %s to %s\r\n", prompt, new_prompt));
+  if (is_foreground_task())
     prompt = new_prompt ? new_prompt : PROMPT;
-  }
-  //else
-  //  VERBOSE(q_printf("%% Ignored attempt to change the prompt from %s to %s\r\n", prompt, new_prompt));
 }
 
 // Common messages. 
@@ -242,15 +285,16 @@ static const char *uartIsDown = "%% UART%u is down. Use command \"up RX TX SPEED
 #if WITH_HELP
 static const char *WelcomeBanner = "\033[H\033[2J%\r\n"
                                    "% ESPShell " ESPSHELL_VERSION "\r\n"
-                                   "% Type \"?\" and press <Enter> for help\r\n"
-                                   "% Press <Ctrl+L> to clear the screen, enable colors and show \"tip of the day\"\r\n";
+                                  "% Type '?' and press <Enter> for help\r\n"
+                                  "% Press <Ctrl+L> to clear the screen, enable colors, and display the tip of the day\r\n";
 
 
 static const char *Bye = "% Sayonara!\r\n";
 
 
 static const char *MultipleEntries = "% Processing multiple paths.\r\n"
-                                     "% Not what you want? Use quotes for paths with spaces\r\n";
+                                     "% Not what you want? Try using quotes around paths with spaces.\r\n";
+
 
 static const char *VarOops = "<e>% Oops :-(\r\n"
                              "% No registered variables to play with</>\r\n"
@@ -267,34 +311,48 @@ static const char *VarOops = "<e>% Oops :-(\r\n"
 // 1. Common macros used by/with keywords trees
 #include "keywords_defs.h"      
 
-// 2. Console abstraction layer: provides generic read/write operation on UART or USBCDC device. Can be overriden with
-// any other implementation to support specific devices
+// 2. Console abstraction layer: provides a generic read/write interface
+// for UART and USB CDC, and can be replaced with other implementations
+// to support additional devices.
 #include "console.h"
 
-// 3. qLib : utility functions like q_printf(), string to number conversions, mutexes, memory management etc core functions
-// Must be included before anything else
+// 3. qLib: utility functions such as q_printf(), string-to-number conversions,
+// mutexes, memory management, and other core functionality.
+// Must be included before anything else.
 #include "qlib.h"
 
-// 4. Really old (but refactored) version of editline. Probably from 80's. Works well, rock solid :)
+// 4. A very old (but refactored) version of editline, probably from the 1980s.
+// Works well and is rock solid :)
 #include "editline.h"
 
 // 5. All command trees
 #include "keywords.h"
 
-// 6. Userinput tokenizer and reference counter
+// 6. Userinput tokenizer and the reference counter
 #include "userinput.h"          
 
-static argcargv_t *AA = NULL;   // only valid for foreground commands; used to access to raw user input, mainly by alias code
+static argcargv_t *AA = NULL;   // only valid for foreground commands;
+                                // used to access raw user input, mainly by alias code
+                                // NOTE: not thread-safe
 static int espshell_command(char *p, argcargv_t *aa);
 
 
 // 5. ESPShell core
-// Why? Historical reasons + prevent Arduino from compiling them.
-// Rearranging it in classic module.c/module.h way will add alot of code (interfaces, declarations, functions can't be static and so on)
-
+//
+// The shell consists of a set of .h files that contain the actual implementation.
+// A long time ago, ESPShell was a single-file project. As it grew to ~300 KB,
+// it was split into modules that are simply included here.
+//
+// I could not find a way to place .c files in the sketch directory and prevent
+// the IDE from compiling them (they are intended to be #included, not built
+// as separate translation units), so I renamed them to .h
+//
+// Rearranging everything into a classic module.c / module.h layout would add
+// a lot of boilerplate (interfaces, forward declarations, non-static functions,
+// etc.), so this structure is kept as-is.
+//
 #include "convar.h"             // code for registering/accessing sketch variables
 #include "task.h"               // main shell task, async task helper, misc. task-related functions
-
 #include "sequence.h"           // RMT component (sequencer)   
 #include "cpu.h"                // cpu-related command handlers  
 #include "pwm.h"                // PWM component
@@ -304,17 +362,21 @@ static int espshell_command(char *p, argcargv_t *aa);
 #include "spi.h"                // spi generic interface. Not functional, unused
 #include "uart.h"               // uart generic interface
 #if WITH_TIME
-#include "time0.h"
+#  include "time0.h"            // RTC. Set/query: time and timezone
 #endif
-#include "misc.h"               // misc command handlers
+#include "misc.h"               // misc command handlers which do not fit any other files
 #include "filesystem.h"         // file manager
 #include "nvs0.h"               // NVS editor/viewer
 #include "memory.h"             // memory component
-#include "espcam.h"             // Camera support
-#include "alias.h"
-#include "ifcond.h"
+#include "espcam.h"             // camera support
+
+#if WITH_ALIAS
+#  include "alias.h"            // Aliases
+#  include "ifcond.h"           // commands "if" and "every"
+#endif
+
 #if WITH_WIFI
-#include "wifi0.h"
+#  include "wifi0.h"             // WiFi access point and WiFi client (station)
 #endif
 
 
@@ -324,7 +386,7 @@ static int espshell_command(char *p, argcargv_t *aa);
 
 
 
-// Display espshell error code in human-readable form
+// Display espshell error code in a human-readable form
 //
 static void espshell_display_error(int ret, int argc, char **argv) {
     
@@ -346,15 +408,18 @@ static void espshell_display_error(int ret, int argc, char **argv) {
 }  
 
 
-// Helper task, which runs (cmd_...) handlers in a background.
-// When user inputs, say, "pin 8 up high" command, the corresponding handler: cmd_pin()) is called directly 
-// by espshell_command() parser,  all execution happens in the loop() task context.
+// Helper task that runs cmd_* handlers in the background.
+//
+// When the user enters, for example, the command "pin 8 up high", the corresponding
+// handler (cmd_pin()) is invoked directly by the espshell_command() parser, and the
+// entire execution happens in the loop() task context.
 //
 // Long story short:
 //
-// When user asks for a background execution of the command (by adding an "&" as the very argument to any command)
-// (e.g. "pin 8 up high &") then exec_in_background() is called instead. It starts a task 
-// (amp_helper_task()) which executes "real" command handler stored in aa->gpp.
+// If the user requests background execution by appending "&" as the last argument
+// to a command (e.g. "pin 8 up high &"), exec_in_background() is called instead.
+// It creates a new task (amp_helper_task()) which then executes the "real" command
+// handler stored in aa->gpp.
 //
 static void amp_helper_task(void *arg) {
 
@@ -369,6 +434,8 @@ static void amp_helper_task(void *arg) {
   context_set(ha->context);
   keywords_set_ptr(ha->keywords);
   files_set_cwd(ha->cwd);          // sets /Cwd/ but does not set prompt (bg task!) 
+  if (ha->cwd)
+    q_free(ha->cwd);               // was strdup()ed in ha_get()
   ha_put(ha);                      // return helper_arg to the pool
 
   // aa->gpp points to actual command handler (e.g. cmd_pin for command "pin"); aa->gpp is set up
@@ -392,15 +459,18 @@ static void amp_helper_task(void *arg) {
   // its ok to unref null pointer
   userinput_unref(aa);
   
-  //files_set_cwd(NULL); // Free memory used for CWD
   task_finished();
 }
 
-// Executes commands in a background (commands which names end with &).
-// Command is a parsed user input (argcargv_t)
-// It is done by starting a separate task which actually executes the command (amp_helper_task)
-// helper_arg is populated with per-task variables and passed to the task so task can initialize (inherit) its
-// per-task variables. The same mechanism is used in alias_helper_task() (see alias.h)
+// Executes commands in the background (commands whose names end with '&').
+// The command is a parsed user input (argcargv_t).
+//
+// This is done by starting a separate task that actually executes the command
+// (amp_helper_task()).
+//
+// helper_arg is populated with per-task variables and passed to the task so it
+// can initialize (inherit) its task-local state. The same mechanism is used by
+// alias_helper_task() (see alias.h).
 //
 static int exec_in_background(argcargv_t *aa_current) {
 
@@ -415,15 +485,16 @@ static int exec_in_background(argcargv_t *aa_current) {
     return 0;
   }
 
-  //increase refcount on argcargv because it will be used by async task and
-  // we want this memory remain allocated after this command
+  //increase refcount on argcargv because it is going to be used by an async task and
+  // we want this memory remain allocated after this command finishes
   userinput_ref(aa_current);
   ha->aa = aa_current;
 
   if (aa_current->has_core)
     core = aa_current->core;
  
-  // Start async task. Pin to the same core where espshell is executed
+  // Start an async task. If the user does not specify a core,
+  // pin it to the same core on which ESPShell is running.
   if ((id = task_new(amp_helper_task, ha, aa_current->argv[0], core)) == NULL) {
     q_print("% <e>Can not start a new task. Resources low? Adjust STACKSIZE macro in \"espshell.h\"</>\r\n");
     userinput_unref(aa_current);
@@ -433,28 +504,38 @@ static int exec_in_background(argcargv_t *aa_current) {
     if (aa_current->has_prio)
       task_set_priority(id, aa_current->prio);
 
-    //Hint user on how to stop bg command. If help is disabled, one have to "show tasks" to find ids
+    // Hint the user on how to stop a background command. If help is disabled,
+    // they need to use "show tasks" to find task IDs.
     HELP(q_printf("%% Background task started (core %u)\r\n%% Copy/paste \"<i>kill %p</>\" to abort\r\n", core, id));
   }
   return 0;
 }
 
 
-// Parse & execute: main ESPShell user input processor. 
-// The main task, which reads user input and calls this function is in task.h
-// User input, an asciiz string is passed to this processor as is; pre-parsed argcargv_t can be passed as the second argument
-// but then first argument must be NULL
+// Parse and execute: the main ESPShell user input processor.
+// User input - an ASCIIZ string - is passed to this processor as-is. A pre-parsed
+// argcargv_t can be passed as the second argument; in that case, the first argument
+// must be NULL.
 //
-// 1. Split user input /p/ into tokens. Token #0 is a command, other tokens are command arguments.
-// 2. Find an appropriate entry in keywords[] array (command name and number of arguments must match)
-// 3. Execute coresponding callback, may be in a newly created task cotext (for commands ending with "&")
+// 1. Split user input /p/ into tokens. Token #0 is the command; the remaining tokens
+//    are command arguments.
+// 2. Look up the corresponding entry in the keywords[] array (command name and
+//    argument count must match).
+// 3. Invoke the matching callback, optionally in a newly created task context
+//    (for commands ending with "&").
 //
-// /p/        - is the user input as returned by readline(). Must be writable memory!
-// /aa/       - must be NULL if /p/ is not NULL. Must be a valid pointer if /p/ is NULL
-//              This one is used to execute user input which was parsed already (see alias.h)
+// /p/  - User input as returned by readline(). Must point to writable memory.
+// /aa/ - Must be NULL if /p/ is not NULL. Must be a valid pointer if /p/ is NULL.
+//        Used to execute input that has already been parsed (see alias.h).
 //
-// returns 0 on success, -1 if number of arguments doesn't match (missing argument) or >0 - the index in argv[] array
-//         pointing to failed/problematic argument. espshell_command() relies on code returned by underlying command handler (callback function)
+// Returns:
+//   0   on success
+//  -1   if the argument count does not match (missing argument)
+//  >0   the index in argv[] of the failed or problematic argument
+//  <-1  an error. but keep silent
+//
+// espshell_command() propagates the return code from the underlying
+// command handler (callback).
 //
 static int
 espshell_command(char *p, argcargv_t *aa) {
@@ -496,13 +577,17 @@ free_p_and_exit:
     }
   }
 
-  // Process an "&" keyword ("background exec") at the end of the command (if any)
-  // Example command: "esp32#>pin 2 high delay 100 low delay 100 loop infinite &"
-  // So this & keyword is stripped, and corresponding command is run in a background
+  // Process the trailing "&" keyword ("background execution"), if present.
+  // Example command:
+  //   "esp32#> pin 2 high delay 100 low delay 100 loop infinite &"
   //
-  // NOTE: One exception: commands entered while in alias editing mode ("esp32-alias>") are NOT stripped
-  //       and are NOT executed in a background regardless of "&": in alias editor all user input is just 
-  // saved to be processed later (when that alias is executed)
+  // The "&" token is stripped, and the corresponding command is executed
+  // in the background.
+  //
+  // NOTE: There is one exception: commands entered while in alias editing
+  // mode ("esp32-alias>") are NOT stripped and are NOT executed in the
+  // background, even if they end with "&". In alias editor mode, all user
+  // input is simply stored and processed later when the alias is executed.
   //
   if (aa->argv[aa->argc - 1][0] == '&') {
 #if WITH_ALIAS      
@@ -587,13 +672,14 @@ unref_and_exit:
 
 
 // Execute an arbitrary shell command
+// TODO: handle \n as a commands separator
 //
 int espshell_exec(const char *p) {
   char *p0;
   int ret = -1;
   if (likely((p0 = q_strdup(p, MEM_TMP)) != NULL)) {
     ret = espshell_command(p0, NULL);
-    //q_free(p0);
+    //q_free(p0); done by espshell_command()
   }
   return ret;
 }
@@ -609,10 +695,10 @@ bool espshell_exec_finished() {
 // Despite the name, this function can be called multiple times.
 // Its job is to run a bunch of module-level "init" functions.
 // Some inits run automatically via __attribute__((constructor)),
-// but a few need to be kicked off manually — that’s what this does.
+// but a few need to be kicked off manually — that's what this does.
 //
 // Typically used for things that should only run once (like
-// convar setup or memory allocations) but can’t be done inside
+// convar setup or memory allocations) but can't be done inside
 // a constructor for one reason or another.
 //
 static  void espshell_initonce() {
@@ -636,33 +722,43 @@ static  void espshell_initonce() {
     convar_add(cam_ledc_chan);  // Avoiding interference: LEDC channels used by ESPCAM for generating XCLK
     convar_add(cam_ledc_timer);    // Avoiding interference: ESP32 TIMER used by ESPCAM
 #endif
-    // init subsystems,  if any
-    //seq_init();
-    //nv_init_once(); 
   }
 }
 
 
 
-// ESPShell main task. Reads and processes user input by calling espshell_command(), the command processor
-// Only one shell task can be started at the time!
-// This task is visible in "show tasks" list as "ESPShell".
+// ESPShell main task.
+// Handles user input by calling espshell_command(), the command processor.
+// Only one shell task can run at a time.
+// Appears in the "show tasks" list as "ESPShell".
+//
+// Argument behavior:
+//   - non-zero: fork into a new task
+//   - zero:     enter the REPL
+//
+// Can also be called directly with a zero argument to run the REPL
+// in the context of the calling task.
 //
 static void espshell_task(const void *arg) {
 
-    // Reset /prompt/ again.
+    // Reset the prompt again.
+    // The prompt is a global pointer; the actual buffers are owned by the callers.
+    // Only foreground tasks are allowed to change it, so background
+    // events, aliases, etc. cannot unexpectedly modify the prompt.
     prompt = PROMPT; 
 
   // arg is not NULL - first time call: start the task and return immediately
   if (arg) {
     MUST_NOT_HAPPEN (shell_task != NULL);
 
-    if ((shell_task = task_new(espshell_task, NULL, "ESPShell", shell_core)) == NULL)
-      q_print("% ESPShell failed to start its task\r\n");
+    if ((shell_task = task_new(espshell_task, NULL, "ESPShell", shell_core)) == NULL) {
+      // it is too early for the q_print() : UART driver is not yet initialized.
+      esp_rom_printf("% ESPShell failed to start its task\r\n");
+    }
   } else {
     // arg is NULL - we were called by task_new() and we are running as separate process now.
     // shell_task is our task_id, shell_prio is our task priority and shell_core is the CPU core we are 
-    // runing on.
+    // running on.
     //
     // Wait until user code calls Serial.begin() or otherwise initializes Serial, disable Task Watchdogs for
     // IDLE tasks and for the loop()
@@ -677,22 +773,22 @@ static void espshell_task(const void *arg) {
     q_delay(1000);
     console_flush();
 
+#if DISABLE_TWDT
+    // Disable TaskWatchdog
+    // We can't just unsubscribe IDLE0 and IDLE1 - if we do so then console will be flooded
+    // with error messages ("you can't feed this dog, you are not subscribed"). So instead we deinit
+    // TWDT subsystem completely.
+    esp_task_wdt_deinit();
+#endif
+
     // Check if Arduino's loop() task is already started. It must be
     if (loopTaskHandle == NULL)
-      q_print("% <i>Console is initialized but Arduino loop() task is not started</>");
+      q_print("% <i>Console is initialized but Arduino loop() task is not started?!</>");
     else {
       int prio;
       taskid_remember(loopTaskHandle);
 
-#if DISABLE_TWDT
-      // Disable TaskWatchdog
-      // We can't just unsubscribe IDLE0 and IDLE1 - if we do so then console will be flooded
-      // with error messages ("you can't feed this dog, you are not subscribed"). So instead we deinit
-      // TWDT subsystem completely.
-      esp_task_wdt_deinit();
-#endif
       // Check if our priority is higher than that of loop() and adjust if it is not
-      
       if ( shell_prio <= (prio = task_get_priority(loopTaskHandle))) {
         shell_prio = prio;
         task_set_priority(shell_task, prio);
@@ -706,30 +802,27 @@ static void espshell_task(const void *arg) {
 
     HELP(q_print(WelcomeBanner));
     console_flush();
+
     // The main REPL : read & execute commands until "exit ex" is entered
     //
     while (!Exit) {
       char *line = readline(prompt ? prompt : "<null>");
-      if (line && *line)
-        espshell_command(line, NULL);
-      else {
+      if (line)
+        espshell_command(line, NULL); // frees /line/
+      else
         // if readline() starts to fail, we risk to end up in a spinloop, starving IDLE0 or IDLE1 tasks
-        // TODO: make exponential delay, with a cutoff at 10 seconds instead of calling q_yield(). 
-        // TODO: Keep displaying messages "console problems"
-        if (line)
-          q_free(line);
         q_yield();  
-      }
     }
+
+    // Display "Sayonara!" banner
     HELP(q_print(Bye));
 
     // Make espshell restart possible
     Exit = false;
     shell_task = NULL;
 
-    // Sayonara
-    //files_set_cwd(NULL); // Free memory used for CWD
     task_finished();
+    // UNREACHABLE
   }
 }
 
@@ -741,19 +834,31 @@ static INLINE bool espshell_started() {
 
 
 // Start ESPShell
-// Normally (AUTOSTART==1) starts automatically. With autostart disabled EPShell can
+// Normally (AUTOSTART == 1), it starts automatically. With autostart disabled, ESPShell can
 // be started by calling espshell_start().
 //
-// This function can be used to restart the shell which was terminated by command "exit ex"
+// This function can be used to restart the shell after it was terminated
+// by the "exit ex" command.
 //
-
 void STARTUP_HOOK espshell_start() {
 
+  // Early shell init: can be called multiple times but does its job only once
   espshell_initonce();
+
+  // ESPShell does not support multiple instances. Here we call espshell_task() with a non-zero
+  // argument. espshell_task() is the task function (it serves as the main ESPShell task and
+  // runs itself as a FreeRTOS task).
+  //
+  // Its behavior depends on the argument:
+  //   - non-zero: autostart mode
+  //   - zero:     enter the REPL
+  //
   if (espshell_started())
-    HELP(q_print("% ESPShell is started already, exiting\r\n"));
-  else
+    HELP(q_print("% ESPShell is already running, exiting\r\n"));
+  else {
+    // Still reading comments? Lets go to the espshell_task()!
     espshell_task((const void *)1);
+  }
 }
 
 
@@ -774,7 +879,6 @@ _Static_assert(sizeof(signed short) == 2, "Code review is required");
 _Static_assert(sizeof(unsigned int) == 4, "Code review is required");
 _Static_assert(sizeof(signed char) == 1, "Code review is required");
 _Static_assert(sizeof(signed int) == 4, "Code review is required");
-_Static_assert(sizeof(void *) == 4, "Code review is required"); // TODO: get rid of it. We must not assume pointer size
 _Static_assert(sizeof(float) == 4, "Code review is required");
 #endif
 #if WITH_FS

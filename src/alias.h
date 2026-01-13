@@ -401,6 +401,8 @@ static void alias_helper_task(void *arg) {
     context_set(ha->context);
     keywords_set_ptr(ha->keywords);
     files_set_cwd(ha->cwd);
+    if (ha->cwd)
+      q_free(ha->cwd); // it was strdup()ed in ha_get()
 
     // delay, if required
     if (ha->delay_ms)
@@ -409,7 +411,6 @@ static void alias_helper_task(void *arg) {
     ha_put(ha);
   }
   
-  //files_set_cwd(NULL); // Free memory used for CWD
   task_finished();
 }
 
@@ -428,7 +429,7 @@ static int alias_exec_in_background_delayed(struct alias *al, uint32_t delay_ms)
       return task_new(alias_helper_task,
                       ha,
                       al->name,
-                      shell_core) == NULL ? CMD_FAILED : 0;
+                      shell_core) == NULL ? CMD_FAILED : 0;  // TODO: let the user choose the core or tskNO_AFFINITY
     }
   return CMD_FAILED;
 }

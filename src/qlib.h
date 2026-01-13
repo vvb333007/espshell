@@ -28,7 +28,11 @@
 
 #include <stdatomic.h>
 
-//static bool q_utf8 = false;
+// forwards
+struct mb_pool;
+struct node_link;
+static void mb_put(struct mb_pool *, void *);
+static void *mb_get(struct mb_pool *);
 
 // GCC-specific branch prediction optimization macros 
 // Arduino Core is shipped with precompiled ESP-IDF where they have redefined likely() and unlikely() to be 
@@ -62,7 +66,7 @@ enum {
   MEM_ALIAS,     // Aliases and related allocation
   MEM_IFCOND,    // "if" and "every" conditions
   MEM_SERVER,    // server(s) name or address
-  MEM_HA
+  MEM_MB         // Generic memory block from mb_get()
   // NOTE: only values 0..15 are allowed, do not add more!
 };
 
@@ -238,7 +242,7 @@ void rw_lockw(rwlock_t *rw) {
 //
 // Release the exclusive ("writer") lock previously acquired with rw_lockw(rwlock_t *).
 //
-// TODO: in DEBUG, verify that /cnt/ == -1 (it’s expected to be -1 at this point)
+// TODO: in DEBUG, verify that /cnt/ == -1 (it's expected to be -1 at this point)
 //
 void rw_unlockw(rwlock_t *rw) {
   atomic_store_explicit(&rw->cnt, 0, memory_order_release); // /cnt/ == "no readers, no writers"
@@ -604,7 +608,7 @@ typedef struct {
   list_t         li;      // list item. must be first member of a struct
   unsigned char *ptr;     // pointer to memory (as per malloc())
   unsigned int   len:20;  // length (as per malloc())
-  unsigned int   type:4;  // user-defined type
+  unsigned int   type:4;  // user-defined type TODO: why 4 bits?!
 } memlog_t;
 
 // human-readable memory types
@@ -625,7 +629,7 @@ static const char *memtags[] = {
   "ALIAS",
   "IFCOND",
   "SERVER",
-  "HA"
+  "MBGET"
 };
 
 // allocated blocks
@@ -834,13 +838,13 @@ static void q_memleaks(const char *text) {
 
 
 
-// strdup() + extra 256 bytes
-// TODO: This is bad. Make generic q_strdup_tailroom(const char *string, int tailroom)
-static char *q_strdup256(const char *ptr, int type) {
+// strdup() + extra bytes
+//
+static char *q_strdup_tailroom(const char *ptr, size_t room, int type) {
   char *p = NULL;
   if (likely(ptr != NULL)) {
     int len = strlen(ptr);
-    if ((p = (char *)q_malloc(len + 256 + 1, type)) != NULL)
+    if ((p = (char *)q_malloc(len + room + 1, type)) != NULL)
       strcpy(p, ptr);
   }
   return p;
@@ -1660,6 +1664,249 @@ vsa_t *vsa_find_slot(vsa_t **vsa0, int *slot0, vsaval_t value, bool create) {
 
   return NULL;
 }
+
+// -- Fast-path fixed-size memory block allocator --
+//
+// Used by alias/ifcond/task code via corresponding wrappers (e.g. ha_get(), ifc_get(), etc.).
+//
+// "MB" stands for a fixed-size memory block (for example, a block used to store a struct timeval).
+//
+// The pool is where all free MBs are stored and where newly allocated MBs come from
+// (struct mb_pool acts as a pool handle).
+//
+// When the pool is initialized (mb_initialize(&PoolName, ElementSize, MaxMallocs, Reserve)), it is possible to:
+//   - limit the total number of calls to malloc(), and
+//   - pre-reserve MBs from system memory into the pool's freelists.
+//
+// These two parameters (MaxMallocs and Reserve) allow ISR-safe pools to be created.
+// Setting them to the same value results in a fully preallocated pool with no further calls to malloc().
+//
+
+
+// Pool (struct mb_pool).
+//  each CPU core works with its own freelist;  a block is always returned to its owner core list;
+//  never acquire more than one lock at a time
+//
+struct mb_pool {
+    size_t            size;                        // Size of a single MB
+    _Atomic(size_t)   count;                       // Number of MBs allocated via malloc() so far
+    _Atomic(uint32_t) drops;                       // # of times mb_get() failed (OOM or hard limit)
+    size_t            max_count;                   // Maximum allowed number of malloc() calls
+    struct node_link *local[portNUM_PROCESSORS];   // Per-CPU freelist
+    portMUX_TYPE      lock[portNUM_PROCESSORS];    // Per-CPU critical sections (spinlocks on ESP32)
+};
+
+#if __GNUC__
+
+// Static pool initializer (usage: "struct mb_pool Custom = MB_POOL(123, 456);")
+// NOTE: unlike ms_initialize() does not reserve MBs
+//
+#define MB_POOL(_Size, _MaxCount) \
+    { \
+        .size = (_Size), \
+        .count = 0, \
+        .drops = 0, \
+        .max_count = (_MaxCount), \
+        .local[0 ... portNUM_PROCESSORS-1] = NULL, \
+        .lock[0 ... portNUM_PROCESSORS-1] = portMUX_INITIALIZER_UNLOCKED, \
+    }
+#endif // because of "..."
+
+// Helper
+struct node_link {
+    struct node_link *next;
+};
+
+// Dynamic pool initialization.
+//
+//  /mb_size/   - size of a single MB.
+//  /max_count/ - if >0, limits the total number of malloc() calls.
+//  /reserve/   - if >0, number of blocks to preallocate (via malloc()).
+//
+// /reserve/ == /max_count/ ---> the pool becomes independent of the system malloc().
+//
+// If malloc() fails during preallocation, this is not considered an error - it simply means the system
+// has run out of memory. This function does not wait for memory on OOM events; it just skips reserving
+// the next block.
+//
+// To check whether there were issues during preallocation, verify that /pool->count/ == /reserve/ after
+// initialization.
+//
+static UNUSED bool mb_initialize(struct mb_pool *pool,
+                   size_t mb_size,
+                   size_t max_count,
+                   size_t reserve) {
+
+    int cpu = 0;
+
+    // zero zero tolerance
+    MUST_NOT_HAPPEN(pool == NULL);
+
+    // The block must be large enough to hold /struct node_link/
+    // when returned to the pool.
+    if (mb_size < sizeof(struct node_link))
+        mb_size = sizeof(struct node_link);
+
+    // If calls to malloc() are limited, the Reserve parameter is
+    // clamped to the same limit.
+    if (max_count && reserve > max_count)
+        reserve = max_count;
+
+    // Initialize counters and limits
+    atomic_init(&pool->count, 0);
+    atomic_init(&pool->drops, 0);
+    pool->size = mb_size;
+    pool->max_count = max_count;
+
+    // ..freelists and spinlocks for critical sections
+    for (cpu = 0; cpu < portNUM_PROCESSORS; cpu++) {
+        pool->local[cpu] = NULL;
+        spinlock_initialize(&pool->lock[cpu]); // means /portMUX_INITIALIZER_UNLOCKED/
+    }
+
+    // Preallocate blocks if requested
+    // Blocks are distributed evenly across CPUs (round-robin)
+    for (cpu = 0; reserve > 0; reserve--) {
+
+        // Allocate a buffer (one pool element) plus one extra byte to store the owner CPU ID
+        uint8_t *buf = (uint8_t *)malloc(pool->size + 1);
+        if (buf) {
+
+            // Store the owner CPU ID at the very end of the buffer; cycle the CPU number
+            buf[pool->size] = cpu++;   
+            if (cpu >= portNUM_PROCESSORS)
+                cpu = 0;
+
+            // Return the buffer to the pool, as if it was previously allocated via mb_get()
+            mb_put(pool, buf);
+            atomic_fetch_add_explicit(&pool->count, 1, memory_order_relaxed);
+        } else
+            atomic_fetch_add_explicit(&pool->drops, 1, memory_order_relaxed);
+    }
+
+    return true; //TODO:
+}
+
+
+// MB allocation.
+//
+// Algorithm:
+//  1) Try to get a block from the local freelist of the current CPU
+//  2) If the list is empty, increment the counter and fall back to malloc()
+//
+// Calling from an ISR is allowed only if malloc() is guaranteed not to be used:
+// mb_initialize() must be called with a malloc limit and a reserve equal to that limit,
+// so the memory is fully preallocated. If fully preallocated pool is required (for example to use in an ISR), then
+// after mb_initialize(), it must be verified that /pool.drops/ is zero.
+//
+static void *mb_get(struct mb_pool *mb) {
+
+    struct node_link *n;
+    uint8_t *ret = NULL;
+    size_t old;
+    int cpu = xPortGetCoreID();
+
+    // Fast path: try to take a block from the local list
+    portENTER_CRITICAL(&mb->lock[cpu]);
+
+    if ((n = mb->local[cpu]) != NULL) {
+        mb->local[cpu] = n->next; // pop the list head
+        portEXIT_CRITICAL(&mb->lock[cpu]);
+
+        // mark block owner
+        ret = (uint8_t *)n;
+        ret[mb->size] = cpu;   
+
+        // Fast path: success!
+        return ret;
+    }
+
+    // Slow path: freelist is empty, fall back to malloc()
+    portEXIT_CRITICAL(&mb->lock[cpu]);
+
+    // Atomically increment malloc counter and check against the limit.
+    do {
+        old = atomic_load_explicit(&mb->count, memory_order_relaxed); // TODO: can we move it out of the do/while() loop? Have to ask ChatGPT
+        if (mb->max_count && old >= mb->max_count) {
+            atomic_fetch_add_explicit(&mb->drops, 1, memory_order_relaxed);
+            return NULL;
+        }
+    } while (!atomic_compare_exchange_weak_explicit(&mb->count,
+                                                    &old,
+                                                    old + 1,
+                                                    memory_order_relaxed,
+                                                    memory_order_relaxed));
+
+    // Allocate block + 1 byte for owner CPU.
+    // The byte is placed at the end so pointer alignment is preserved
+    if (NULL != (ret = (uint8_t *)q_malloc(mb->size + 1, MEM_MB))) {
+        ret[mb->size] = cpu;
+        return ret;
+    }
+
+    // malloc() failed - roll back the counter
+    atomic_fetch_sub_explicit(&mb->count, 1, memory_order_relaxed);
+    return NULL;
+}
+
+
+// Return an MB to the pool.
+// The memory returned to the pool must have been previously allocated via mb_get().
+// The pointer /p/ may be NULL; in this case, nothing is done.
+//
+// The block is returned to the freelist of the CPU that originally allocated it
+// (owner CPU), even if mb_put() is called from a different core.
+//
+// ISR NOTE:
+//  In the Xtensa FreeRTOS port, portENTER_CRITICAL is equivalent to
+//  portENTER_CRITICAL_ISR, so this function may be called from ISR,
+//  provided the MB resides in internal RAM (not SPIRAM).
+//
+static void mb_put(struct mb_pool *mb, void *p) {
+
+    if (!p)
+        return;
+
+    struct node_link *n = (struct node_link *)p;
+    uint8_t *c = (uint8_t *)p;
+    uint8_t cpu = c[mb->size];
+
+    // Validate owner CPU
+    if (likely(cpu < portNUM_PROCESSORS)) {
+
+        portENTER_CRITICAL(&mb->lock[cpu]);
+
+        // insert to the list head
+        n->next = mb->local[cpu];
+        mb->local[cpu] = n;
+
+        portEXIT_CRITICAL(&mb->lock[cpu]);
+
+    } else {
+        VERBOSE(abort());
+    }
+}
+
+// Debugging
+//
+static UNUSED void mb_dump(struct mb_pool *pool) {
+
+  q_printf("pool(%p) count=%u, drops=%lu\r\n",
+    pool,
+    pool->count,
+    atomic_load_explicit(&pool->drops, memory_order_relaxed));
+
+  for (int cpu=0; cpu < portNUM_PROCESSORS; cpu++) {
+    int i = 0;
+    struct node_link *n = pool->local[cpu];
+    while(n) {
+      n = n->next;
+      i++;
+    }
+    q_printf("  cpu%u freelist has %u entries\r\n",cpu,i);
+  }
+}
+
 
 #endif //#if COMPILING_ESPSHELL
 
