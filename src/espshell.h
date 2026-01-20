@@ -85,6 +85,8 @@
 extern "C" {
 #endif
 
+__attribute__((weak)) int cmd_misc(int argc, char **argv);
+
 // 1) Start ESPShell manually
 // By default espshell autostarts. If AUTOSTART is set to 0 in espshell.h then
 // user sketch must call espshell_start() to manually start the shell. 

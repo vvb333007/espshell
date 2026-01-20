@@ -114,11 +114,6 @@ uart_tap2(int remote) {
 }
 #endif
 
-
-
-
-
-
 //check if UART has its driver installed
 static inline bool uart_isup(unsigned char u) {
   return u >= NUM_UARTS ? false : uart_is_driver_installed(u);

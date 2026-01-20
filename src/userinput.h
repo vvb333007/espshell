@@ -45,11 +45,11 @@ struct argcargv {
 typedef struct argcargv argcargv_t;
 
 // Mutex to protect reference counters of argcargv_t structure.
-// TODO: refactor to get rid of mutexes; make accesses lockless
+//
 static mutex_t argv_mux = MUTEX_INIT;
 
 // Increase refcounter on argcargv structure. a == NULL is ok
-// TODO: refactor to lockless
+//
 static void userinput_ref(argcargv_t *a) {
   if (a) {
     mutex_lock(argv_mux);
@@ -62,8 +62,7 @@ static void userinput_ref(argcargv_t *a) {
 // Decrease refcounter
 // When refcounter hits zero the whole argcargv gets freed
 // a == NULL is ok
-// TODO: make lockless version
-// TODO: make aa_get() and aa_put()
+//
 static void userinput_unref(argcargv_t *a) {
   if (a) {
     mutex_lock(argv_mux); 
@@ -94,14 +93,17 @@ static char *userinput_strip(char *p) {
   char *p0 = p, *p1 = p;
   if (p && *p) {
     int plen = strlen(p);
-    
-    while (--plen >= 0 && isspace(((unsigned char )(p[plen])))) // strip trailing whitespace
+    // strip trailing whitespace
+    while (--plen >= 0 && isspace(((unsigned char )(p[plen])))) 
       p[plen] = '\0';
-    
-    while (*p && isspace(((unsigned char )(*p))))  // find where non-ws input starts ..
+
+    // find where non-ws input starts ..
+    while (*p && isspace(((unsigned char )(*p))))  
       p++;
-    
-    while (*p) *p0++ = *p++; //  .. from there shift whole string left, killing all leading whitespace
+
+    //  .. from there shift whole string left, killing all leading whitespace
+    while (*p)
+      *p0++ = *p++; 
 
     // finalize string
     *p0 = '\0';
@@ -177,14 +179,6 @@ static void userinput_show(argcargv_t *aa) {
     }
   }
 }
-#if 0
-// Redisplay user input & prompt. 
-// TODO: unused for now: causes glitches; have to dive deeper in editline lib
-static void userinput_redraw() {
-  redisplay(); 
-  TTYflush();
-}
-#endif
 
 // Find corresponding command handler (cmd_..) for given argv[0]
 // and put it to /aa->gpp/
@@ -255,6 +249,7 @@ one_more_try: // we get here if we wasn't able to find any suitable handler in a
   return found ? CMD_MISSING_ARG
                : CMD_NOT_FOUND;
 }
+
 /////////////////////////////////////////////////////////////////////////////////////////
 // Readers: read argumnents of a command in special formats like date, time, or read
 // multiple arguments as a single continuos buffer

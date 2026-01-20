@@ -207,6 +207,16 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
     q_delay(1);
 }
 
+// Default handler for the user-specific "misc" command.
+// If the user defines cmd_misc(), this default handler is ignored
+// and the user implementation
+//
+__attribute__((weak)) int cmd_misc(int argc, char **argv) {
+
+  q_print("% No custom user command defined\r\n");
+  return CMD_FAILED;
+}
+
 //"hostid [NAME]"
 //
 // Hidden command, to add a hostid to the prompt. hostid is saved in NVS and retained between power cycles

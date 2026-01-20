@@ -28,6 +28,8 @@
 //              after flashing/rebooting sequence.  Never seen on ESP32-S3.
 //
 // TODO: investigate MCPWM module for PWM generation
+// TODO: pwm sequence NUM
+//       esp32-pwm>
 #if COMPILING_ESPSHELL
 
 
@@ -174,7 +176,7 @@ print_hint_and_exit:
           HELP(q_print("%\r\n% You can use \"<i>pin</>\" command to generate low-frequency PWM:\r\n"
                       "% <u>Examples:</>\r\n"
                       "% 1 Hz, 70% duty PWM on pin0: \"<i>pin 0 high delay 700 low delay 300 loop inf &</>\"\r\n"
-                      "% 0.1 Hz, 50% duty, pin2: \"<i>pin 2 high delay 5000 low delay 5000 loop inf&</>\"\r\n"));
+                      "% 0.1 Hz, 50% duty, pin2: \"<i>pin 2 high delay 5000 low delay 5000 loop inf &</>\"\r\n"));
         
         return -1;
       }
@@ -183,6 +185,9 @@ print_hint_and_exit:
  
     VERBOSE(q_printf("%% Selected duty cycle resolution is %u bits, LEDC channel is %u\r\n",resolution, channel));  
   }
+  // TODO: when channel is working at the requested PWM frequency already - just change duty, don't stop output
+  // TODO: can we seamlessly change frequency without calling ledcDetach()?
+  //
 
   ledcDetach(pin);
   pinMode(pin, OUTPUT); // TODO: investigate if it can be replaced with pinForceMode(pin, OUTPUT_ONLY)

@@ -203,6 +203,8 @@ static int cmd_nvs_export(int, char **);
 #  endif
 #endif
 
+ __attribute__((weak)) int cmd_misc(int argc, char **argv);
+
 // -- Commands and Subdirectories --
 //
 // ESPShell commands are defined as entries in the /keywords_.../ arrays.  
@@ -2129,9 +2131,9 @@ KEYWORDS_DECL(main) {
           "% \"<i>wifi log enable</>\" - Enable logging"
         ),
     HELPK("WiFi interface commands") },
-
-  
 #endif
+  // User-specific command.
+  { "misc", cmd_misc, MANY_ARGS, HIDDEN_KEYWORD },
   KEYWORDS_END
 };
 KEYWORDS_REG(main);

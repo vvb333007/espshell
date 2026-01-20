@@ -72,10 +72,12 @@ extern "C" int console_read_bytes(void *buf, uint32_t len, TickType_t wait) {
   size_t r;
 
   while (len) {
+    
     av = Serial.available();
     if (av < 1) {
+      
       if (wait-- > 0)
-        taskYIELD();
+        vTaskDelay(1);
       else
         return len0 - len;
     } else {
@@ -84,6 +86,8 @@ extern "C" int console_read_bytes(void *buf, uint32_t len, TickType_t wait) {
       if (r) {
         buf0 += r;
         len -= r;
+      } else {
+        vTaskDelay(1);
       }
     }
   }
