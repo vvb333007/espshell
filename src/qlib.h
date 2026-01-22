@@ -107,8 +107,8 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
 
 // Scheduler "task-switch" requests
 //
-//#define q_yield() vPortYield()         // run next task
-#define q_yield() vTaskDelay(1)         // run next task
+//#define q_yield() vPortYield()         // run next task, same prio or higher
+#define q_yield() vTaskDelay(1)         // run next task, any prio
            
 #define q_yield_from_isr() portYIELD_FROM_ISR()   // reschedule tasks
 

@@ -258,7 +258,7 @@ keep_trying:
 
     while (console_read_bytes(&c, 1, portMAX_DELAY) < 1) {
 
-      q_yield();
+      q_yield(); // let tasks with LOWER priority to execute
 
       if (++retry > 9) {
         q_print("% Console transport layer is down? Check your terminal connection\r\n");

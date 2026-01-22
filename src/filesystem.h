@@ -992,7 +992,7 @@ static bool files_copy(const char *src, const char *dst) {
                   // TODO: update_copy_progress()
                   // TODO: ctrlc_pressed() 
                   // TODO: kill 
-                  q_yield();  //make WDT happy
+                  q_yield();  //make WDT happy. TODO: WDT is off. do we still need this?
                   continue;
                 }
               // errors during copy :(

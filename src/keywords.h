@@ -638,15 +638,6 @@ KEYWORDS_DECL(sequence) {
 
   { "decode", cmd_seq_decode, 0, HIDDEN_KEYWORD },
 
-  { "capture", cmd_seq_capture, 2,
-    HELPK("% \"<b>capture PIN</>\"\r\n"
-          "%\r\n"
-          "% Capture sequence of pulses on GPIO# PIN, to <u><b>this</> sequence\r\n"
-          "% Once \"one\" and \"zero\" alphabet is set, an attempt to decode\r\n"
-          "% the bit string could be made (see \"decode\" command)"),
-    HELPK("Sequence capture") },
-
-
   { "profile", cmd_seq_profile, 1,
     HELPK("% \"<b>profile <i>nec|lg|lg32|samsung|1wire|neopixel|none</>\"\r\n"
           "%\r\n"
@@ -656,6 +647,14 @@ KEYWORDS_DECL(sequence) {
           ),
     HELPK("Timing profiles") },
 #endif
+  { "capture", cmd_seq_capture, MANY_ARGS,
+    HELPK("% \"<b>capture PIN [NUM_SYMBOLS | all] [TIMEOUT_MS]</>\"\r\n"
+          "%\r\n"
+          "% Capture sequence of pulses on GPIO# PIN, to <u><b>this</> sequence\r\n"
+          "% Once \"one\" and \"zero\" alphabet is set, an attempt to decode\r\n"
+          "% the bit string could be made (see \"decode\" command)"),
+    HELPK("Sequence capture") },
+  
 
   KEYWORDS_END
 };

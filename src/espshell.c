@@ -819,6 +819,7 @@ static void espshell_task(const void *arg) {
         espshell_command(line, NULL); // frees /line/
       else
         // if readline() starts to fail, we risk to end up in a spinloop, starving IDLE0 or IDLE1 tasks
+        // let tasks with LOWER priority to execute
         q_yield();  
     }
 

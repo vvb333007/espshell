@@ -946,12 +946,77 @@ static UNUSED int cmd_seq_decode(int argc, char **argv) {
   return 0;
 }
 
-// capture SYM_NUM|all [TIMEOUT_MILLIS]
+// capture PIN [SYM_NUM|all] [TIMEOUT_MILLIS]
 //
-//
-static UNUSED int cmd_seq_capture(int argc, char **argv) {
-  q_print("% RTM-RX: Not implemented yet, wait for the next version\r\n");
-  return 0;
+// TODO: this code does not work. Waiting for Arduino Core to fix RMT issues
+
+static int cmd_seq_capture(int argc, char **argv) {
+
+  uint8_t pin;
+  rmt_data_t *rbuf;         // rx buffer 
+  size_t rbuf_size = 64;  // rx buffer length (symbols count)
+  uint32_t num_syms = 0;    // requested symbols count
+  uint32_t timo = 2000;     // rx timeout if >0
+  int seq_idx;
+
+  THIS_SEQUENCE(s);
+
+  seq_idx = context_get_uint();
+
+  if (argc < 2)
+    return CMD_MISSING_ARG;
+
+  // Read pin number
+  if (!pin_exist((pin = q_atol(argv[1], BAD_PIN))))
+    return 1;
+
+  // Read symbols count and the timeout value
+  if (argc > 2) {
+    num_syms = q_atol(argv[2], num_syms);
+    if (num_syms)
+      rbuf_size = num_syms;
+    if (argc > 3)
+      if (0 == (timo = q_atol(argv[3], timo)))
+        timo = 2000;
+  }
+
+  // Allocate RX buffer
+  if (NULL == ( rbuf = (rmt_data_t *)q_malloc(sizeof(rmt_data_t )*rbuf_size, MEM_SEQUENCE))) {
+    q_print("% Out of memory\r\n");
+    return CMD_FAILED;
+  }
+
+  // Clear RX buffer
+  memset(rbuf, 0, sizeof(rmt_data_t )*rbuf_size);
+
+  // Initialize RMT on pin 
+  
+  if (rmtInit(pin, RMT_RX_MODE, RMT_MEM_NUM_BLOCKS_2, seq_tick2freq(s->tick))) {
+    // Apply some settings
+
+
+
+    if (rmtSetCarrier(pin, s->mod_freq ? true : false,
+                           s->mod_high == 1 ? false : true,
+                           s->mod_freq,
+                           s->mod_duty)) {
+      // Receive data (blocking call)                            
+      if (rmtRead(pin, rbuf, &rbuf_size, timo == 0 ? RMT_WAIT_FOR_EVER : timo)) {
+        q_printf("%% RMT : %u symbols has been received\r\n", rbuf_size);
+
+        seq_freemem(seq_idx);
+        s->seq = rbuf;
+        s->seq_len = rbuf_size;
+        return 0;
+      } else
+      q_print("% RMT failed to rmtRead\r\n");
+    } else
+      q_print("% RMT failed to set carrier (bad frequency / duty range?)\r\n");
+  } else
+    q_print("% RMT failed to init\r\n");
+
+  q_free(rbuf);
+  return CMD_FAILED;
 }
 
 // "profile nec|samsung|lg|lg32"
