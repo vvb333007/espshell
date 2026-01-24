@@ -81,11 +81,26 @@
 
 // -- ESPShell public API --
 
+
+// Declare user-defined command "misc". Command "misc" is available from main command tree; it is hidden command
+// which calls user-defined (C linkage) function cmd_misc_user(int argc, char **argv), passing
+// command line arguments as argc/argv vector.
+//
+// This definition is valid ONLY for user code: when espshell library
+// is compiled, the cmd_misc_user() is declared as external weak symbol (==NULL)
+//
+#if !COMPILING_ESPSHELL
+#  ifdef __cplusplus
+#    define SHELL_USER_HANDLER() extern "C" __attribute__((used)) int cmd_misc_user(int argc, char **argv)
+#  else
+#    define SHELL_USER_HANDLER() extern __attribute__((used)) int cmd_misc_user(int argc, char **argv)
+#  endif
+#endif
+
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-__attribute__((weak)) int cmd_misc(int argc, char **argv);
 
 // 1) Start ESPShell manually
 // By default espshell autostarts. If AUTOSTART is set to 0 in espshell.h then

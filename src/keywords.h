@@ -203,7 +203,7 @@ static int cmd_nvs_export(int, char **);
 #  endif
 #endif
 
- __attribute__((weak)) int cmd_misc(int argc, char **argv);
+static int cmd_misc(int argc, char **argv);
 
 // -- Commands and Subdirectories --
 //

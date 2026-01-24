@@ -14,22 +14,27 @@
 //
 // Enables/disables a PWM signal on an arbitrary pin.
 //
-// ESPShell uses LEDC periferial to generate PWM: 8 or 16 channels, depending on ESP32 model. Unfortunately
-// adjacent channels (i.e. channel0 & 1, 2 & 3 ..) will have the same frequency: this is because there are
-// 4 timers per 8 channels. ESPShell uses EVEN numbers for channels thus  ensuring that all frequencies will 
-// be independed.
+// ESPShell uses the LEDC peripheral to generate PWM: 8 or 16 channels,
+// depending on the ESP32 model. Unfortunately, adjacent channels
+// (i.e. channel 0 & 1, 2 & 3, etc.) share the same frequency. This is because
+// there are only 4 timers per 8 channels.
 //
-// This approach, however, reduces the number of simultaneously working generators from 8 to 4 (on ESP32S3)
-// This behaviour can be changed by setting /pwm_ch_inc/ to 1: you'll get 2 times more PWM channels but adjacent
-// channels will be oscillating at the same frequency
+// ESPShell uses EVEN channel numbers, ensuring that all PWM frequencies
+// are independent.
 //
-// BUG BUG BUG: There is a bug when ESP32 can't start PWM if lower (100Hz) frequencies are requested
-//              workaround: start 10kHz PWM first, then start any lower frequency. Only happens 
-//              after flashing/rebooting sequence.  Never seen on ESP32-S3.
+// This approach, however, reduces the number of simultaneously active
+// generators from 8 to 4 (on ESP32-S3; from 16 to 8 on ESP32).
+// This behavior can be changed by setting /pwm_ch_inc/ to 1: you'll get
+// twice as many PWM channels, but adjacent channels will then run at
+// the same frequency.
 //
-// TODO: investigate MCPWM module for PWM generation
-// TODO: pwm sequence NUM
-//       esp32-pwm>
+// BUG: There is an issue where the ESP32 sometimes fails to start PWM at low
+//      frequencies (around 100 Hz).
+//      Workaround: start PWM at 10 kHz first, then switch to a lower
+//      frequency.
+//      This only happens right after flashing or rebooting.
+//      Never observed on ESP32-S3.
+//
 #if COMPILING_ESPSHELL
 
 
@@ -48,9 +53,11 @@
 static signed char ledc_res = 0; // Duty resolution override. ConVar
 static int pwm_ch_inc = 2;       // PWM channel increment. Set to 1 to have more channels. ConVar
 
-// Human-readable name of a clock source used for PWM machinery.
-// Arduino Core (as of 3.1.2) tries to use XTAL whenever possible, falling back to LEDC_AUTO_CLK on ESP32.
-// 
+// Human-readable name of the clock source used by the PWM subsystem.
+//
+// Arduino Core (as of 3.1.2) tries to use XTAL whenever possible,
+// falling back to LEDC_AUTO_CLK on ESP32.
+//
 static const char *pwm_clock_source() {
   switch( ledcGetClockSource() ) {
 #if SOC_LEDC_SUPPORT_APB_CLOCK    
@@ -65,136 +72,184 @@ static const char *pwm_clock_source() {
 #if SOC_LEDC_SUPPORT_RC_FAST_CLOCK
     case LEDC_USE_RC_FAST_CLK:     return "RC_FAST";
 #endif
-    // other than that we do not support at the moment: I do not have appropriate hardware to test it
-    // and I don't want to write code which is "probably working"
-    // RC_FAST clock is inaccuare and of a low frequency. Different CPU models has its value ranging from 8 to 17.5MHz
+// Other clock sources are not supported at the moment: I don't have
+// the appropriate hardware to test them, and I don't want to write
+// code that "probably works".
+//
+// The RC_FAST clock is inaccurate and runs at a relatively low frequency.
+// Its actual frequency varies between CPU models and ranges from
+// 8 to 17.5 MHz.
     case LEDC_AUTO_CLK:            return "AUTO";    
     default:                       return "???";
   };
   
 }
 
-// Which hardware does actual PWM?
-// It is fixed to LEDC for now, however there are RMT and MCPWM which can be used to generate
-// PWM with some special properties
+// Which hardware actually generates PWM?
+//
+// For now, this is fixed to LEDC. However, RMT and MCPWM can also be used
+// to generate PWM with certain special properties, or any other suitable
+// hardware that may appear in future Espressif SoCs.
 //
 static const char *pwm_hardware_used() {
   return "LEDC";
 }
 
-// PWM is a peripherial, which is clocked from an external source.
-// These sources can be different from one cpu model to another, most common are
-// listed in pwm_clock_source(). Arduino Core tries to select XTAL as a clock source whenever possible (i.e. supported by SoC & IDF).
-// If XTAL is not supported as a clock source for LEDC then Arduino Core selects LEDC_AUTO_CLK which bears zero information
-// on its frequency;
-// 
-// Here we force PWM clock source to be either XTAL or APB - a small hack which should not affect sketch execution
-// 
+// PWM is a peripheral clocked from an external source.
+//
+// These clock sources may differ between CPU models; the most common
+// ones are listed in pwm_clock_source(). Arduino Core tries to select
+// XTAL whenever possible (i.e. when supported by the SoC and IDF).
+//
+// If XTAL is not supported as a clock source for LEDC, Arduino Core
+// falls back to LEDC_AUTO_CLK, which provides no information about
+// its actual frequency.
+//
+// Here we force the PWM clock source to either XTAL or APB — a small
+// hack that should not affect sketch execution.
+//
 static uint32_t pwm_source_clock_frequency() {
 
-  switch( ledcGetClockSource() ) {
-#if SOC_LEDC_SUPPORT_APB_CLOCK        
-    case LEDC_USE_APB_CLK:     return APBFreq * 1000000;
-#endif    
-#if SOC_LEDC_SUPPORT_XTAL_CLOCK    
-    case LEDC_USE_XTAL_CLK:    return XTALFreq * 1000000;
-#endif
-#if SOC_LEDC_SUPPORT_REF_TICK
-    case LEDC_USE_REF_TICK:    return 1 * 1000000;
-#endif
-#if SOC_LEDC_SUPPORT_RC_FAST_CLOCK        
-    case LEDC_USE_RC_FAST_CLK: return SOC_CLK_RC_FAST_FREQ_APPROX;
-#endif    
-    case LEDC_AUTO_CLK:
-#if SOC_LEDC_SUPPORT_XTAL_CLOCK                   // best stability, max 40MHz
-      ledcSetClockSource(LEDC_USE_XTAL_CLK);
-#elif SOC_LEDC_SUPPORT_APB_CLOCK                  // best speed/resolution (80Mhz)
-      ledcSetClockSource(LEDC_USE_APB_CLK);
-#elif SOC_LEDC_SUPPORT_RC_FAST_CLOCK              // 8 or 17.5 MHz RC oscillator, +-5% accuracy
-      ledcSetClockSource(LEDC_USE_RC_FAST_CLK);
-#elif SOC_LEDC_SUPPORT_REF_TICK                   // "approximately 1 MHz"
-      ledcSetClockSource(LEDC_USE_REF_TICK);
-#else
-#     warning "No APB, XTAL, RC_FAST or even REF_TICK support in LEDC :-/"
-      return 0;
-#endif      
-      return pwm_source_clock_frequency(); //TODO: make this recursion safe: what if ledcSetClockSource() does not change clock source from AUTO to XTAL?
-    default: //fallthrough
-  };
+  ledc_clk_cfg_t src = ledcGetClockSource();
 
-  return 0;
+#if SOC_LEDC_SUPPORT_APB_CLOCK        
+  if (src == LEDC_USE_APB_CLK) return APBFreq * 1000000; else
+#endif    
+
+#if SOC_LEDC_SUPPORT_XTAL_CLOCK    
+  if (src == LEDC_USE_XTAL_CLK) return XTALFreq * 1000000; else
+#endif
+
+#if SOC_LEDC_SUPPORT_REF_TICK
+  if (src == LEDC_USE_REF_TICK) return 1 * 1000000; else
+#endif
+
+#if SOC_LEDC_SUPPORT_RC_FAST_CLOCK        
+  if (src == case LEDC_USE_RC_FAST_CLK) return SOC_CLK_RC_FAST_FREQ_APPROX; else
+#endif
+    // "AUTO" clock source (or something we don't support). Select something appropriate instead.
+    // We prefer XTAL because it provides a stable, known frequency.
+    //
+    // APB is faster than XTAL, but its frequency can change, and we don't
+    // have any callbacks to track that :-/
+
+  do {
+#if SOC_LEDC_SUPPORT_XTAL_CLOCK
+    src = LEDC_USE_XTAL_CLK;    // best stability, max 40MHz
+#elif SOC_LEDC_SUPPORT_APB_CLOCK
+    src = LEDC_USE_APB_CLK;     // best speed/resolution (80Mhz)
+#elif SOC_LEDC_SUPPORT_RC_FAST_CLOCK
+    src = LEDC_USE_RC_FAST_CLK; // 8 or 17.5 MHz RC oscillator, +-5% accuracy
+#elif SOC_LEDC_SUPPORT_REF_TICK
+    src = LEDC_USE_REF_TICK;    // "approximately 1 MHz", worst case
+#else
+#error "No APB, XTAL, RC_FAST or even REF_TICK support in LEDC :-/"
+#endif
+    if (ledcSetClockSource(src))
+      return pwm_source_clock_frequency();
+  } while (0);
+
+  return 40000000UL; // Safe fallback: can't just return zero here
 }
 
-// Enable (freq > 0) or disable (freq == 0) PWM generation on given pin. 
-// Frequency must be in range (0..10 000 000 Hz), duty is floating point number in range [0..1]. Depending on the frequency
-// different LEDC resolution may be choosen. 
+
+
+// Enable (freq > 0) or disable (freq == 0) PWM generation on the given pin.
 //
-// If /chan/ is less than zero then channel number is autoselected. Autoselecting is a simple cycling through available
-// PWM channels with increments of 1 or 2(Default).
+// Frequency must be in the range (0..10,000,000 Hz). Duty is a floating-point
+// value in the range [0..1]. Depending on the frequency, a different LEDC
+// resolution may be chosen (unless the /ledc_res/ config variable is set).
 //
-// 
+// If /chan/ is less than zero, the channel number is auto-selected.
+// Auto-selection is a simple round-robin over available PWM channels,
+// with increments of 1 or 2 (default).
+//
+// To change the frequency and/or duty on the same pin, there is no need
+// to "disable" PWM before calling "enable" again — it is safe to call
+// enable multiple times on the same pin/channel.
+//
 static int pwm_enable_channel(unsigned int pin, unsigned int freq, float duty, signed char chan) {
 
-  unsigned int resolution;  // Channel duty resolution, bits
-  static int channel = 0;   // LEDC channel# to use
-  unsigned int duty_abs;    // Scaled duty parameter
+  unsigned int resolution;      // Channel duty resolution, bits
+  static int channel = 0;       // LEDC channel# to use
+  unsigned int duty_abs;        // Scaled duty parameter
+  unsigned long ledc_clock = 0; // LEDC clock frequency.
 
   // <0 means "auto"
   if (chan >= 0)
     channel = chan;
 
+  // Only real GPIOs can participiate in PWM generation
   if (!pin_exist(pin) || pin_isvirtual(pin))
     return -1;
 
-  if (freq) {
-    // Clamp arguments. (we don't do it in cmd_pwm() for a reason! ("pin pwm" needs this))
-    if (freq > PWM_MAX_FREQUENCY)
-      freq = PWM_MAX_FREQUENCY;
-
-    if (duty > 1.0f)
-      duty = 1.0f;
-
-    unsigned long ledc_clock = 0; // LEDC clock frequency.
-
-    // Find out the frequency of currently used LEDC clock: we need it to calculate optimal duty resolution.
-    // Don't do anything if /ledc_res/ is set.
-    //
-    if (ledc_res < 1) {
-      if ((ledc_clock = pwm_source_clock_frequency()) == 0) {
-          q_print("% Unusual LEDC clock source: can't autoselect duty resolution\r\n"
-                  "% Use \"var ledc_res 8\" to force 8-bit resolution (as an example)\r\n");
-          return -1;
-      }
-
-      if ((resolution = ledc_find_suitable_duty_resolution(ledc_clock, freq)) == 0) {
-        q_printf("%% <e>Can not find suitable duty resolution for the requested frequency</>\r\n"
-                 "%% Frequency is either too high or too low(SRC_CLK=%lu Hz, PWM_FREQ=%u Hz)\r\n", ledc_clock, freq);
-
-        // ESP32 can go down to 1 Hz, while ESP32S3 can't go below 3Hz. Others from the family probably have their low limits as well
-print_hint_and_exit:        
-        if (freq < 10)
-          HELP(q_print("%\r\n% You can use \"<i>pin</>\" command to generate low-frequency PWM:\r\n"
-                      "% <u>Examples:</>\r\n"
-                      "% 1 Hz, 70% duty PWM on pin0: \"<i>pin 0 high delay 700 low delay 300 loop inf &</>\"\r\n"
-                      "% 0.1 Hz, 50% duty, pin2: \"<i>pin 2 high delay 5000 low delay 5000 loop inf &</>\"\r\n"));
-        
-        return -1;
-      }
-    } else
-      resolution = ledc_res;
- 
-    VERBOSE(q_printf("%% Selected duty cycle resolution is %u bits, LEDC channel is %u\r\n",resolution, channel));  
+  // Disable channel completely. Reset GPIO to its default state and function
+  if (freq == 0) {
+    ledcDetach(pin);
+    pinMode(pin, OUTPUT);
+    VERBOSE(q_print("% PWM is disabled\r\n"));
+    return 0;
   }
-  // TODO: when channel is working at the requested PWM frequency already - just change duty, don't stop output
-  // TODO: can we seamlessly change frequency without calling ledcDetach()?
-  //
 
+  // Frequency is specified
+  // Clamp arguments. (we don't do it in cmd_pwm() for a reason! ("pin pwm" needs this))
+  //
+  if (freq > PWM_MAX_FREQUENCY)
+    freq = PWM_MAX_FREQUENCY;
+
+  if (duty > 1.0f)
+    duty = 1.0f;
+
+  // Determine the frequency of the currently used LEDC clock.
+  // We need this to calculate the optimal duty resolution.
+  //
+  // If the /ledc_res/ config variable is set, don't attempt any calculations;
+  // use the configured resolution instead.
+  //
+  if (ledc_res < 1) {
+    if ((ledc_clock = pwm_source_clock_frequency()) == 0) {
+        q_print("% Unusual LEDC clock source: can't autoselect duty resolution\r\n"
+                "% Use \"var ledc_res 8\" to force 8-bit resolution (as an example)\r\n");
+        return -1;
+    }
+
+    if ((resolution = ledc_find_suitable_duty_resolution(ledc_clock, freq)) == 0) {
+      q_printf("%% <e>Can not find suitable duty resolution for the requested frequency</>\r\n"
+                "%% Frequency is either too high or too low(SRC_CLK=%lu Hz, PWM_FREQ=%u Hz)\r\n", ledc_clock, freq);
+
+      // ESP32 can go down to 1 Hz, while ESP32S3 can't go below 3Hz. Others from the family probably have their low limits as well
+print_hint_and_exit:        
+      if (freq < 10)
+        HELP(q_print("%\r\n% You can use \"<i>pin</>\" command to generate low-frequency PWM:\r\n"
+                    "% <u>Examples:</>\r\n"
+                    "% 1 Hz, 70% duty PWM on pin0: \"<i>pin 0 high delay 700 low delay 300 loop inf &</>\"\r\n"
+                    "% 0.1 Hz, 50% duty, pin2: \"<i>pin 2 high delay 5000 low delay 5000 loop inf &</>\"\r\n"));
+      
+      return -1;
+    }
+  } else
+    resolution = ledc_res;
+  VERBOSE(q_printf("%% Selected duty cycle resolution is %u bits, LEDC channel is %u\r\n",resolution, channel));  
+
+  // Calculate the absolute duty value.
+  // Duty is in the range [0..1], so we scale it to fit the desired bit width.
+  //
+  duty_abs = (unsigned int)(duty * (float )((1 << resolution) - 1) + 0.5f); //  roundup duty cycle value;
+
+  // If the channel is already running at the requested PWM frequency,
+  // just update the duty cycle — don't stop the output.
+  if (ledcReadFreq(pin) == freq) {
+    if (ledcWrite(pin, duty_abs)) {
+      VERBOSE(q_printf("%% PWM on pin#%u, %u Hz (%.1f%% duty cycle) is enabled\r\n",pin,freq,duty));
+      return 0;
+    }
+    // FALL THROUGH
+  }
+  // Full circuit:
   ledcDetach(pin);
   pinMode(pin, OUTPUT); // TODO: investigate if it can be replaced with pinForceMode(pin, OUTPUT_ONLY)
-
+  
   if (freq) {
-    // duty is in the range of [0..1], so we scale it up to fit desired bit width
-    duty_abs = (unsigned int)(duty * (float )((1 << resolution) - 1) + 0.5f); //  roundup duty cycle value;
         
     if (ledcAttachChannel(pin, freq, resolution, channel)) {
       if (ledcWrite(pin, duty_abs)) {
@@ -214,12 +269,12 @@ print_hint_and_exit:
         return 0;
       }
       ledcDetach(pin);
-      q_printf("%% Failed to set absolute duty cycle value to %u\r\n",duty_abs);
+      q_printf("%% Failed to set the absolute duty cycle value to %u\r\n",duty_abs);
     } else
-      q_printf("%% Failed to attach to LEDC (channel=%u, resolution=%u, freq=%u, duty_abs=%u)\r\n",channel,resolution,freq,duty_abs);
+      q_printf("%% Failed to attach to the LEDC (channel=%u, resolution=%u, freq=%u, duty_abs=%u)\r\n",channel,resolution,freq,duty_abs);
 
-    // No matter what was the failure: if the frequency requested is below 10Hz, tell user about
-    // other ways of low frequency PWM generation
+    // Regardless of the failure reason, if the requested frequency is below
+    // 10 Hz, inform the user about alternative ways to generate low-frequency PWM.
     goto print_hint_and_exit;
   }
   return 0;
@@ -232,9 +287,14 @@ static inline int pwm_enable(unsigned int pin, unsigned int freq, float duty) {
   return pwm_enable_channel(pin, freq, duty, -1);
 }
 
-// Handles "show pwm"
-// Displays PWM generators currently active and their parameters
-// It is done via periman API and needs a review
+static inline __attribute__((always_inline, unused)) int pwm_disable_channel(unsigned int pin) {
+  return pwm_enable_channel(pin,0,0,-1);
+}
+
+// Handles the "show pwm" command.
+// Displays the currently active PWM generators and their parameters.
+//
+// TODO: Implemented via the periman API — needs a review.
 //
 static int cmd_show_pwm(UNUSED int argc, UNUSED char **argv) {
 
@@ -304,7 +364,7 @@ static int cmd_pwm(int argc, char **argv) {
       HELP(q_print("% Frequency will be adjusted to its maximum which is " xstr(PWM_MAX_FREQUENCY) " Hz\r\n"));
     // was it attempt to use floating point number? 
     if (q_findchar(argv[2],'.')) {
-      HELP(q_print( "% Must be integer number. For frequencies below 1Hz please use\r\n"
+      HELP(q_print( "% Must be an integer number. For frequencies below 1Hz please use\r\n"
                     "%\"pin X high delay Y low delay Y loop inf &\" command\r\n"));
       return 2;
     }
@@ -325,9 +385,13 @@ static int cmd_pwm(int argc, char **argv) {
     if (argc > 4) {
       if (isnum(argv[4])) {
         
-        // If user enters garbage (i.e. non-numeric value, or it is numeric but less than "-1") then we reject it with error
-        // Numbers from -1 to PWM_CHANNELS_NUM-1 are ok. (ESP32 valid numbers are -1..15, ESP32-s3 only has -1..7).
-        // Channel number of "-1" means "channel autoselect".
+        // If the user enters garbage (i.e. a non-numeric value, or a numeric value
+        // less than -1), reject it with an error.
+        //
+        // Valid channel numbers are in the range -1..PWM_CHANNELS_NUM-1
+        // (ESP32: -1..15, ESP32-S3: -1..7).
+        //
+        // A channel number of -1 means "auto-select channel".
         signed char channel = q_atoi(argv[4],-2);
         if (channel > -2 && channel < PWM_CHANNELS_NUM ) {
           pwm_enable_channel(pin, freq, duty, channel);

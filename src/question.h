@@ -10,7 +10,7 @@
  * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
-// -- Help --
+// -- Help subsystem --
 // Question mark command and question mark context help, help pages and everything about this
 // Help system can be completely disabled by setting WITH_HELP macro to 0. It will save lots of
 // program space

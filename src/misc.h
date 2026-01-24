@@ -208,12 +208,15 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
 }
 
 // Default handler for the user-specific "misc" command.
-// If the user defines cmd_misc(), this default handler is ignored
-// and the user implementation
+// If the user defines cmd_misc_user(), it will be used
 //
-__attribute__((weak)) int cmd_misc(int argc, char **argv) {
+extern int __attribute__((weak)) cmd_misc_user(int argc, char **argv);
 
-  q_print("% No custom user command defined\r\n");
+static int cmd_misc(int argc, char **argv) {
+  if (cmd_misc_user != NULL)
+    return cmd_misc_user(argc, argv);
+  else
+    q_print("% No custom user command defined\r\n");
   return CMD_FAILED;
 }
 
