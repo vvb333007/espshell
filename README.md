@@ -42,6 +42,8 @@ This library is available via the **Arduino Library Manager**:
 3. Choose the latest version and click **Install**
 
 **To install manually** (e.g., the latest source code from GitHub):
+
+
 Option#1:
 1. Copy /src directory content to your sketch directory
 
