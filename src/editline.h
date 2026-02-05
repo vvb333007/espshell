@@ -261,7 +261,7 @@ keep_trying:
       q_yield(); // let tasks with LOWER priority to execute
 
       if (++retry > 9) {
-        q_print("% Console transport layer is down? Check your terminal connection\r\n");
+        esp_rom_printf("% Console transport layer is down? Check your terminal connection\r\n");
         q_delay(1000);
         goto keep_trying;
       }

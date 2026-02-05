@@ -132,6 +132,7 @@ static void IRAM_ATTR count_pin_anyedge_interrupt(void *arg) {
 static int count_claim_unit() {
   pcnt_unit_t i;
 
+  // TODO: make lockless access: use _Atomic /.in_use/ for that
   mutex_lock(PCNT_mux);
   for (i = pcnt_unit; i < PCNT_UNIT_MAX; i++) {
     if (!units[i].in_use) {
@@ -173,7 +174,7 @@ static void count_release_unit(int unit) {
 // Configure & enable interrupts on the unit; installs ISR service and attaches "overflow interrupt" handler
 // 
 static void count_claim_interrupt(pcnt_unit_t unit) {
-  mutex_lock(PCNT_mux);
+  mutex_lock(PCNT_mux); //TODO: is this lock here for /pcnt_counters/ only? if so replace it with atomic access
   pcnt_event_enable(unit, PCNT_EVT_H_LIM);
   pcnt_event_disable(unit, PCNT_EVT_ZERO); // or you will get extra interrupts (x2)
 

@@ -78,13 +78,16 @@ struct sequence {
   rmt_data_t ht[2];            // "head" [0] and "tail" [1]. TODO: make 2 members with proper names
   
   char *bits;                  // asciiz "100101101"
-  char *bytes;                 // asciiz "2309 ab ffff" //TODO: make char *user_data instead which can keep bits or bytes
+  char *bytes;                 // char * to the raw 8bit data. can not be printfed
+  int bytes_len;
 };
 
 // Sets _Name pointer to the sequence being edited (struct sequence *)
+// Sets seq_num local variable to the sequence index 
 #define THIS_SEQUENCE(_Name) \
-  struct sequence * _Name = &sequences[context_get_uint()]; \
-  if (unlikely(context_get_uint() >= SEQUENCES_NUM)) { \
+  unsigned int seq_num = context_get_uint(); \
+  struct sequence * _Name = &sequences[seq_num]; \
+  if (unlikely(seq_num >= SEQUENCES_NUM)) { \
     q_print("% THIS_SEQUENCE() : disrupted Context\r\n"); \
     return CMD_FAILED; \
   }
@@ -189,6 +192,11 @@ static void seq_show(unsigned int seq) {
 
   s = &sequences[seq];
 
+  // Hint user about sequence incompleteness:
+  // If theres bits or bytes set, then hint about alphabet
+  // if alphabet is set, hint about bits and bytes
+  // if nothing is set - hint about levels, bits and bytes
+
   q_printf("%%\r\n%% Sequence #%d:\r\n%% Resolution : %.4fuS per tick  (Frequency: %lu Hz)\r\n", seq, s->tick, seq_tick2freq(s->tick));
   if (s->seq) {
     int i;
@@ -201,32 +209,35 @@ static void seq_show(unsigned int seq) {
       total += s->seq[i].duration0 + s->seq[i].duration1;
     }
     q_printf("\r\n%% Total: %d levels, duration: %lu ticks, (~%lu uS)\r\n", s->seq_len * 2, total, (unsigned long)((float)total * s->tick));
-  } else
-    q_print("% <i>Incomplete</>: levels are not set. (use \"levels\", \"bits\" or \"bytes\")\r\n");
+  } else {
+    if (s->bits || s->bytes)
+      q_print("% <i>Incomplete</>: set the alphabet with \"one\" and \"zero\"\r\n");
+    else 
+      q_print("% <i>Incomplete</>: set the waveform with \"levels\", \"bits\" or \"bytes\"\r\n");
+  }
 
   if (s->bits || s->bytes) {
-    if (s->bits)
-      q_printf("%% Bits sequence: (%d bits) \"%s\"\r\n", strlen(s->bits), s->bits);
-    else {
-      int tmp = strlen(s->bytes);
-      if (tmp & 1)
-        tmp++;
-      tmp >>= 1;
-      q_printf("%% Byte sequence: (%d byte%s) \"%s\"\r\n", PPA(tmp),s->bytes);
+    if (s->bytes) {
+      q_printf("%% Bytes sequence: (%d byte%s)\"\r\n", PPA(s->bytes_len));
+      q_printhex((unsigned char *)s->bytes, s->bytes_len);
+    } else {
+      size_t x = strlen(s->bits);
+      q_printf("%% Bits sequence: (%d bit%s)\r\n"
+               "%% %s\r\n", 
+               PPA(x),
+               s->bits);
     }
-
-    q_print("% Alphabet:\r\n");
-    q_print("%   Zero (\"0\") is <i>");
-    seq_show_rmt_symbol(&s->alph[0]);
-    q_print("</>\r\n");
-
-    q_print("%   One (\"1\") is <i>");
-    seq_show_rmt_symbol(&s->alph[1]);
-    q_print("</>\r\n");
-
-    if (!s->alph[0].duration0 || !s->alph[1].duration0)
-      q_print("% <i>Incomplete</>: alphabet is not defined (use \"zero\" and \"one\")\r\n");
   }
+
+  q_print("% Alphabet:\r\n"
+          "%   Zero (\"0\") is <i>");
+  seq_show_rmt_symbol(&s->alph[0]);
+  q_print("</>\r\n");
+
+  q_print("%   One (\"1\") is <i>");
+  seq_show_rmt_symbol(&s->alph[1]);
+  q_print("</>\r\n");
+
 
   q_print("% Optional header : <i>");
   seq_show_rmt_symbol(&s->ht[0]);
@@ -864,26 +875,28 @@ static int cmd_seq_save(int argc, char **argv) {
     return CMD_FAILED;
   }
 
+  
+  // TODO: File operations may change CWD so prompt will be updated - this is wrong. 
+  // Right now here is no good solution for the problem, we just save/restore our prompt
+  // after file operations
+  //const char *p = prompt_get();
+
   // Touch the file. It is likely will fail on SPIFFS so we ignore the return code
-  //
-  if (files_touch(argv[1]) < 0) {
+  files_touch(argv[1]);
 
-    q_print("% Is filesystem mounted?\r\n");
-    return CMD_FAILED;
-
-  }
   // Append to existing file or create new.
   // By default we append, so every module can write its configuratuion into single config file
-  if ((fp = files_fopen(argv[1],"a")) == NULL)
+  if ((fp = files_fopen(argv[1],"a")) == NULL) {
+    //prompt_set(p);
     return CMD_FAILED;
+  }
 
   fprintf(fp,"\r\n// Sequence configuration\r\n");
   fprintf(fp,"sequence %u\r\n",context_get_uint());
   fprintf(fp,"  tick %.4f\r\n",s->tick);
+  // if we have bytes then we also have bits
   if (s->bits)
     fprintf(fp,"  bits %s\r\n",s->bits);
-  else if (s->bytes)
-    fprintf(fp,"  bytes %s\r\n",s->bytes);
   else if (s->seq) {
     fprintf(fp,"  levels");
     for (int i = 0; i < s->seq_len; i++)
@@ -926,6 +939,7 @@ static int cmd_seq_save(int argc, char **argv) {
   if (fp)
     fclose(fp);
 
+  //prompt_set(p);
   return 0;
 }
 #endif // WITH_FS
@@ -934,7 +948,52 @@ static int cmd_seq_save(int argc, char **argv) {
 //
 //
 static int cmd_seq_bytes(int argc, char **argv) {
-  q_print("% Not implemented yet, use \"bits\"\r\n");
+
+  char *out = NULL;
+  int len;
+
+  THIS_SEQUENCE(s);
+
+  if (argc < 2)
+    return CMD_MISSING_ARG;
+
+  // Read user input to a continous buffer
+  len = userinput_join(argc, argv, 1, &out);
+  if (len < 1 || !out) {
+cancel_and_return:    
+    q_print("% Out of memory");
+    return CMD_FAILED;
+  }
+  // allocate x8+1 byte for trailing zero
+  char *bits = (char *)q_malloc(len*8 + 1, MEM_SEQUENCE);
+  if (!bits) {
+    q_free(out);
+    goto cancel_and_return;
+  }
+  
+  // Convert bytes to bits and store them as an asciiz string in s->bits
+  int x = 0;
+  for (int byte = 0; byte < len; byte++) {
+    bits[x++] = '0' + ((out[byte] >> 7) & 1);
+    bits[x++] = '0' + ((out[byte] >> 6) & 1);
+    bits[x++] = '0' + ((out[byte] >> 5) & 1);
+    bits[x++] = '0' + ((out[byte] >> 4) & 1);
+    bits[x++] = '0' + ((out[byte] >> 3) & 1);
+    bits[x++] = '0' + ((out[byte] >> 2) & 1);
+    bits[x++] = '0' + ((out[byte] >> 1) & 1);
+    bits[x++] = '0' + ((out[byte] >> 0) & 1);
+    
+  }
+  bits[x] = '\0';
+  seq_freemem(context_get_uint());
+  s->bits = bits;
+  s->bytes = out;
+  s->bytes_len = len;
+
+q_printf("s->bytes=%p, s->bytes_len=%u\r\n", s->bytes, s->bytes_len);
+
+  seq_compile(context_get_uint());
+
   return 0;
 }
 
@@ -1022,6 +1081,7 @@ static int cmd_seq_capture(int argc, char **argv) {
 // "profile nec|samsung|lg|lg32"
 //
 //
+
 static UNUSED int cmd_seq_profile(int argc, char **argv) {
   q_print("% RTM-RX: Not implemented yet, wait for the next version\r\n");
   return 0;

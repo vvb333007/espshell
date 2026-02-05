@@ -289,7 +289,7 @@ static INLINE bool is_background_task() {
 // and /Cwd/ into the corresponding fields of helper_arg. 
 //
 // The newly spawned task reads these values and assigns them to the thread-local /Context/, /keywords/, and /Cwd/ variables. 
-// (They are declared as "static __thread", so they are per-thread, not truly global)
+// (They are declared as "static _Thread_local", so they are per-thread, not truly global)
 //
 // Different fields are used depending on the task type:
 //
@@ -329,7 +329,7 @@ static struct helper_arg *ha_get() {
   struct helper_arg *ret;
 
   // Populate common fields: /Context/, /keywords/ and /Cwd/. These fields will be used by a spawned task,
-  // to set its corresponding "global" (actually, __thread) variables. The rest is populated by the caller
+  // to set its corresponding "global" (actually, _Thread_local) variables. The rest is populated by the caller
   //
   if (NULL != (ret = mb_get(&ha_pool))) {
     ret->context = context_get();

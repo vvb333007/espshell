@@ -203,7 +203,7 @@ static int cmd_nvs_export(int, char **);
 #  endif
 #endif
 
-static int cmd_misc(int argc, char **argv);
+static int  cmd_misc(int argc, char **argv);
 
 // -- Commands and Subdirectories --
 //
@@ -531,16 +531,15 @@ KEYWORDS_DECL(sequence) {
     HELPK("Set bits to transmit") },
 
   { "bytes", cmd_seq_bytes, MANY_ARGS,
-    HELPK("% \"<b>bytes</> D0 D1 ... Dn\"\r\n"
-          "% \"<b>bytes</> none\"\r\n"
+    HELPK("% \"<b>bytes</> TEXT\"\r\n"
           "%\r\n"
-          "% A byte pattern to be used as a sequence. D0, D1.. Dn are hex bytes\r\n"
+          "% A byte pattern to be used as a sequence. Text or hex bytes\r\n"
           "% Overrides previously set \"levels\" and \"bits\" commands\r\n"
           "% See commands \"one\" and \"zero\" to define \"1\" and \"0\"\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <i>bytes a9 18 8f f cd 15</>  - 6-byte sequence\r\n"
-          "%   <i>bytes none</>  - Clear bits, levels and bytes"),
+          "%   <i>bytes \\a9\\18\\8f\\0f\\cd\\15</>  - 6-byte sequence\r\n"
+          "%   <i>bytes Hello\\20World\\20!</>  - Mixed hex bytes and ASCII"),
     HELPK("Set bytes to transmit") },
 
 
@@ -2345,7 +2344,7 @@ KEYWORDS_REG(camera);
 // It is an thread-specific variable (every task has its own copy of this variable)
 // Background commands obtain a copy of this variable and initialize their own (see struct helper_arg and its use)
 //
-static __thread const struct keywords_t *keywords = KEYWORDS(main);
+static _Thread_local const struct keywords_t *keywords = KEYWORDS(main);
 
 
 ////////////////////////////// functions and command handlers ///////////////////////

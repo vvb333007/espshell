@@ -611,7 +611,7 @@ static int cmd_nap_alarm(int argc, char **argv) {
   return 0;
 }
 
-//"nap [deep] [NUM seconds|minutes|hours|days]"
+//"nap [deep]
 // Put cpu into light or deep sleep
 //
 static int cmd_nap(int argc, char **argv) {
@@ -642,10 +642,12 @@ static int cmd_nap(int argc, char **argv) {
   // give a chance to the q_print above to do its job
   q_delay(100);
 
-  if (deep)
-    esp_deep_sleep_start(); // does not return
-  else {
-    //Light_sleep = true;
+  if (deep) {
+    esp_deep_sleep_start(); // does not return. /Sleep_count/ will be incremented upon wakeup
+    //NOT REACHED
+    abort();
+  } else {
+    
     esp_light_sleep_start();
     Sleep_count++;
   }

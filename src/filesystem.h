@@ -46,7 +46,7 @@
 //
 // CWD is a per-thread local variable, which is q_free()d before task exits (see task_finished())
 //
-static __thread char *Cwd = NULL;  
+static _Thread_local char *Cwd = NULL;  
 
 // Forwards
 static const char *files_set_cwd(const char *cwd);
@@ -211,17 +211,22 @@ static const char *files_set_cwd(const char *cwd) {
         }
   }
 
-  // Regenerate prompt
-  // No we can't use "<i>" and "</>" here to colorize path in the prompt: this prompt is displayed by TTYshow()
+  // Regenerate prompt. We only do this if current command subdirectory is /files/.
+  // Also, we can't use "<i>" and "</>" here to colorize path in the prompt: this prompt is displayed by TTYshow()
   //
   const char *ret = files_get_cwd();
-  snprintf(prom, sizeof(prom), PROMPT_FILES,
-                (Color ? tag2ansi('i') : ""),
-                ret,
-                (Color ? tag2ansi('n') : ""));
 
-  prompt_set(prom);
-  
+  if (keywords_get() == KEYWORDS(files)) {
+    
+    snprintf(prom,
+            sizeof(prom),
+            PROMPT_FILES,
+            (Color ? tag2ansi('i') : ""),
+            ret,
+            (Color ? tag2ansi('n') : ""));
+
+    prompt_set(prom);
+  }
 
   return ret;
 }
@@ -542,6 +547,10 @@ static bool files_usage_stats(int i, uint64_t *total, uint64_t *used, uint64_t *
 // Called as a part of "show mount PATH" command
 //
 //
+#if WITH_SD
+static void sd_show(int mpi);
+#endif
+
 static int files_show_mountpoint(const char *path) {
   
   int mpi;
@@ -558,11 +567,8 @@ static int files_show_mountpoint(const char *path) {
 #endif
 #if WITH_SD
     if (files_mountpoint_is_sdspi(mpi)) {
-      q_print("% Filesystem is located on a SD card (SPI bus)\r\n");
-      sdmmc_card_t *card = (sdmmc_card_t *)mountpoints[mpi].gpp;
-      MUST_NOT_HAPPEN(card == NULL);
-      // TODO: write our own print_info
-      sdmmc_card_print_info(stdout, card);
+      q_printf("%% Filesystem is located on a SD card (SPI%d bus)\r\n", mountpoints[mpi].gpi);
+      sd_show(mpi);
     } else
 #endif  
     {
@@ -1016,17 +1022,87 @@ static bool files_copy(const char *src, const char *dst) {
 }
 
 #if WITH_SD
+// SD card over SPI support
 
-#  if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2
-#    define dma_for_spi(_X) (_X)// TODO:look into esp-idf sources. why not CH_AUTO?
-#  else
-#    define dma_for_spi(_X) SPI_DMA_CH_AUTO
-#  endif
+#if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2
+#  define dma_for_spi(_X) (_X)// TODO:look into esp-idf sources. why not CH_AUTO?
+#else
+#  define dma_for_spi(_X) SPI_DMA_CH_AUTO
+#endif
 
 
+// Define SPI3_HOST as invalid ID on SoCs which do not have SPI3
 #ifndef SPI3_HOST
 #  define SPI3_HOST 255;
 #endif
+
+#include "sd_protocol_defs.h"
+#include "sd_protocol_types.h"
+#include "sdmmc_cmd.h"
+
+// Print SD card information
+// This one is called by "show mount MOUNTPOINT"
+//
+static void sd_show(int mpi) {
+
+  unsigned int bus_width;
+  const char *type;
+  sdmmc_card_t *card = (sdmmc_card_t *)mountpoints[mpi].gpp;
+
+  MUST_NOT_HAPPEN(card == NULL);
+
+  // Find out the card type and its bus width
+  if (card->is_sdio) {
+
+    bus_width = (unsigned int)(card->scr.bus_width);  
+    type = "SDIO";
+
+  } else if (card->is_mmc) {
+
+    bus_width = (unsigned int)(1 << card->log_bus_width);
+    type = "MMC";
+
+  } else {
+
+    bus_width = (unsigned int)(card->ssr.cur_bus_width ? 4 : 1);
+    type = ((card->ocr & SD_OCR_SDHC_CAP) == 0) ? "SDSC"
+                                                : ((card->ocr & SD_OCR_S18_RA) ? "SDHC/SDXC (UHS-I)"
+                                                                               : "SDHC");
+  }
+
+  // Print card type and name
+  q_printf( "%% <i>%s</> type card, name is \"<i>%s</>\"\n", type, card->cid.name);
+
+  // Speeds
+  if (card->real_freq_khz == 0)
+    q_printf( "%% Speed: N/A, bus width: %u bit%s\n",PPA(bus_width));
+  else
+    q_printf("%% Speed: %d (limit: %lu)%s, bus width: %u bit%s\n",
+              card->real_freq_khz,
+              card->max_freq_khz,
+              card->is_ddr ? ", DDR" : "",
+              PPA(bus_width));
+
+  // Sizes
+  q_printf( "%% Capacity: %lluMB, (%d sectors, %d bytes each)\n"
+            "%% Read block length: %d\n", 
+              ((uint64_t) card->csd.capacity) * card->csd.sector_size / (1024 * 1024),
+              card->csd.capacity,
+              card->csd.sector_size,
+              card->csd.read_block_len);
+}
+
+// Format SD card by mount point index
+//
+static bool sd_format(int mpi) {
+
+  sdmmc_card_t* card = mountpoints[mpi].gpp;  
+
+  MUST_NOT_HAPPEN(card == NULL);
+
+  return ESP_OK == esp_vfs_fat_sdcard_format(mountpoints[mpi].mp, card);
+}
+
 
 // Mount an SD card (FAT filesystem is implied).
 // /mp/  - asciiz mountpoint 
@@ -2370,7 +2446,8 @@ static int cmd_files_format(int argc, char **argv) {
   i = files_mountpoint_by_label(label);
   if (i >= 0)
     if (files_mountpoint_is_sdspi(i)) {
-      q_print("% SD card can not be formatted: not implemented\r\n");
+      if (!sd_format(i))
+        q_print("% SD card failed to format\r\n");
       return 0;
     }
 #endif  

@@ -24,7 +24,8 @@
 // -- Compile-time settings BEGIN --
 //
 #define ESPSHELL_VERSION "0.99.13-dev" // Code version
-#define AUTOSTART 1                    // Set to 0 for manual shell start via espshell_start().
+//#define WITH_LOCALE "ru"       // Uncomment for experimental Russian language UI
+#define AUTOSTART 1              // Set to 0 for manual shell start via espshell_start().
 #define WITH_TIME 1              // Time support (commands "time" and "ntp")
 #define WITH_NVS 1               // NVS editor/viewer
 #define WITH_ALIAS 1             // Set to 0 to disable alias support (commands "alias", "if", "every" and "exec")

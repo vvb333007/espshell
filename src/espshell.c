@@ -173,6 +173,7 @@
 #define PRINTF_LIKE __attribute__((format(printf, 1, 2)))
 
 
+
 #if AUTOSTART
 #  define STARTUP_HOOK __attribute__((constructor))
 #else
@@ -193,6 +194,8 @@
 // gcc stringify which accepts macro names
 #define xstr(s) ystr(s)
 #define ystr(s) #s
+
+#define LOCALE_FILE_NAME(X) "lang/" ## X ## _ ## WITH_LOCALE ## ".inc"
 
 
 #define BREAK_KEY 3    // Ctrl+C code
@@ -258,7 +261,7 @@ static INLINE bool esp_gpio_is_pin_reserved(unsigned int gpio) {
 //
 // NOTE: This is a thread-local variable.
 //
-static __thread uintptr_t Context = 0;
+static _Thread_local uintptr_t Context = 0;
 
 typedef __typeof__(Context) context_t;
 
@@ -277,11 +280,17 @@ typedef __typeof__(Context) context_t;
 static const char * prompt = PROMPT;
 
 // Prompts are module-local, usually implemented as a static buffer
-// allocated on the stack.
+// e.g.  static char prompt_abc[32];
 //
 static void prompt_set(const char *new_prompt) {
   if (is_foreground_task())
     prompt = new_prompt ? new_prompt : PROMPT;
+}
+
+//
+//
+static inline const char *prompt_get() {
+  return prompt;
 }
 
 // Common messages. 
@@ -438,7 +447,7 @@ static void amp_helper_task(void *arg) {
   argcargv_t *aa = ha->aa;
   //const char *old_prompt = ha->prompt;
 
-  // /Context/, /Cwd/ and /keywords/ are __thread variables and must be inherited, i.e. set by the task:
+  // /Context/, /Cwd/ and /keywords/ are _Thread_local variables and must be inherited, i.e. set by the task:
   context_set(ha->context);
   keywords_set_ptr(ha->keywords);
   files_set_cwd(ha->cwd);          // sets /Cwd/ but does not set prompt (bg task!) 
