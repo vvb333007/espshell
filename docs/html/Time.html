@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <title>System time</title>
+  <title>System Time</title>
   <link rel="stylesheet" href="espshell.css">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="ESPShell :: системное время : установка и просмотр">
+  <meta name="description" content="ESPShell :: system time : setup and viewing">
   <meta name="author" content="Viacheslav Logunov">
   <meta name="repository" content="https://github.com/vvb333007/espshell">
   <meta name="project" content="ESPShell">
@@ -30,12 +30,120 @@
 
 </script>
 </head>
+
 <body>
-<p align=center><a href="index.html"><img src="i/espshell_logo.jpg" alt="logo" width="70%" height="70%" /></a></p>
-<h3 align=center><a href="Time.ru.html">[ На русском ]</a>&nbsp;&harr;&nbsp;<a href="Time.html">[ English ]</a></h3>
+<p align=center><a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: RTC and system time" width="70%" height="70%" /></a></p>
+<h3 align=center><a href="Time.ru.html">[ Russian ]</a>&nbsp;&harr;&nbsp;<a href="Time.html">[ English ]</a></h3>
+<p>
+  <ul>
+    <li><a href="#intro">Clocks in ESP32</a></li>
+    <li><a href="#set">Setting current time, date, and time zone</a></li>
+    <li><a href="#show">Viewing current time and date</a></li>
+    <li><a href="#sntp">Setting time via WiFi</a></li>
+    <li><a href="#ref">Command reference</a></li>
+ </ul>
+</p>
 
+<p><h2 id=intro><a href="#top">&#8686;</a>Clocks in ESP32</h2></p>
+<p>
+The real-time clock (RTC) in ESP32 is not a separate external module, but a part of the chip’s internal
+subsystem designed to keep track of time independently of the main CPU state. The RTC domain operates
+from its own low-frequency clock source (typically the internal RC oscillator at ~150 kHz or an external
+32.768 kHz crystal) and remains active in <a href="Sleep.html">light sleep and deep sleep</a> modes. Thanks to this,
+ESP32 is able to maintain timekeeping even when the core is halted or power consumption is heavily limited,
+which is critical for low-power applications. When power is completely removed, the RTC is reset.
+</p>
+<p>
+From a timekeeping perspective, the RTC in ESP32 is responsible not so much for “calendar” functions as for
+continuous time counting and wake-up timers. The actual representation of time (Unix time, struct tm, etc.)
+is implemented at the SDK level. In this setup, the RTC serves as the hardware foundation: it keeps time
+running between wake-ups, stores the counter, and allows accurate calculation of how much time has passed
+while in sleep modes. This is why, after exiting deep sleep, ESP32 “knows” how many seconds have elapsed,
+even if Wi-Fi and the CPU were completely powered down.
+</p>
 
-</body>
-</html>
+<p><h2 id=set><a href="#top">&#8686;</a>Setting current time, date, and time zone</h2></p>
+<p>
+To set the current time and time zone, the "<b>time</b>" command is used with various arguments.
+The syntax is fairly flexible: "<b>time set</b> <i>DATE</i>", where <i>DATE</i> is a string such as "2026 february",
+"10 april 2026", or "sept 10:12 am", and similar formats. The order of arguments after the set keyword does not matter,
+and if a particular argument is omitted, the corresponding value is left unchanged. For example, the command
+"time set 2026" will change only the year, leaving the time, day, and month untouched.
+</p>
+<p>
+Example: set time and date to "28 September 2026 14:21:37"
+<pre>
+  esp32#>time set 28 September 2026 14:21:37
+
+  % New system time/date has been set. (user input)
+  esp32#>
+</pre>
+To set the time zone, use the "<b>time zone</b> <i>TIMEZONE</i>" command, where
+<i>TIMEZONE</i> is the offset relative to UTC. For example, you can enter time zone 7, which means
+UTC-7:00. Negative offsets can also be specified by adding a minus sign: "time zone -1:30" will set the time zone to "UTC+01:30".
+</p>
+<p>
+ESPShell stores the time zone value in <a href="NVS.html">NVS</a>, so it is preserved across power cycles and reboots.
+This is important, for example, if SNTP synchronization is configured.
+</p>
+
+<p><h2 id=get><a href="#top">&#8686;</a>Viewing current time and date</h2></p>
+<p>
+Here is how it looks (time is not configured):
+<pre>
+esp32#>show time
+% Today is:  1 of January (Thursday) 07:00:23 ,year 1970 (UTC-07:00)
+% Time source is on-chip RTC (volatile), time and/or date may be incorrect
+esp32#>
+</pre>
+
+And this is how the output of the "<b>show time</b>" command looks when the time is synchronized:
+</p>
+<p align=center>
+<img src="i/show_time_synced.jpg" alt="show time synchronized" width="80%" height="80%" />
+<br>
+<i>Fig. 1: Example output of "<b>show time</b>" command</i>
+</p>
+
+<p><h2 id=sntp><a href="#top">&#8686;</a>Setting time via WiFi</h2></p>
+ESPShell supports obtaining accurate time from a time server using the SNTP protocol.
+The configuration process is described in more detail in <a href="WiFi.html">this</a> document, in <a href="WiFi.html#time">this</a> section.
+<p>
+
+<p><h2 id=ref><a href="#top">&#8686;</a>Command reference and examples</h2></p>
+TBD
+<!-- table>
+  <tr><th>Command</th><th>Description and examples</th></tr>
+
+  <tr>
+    <td><b>time set</b></td>
+    <td><b>time set <i>TIMESPEC</i></b><br>
+         <p>
+          <pre>
+          </pre>
+        </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td><b>time zone</b></td>
+    <td><b>time zone <i>OFFSET</i></b><br>
+         <p>
+          <pre>
+          </pre>
+        </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td><b>show time</b></td>
+    <td><b>show time</b><br>
+         <p>
+          <pre>
+          </pre>
+        </p>
+    </td>
+  </tr>
+</table -->
 </body>
 </html>

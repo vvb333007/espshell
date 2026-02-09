@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
-  <title>Sleep и Deep Sleep</title>
+  <title>Системное время</title>
   <link rel="stylesheet" href="espshell.css">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -30,12 +30,121 @@
 
 </script>
 </head>
+
 <body>
-<p align=center><a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell для Ардуино :: Системное время : установка и отображение" width="70%" height="70%" /></a></p>
+<p align=center><a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell для Ардуино :: Системное время" width="70%" height="70%" /></a></p>
 <h3 align=center><a href="Time.ru.html">[ На русском ]</a>&nbsp;&harr;&nbsp;<a href="Time.html">[ English ]</a></h3>
+<p>
+  <ul>
+    <li><a href="#intro">Часы в ESP32</a></li>
+    <li><a href="#set">Установка текущего времени,даты и часового пояса</a></li>
+    <li><a href="#show">Просмотр текущего времени и даты</a></li>
+    <li><a href="#sntp">Установка часов через WiFi</a></li>
+    <li><a href="#ref">Список команд</a></li>
+ </ul>
+</p>
+
+<p><h2 id=intro><a href="#top">&#8686;</a>Часы в ESP32</h2></p>
+<p>
+Часы реального времени (RTC) в ESP32 - это не отдельный внешний модуль, а часть внутренней подсистемы 
+чипа, предназначенной для ведения времени независимо от состояния основного CPU. RTC-домен работает 
+от собственного низкочастотного источника тактирования (обычно внутренний RC-осциллятор ~150 кГц 
+или внешний 32.768 кГц кварц) и остаётся активным в режимах <a href="Sleep.ru.html">light sleep и deep sleep</a>. Благодаря 
+этому ESP32 может сохранять счёт времени даже тогда, когда ядро остановлено или питание сильно ограничено, 
+что критично для энергосберегающих приложений. При выключении питания RTC "обнулится".
+</p>
+<p>
+С точки зрения timekeeping, RTC в ESP32 отвечает не столько за "календарные" функции, сколько за 
+непрерывный счёт времени и таймеры пробуждения. Само представление времени (Unix time, struct tm и т.п.) 
+реализуется уже на уровне SDK. RTC при этом выступает как аппаратная основа: он обеспечивает ход времени 
+между пробуждениями, хранит счётчик и позволяет точно рассчитать, сколько времени прошло в sleep-режимах. 
+Именно поэтому после выхода из deep sleep ESP32 "знает", сколько секунд прошло, даже если Wi-Fi и CPU были 
+полностью выключены.
+</p>
+
+<p><h2 id=set><a href="#top">&#8686;</a>Установка текущего времени,даты и часового пояса</h2></p>
+<p>
+Для установки текущего времени и часового пояса используется команда "<b>time</b>" с различными аргументами.
+Синтаксис достаточно свободный: "<b>time set</b> <i>DATE</i>" где <i>DATE</i> - это строка вида "2026 february"
+или "10 april 2026" или "sept 10:12 am" и в таком же духе. Порядок аргументов после ключевого слова set не важен,
+а если какой-то аргумент отсутствует, то соответствующее значение не меняется. Например команда "time set 2026"
+поменяет лишь значение года, оставив время, число и месяц нетронутыми.
+</p>
+<p>
+Пример: установить время и дату "28 September 2026 14:21:37"
+<pre>
+  esp32#>time set 28 September 2026 14:21:37
+
+  % New system time/date has been set. (user input)
+  esp32#>
+</pre>
+Для установки часового пояса следует воспользоваться командой "<b>time zone</b> <i>TIMEZONE</i>", где
+<i>TIMEZONE</i> - это смещение относительно UTC. Например, можно написать time zone 7, и это будет означать
+UTC-7:00. Можно задавать и отрицательные смещения, добавляя знак минус: "time zone -1:30" установит часовой пояс в "UTC+01:30"
+</p>
+<p>
+ESPShell запоминает значение часового пояса в <a href="NVS.ru.html">NVS</a>, поэтому после сброса питания и перезагрузки
+значение time zone утеряно не будет, что важно, например, если у вас настроена SNTP синхронизация
+</p>
+
+<p><h2 id=get><a href="#top">&#8686;</a>Просмотр текущего значения времени и даты</h2></p>
+<p>
+Просматриваем вот так (часы не настроены):
+<pre>
+esp32#>show time
+% Today is:  1 of January (Thursday) 07:00:23 ,year 1970 (UTC-07:00)
+% Time source is on-chip RTC (volatile), time and/or date may be incorrect
+esp32#>
+</pre>
+
+А так будет выглядеть вывод команды "<b>show time</b>", если время синхронизировано:
+</p>
+<p align=center>
+<img src="i/show_time_synced.jpg" alt="show time synchronized" width="80%" height="80%" />
+<br>
+<i>Fig. 1: Example output of "<b>show time</b>" command</i>
+</p>
+
+<p><h2 id=sntp><a href="#top">&#8686;</a>Установка часов через WiFi</h2></p>
+ESPShell поддерживает возможность получения точного времени с time-сервера по протоколу sntp. 
+Подробнее процесс конфигурирования описан в <a href="WiFi.ru.html">этом</a> документе, в этом <a href="WiFi.ru.html#time">разделе</a>
+<p>
 
 
-</body>
-</html>
+<p><h2 id=ref><a href="#top">&#8686;</a>Список команд и примеры</h2></p>
+TBD
+<!-- table>
+  <tr><th>Команда</th><th>Описание и примеры</th></tr>
+
+  <tr>
+    <td><b>time set</b></td>
+    <td><b>time set <i>TIMESPEC</i></b><br>
+         <p>
+          <pre>
+          </pre>
+        </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td><b>time zone</b></td>
+    <td><b>time zone <i>OFFSET</i></b><br>
+         <p>
+          <pre>
+          </pre>
+        </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td><b>show time</b></td>
+    <td><b>show time</b><br>
+         <p>
+          <pre>
+          </pre>
+        </p>
+    </td>
+  </tr>
+</table -->
 </body>
 </html>
