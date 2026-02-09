@@ -14,9 +14,6 @@ Roadmap:
    saving to a FS. (IR remote capture & playback) add sequence decode, based on
    user-supplied alphabet ("one","zero","head" and "tail")
 
-2.2. Sequences: add support for byte strings (currently only bitstrings are 
-   recognized)
-
 3. Frequency meter: add support for start/stop pin (i.e. hardware, externally
    controlled start/stop). This can improve accuracy: setting GPIO high/low 
    from an PCNT interrupt handler is much faster than sending TaskNotification.
@@ -24,4 +21,3 @@ Roadmap:
 
 5.3 Port a single-user, single-threaded simple FTP server - to be able to 
    upload a premade filesystem (i.e. files and directories)
-
