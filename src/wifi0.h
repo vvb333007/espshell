@@ -481,6 +481,7 @@ static bool prepare_wifi_stack() {
   // and if found - skip WiFi initialization, set Wifi.prepared flag
   if ((get_staif() || get_apif()) && !Wifi.prepared) {
     HELP(q_print("% WiFi seems to be initialized by the sketch. Skipping WiFi init\r\n"));
+    // TODO: BUG! we cant just skip whole init: we need events
     Wifi.prepared = true;
   }
 

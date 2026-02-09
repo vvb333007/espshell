@@ -23,7 +23,7 @@
 
 // -- Compile-time settings BEGIN --
 //
-#define ESPSHELL_VERSION "0.99.13-dev" // Code version
+#define ESPSHELL_VERSION "0.99.13" // Code version
 //#define WITH_LOCALE "ru"       // Uncomment for experimental Russian language UI
 #define AUTOSTART 1              // Set to 0 for manual shell start via espshell_start().
 #define WITH_TIME 1              // Time support (commands "time" and "ntp")
@@ -89,6 +89,8 @@
 //
 // This definition is valid ONLY for user code: when espshell library
 // is compiled, the cmd_misc_user() is declared as external weak symbol (==NULL)
+//
+// see examples/user_command/user_command.ino
 //
 #if !COMPILING_ESPSHELL
 #  ifdef __cplusplus

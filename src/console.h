@@ -36,7 +36,7 @@ extern int  console_read_bytes(void *buf, uint32_t len, TickType_t wait);
 //
 
 // Flush console IO
-// TODO: implement
+// TODO: implement console_flush() for UART
 static INLINE void console_flush() {
   
 }

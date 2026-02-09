@@ -25,8 +25,10 @@
 // Individual array elements (whether real arrays or pointers) can be accessed as VARIABLE_NAME[INDEX].
 //
 // TODO: Review this code. Possible buffer overflows may occur due to use of strcpy and sprintf. 
-//       These should be replaced with strlcpy and snprintf.
+// TODO:These should be replaced with strlcpy and snprintf.
 // TODO: Verify that variables with names longer than CONVAR_NAMELEN_MAX - 1 cannot be registered.
+// TODO: Add support "long long", 64bit type
+
 //
 // "Console Variable" (convar) descriptors are created by convar_add() 
 // and linked into a singly linked list (head is "var_head"). 
@@ -92,7 +94,6 @@ static const char *__uina = "unsigned int *";
 
 // Check if variable has supported type. ESPShell supports only basic C types
 // which can fit 1,2 or 4 bytes
-// TODO: support "long long" and stdint types (uint32_t etc)
 static bool variable_type_is_ok(unsigned int size) {
   if (size != sizeof(char) && size != sizeof(short) && size != sizeof(int) && size != sizeof(float)) {
     q_printf("%% Variable was not registered (unsupported size: %u)\r\n",size);

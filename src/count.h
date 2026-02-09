@@ -33,10 +33,13 @@
  // "pcnt overflow interrupt" - an ISR which gets called each time counter reaches 20000 pulses
  // "GPIO anyedge interrupt" - an ISR which gets called on incoming pulse
  //
- // TODO: 1.0: "trigger" counter must read timestamp & enable counting inside the ISR. Current implementation has a delay of tens
- // of microseconds before 1st pulse and actual counting
+ // TODO: 1.0: "trigger" counter must record a timestamp & enable counting inside the ISR. Current implementation has a delay of tens
+ // TODO: of microseconds before 1st pulse and actual counting since the code uses task notifications
+ // TODO: Make /pcnt_counters/ _Atomic. Use atomic_load/atomic_store/atomic_fetch_add/sub
+ // TODO: make lockless access to the units[] array: use _Atomic /.in_use/ for that
+ // TODO: to get rid of all these mutexes
+ // TODO: Make <1Hz display possible
  //
- // TODO: change type of all variables with task_id to task_t
  //
 #if COMPILING_ESPSHELL
 
@@ -75,7 +78,7 @@ static volatile struct {
   unsigned int reserved3:3;
 
   uint64_t tsta;           // q_micros() just before counting starts
-  unsigned int   taskid;         // ID of the task responsible for counting
+  task_t   taskid;         // ID of the task responsible for counting
 
 } units[PCNT_UNIT_MAX] = { 0 };
 
@@ -132,7 +135,6 @@ static void IRAM_ATTR count_pin_anyedge_interrupt(void *arg) {
 static int count_claim_unit() {
   pcnt_unit_t i;
 
-  // TODO: make lockless access: use _Atomic /.in_use/ for that
   mutex_lock(PCNT_mux);
   for (i = pcnt_unit; i < PCNT_UNIT_MAX; i++) {
     if (!units[i].in_use) {
@@ -148,7 +150,7 @@ static int count_claim_unit() {
       units[i].trigger = 0;
       units[i].been_triggered = 0;
       units[i].filter_enabled = 0;
-      units[i].taskid = (unsigned int)taskid_self(); 
+      units[i].taskid = taskid_self(); 
       pcnt_counters++;
       mutex_unlock(PCNT_mux);
       return (int)i;
@@ -174,7 +176,8 @@ static void count_release_unit(int unit) {
 // Configure & enable interrupts on the unit; installs ISR service and attaches "overflow interrupt" handler
 // 
 static void count_claim_interrupt(pcnt_unit_t unit) {
-  mutex_lock(PCNT_mux); //TODO: is this lock here for /pcnt_counters/ only? if so replace it with atomic access
+
+  mutex_lock(PCNT_mux); 
   pcnt_event_enable(unit, PCNT_EVT_H_LIM);
   pcnt_event_disable(unit, PCNT_EVT_ZERO); // or you will get extra interrupts (x2)
 
@@ -228,7 +231,10 @@ static unsigned int count_read_counter(int unit, unsigned int *freq, uint64_t *i
     // read values only if it is counting counter. counters in "trigger" state read as 0
     if (!units[unit].trigger) {
       pcnt_get_counter_value(unit, &count);                               // current counter value ([0 .. 20000])
-      cnt = units[unit].overflow * PCNT_OVERFLOW + (unsigned int)count;   // counter total. TODO: fix "if this counter was "trigger" then we miss 1 pulse here"
+      // counter total:
+      cnt = units[unit].overflow * PCNT_OVERFLOW + 
+            (unsigned int)count + 
+            units[unit].been_triggered;                                   // +1 pulse if was triggered
       tsta = q_micros() - units[unit].tsta;                               // microseconds elapsed so far (for the frequency calculation)
     }
   } else {
@@ -280,7 +286,8 @@ static int count_clear_counter(int pin) {
           pcnt_counter_resume(unit);
       } else {
         // its ok to clear pin,taskid & tsta on stopped counter
-        units[unit].pin = units[unit].taskid = 0;
+        units[unit].pin = 0;
+        units[unit].taskid = 0;
         units[unit].tsta = 0;
       }
       q_printf("%% Counter #%u (%s state) has been cleared\r\n", unit, count_state_name(unit));
@@ -378,7 +385,7 @@ static int cmd_count(int argc, char **argv) {
         return count_clear_counter(pin);
 
   // Allocate new counter unit: find an index to units[] array which is free to use
-  // TODO:3 move it after options processing to get rid of count_release_unit() on errors
+  // TODO: move it after options processing to get rid of count_release_unit() on errors
   if ((unit = count_claim_unit()) < 0) {
     q_print("% <e>All " xstr(PCNT_UNIT_MAX) "counters are in use</>\r\n% Use \"kill\" to free up counter resources\r\n");
     if (pcnt_unit != PCNT_UNIT_0)
@@ -401,7 +408,7 @@ static int cmd_count(int argc, char **argv) {
   // start from the 2nd argument to the command: if it is the "filter" keyword, then read and check filter value
   while (++i < argc) {
     if (!q_strcmp(argv[i],"filter")) {
-      short int low, high;               // min/max filter values. calculated from APB frequency. (TODO: do all Espressif chips have APB?)
+      short int low, high;               // min/max filter values. calculated from APB frequency. 
 
       MUST_NOT_HAPPEN(APBFreq == 0);
 
@@ -525,7 +532,7 @@ release_hardware_and_exit:
   // mark this PCNT unit as unused
   count_release_unit(unit);
 
-  // print measurement results. TODO:2 make <1Hz display possible
+  // print measurement results. 
   unsigned int freq;
   count_read_counter(unit,&freq,NULL);
   q_printf("%% %u pulses in approx. %llu ms (%u Hz, %u IRQs)\r\n", units[unit].count, units[unit].interval / 1000ULL, freq, units[unit].overflow);
@@ -555,13 +562,13 @@ static int cmd_show_counters(UNUSED int argc, UNUSED char **argv) {
     
 // wish we can have #pragma in #define ..
 
-    q_printf("%%  %d |%3u| %s | 0x%08x | <g>%11u</> | %10u | %8u | ", 
+    q_printf("%%  %d |%3u| %s | 0x%08x | <g>%11u</> | %10llu | %8u | ", 
                   i, 
                   units[i].pin,
                   count_state_name(i),
-                  units[i].taskid,
+                  (uintptr_t)units[i].taskid,
                   cnt,
-                  (unsigned int )(interval / 1000ULL), // TODO:3 bad typecast
+                  interval / 1000ULL,
                   freq); 
     if (units[i].filter_enabled)
       q_printf(" <i>%u</>\r\n", units[i].filter_value);

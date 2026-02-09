@@ -336,11 +336,9 @@ static int cmd_alias_asterisk(int argc, char **argv) {
   // a first alias use
   //
   // TODO: KNOWN BUG: if command is a subdir command (say wifi's "up") it will be wrongly precached as the "uptime".
-  // This happens because precacher does not keep track of the currently used keywords array: keywords are always searched from the keywords_main.
-  // If we have "wifi sta" and "up" in our alias, the precacher does not know that command "up" must be searched within "keywords_sta".
-  //
-  //                  solution1: add "!" flag to the command: "don't precache"
-  //
+  // TODO: This happens because precacher does not keep track of the currently used keywords array: keywords are always searched from the keywords_main.
+  // TODO: If we have "wifi sta" and "up" in our alias, the precacher does not know that command "up" must be searched within "keywords_sta".
+  // TODO:   solution1: add "!" flag to the command: "don't precache"
   // TODO: Add a parameter to userinput_find_handler() to specify search directories
   //
   const struct keywords_t *tmp = keywords_get();
@@ -421,6 +419,8 @@ static void alias_helper_task(void *arg) {
 static int alias_exec_in_background_delayed(struct alias *al, uint32_t delay_ms) {
   struct helper_arg *ha;
 
+// TODO: currently here is no mechanism to tell ESPShell which core to use for alias execution
+// TODO: figure out how to set core number for a bg alias execution
   if (likely(al != NULL))
     if ((ha = ha_get()) != NULL) {
       // ha->aa = NULL; maybe?
@@ -429,7 +429,7 @@ static int alias_exec_in_background_delayed(struct alias *al, uint32_t delay_ms)
       return task_new(alias_helper_task,
                       ha,
                       al->name,
-                      shell_core) == NULL ? CMD_FAILED : 0;  // TODO: let the user choose the core or tskNO_AFFINITY
+                      shell_core) == NULL ? CMD_FAILED : 0;  
     }
   return CMD_FAILED;
 }
