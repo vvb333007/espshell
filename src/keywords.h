@@ -205,6 +205,9 @@ static int cmd_nvs_export(int, char **);
 
 static int  cmd_misc(int argc, char **argv);
 
+#ifdef WITH_LANG
+#  include "lang/keywords_ru.inc"
+#else
 // -- Commands and Subdirectories --
 //
 // ESPShell commands are defined as entries in the /keywords_.../ arrays.  
@@ -2338,6 +2341,14 @@ KEYWORDS_DECL(camera) {
 KEYWORDS_REG(camera);
 #endif // WITH_ESPCAM
 
+// Displayed when user tries to "exit" from the main commands directory.
+// Language-specific versions are in lang/keywords_ru.h
+const char *Exit_message   = "% Not in a subdirectory; (to close the shell type \"exit ex\")\r\n";
+
+// Displayed when user enters some command subdirectory
+const char *Subdir_message = "%% Entering %s mode. Ctrl+Z or \"exit\" to return\r\n"
+                             "%% Main commands are still available (but not visible in \"?\" command list)\r\n";
+#endif // #if !defined WITH_LANG
 
 
 // Current keywords list in use, 
@@ -2397,13 +2408,11 @@ static const struct keywords_t *change_command_directory(
 
   if (text && count < 3) {
     count++;
-    HELP(q_printf("%% Entering %s mode. Ctrl+Z or \"exit\" to return\r\n"
-                  "%% Main commands are still available (but not visible in \"?\" command list)\r\n", text));
+    HELP(q_printf(Subdir_message, text));
   }
 
   return old_dir;
 }
-
 
 //"exit"
 //"exit exit"
@@ -2416,7 +2425,7 @@ static int cmd_exit(int argc, char **argv) {
     if (argc > 1 && !q_strcmp(argv[1], "exit"))
       Exit = true; // Causes REPL to abort
     else {
-      HELP(q_print("% Not in a subdirectory; (to close the shell type \"exit ex\")\r\n"));
+      HELP(q_print( Exit_message ));
     }
   }
   return 0;
@@ -2450,4 +2459,5 @@ static int cmd_show_subdirs(int argc, char **argv) {
 
 
 #endif // #if COMPILING_ESPSHELL
+
 

@@ -567,14 +567,18 @@ static __attribute__((const)) const char *tag2ansi(char tag) {
 // printf("You are %u%s on the queue", NEE(1))  --> "You are 1st on the queue"
 // printf("You are %u%s on the queue", NEE(2))  --> "You are 2nd on the queue"
 //
+#ifdef WITH_LANG
+#  define PPA(_X) _X, ""
+#  define NEE(_X) _X, "-й"
+#else
+#  define PPA(_X) _X, (_X) == 1 ? "" : "s"
+#  define NEE(_X) _X, number_english_ending(_X)
 static inline __attribute__((const)) const char *number_english_ending(unsigned int const n) {
   const char *endings[] = { "th", "st", "nd", "rd" };
   return n > 3 ? endings[0] : endings[n];
-
 }
+#endif // WITH_LANG
 
-#define PPA(_X) _X, (_X) == 1 ? "" : "s"
-#define NEE(_X) _X, number_english_ending(_X)
 
 
 

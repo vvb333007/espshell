@@ -16,8 +16,12 @@
 // program space
 
 #if COMPILING_ESPSHELL
-
 #if WITH_HELP
+#include <esp_random.h>
+
+#ifdef WITH_LANG
+#  include "lang/question_messages_ru.inc"
+#else
 static const char *Hints[] = {
   "% Press <TAB> repeatedly to cycle the cursor through command arguments.\r\n"
   "% This is faster than using the arrow keys (<-- and -->).",
@@ -93,9 +97,47 @@ static const char *Hints[] = {
   "% Use \"nat enable\" command to enable NAT router on the AP WiFi interface"
 };
 
+
+// 25 lines maximum to fit in default terminal window without scrolling
+static const char *Keys_Manual =
+  "%             -- ESPShell Keys -- \r\n\r\n"
+  "% <ENTER>         : Execute command.\r\n"
+  "% <- ->           : Arrows: move cursor left or right. Up and down to scroll\r\n"
+  "%                   through command history\r\n"
+  "% <DEL>           : As in Notepad\r\n"
+  "% <BACKSPACE>     : As in Notepad\r\n"
+  "% <HOME>, <END>   : Use Ctrl+A instead of <HOME> and Ctrl+E as <END>\r\n"
+  "% <TAB>           : Move cursor to the next word/argument: press <TAB> multiple\r\n"
+  "%                   times to cycle through words in the line\r\n"
+  "% Ctrl+R          : Command history search\r\n"
+  "% Ctrl+K          : [K]ill line: clear input line from cursor to the end\r\n"
+  "% Ctrl+L          : Clear screen\r\n"
+  "% Ctrl+Z          : Same as entering \"exit\" command\r\n"
+  "% Ctrl+C          : Suspend sketch execution\r\n"
+  "% <ESC>,NUM,<ESC> : Same as entering letter with decimal ASCII code NUM\r\n%\r\n"
+  "% -- Terminal compatibility workarounds (alternative key sequences) --\r\n%\r\n"
+  "% Ctrl+B and Ctrl+F work as \"<-\" and \"->\" ([B]ack & [F]orward arrows)>\r\n"
+  "% Ctrl+O or P   : Go through the command history: O=backward, P=forward\r\n"
+  "% Ctrl+D works as <[D]elete> key\r\n"
+  "% Ctrl+H works as <BACKSPACE> key\r\n";
+
+
+static const char *Error_No_Manual = 
+  "\r\n"
+  "%% Sorry, no manual entry for \"%s\"\r\n"
+  "%% Type \"<i>?</>\" and press <Enter> to see what is available\r\n";
+
+
+static const char *List_Banner =
+  "% Enter \"<b>?</> <i>COMMAND</>\" to view details about a specific command.\r\n"
+  "% Enter \"<b>? <i>keys</>\" to display the ESPShell keyboard help page.\r\n"
+  "%\r\n";
+
+#endif // LANG
+
 // Display useful hints. 
 // Only first one is choosed randomly, so pressing Ctrl+L enough times will display all the hints
-#include <esp_random.h>
+
 static const char *random_hint() {
   static unsigned tick = 0;
   if (tick == 0)
@@ -107,28 +149,7 @@ static const char *random_hint() {
 // display keyboard usage help page
 static int help_keys(UNUSED int argc, UNUSED char **argv) {
 
-  // 25 lines maximum to fit in default terminal window without scrolling
-  q_print("%             -- ESPShell Keys -- \r\n\r\n"
-          "% <ENTER>         : Execute command.\r\n"
-          "% <- ->           : Arrows: move cursor left or right. Up and down to scroll\r\n"
-          "%                   through command history\r\n"
-          "% <DEL>           : As in Notepad\r\n"
-          "% <BACKSPACE>     : As in Notepad\r\n"
-          "% <HOME>, <END>   : Use Ctrl+A instead of <HOME> and Ctrl+E as <END>\r\n"
-          "% <TAB>           : Move cursor to the next word/argument: press <TAB> multiple\r\n"
-          "%                   times to cycle through words in the line\r\n"
-          "% Ctrl+R          : Command history search\r\n"
-          "% Ctrl+K          : [K]ill line: clear input line from cursor to the end\r\n"
-          "% Ctrl+L          : Clear screen\r\n"
-          "% Ctrl+Z          : Same as entering \"exit\" command\r\n"
-          "% Ctrl+C          : Suspend sketch execution\r\n"
-          "% <ESC>,NUM,<ESC> : Same as entering letter with decimal ASCII code NUM\r\n%\r\n"
-          "% -- Terminal compatibility workarounds (alternative key sequences) --\r\n%\r\n"
-          "% Ctrl+B and Ctrl+F work as \"<-\" and \"->\" ([B]ack & [F]orward arrows)>\r\n"
-          "% Ctrl+O or P   : Go through the command history: O=backward, P=forward\r\n"
-          "% Ctrl+D works as <[D]elete> key\r\n"
-          "% Ctrl+H works as <BACKSPACE> key\r\n");
-
+  q_print( Keys_Manual );
   return 0;
 }
 
@@ -181,8 +202,7 @@ try_one_more_time:
       key = KEYWORDS(main);
       goto try_one_more_time;
     }
-    q_printf("\r\n%% Sorry, no manual entry for \"%s\"\r\n"
-             "%% Type \"<i>?</>\" and press <Enter> to see what is available\r\n" ,argv[1]);
+    q_printf(Error_No_Manual ,argv[1]);
     return CMD_FAILED;
   }
 
@@ -203,9 +223,7 @@ static int help_command_list(int argc, char **argv) {
 
   const struct keywords_t *key = keywords_get();
 
-  q_print("% Enter \"<b>?</> <i>COMMAND</>\" to view details about a specific command.\r\n"
-          "% Enter \"<b>? <i>keys</>\" to display the ESPShell keyboard help page.\r\n"
-          "%\r\n");
+  q_print(List_Banner);
 
   //run through the key[] and print brief info for every entry
   // 1. for repeating entries (same command name) only the first entry's description

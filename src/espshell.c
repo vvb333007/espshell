@@ -195,7 +195,6 @@
 #define xstr(s) ystr(s)
 #define ystr(s) #s
 
-#define LOCALE_FILE_NAME(X) "lang/" ## X ## _ ## WITH_LOCALE ## ".inc"
 
 
 #define BREAK_KEY 3    // Ctrl+C code
@@ -293,35 +292,63 @@ static inline const char *prompt_get() {
   return prompt;
 }
 
-// Common messages. 
-static const char *Failed = "% <e>Failed</>\r\n";
+#ifdef WITH_LANG
+#  include "lang/espshell_messages_ru.inc"
+#else
+static const char *Failed =
+    "% <e>Failed</>\r\n";
 
-static const char *i2cIsDown = "%% I2C%u is down. Use command \"up RX TX FREQ\" to initialize\r\n";
+static const char *i2cIsDown =
+    "%% I2C%u is down. Use the \"up RX TX FREQ\" command to initialize it.\r\n";
 
-static const char *uartIsDown = "%% UART%u is down. Use command \"up RX TX SPEED\" to initialize\r\n";
+static const char *uartIsDown =
+    "%% UART%u is down. Use the \"up RX TX SPEED\" command to initialize it.\r\n";
+
+static const char *Error_Arg =
+    "%% <e>Invalid %u%s argument (\"%s\")</>\r\n";
+
+static const char *Error_Missing_Arg = 
+    "%% <e>Wrong number of arguments. Help page: \"? %s\" </>\r\n";
+
+static const char *Error_Command_Not_Found =
+    "%% <e>\"%s\": command not found</>\r\n"
+    "%% Type \"?\" to show the list of commands available\r\n";
+
+static const char *Command_Finished = 
+    "\r\n% Finished: \"<i>";
+
+static const char *Task_Started = 
+    "%% Background task started (core %u)\r\n"
+    "%% Copy/paste \"<i>kill %p</>\" to abort\r\n";
+
 #if WITH_HELP
-static const char *WelcomeBanner = "\033[H\033[2J%\r\n"
-                                   "% ESPShell " ESPSHELL_VERSION "\r\n"
-                                  "% Type '?' and press <Enter> for help\r\n"
-                                  "% Press <Ctrl+L> to clear the screen, enable colors, and display the tip of the day\r\n";
+
+static const char *WelcomeBanner =
+    "\033[H\033[2J%\r\n"
+    "% ESPShell " ESPSHELL_VERSION "\r\n"
+    "% Type '?' and press <Enter> for help\r\n"
+    "% Press <Ctrl+L> to clear the screen, enable colors, and display the tip of the day\r\n";
+
+static const char *Bye =
+    "% Sayonara!\r\n";
 
 
-static const char *Bye = "% Sayonara!\r\n";
+static const char *MultipleEntries =
+    "% Processing multiple paths.\r\n"
+    "% Not what you want? Try using quotes around paths with spaces.\r\n";
 
+static const char *VarOops =
+    "<e>% Oops :-(</>\r\n"
+    "% No registered variables to play with.\r\n"
+    "% Try this:\r\n"
+    "%  <i>1. Add <include \"espshell.h\"> to your sketch</>\r\n"
+    "%  <i>2. Use the \"convar_add()\" macro to register your variables</>\r\n"
+    "%\r\n"
+    "% Once registered, variables can be manipulated using the \"var\" command\r\n"
+    "% while your sketch is running.\r\n";
+#endif // WITH_HELP
 
-static const char *MultipleEntries = "% Processing multiple paths.\r\n"
-                                     "% Not what you want? Try using quotes around paths with spaces.\r\n";
-
-
-static const char *VarOops = "<e>% Oops :-(\r\n"
-                             "% No registered variables to play with</>\r\n"
-                             "% Try this:\r\n"
-                             "%  <i>1. Add include \"espshell.h\" to your sketch</>\r\n"
-                             "%  <i>2. Use \"convar_add()\" macro to register your variables</>\r\n"
-                             "%\r\n"
-                             "% Once registered, variables can be manipulated by the \"var\" command\r\n"
-                             "% while your sketch is running\r\n";
-#endif //WITH_HELP
+#endif
 
 // -- Actual ESPShell code #included here --
 
@@ -410,17 +437,14 @@ static void espshell_display_error(int ret, int argc, char **argv) {
   MUST_NOT_HAPPEN(argc < 1);
   MUST_NOT_HAPPEN(ret >= argc);
 
-  if (ret > 0)
-    q_printf("%% <e>Invalid %u%s argument (\"%s\")</>\r\n", NEE(ret), ret < argc ? argv[ret] : "Empty");
-  else if (ret < 0) {
-    if (ret == CMD_MISSING_ARG)
-      q_printf("%% <e>Wrong number of arguments. Help page: \"? %s\" </>\r\n", argv[0]);
-    else if (ret == CMD_NOT_FOUND)
-      q_printf("%% <e>\"%s\": command not found</>\r\n"
-               "%% Type \"?\" to show the list of commands available\r\n", argv[0]);
+  // ret>0 ? ret is the index of a failed argv
+  if (ret > 0) q_printf(Error_Arg, NEE(ret), argv[ret]); else
+  if (ret == CMD_MISSING_ARG) q_printf(Error_Missing_Arg, argv[0]); else
+  if (ret == CMD_NOT_FOUND) q_printf(Error_Command_Not_Found, argv[0]); else {
 
-    // Keep silent on other error codes which are <0 :
+    // Keep silent on other error codes which are <=0 :
     // CMD_FAILED return code assumes that handler did display error message before returning CMD_FAILED
+    // CMD_SUCCESS (i.e. zero) assumes that handler did display its execution result
   }
 }  
 
@@ -463,9 +487,9 @@ static void amp_helper_task(void *arg) {
 
     ret = (*(aa->gpp))(aa->argc, aa->argv);
 
-    q_print("\r\n% Finished: \"<i>");
-    userinput_show(aa); // display command name and arguments
-    q_print("\"</>, ");
+    q_print(Command_Finished);
+    userinput_show(aa); // display command name and arguments.
+    q_print("\"</>: "); // on purpose.
     
     if (ret != 0)
       espshell_display_error(ret, aa->argc, aa->argv);
@@ -523,7 +547,7 @@ static int exec_in_background(argcargv_t *aa_current) {
 
     // Hint the user on how to stop a background command. If help is disabled,
     // they need to use "show tasks" to find task IDs.
-    HELP(q_printf("%% Background task started (core %u)\r\n%% Copy/paste \"<i>kill %p</>\" to abort\r\n", core, id));
+    HELP(q_printf(Task_Started, core, id));
   }
   return 0;
 }
