@@ -53,7 +53,7 @@ static int cmd_tty(int argc, char **argv) {
   }
 
   if (tty < 99)
-    q_printf(uartIsDown, tty);
+    q_printf(Error_UART_Down, tty);
 
   return 0;
 }

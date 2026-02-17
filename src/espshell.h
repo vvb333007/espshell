@@ -115,11 +115,15 @@ void espshell_start();
 #endif
 
 // 2) Execute an arbitrary shell command (ascii string as typed by user)
-// Only 1 command per call is allowed , no "uptime\nshow cpu\n" work anymore: must be two separate calls
+// Multiple commands must be separated by \n: e.g. "uptime\npin 2 low\nreload"
+// or, in a natural way:
+// const char *cmd = "uptime
+//                    pin 2 low
+//                    reload";
 //
 // /p/ - A pointer to a valid asciiz string e.g. "pin 2 low high loop inf &" or "show tasks"
 //
-// Returns 0 if everything was ok or CMD_... error codes
+// Returns 0 if everything was ok
 //
 int espshell_exec(const char *p);
 

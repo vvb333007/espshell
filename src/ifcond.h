@@ -121,6 +121,10 @@ struct ifcond {
 // index where "every" command stores its rules
 #define EVERY_IDX (NO_TRIGGER + 1)
 
+// special trigger_pin value to create temporary ifcond; only to be used as first arg of ifc_create() and only there.
+// it is not an index as NO_TRIGGER or EVERY_IDX are
+#define ONESHOT_IF 0xff
+
 // Ifconds array. Each element of the array is a list of ifconds.
 // For example, ifconds[5] contains all "if rising|falling 5" statements.
 // "No trigger" statements (i.e. those without rising or falling keywords)
@@ -1024,23 +1028,28 @@ static struct ifcond *ifc_create( uint8_t     trigger_pin,
     n->drops = 0;
     n->tsta = q_micros();
     n->tsta0 = 0;
-    
-    // disable interrupts on real GPIOs, do nothing for NO_TRIGGER 
-    if (trigger_pin < NO_TRIGGER)
-      gpio_intr_disable(trigger_pin);
 
-    // Still need to rw_lockw(), even with interrupts disabled : 
-    // command "if" MAY be executed not from the main espshell context (e.g. execution of an alias, containing "if" statements)
-    // Insert new item into pin's ifcond list
-    rw_lockw(&ifc_rw);
-    n->next = ifconds[trigger_pin];
-    ifconds[trigger_pin] = n;
-    rw_unlockw(&ifc_rw);
+    // Insert ifc into list
+    if (trigger_pin != ONESHOT_IF) {
 
-    // if trigger_pin is a real GPIO and ISR (must be) enabled - reenable it. 
-    if (trigger_pin < NUM_PINS && ifc_isr_is_registered(trigger_pin))
-      gpio_intr_enable(trigger_pin);
+      // disable interrupts on real GPIOs, do nothing for NO_TRIGGER 
+      if (trigger_pin < NO_TRIGGER)
+        gpio_intr_disable(trigger_pin);
+
+      // Still need to rw_lockw(), even with interrupts disabled : 
+      // command "if" MAY be executed not from the main espshell context (e.g. execution of an alias, containing "if" statements)
+      // Insert new item into pin's ifcond list
+      rw_lockw(&ifc_rw);
+      n->next = ifconds[trigger_pin];
+      ifconds[trigger_pin] = n;
+      rw_unlockw(&ifc_rw);
+
+      // if trigger_pin is a real GPIO and ISR (must be) enabled - reenable it. 
+      if (trigger_pin < NUM_PINS && ifc_isr_is_registered(trigger_pin))
+        gpio_intr_enable(trigger_pin);
+    }
   }
+
   return n;
 }
 
@@ -1293,30 +1302,22 @@ static int cmd_if(int argc, char **argv) {
   if (argc < 3)
     return CMD_MISSING_ARG;
 
-  //////////////////////////////////////////////
-  // "if|every save"
-  //////////////////////////////////////////////
-  if (!q_strcmp(argv[1],"save"))
-    return cmd_if_save(argc, argv);
+  
+  // Handle "if|every save"
+  if (!q_strcmp(argv[1],"save"))   return cmd_if_save(argc, argv);
 
-  //////////////////////////////////////////////
-  // if|every "disable" and "enable"
-  //////////////////////////////////////////////
-  if (!q_strcmp(argv[1],"disable") || !q_strcmp(argv[1],"enable"))
-    return cmd_if_disable_enable(argc, argv);
+  // Handle "if|every disable|enable"
+  if (!q_strcmp(argv[1],"disable") || !q_strcmp(argv[1],"enable"))  return cmd_if_disable_enable(argc, argv);
 
-  //////////////////////////////////////////////
-  // if|every "delete" and "clear"
-  //////////////////////////////////////////////
-  if (!q_strcmp(argv[1],"delete") || !q_strcmp(argv[1],"clear"))
-    return cmd_if_delete_clear(argc, argv);
+  // Handle "if|every delete|clear"
+  if (!q_strcmp(argv[1],"delete") || !q_strcmp(argv[1],"clear"))    return cmd_if_delete_clear(argc, argv);
 
+  // Other command variants must have 4 args at least
   if (argc < 5)
     return CMD_MISSING_ARG;
 
-  ///////////////////////////////////////////////////////
+  // Handle generic "every" command
   // The "every" command start with a TIMESPEC statement
-  ///////////////////////////////////////////////////////
   if (!q_strcmp(argv[0],"every")) {
 
     int stop = -1;
@@ -1334,14 +1335,12 @@ static int cmd_if(int argc, char **argv) {
     if (0 == (poll = (unsigned int)(userinput_read_timespec(argc, argv, 1, &stop) / 1000ULL)))
       return stop > 1 ? stop : CMD_FAILED;
 
-    // cond_idx is the index in argv[] from which we scontinue our processing
+    // cond_idx is the index in argv[] from which we continue our processing
     cond_idx = stop;
   } else {
-    /////////////////////////////////////////////////
-    // Normal "if" statement
-    /////////////////////////////////////////////////
+  // Handle generic "if" statement:
 
-    // Read trigger condition, if any
+  // 1. Read trigger condition, if any
     rising = (argv[1][0] == 'r');
 
     if (rising || argv[1][0] == 'f') {
@@ -1352,7 +1351,7 @@ static int cmd_if(int argc, char **argv) {
       cond_idx += 2;
     }
 
-    // Read conditions
+  // 2. Read low/high conditions
     
     while( ((cond_idx + 1) < argc) &&                                   // while there are at least 2 keywords available
             (argv[cond_idx][0] == 'l' || argv[cond_idx][0] == 'h') ) {  // and the first keyword is either "low" or "high"
@@ -1382,17 +1381,19 @@ static int cmd_if(int argc, char **argv) {
       cond_idx += 2;
     }
 
+    // no "low/high/rising/falling" conditions, i.e. reduced "if":     if [poll X] exec
+    // forward those to "every" pool
     if (!low && !high && (trigger_pin == NO_TRIGGER))
       trigger_pin = EVERY_IDX;
   }
 
-  // Common part
-  // Read "max-exec NUM", "rate-limit NUM", "poll NUM", "delay NUM" and "exec ALIAS_NAME"
+  // Arguments that are common for both "if" and "every" commands:
+  // "max-exec NUM", "rate-limit NUM", "poll NUM", "delay NUM" and "exec ALIAS_NAME"
   // all of them are 2-keywords statements
 
   while (cond_idx + 1 < argc) {
 
-    // TODO: refactor to use userinput_read_timespec()
+    // TODO: refactor to use userinput_read_timespec()?
     if ( !q_strcmp(argv[cond_idx],"delay")) { 
 
       if (0 == (delay_ms = q_atoi(argv[++cond_idx], 0))) {
@@ -1427,26 +1428,48 @@ static int cmd_if(int argc, char **argv) {
 
     } else {
 
-      q_print("% <e>Expected \"max-exec\", \"poll\", \"rate-limit\", \"delay\" or \"exec\" keyword</>\r\n");
+      HELP(q_print("% <e>Expected \"max-exec\", \"poll\", \"rate-limit\", \"delay\" or \"exec\" keyword</>\r\n"));
       return cond_idx;
 
     }
-
     cond_idx++;
   }
 
+  // Done reading all arguments. Preprocess some of them:
+
+  // 1. Exec (mandatory arg):
+  // Check if alias exist and show a warning if it doesn't: it helps 
+  // catching typos in alias names when writing "if" shell clauses
   if (exec == NULL) {
-    q_print("% <e>What should we execute? (\"exec\" keyword expected)</>\r\n");
+    q_print("% <e>Condition is fine but action is missing (\"exec\" keyword)</>\r\n");
     return CMD_FAILED;
   }
 
-  // Check if alias exist and show a warning if it doesn't: it helps 
-  // catching typos in alias names when writing "if" shell clauses
   struct alias *al;
   if ((al = alias_by_name(exec)) == NULL)
     q_printf("%% <i>Warning</>: alias \"%s\" does not exist, will be created (empty)\r\n", exec);
   else if (alias_is_empty(al))
     q_printf("%% <i>Warning</>: alias \"%s\" exists but it is empty\r\n", exec);
+
+
+  // 2. No-Trigger entries:
+  if (trigger_pin == NO_TRIGGER || trigger_pin == EVERY_IDX) {
+    if (!poll)
+      trigger_pin = ONESHOT_IF;
+
+    if (rate_limit) {
+      HELP(q_print("% \"<i>rate-limit</>\" keyword is ignored for polling conditions:\r\n"
+              "% rate is a constant which is defined by \"<i>poll</>\" keyword\r\n"));
+      rate_limit = 0;
+    }
+  } else { 
+  // 3. Rising/Falling conditions:
+    if (poll || delay_ms) {
+      HELP(q_print("% \"poll\" and \"delay\" keywords are ignored for rising/falling conditions\r\n"));
+      poll = 0;
+      delay_ms = 0;
+    }
+  }
 
   struct ifcond *ifc = ifc_create(trigger_pin,
                                   rising, 
@@ -1459,27 +1482,10 @@ static int cmd_if(int argc, char **argv) {
     return 0;
   }
 
-  // No-Trigger entries:
-  // If not set, "poll interval" defaults to 1 second.
-  if (trigger_pin == NO_TRIGGER || trigger_pin == EVERY_IDX) {
-    if (!poll)
-      poll = 1000;
-    if (rate_limit) {
-      q_print("% \"<i>rate-limit</>\" keyword is ignored for polling conditions:\r\n"
-              "% rate is a constant which is defined by \"<i>poll</>\" keyword\r\n");
-      rate_limit = 0;
-    }
-  } else { // Rising/Falling conditions:
-    if (poll || delay_ms) {
-      q_print("% \"poll\" and \"delay\" keywords are ignored for rising/falling conditions\r\n");
-      poll = 0;
-      delay_ms = 0;
-    }
-  }
 
- // The rate limit can range from 0 to 65 535 milliseconds.
-// A 16-bit field is chosen to save memory.
-// This limiter's only purpose is to prevent interrupt flooding, so values above 1 second are questionable.
+ // 4. The rate limit can range from 0 to 65 535 milliseconds.
+ // A 16-bit field is chosen to save memory.
+ // This limiter's only purpose is to prevent interrupt flooding, so values above 1 second are questionable.
 
   if (rate_limit) {
     if (rate_limit > 0xffff) {
@@ -1496,7 +1502,12 @@ static int cmd_if(int argc, char **argv) {
     ifc->has_delay = 1;
     ifc->delay_ms = delay_ms;
   }
-  
+
+  if (trigger_pin == ONESHOT_IF) {
+    ifc_callback(ifc);
+    ifc_put(ifc);
+    return 0;
+  }
   // allocate an interrupt (allocated or reused - decides ifc_claim_interrupt())
   // /ifc/ pointer is in the list but not yet attached to an interrupt or to a timer so it is 
   // guaranteed to still be on the list

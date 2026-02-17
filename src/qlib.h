@@ -568,7 +568,7 @@ static __attribute__((const)) const char *tag2ansi(char tag) {
 // printf("You are %u%s on the queue", NEE(2))  --> "You are 2nd on the queue"
 //
 #ifdef WITH_LANG
-#  define PPA(_X) _X, ""
+#  define PPA(_X) _X, ""    // russian plural ending are not trivial.
 #  define NEE(_X) _X, "-й"
 #else
 #  define PPA(_X) _X, (_X) == 1 ? "" : "s"
@@ -586,9 +586,12 @@ static inline __attribute__((const)) const char *number_english_ending(unsigned 
 // Check if memory address is in valid range. This function does not check memory access
 // rights, only boundaries are checked.
 //
+static bool bypass_va = false; // convar. 
+
 static bool __attribute__((const)) is_valid_address(const void *addr, unsigned int count) {
   
-  return  ((uintptr_t)addr >= 0x20000000) && ((uintptr_t)addr + count <= 0x80000000);
+  return  bypass_va ||
+          (((uintptr_t)addr >= 0x20000000) && ((uintptr_t)addr + count <= 0x80000000));
 }
 
 #if MEMTEST
@@ -1326,12 +1329,12 @@ static int IRAM_ATTR q_strcmp(const char *partial, const char *full) {
 }
 
 // 
-static inline const char *q_findchar(const char *str, char sym) {
+static inline  char *q_findchar(const char *str, char sym) {
   if (likely(str)) {
     while (*str && sym != *str)
       str++;
     if (sym == *str)
-      return str;
+      return (char *)str;
   }
   return NULL;
 }

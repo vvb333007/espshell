@@ -59,7 +59,7 @@ uart_tap(int remote) {
     while (1) {
       size_t av = 0;
       if (ESP_OK != uart_get_buffered_data_len(remote, &av)) {
-        HELP(q_printf(uartIsDown, remote));
+        HELP(q_printf(Error_UART_Down, remote));
         return;
       }
       if (av > UART_RXTX_BUF)
@@ -98,7 +98,7 @@ uart_tap2(int remote) {
     }
     
     if (ESP_OK != uart_get_buffered_data_len(remote, &av)) {
-      HELP(q_printf(uartIsDown, remote));
+      HELP(q_printf(Error_UART_Down, remote));
       return;
     }
 
@@ -221,7 +221,7 @@ static int cmd_uart_baud(int argc, char **argv) {
     if (ESP_OK != uart_set_baudrate(u, q_atol(argv[1], UART_DEF_BAUDRATE)))
       q_print(Failed);
   } else
-    q_printf(uartIsDown, u);
+    q_printf(Error_UART_Down, u);
 
   return 0;
 }
@@ -329,7 +329,7 @@ static int cmd_uart_read(UNUSED int argc, UNUSED char **argv) {
       }
     }
   } else
-    q_printf(uartIsDown, u);
+    q_printf(Error_UART_Down, u);
 
   q_printf("\r\n%% EOF (%d bytes)\r\n", tmp);
   return 0;
@@ -354,7 +354,7 @@ static int cmd_uart_write(int argc, char **argv) {
     if (out)
       q_free(out);
   } else
-    q_printf(uartIsDown, u);
+    q_printf(Error_UART_Down, u);
   HELP(q_printf("%% %u bytes sent\r\n", sent));
   return 0;
 }
@@ -373,7 +373,7 @@ static int cmd_uart_tap(int argc, char **argv) {
       uart_tap(u);  //TODO: inline it here
       q_print("\r\n% Ctrl+C, exiting\r\n");
     } else
-      q_printf(uartIsDown, u);
+      q_printf(Error_UART_Down, u);
   } else
     q_printf("%% <e>Can not bridge uart%u to uart%u</>\r\n", u, u);
   return 0;

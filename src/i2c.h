@@ -60,7 +60,7 @@ static int cmd_i2c_clock(int argc, char **argv) {
     return CMD_MISSING_ARG;
 
   if (!i2c_isup(iic)) {
-    q_printf(i2cIsDown, iic);
+    q_printf(Error_I2C_Down, iic);
     return 0;
   }
 
@@ -134,7 +134,7 @@ static int cmd_i2c_read(int argc, char **argv) {
       q_printhex(data, got);
     }
   } else
-    q_printf(i2cIsDown, iic);
+    q_printf(Error_I2C_Down, iic);
   return 0;
 }
 
@@ -169,7 +169,7 @@ static int cmd_i2c_write(int argc, char **argv) {
     if (ESP_OK != i2cWrite(iic, addr, data, size, 2000))
       q_print(Failed);
   } else
-    q_printf(i2cIsDown, iic);
+    q_printf(Error_I2C_Down, iic);
   return 0;
 }
 
@@ -196,7 +196,7 @@ static int cmd_i2c_scan(int argc, char **argv) {
     else
       q_printf("%% <i>%d</> devices found\r\n", i);
   } else
-    q_printf(i2cIsDown, iic);
+    q_printf(Error_I2C_Down, iic);
   return 0;
 }
 #endif // #if COMPILING_ESPSHELL

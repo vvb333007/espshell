@@ -467,22 +467,22 @@ static void time_sync_notification_cb(UNUSED struct timeval *tv) {
 //
 static bool prepare_wifi_stack() {
 
-  static bool ni = false;
+  static bool ni = false;  // was esp_netif_init() called?
+  bool full_init = true;   // should we do full wifi init or use existing config?
 
 
   if (!ni) {
-    // it is ok to call esp_netif_init() twice: if sketch performs esp_netif_init() then
+    // it is ok to call lwip's esp_netif_init() twice: if sketch performs esp_netif_init() then
     // *this* esp_netif_init() just does nothing
    esp_netif_init();
    ni = true;
   }
 
   // Lets check if network interfaces are created already. We check for presence AP and STA interfaces,
-  // and if found - skip WiFi initialization, set Wifi.prepared flag
+  // and if found - skip full WiFi initialization
   if ((get_staif() || get_apif()) && !Wifi.prepared) {
-    HELP(q_print("% WiFi seems to be initialized by the sketch. Skipping WiFi init\r\n"));
-    // TODO: BUG! we cant just skip whole init: we need events
-    Wifi.prepared = true;
+    HELP(q_print("% WiFi seems to be initialized by the sketch. Attaching..\r\n"));
+    full_init = false;
   }
 
   if (!Wifi.prepared) {
@@ -500,26 +500,27 @@ static bool prepare_wifi_stack() {
     // it is done in _nv_storage_init() constructor
 
     // Create default event loop
-    esp_event_loop_create_default();
+    if (full_init)
+      esp_event_loop_create_default();
 
     // Attach IP and WiFi event handlers. This module relies on the ESP32 event system for its operation
     esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL);
     esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID,  &ip_event_handler, NULL);
 
-    // Initialize WiFi
-    esp_wifi_init(&cfg);
+    if (full_init) {
 
-    // Use RAM, not flash otherwise your STA will try to connect to AP remembered from the previous connection
-    // This can be very annoying
-    esp_wifi_set_storage(WIFI_STORAGE_RAM);
-
-    // We don't know yet what mode user will use so initialize both
-    esp_wifi_set_mode(WIFI_MODE_STA);
-    //esp_wifi_set_channel(11, 0);
+      // Initialize WiFi
+      esp_wifi_init(&cfg);
+      esp_wifi_set_storage(WIFI_STORAGE_RAM);
+      esp_wifi_set_mode(WIFI_MODE_STA);
+      //esp_wifi_set_channel(11, 0);
 #if SOC_WIFI_SUPPORT_5G
-    esp_wifi_set_band_mode(WIFI_BAND_MODE_AUTO);
+      esp_wifi_set_band_mode(WIFI_BAND_MODE_AUTO);
 #endif
+    }
 
+    // Create both AP and STA interfaces if not created yet
+    // cmd_wifi_if() rechecks if these are NULL
     if (!get_staif())
       esp_netif_create_default_wifi_sta();
 
@@ -543,7 +544,7 @@ static bool start_wifi_stack() {
     if (esp_wifi_start() == ESP_OK)
       Wifi.started = true;
     else {
-      HELP(if (Wifi.log) q_print("% WIFI failed to initialize\r\n"));
+      HELP(if (Wifi.log) q_print("% WIFI failed to start\r\n"));
     }
   }
   return Wifi.started;
@@ -699,6 +700,7 @@ static int cmd_wifi_if(int argc, char **argv) {
   if (argc < 2)
     return CMD_MISSING_ARG;
 
+  // only "wifi log" does not require wifi stack to be prepared
   if (!q_strcmp(argv[1],"log"))
     return cmd_wifi_log(argc, argv);
 
@@ -707,6 +709,9 @@ static int cmd_wifi_if(int argc, char **argv) {
     return CMD_FAILED;
   }
 
+  // Create missing network interfaces if any:
+  // Although prepare_wifi_stack() creates both network interfaces, use sketch can delete/create them
+  // so it is good idea to recheck
   if (!get_staif())
     esp_netif_create_default_wifi_sta();
 
@@ -724,6 +729,13 @@ static int cmd_wifi_if(int argc, char **argv) {
     return 1;
   }
 
+  // Start the heavy machinery..
+  //
+  if (!start_wifi_stack()) {
+    HELP(q_print("% Failed to start WiFi; the WiFi interface may be non-functional\r\n"));
+    return CMD_FAILED;
+  }
+
   // Set appropriate keywords (keywords_ap or keywords_sta), store interface type in /Context/
   // Create corresponding esp_netif_t
   if (argv[1][0] == 's')
@@ -735,15 +747,9 @@ static int cmd_wifi_if(int argc, char **argv) {
     return CMD_FAILED;
   }
 
-  if (!start_wifi_stack()) {
-    HELP(q_print("% Failed to start WiFi; the WiFi interface may be non-functional\r\n"));
-    return CMD_FAILED;
-  }
-
+  // Success
   return 0;
 }
-
-
 
 // Kick STA from the AP interface.
 //

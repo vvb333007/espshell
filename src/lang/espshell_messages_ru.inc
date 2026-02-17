@@ -1,11 +1,28 @@
 static const char *Failed =
     "% <e>Ошибка</>\r\n";
 
-static const char *i2cIsDown =
+static const char *Error_I2C_Down =
     "%% I2C%u не инициализирован. Используйте команду \"up RX TX FREQ\" для инициализации.\r\n";
 
-static const char *uartIsDown =
+static const char *Error_UART_Down =
     "%% UART%u не инициализирован. Используйте команду \"up RX TX SPEED\" для инициализации.\r\n";
+
+static const char *Error_Arg =
+    "%% <e>Недопустимый аргумент (%u%s, \"%s\")</>\r\n";
+
+static const char *Error_Missing_Arg =
+    "%% <e>Неверное количество аргументов. Помощь по команде: \"? %s\"</>\r\n";
+
+static const char *Error_Command_Not_Found =
+    "%% <e>\"%s\": команда не найдена</>\r\n"
+    "%% Введите \"?\", чтобы посмотреть список доступных команд\r\n";
+
+static const char *Command_Finished =
+    "\r\n% Завершено: \"<i>";
+
+static const char *Task_Started =
+    "%% Фоновая задача запущена (CPU#%u)\r\n"
+    "%% Команда \"<i>kill %p</>\" прервет выполнение задачи\r\n";
 
 #if WITH_HELP
 static const char *WelcomeBanner =
@@ -30,22 +47,4 @@ static const char *VarOops =
     "%\r\n"
     "% После регистрации переменными можно управлять командой \"var\"\r\n"
     "% прямо во время работы скетча.\r\n";
-#endif
-
-
-static const char *Error_Arg =
-    "%% <e>Недопустимый аргумент (%u%s, \"%s\")</>\r\n";
-
-static const char *Error_Missing_Arg =
-    "%% <e>Неверное количество аргументов. Помощь по команде: \"? %s\"</>\r\n";
-
-static const char *Error_Command_Not_Found =
-    "%% <e>\"%s\": команда не найдена</>\r\n"
-    "%% Введите \"?\", чтобы посмотреть список доступных команд\r\n";
-
-static const char *Command_Finished =
-    "\r\n% Завершено: \"<i>";
-
-static const char *Task_Started =
-    "%% Фоновая задача запущена (CPU#%u)\r\n"
-    "%% Команда \"<i>kill %p</>\" прервет выполнение задачи\r\n";
+#endif // WITH_HELP

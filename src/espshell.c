@@ -292,16 +292,17 @@ static inline const char *prompt_get() {
   return prompt;
 }
 
+// .inc files contain the same variables as belolw but with all text translated to Russian (UTF-8)
 #ifdef WITH_LANG
 #  include "lang/espshell_messages_ru.inc"
 #else
 static const char *Failed =
     "% <e>Failed</>\r\n";
 
-static const char *i2cIsDown =
+static const char *Error_I2C_Down =
     "%% I2C%u is down. Use the \"up RX TX FREQ\" command to initialize it.\r\n";
 
-static const char *uartIsDown =
+static const char *Error_UART_Down =
     "%% UART%u is down. Use the \"up RX TX SPEED\" command to initialize it.\r\n";
 
 static const char *Error_Arg =
@@ -533,7 +534,8 @@ static int exec_in_background(argcargv_t *aa_current) {
 
   if (aa_current->has_core)
     core = aa_current->core;
- 
+
+
   // Start an async task. If the user does not specify a core,
   // pin it to the same core on which ESPShell is running.
   if ((id = task_new(amp_helper_task, ha, aa_current->argv[0], core)) == NULL) {
@@ -712,22 +714,45 @@ unref_and_exit:
 }
 
 
-// Execute an arbitrary shell command
-// TODO: handle \n as a commands separator
+// Execute an arbitrary shell command(s)
+// Returns 0 if everything was ok. Returns a failed command number: for single-command strings this value is always 1
+// For multicommand strings, like "commanda \n commandb \n commandc" returns number 1..3 if there were errors
 //
 int espshell_exec(const char *p) {
-  char *p0;
-  int ret = -1;
-  if (likely((p0 = q_strdup(p, MEM_TMP)) != NULL)) {
-    ret = espshell_command(p0, NULL);
-    //q_free(p0); done by espshell_command()
+
+  char *c, *c0, *nl, *sub;
+
+  int ret = 0, err, line_no = 1;
+
+  if (NULL == ( c = c0 = q_strdup(p, MEM_TMP)))
+    return -1;
+    
+  while (*c) {
+
+    if (NULL != (nl = q_findchar(c, '\n')))
+      *nl = '\0';
+
+    if (NULL == ( sub = q_strdup(c, MEM_TMP))) {
+      free(c0);
+      return -1;
+    }
+
+    err = espshell_command(sub, NULL);
+    if (err != 0 && ret == 0)
+      ret = line_no;
+
+    if (nl == NULL)
+      break;
+
+    c = nl + 1;
+
+    line_no++;
   }
+
+  q_free(c0);
   return ret;
 }
 
-// check if last espshell_exec() call has completed its
-// execution
-// TODO:
 bool espshell_exec_finished() {
   return true;
 }
@@ -810,6 +835,7 @@ static void espshell_task(const void *arg) {
     while (!console_isup())
       q_delay(CONSOLE_UP_POLL_DELAY);
 
+    // TODO: probably not needed anymore
     console_flush();
     q_delay(1000);
     console_flush();
@@ -849,6 +875,7 @@ static void espshell_task(const void *arg) {
     while (!Exit) {
       char *line = readline(prompt ? prompt : "<null>");
       if (line)
+        // Still reading comments? Lets go to big and fat espshell_command()
         espshell_command(line, NULL); // frees /line/
       else
         // if readline() starts to fail, we risk to end up in a spinloop, starving IDLE0 or IDLE1 tasks

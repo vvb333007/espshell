@@ -512,7 +512,6 @@ static int cmd_nap_alarm(int argc, char **argv) {
       HELP(q_print("% Pin number expected\r\n"));
       return CMD_MISSING_ARG;
     }
-
     if (argv[2][0] == 'h')
       level = 1;
     else
