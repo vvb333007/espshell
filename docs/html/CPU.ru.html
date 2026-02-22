@@ -83,18 +83,15 @@ esp32#>
     <td>
       <p>Отображает общий объём и доступную память, видимую из скетча:</p>
       <p align="center">
-<pre>
-esp32#>sh mem
-% -- Heap information -- 
-%
-% If using "malloc()" (default allocator))":
-% 298824 bytes total, 249320 available, 110580 max per allocation
-%
-% If using "heap_caps_malloc(MALLOC_CAP_INTERNAL)", internal SRAM:
-% 347284 bytes total, 296928 available, 110580 max per allocation
-</pre>
-      Эта команда может помочь выявить утечки памяти в вашем скетче.
+        <img src="i/show_memory.jpg" width="70%" height="70%" alt="show memory" /><br>
+        <i>Рис. 2: Результат работы команды "<b>show memory</b>"</i>
       </p>
+      <p>
+        <b>if using malloc()</b> - информация относящаяся к стандартному аллокатору (т.е. malloc, calloc, realloc, strdup, new и free)<br>
+        <b>if using heap_caps..</b> - информация относящаяся к аллокатору ESP-IDF (т.е. heap_caps_alloc() и т.д.)<br>
+      </p>
+       Помимо стандартных free/total/allocated счетчиков, так же есть отметки самого большого потребления памяти с запуска скетча: это значение обновляется каждый раз, когда достигается очередной рекорд по потреблению памяти (такие отметки ведутся для SRAM и SPIRAM).
+       Так же, обе кучи (SPIRAM и Internal SRAM) проверяются на целостность, и результат проверки выводится как <b>PASS</b> или <b>FAIL</b>
     </td>
   </tr>
 

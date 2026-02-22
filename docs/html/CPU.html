@@ -87,19 +87,25 @@ The Last Boot section includes the output of the "<b>uptime</b>" command, showin
     <td>
       <p>Displays total and available memory as seen by the sketch:</p>
       <p align="center">
-<pre>
-esp32#>sh mem
-% -- Heap information --
-%
-% If using malloc() (default allocator):
-% 298824 bytes total, 249320 available, 110580 max per allocation
-%
-% If using heap_caps_malloc(MALLOC_CAP_INTERNAL), internal SRAM:
-% 347284 bytes total, 296928 available, 110580 max per allocation
-</pre>
-      This command can help identify memory leaks in your sketch.
+        <img src="i/show_memory.jpg" width="70%" height="70%" alt="show memory" /><br>
+        <i>Fig. 2: Output of the "<b>show memory</b>" command</i>
       </p>
-    </td>
+<p>
+  <b>if using malloc()</b> – information related to the standard allocator
+  (i.e. malloc, calloc, realloc, strdup, new, and free)<br>
+  <b>if using heap_caps..</b> – information related to the ESP-IDF allocator
+  (i.e. heap_caps_alloc() and related APIs)<br>
+</p>
+<p>
+In addition to the standard free/total/allocated counters, the output also
+includes peak memory usage since the sketch was started (<i>Low watermark</i>). This value is updated
+each time a new maximum memory consumption is reached. Peak usage is tracked
+separately for SRAM and SPIRAM.
+</p>
+<p>
+Both heaps (Internal SRAM and SPIRAM) are also checked for integrity, and the
+result of the check is reported as <b>PASS</b> or <b>FAIL</b>.
+</p>    </td>
   </tr>
 
   <tr id="memdump">

@@ -269,7 +269,7 @@ Is it possible to omit the main (rising/falling) event entirely, and what would 
 <p>
 Yes, it is possible. For example, you can write the following condition:
 <pre>
-  esp32#>if low 2 exec My_Alias
+  esp32#>if low 2 <b>poll 1000</b> exec My_Alias
 </pre>
 What will happen in this case? ESPShell will poll the state of pin #2 <i>once per second</i>, and if the condition matches, it will execute
 the My_Alias alias. This type of condition is called a <i>periodic</i> or <i>polling</i> condition. The polling frequency can be set by using the <b>poll</b> keyword:
@@ -278,6 +278,11 @@ the My_Alias alias. This type of condition is called a <i>periodic</i> or <i>pol
 </pre>
 The <b>poll</b> keyword only makes sense for periodic conditions. If the condition is rising or falling, the poll parameter will be ignored,
 and a corresponding warning will be displayed.
+</p>
+<p>
+Omitting <b>poll</b> keyword results in "one-shot" condition e.g.: <b>if low 2 exec Alias</b>. This command
+will execute "Alias" only if GPIO#2 was LOW at time of command execution; such conditions are not displayed
+by "show ifs" command.
 </p>
 
 <p>
