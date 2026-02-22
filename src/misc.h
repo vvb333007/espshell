@@ -190,8 +190,8 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
            file,  
            line);
   // resume sketch (it may be paused)
-  if (loopTaskHandle != NULL)
-    task_resume(loopTaskHandle);
+  if (taskid_arduino_sketch() != NULL)
+    task_resume(taskid_arduino_sketch());
   // forcefully kill our parent task (the shell command processor) if we are running in a background
   if (is_background_task()) {
     task_suspend((task_t)shell_task);

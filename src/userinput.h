@@ -199,6 +199,18 @@ static int userinput_find_handler(argcargv_t *aa) {
 
   MUST_NOT_HAPPEN(aa == NULL);
 
+  // quick test: commands starting from "/" are aliases, short for "exec alias"
+  // We reassign argv[1] to point to argv[0]+1 so exec sees its argument
+  if (aa->argv[0][0] == '/') {
+    aa->gpp = cmd_exec;
+    // MEM_INC2 macro in argify() guarantees that argv[1] is a valid writeable address, even if argc==1
+    if (aa->argc < 2) {
+      aa->argv[1] = &aa->argv[0][1];
+      aa->argc = 2;
+    }
+    return 0;
+  }
+
 one_more_try: // we get here if we weren't able to find any suitable handler in a command subdirectory
 
   i = 0;                  // start from keyword #0

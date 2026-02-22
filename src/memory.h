@@ -12,6 +12,22 @@
 
 #if COMPILING_ESPSHELL
 
+// Gets called by ESP-IDF if memory allocation fails. Registered as a callback
+// in espshell_initonce()
+//
+static void out_of_memory_event(size_t size, uint32_t caps,const char * function_name) {
+
+  if (taskid_arduino_sketch())
+    task_suspend(taskid_arduino_sketch());
+
+  q_printf("\r\n%% <w> Boom! Out of memory in \"%s\" (asked %u bytes, caps: %x)</>\r\n"
+           "%% Sketch is suspended, you resume with \"resume\"\r\n",
+           function_name,
+           size,
+           (unsigned int)caps);
+}
+
+
 // Display memory contens
 //
 static int memory_display_content(unsigned char *address,  // starting address
@@ -50,7 +66,7 @@ static int memory_display_content(unsigned char *address,  // starting address
 
 // Implementation of "show memory address ARG1 ARG2 ... ARGn"
 // This one is called from cmd_show()
-// TODO:support int64_t and uint64_t
+// TODO:refactor to use read_ctype
 // TODO:refactor with switch()
 // TODO:refactor ifs
 
@@ -127,7 +143,7 @@ static int cmd_show_memory(int argc, char **argv) {
 
     if (argc < 3) { // "show memory"
       unsigned int total;
-      q_printf( "%% -- Heap information --\r\n%%\r\n"
+      q_printf( "%% <r>-- Heap information --                                 </>\r\n%%\r\n"
                 "%% If using \"malloc()\" (default allocator))\":\r\n"
                 "%% <i>%u</> bytes total, <i>%u</> available, %u max per allocation\r\n%%\r\n"
                 "%% If using \"heap_caps_malloc(MALLOC_CAP_INTERNAL)\", internal SRAM:\r\n"
@@ -148,6 +164,18 @@ static int cmd_show_memory(int argc, char **argv) {
                 "% to change build target in Arduino IDE (<i>Tools->Board</>) or enable\r\n"
                 "% PSRAM (<i>Tools->PSRAM:->Enabled</>)\r\n");
 
+      q_print("%\r\n%<r> -- Low watermarks (minimum available memory) --</>\r\n%\r\n");
+
+      q_printf("%% Internal SRAM  : <i>%u</> bytes, heap integrity check: %s</>\r\n"
+               "%% External SPIRAM: <i>%u</> bytes, heap integrity check: %s</>\r\n",
+               heap_caps_get_minimum_free_size( MALLOC_CAP_INTERNAL ), 
+               heap_caps_check_integrity(MALLOC_CAP_INTERNAL, false) ? "<g>PASS" : "<w>FAIL",
+               heap_caps_get_minimum_free_size( MALLOC_CAP_SPIRAM ), 
+               heap_caps_check_integrity(MALLOC_CAP_SPIRAM, false) ? "<g>PASS" : "<w>FAIL");
+                
+
+
+      // this one gets printed only #if MEMTEST == 1
       q_memleaks(" -- Entries allocated by ESPShell --");
       return 0;
     }

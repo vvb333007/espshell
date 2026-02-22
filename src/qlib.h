@@ -586,12 +586,12 @@ static inline __attribute__((const)) const char *number_english_ending(unsigned 
 // Check if memory address is in valid range. This function does not check memory access
 // rights, only boundaries are checked.
 //
-static bool bypass_va = false; // convar. 
+static int8_t bypass_va = false; // convar. 
 
 static bool __attribute__((const)) is_valid_address(const void *addr, unsigned int count) {
   
   return  bypass_va ||
-          (((uintptr_t)addr >= 0x20000000) && ((uintptr_t)addr + count <= 0x80000000));
+          (((uintptr_t)addr >= 0x20000000UL) && ((uintptr_t)addr + count <= 0x80000000UL));
 }
 
 #if MEMTEST

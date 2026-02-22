@@ -17,7 +17,8 @@
 
 
 #define MEM_INC 64   // generic  buffer increments
-#define MEM_INC2 16  // Dont touch this. Defines the size of preallocated argv (number of entries, not bytes!)
+#define MEM_INC2 16  // Dont touch this!!! Defines the size of preallocated argv (number of entries, not bytes!)
+                     // ESPShell expects that there will be free space in case of no-arg command (see espshell_find_handler(), "/" processing)
 
 #define SCREEN_INC 256  // "Screen" buffer increments
 

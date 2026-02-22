@@ -323,9 +323,9 @@ static const char *Task_Started =
     "%% Copy/paste \"<i>kill %p</>\" to abort\r\n";
 
 #if WITH_HELP
-
+// "\033[H\033[2J%\r\n"
 static const char *WelcomeBanner =
-    "\033[H\033[2J%\r\n"
+    "\r\n"
     "% ESPShell " ESPSHELL_VERSION "\r\n"
     "% Type '?' and press <Enter> for help\r\n"
     "% Press <Ctrl+L> to clear the screen, enable colors, and display the tip of the day\r\n";
@@ -602,9 +602,10 @@ espshell_command(char *p, argcargv_t *aa) {
       goto free_p_and_exit;
 
     // Skip strings starting with "//" - these are comments. Comments can only occupy whole line,
-    // and can not be added at the end of a command.
-    if (p[0] == '/' && p[1] == '/')
-      goto free_p_and_exit;
+    // and can not be added at the end of a command. 
+    if (p[0] == '/' )
+      if (p[1] == '/')
+        goto free_p_and_exit;
 
     // Make a history entry, if history is enabled (default)
     if (History)
@@ -631,7 +632,7 @@ free_p_and_exit:
   // mode ("esp32-alias>") are NOT stripped and are NOT executed in the
   // background, even if they end with "&". In alias editor mode, all user
   // input is simply stored and processed later when the alias is executed.
-  //
+  // TODO: move to process_amp()
   if (aa->argv[aa->argc - 1][0] == '&') {
 #if WITH_ALIAS      
     // An "&" symbol in alias editing mode should not be stripped or be translated for background exec:
@@ -660,7 +661,7 @@ free_p_and_exit:
           // Read the priority value
           aa->prio = q_atoi(p, TASK_MAX_PRIO + 1);
           if (aa->prio >= TASK_MAX_PRIO + 1)
-            q_print("% Unrecognized priority value, priority will be inherited\r\n");
+            q_print("% Priority must be in range [" xstr(TASK_MIN_PRIO)".." xstr(TASK_MAX_PRIO)"\r\n");
           else
             aa->has_prio = 1;
         }
@@ -772,6 +773,7 @@ static  void espshell_initonce() {
   static bool inited = false;
 
   if (!inited) {
+    VERBOSE(esp_rom_printf("% Init once\r\n"));
     inited = true;
 
     // Set default prompt: e.g. "esp32#>"
@@ -781,6 +783,7 @@ static  void espshell_initonce() {
     convar_add(ls_show_dir_size);  // enable/disable dir size counting for "ls" command
     convar_add(pcnt_unit);         // PCNT unit which is used by "count" command
     convar_add(bypass_qm);         // enable/disable "?" as a context help hotkey
+    convar_add(bypass_va);         // disable address checks, qlib.h
     convar_add(tbl_min_len);       // buffers whose length is > printhex_tbl (def: 16) are printed as fancy tables
     convar_add(ledc_res);          // Override PWM duty cycle resolution bitwidth: Duty range is from 0 to (2**ledc_res-1)
     convar_add(pwm_ch_inc);        // 1 or 2: hop over odd or even channel numbers.
@@ -788,9 +791,11 @@ static  void espshell_initonce() {
     convar_add(cam_ledc_chan);  // Avoiding interference: LEDC channels used by ESPCAM for generating XCLK
     convar_add(cam_ledc_timer);    // Avoiding interference: ESP32 TIMER used by ESPCAM
 #endif
+
+    // Register OOM callback
+    heap_caps_register_failed_alloc_callback(out_of_memory_event); // declared in memory.h
   }
 }
-
 
 
 // ESPShell main task.
@@ -807,7 +812,6 @@ static  void espshell_initonce() {
 //
 static void espshell_task(const void *arg) {
 
-    // Reset the prompt again.
     // The prompt is a global pointer; the actual buffers are owned by the callers.
     // Only foreground tasks are allowed to change it, so background
     // events, aliases, etc. cannot unexpectedly modify the prompt.
@@ -816,10 +820,10 @@ static void espshell_task(const void *arg) {
   // arg is not NULL - first time call: start the task and return immediately
   if (arg) {
     MUST_NOT_HAPPEN (shell_task != NULL);
-
+    VERBOSE(esp_rom_printf("%% Spawning the shell task..\r\n"));
     if ((shell_task = task_new(espshell_task, NULL, "ESPShell", shell_core)) == NULL) {
       // it is too early for the q_print() : UART driver is not yet initialized.
-      esp_rom_printf("% ESPShell failed to start its task\r\n");
+      esp_rom_printf("%% ESPShell failed to start its task\r\n");
     }
   } else {
     // arg is NULL - we were called by task_new() and we are running as separate process now.
@@ -829,42 +833,38 @@ static void espshell_task(const void *arg) {
     // Wait until user code calls Serial.begin() or otherwise initializes Serial, disable Task Watchdogs for
     // IDLE tasks and for the loop()
     //
-    // Check if our task priority is higher than that of the loop() task, so shell remains responsive
-    // even if loop() does not yield()
-    //
     while (!console_isup())
       q_delay(CONSOLE_UP_POLL_DELAY);
-
-    // TODO: probably not needed anymore
-    console_flush();
-    q_delay(1000);
-    console_flush();
 
 #if DISABLE_TWDT
     // Disable TaskWatchdog
     // We can't just unsubscribe IDLE0 and IDLE1 - if we do so then console will be flooded
     // with error messages ("you can't feed this dog, you are not subscribed"). So instead we deinit
     // TWDT subsystem completely.
+    HELP(q_print("% Disabling TWDT\r\n"));
     esp_task_wdt_deinit();
 #endif
 
     // Check if Arduino's loop() task is already started. It must be
-    if (loopTaskHandle == NULL)
+    if (taskid_arduino_sketch() == NULL) {
       q_print("% <i>Console is initialized but Arduino loop() task is not started?!</>");
-    else {
+      shell_prio = 1; // a bit above the IDLE0/IDLE1 tasks
+    } else {
       int prio;
-      taskid_remember(loopTaskHandle);
+      taskid_remember(taskid_arduino_sketch());
 
-      // Check if our priority is higher than that of loop() and adjust if it is not
-      if ( shell_prio <= (prio = task_get_priority(loopTaskHandle))) {
-        shell_prio = prio;
+      // Check if our task priority is higher than that of the loop() task, so shell remains responsive
+      // even if loop() does not yield() and we are running on the same core
+      //
+      if ( shell_prio <= (prio = task_get_priority(taskid_arduino_sketch()))) {
+        shell_prio = prio + 1;
         task_set_priority(shell_task, prio);
-        q_printf("%% Shell task priority has been raised to %u\r\n", shell_prio);
+        HELP(q_printf("%% Shell task priority has been raised to %u\r\n", shell_prio));
       }
     }
 
-
     // Read some startup data from nvram (if available)
+    VERBOSE(q_print("% Read configuration (NVS)\r\n"));
     nv_load_config();
 
     HELP(q_print(WelcomeBanner));
@@ -903,6 +903,7 @@ static INLINE bool espshell_started() {
 
 
 // Start ESPShell
+// ESPShell does not support multiple instances! 
 // Normally (AUTOSTART == 1), it starts automatically. With autostart disabled, ESPShell can
 // be started by calling espshell_start().
 //
@@ -914,18 +915,16 @@ void STARTUP_HOOK espshell_start() {
   // Early shell init: can be called multiple times but does its job only once
   espshell_initonce();
 
-  // ESPShell does not support multiple instances. Here we call espshell_task() with a non-zero
-  // argument. espshell_task() is the task function (it serves as the main ESPShell task and
-  // runs itself as a FreeRTOS task).
-  //
+  // espshell_task() is the task function (it serves as the main ESPShell task AND as a task spawner).
+  // Here we call espshell_task() with a non-zero argument.
   // Its behavior depends on the argument:
-  //   - non-zero: autostart mode
+  //   - non-zero: autostart mode (run itself as a separate FreeRTOS task)
   //   - zero:     enter the REPL
   //
   if (espshell_started())
     HELP(q_print("% ESPShell is already running, exiting\r\n"));
   else {
-    // Still reading comments? Lets go to the espshell_task()!
+    // Still reading comments? Next stop is espshell_task()
     espshell_task((const void *)1);
   }
 }
@@ -959,3 +958,14 @@ _Static_assert((NVS_TYPE_U8 == 0x01) && (NVS_TYPE_I32 == 0x14), "nvs0.h code rev
 #if WITH_WIFI
 _Static_assert(WIFI_CIPHER_TYPE_UNKNOWN == 12, "wifi0.h code review is required");
 #endif
+
+
+
+/*
+
+extern void vPortSetStackWatchpoint( void *pxStackStart );
+
+void __attribute__((used)) __wrap_vPortSetStackWatchpoint( void *pxStackStart ) {
+  pxStackStart = pxStackStart;
+}
+*/

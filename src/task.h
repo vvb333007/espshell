@@ -47,13 +47,12 @@ static inline const char *files_get_cwd();
 
 extern task_t  loopTaskHandle; // task handle of a task which calls Arduino's loop().
 static task_t  shell_task = 0; // Main espshell task handle
-static uint8_t shell_prio = 2; // Default shell priority (Inherited by spawned tasks)
+static uint8_t shell_prio = 0; // Default shell priority (Inherited by spawned tasks,
+                               // adjusted to be higher than loopTask priority on shell startup)
 
 // CPU core number ESPShell is running on. For a single core system it is always 0.
 // Tasks, that are created by ESPShell are pinned to the "shell_core"
-//
-
-// Workaround for USB-CDC (see https://github.com/espressif/arduino-esp32/issues/11959)
+// Plus workaround for USB-CDC (see https://github.com/espressif/arduino-esp32/issues/11959)
 #if (portNUM_PROCESSORS > 1)
 #  if SERIAL_IS_USB
 #    define CHANGE_CORE 0
@@ -106,6 +105,12 @@ static vsa_t *task_list = 0;            //  variable-sized array to hold active 
 //
 #define taskid_self() \
   xTaskGetCurrentTaskHandle()
+
+// task_t taskid_arduino_sketch()
+// Get task handle for Arduino's loop task
+//
+#define taskid_arduino_sketch() \
+  loopTaskHandle
 
 // unsigned int task_get_priority(task_t handle);
 //
