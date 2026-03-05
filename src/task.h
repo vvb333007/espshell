@@ -107,10 +107,18 @@ static vsa_t *task_list = 0;            //  variable-sized array to hold active 
   xTaskGetCurrentTaskHandle()
 
 // task_t taskid_arduino_sketch()
+//
 // Get task handle for Arduino's loop task
 //
 #define taskid_arduino_sketch() \
   loopTaskHandle
+
+// task_t taskid_shell_repl()
+//
+// Get task handle for ESPShell main (REPL) task
+//
+#define taskid_shell_repl() \
+  shell_task
 
 // unsigned int task_get_priority(task_t handle);
 //
@@ -210,9 +218,9 @@ static vsa_t *task_list = 0;            //  variable-sized array to hold active 
       portYIELD_FROM_ISR(); \
   }
 
-// When task is created, there are some memory buffers get allocated: CWD for the filesystem,
-// When task is destroyed we release that allocated memory to the system
-// TODO: should use some sort of a callback to destroy all _Thread_local memory allocations
+// When task is created, there are some memory buffers get allocated: CWD for the filesystem as an example.
+// When task is destroyed we release that allocated memory to the system. This one called implicitly by task_finished()
+// 
 static void task_return_memory() {
 #if WITH_FS  
   files_set_cwd(NULL);

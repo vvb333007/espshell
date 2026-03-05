@@ -120,12 +120,12 @@ history_enable(bool enable) {
       }
       H.Size = H.Pos = 0;
       History = false;
-      HELP(q_printf("%% Command history purged, history is disabled\r\n"));
+      HELP(q_print("% Command history purged, history is disabled\r\n"));
     }
   } else {
     if (!History) {
       History = true;
-      HELP(q_printf("%% Command history is enabled\r\n"));
+      HELP(q_print("% Command history is enabled\r\n"));
     }
   }
 }
@@ -138,9 +138,9 @@ static int cmd_history(int argc, char **argv) {
 
   if (argc < 2)                       // no arguments? display history status
     q_printf("%% History is %sabled\r\n", History ? "en" : "dis");
-  else if (!q_strcmp(argv[1], "off")) // history off: disable history and free all memory associated with history
+  else if (!q_strcmp(argv[1], "off") || !q_strcmp(argv[1], "disable")) // history off: disable history and free all memory associated with history
     history_enable(false);
-  else if (!q_strcmp(argv[1], "on"))  // history on: enable history
+  else if (!q_strcmp(argv[1], "on") || !q_strcmp(argv[1], "enable"))  // history on: enable history
     history_enable(true);
   else
     return 1; // arg1 is bad
@@ -161,15 +161,16 @@ static int cmd_colors(int argc, char **argv) {
   // "color auto": colors are enabled by ESPShell if it detects proper terminal software on user side
   if (!q_strcmp(argv[1], "auto")) { Color = false; ColorAuto = true; } else
   // "color off": don't send any ANSI color escape sequences. Use with broken terminals
-  if (!q_strcmp(argv[1], "off"))  ColorAuto = Color = false; else
+  if (!q_strcmp(argv[1], "off") || !q_strcmp(argv[1], "disable"))  ColorAuto = Color = false; else
   // "colors on" : enable color sequences
-  if (!q_strcmp(argv[1], "on")) { ColorAuto = false; Color = true; } else
+  if (!q_strcmp(argv[1], "on") || !q_strcmp(argv[1], "enable")) { ColorAuto = false; Color = true; } else
   // "color test" : hidden developers command
   if (!q_strcmp(argv[1], "test"))
     for (int i = 0; i < 108; i++)
       q_printf("%d: \e[%dmLorem Ipsum Dolor 1234567890 @#\e[0m\r\n", i, i);
   else
     return 1;
+
   return 0;
 }
 #endif  //WITH_COLOR
@@ -189,9 +190,11 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
            message,
            file,  
            line);
+
   // resume sketch (it may be paused)
   if (taskid_arduino_sketch() != NULL)
     task_resume(taskid_arduino_sketch());
+  
   // forcefully kill our parent task (the shell command processor) if we are running in a background
   if (is_background_task()) {
     task_suspend((task_t)shell_task);
@@ -216,7 +219,9 @@ static int cmd_misc(int argc, char **argv) {
   if (cmd_misc_user != NULL)
     return cmd_misc_user(argc, argv);
   else
-    q_print("% No custom user command defined\r\n");
+    q_print("% No custom user command defined\r\n"
+            "% See \"examples/user_command/user_command.ino\" for an example\r\n");
+
   return CMD_FAILED;
 }
 

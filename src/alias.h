@@ -442,7 +442,6 @@ static int alias_exec_in_background_delayed(struct alias *al, uint32_t delay_ms)
 // (otherwise there is no way to determine if NAME is an alias name or a file name)
 //
 static int cmd_exec(int argc, char **argv) {
-
   int errors = 0;
   bool import = false;
 

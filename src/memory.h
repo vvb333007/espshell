@@ -46,12 +46,12 @@ static int memory_display_content(unsigned char *address,  // starting address
     if (!esp_ptr_byte_accessible(address) || !esp_ptr_byte_accessible(address + length * count)) {
       //TODO: make safe function (buffered read) to read byte-by-byte . For now just warn the user
       q_printf("%% A memory region within [0x%p..0x%p] is not byte-accessible\r\n"
-               "%% Try \"<i>show memory 0x%p %u void *</>\" instead, to see a hexdump\r\n", address, address+length*count,address, count / 4 + 1);
+               "%% Try \"<i>show memory 0x%p %u *</>\" instead, to see a hexdump\r\n", address, address+length*count,address, count / 4 + 1);
       return CMD_FAILED;
     }
   
 
-  // dont print this header when using short form of q_printhex.
+  // dont print this header when using short form of q  _printhex.
   if (length >= tbl_min_len)
     HELP(q_printf("%% Memory content (starting from %08x, %u bytes)\r\n", (unsigned int)address,length * count));
 
@@ -62,6 +62,45 @@ static int memory_display_content(unsigned char *address,  // starting address
     q_printhex(address, count * length);
 
   return 0;
+}
+
+
+// Check pointer and display some if its caps.
+//
+static void memory_display_ptr_info(const void *a) {
+
+  if (esp_ptr_external_ram(a))
+    q_printf("%% Address is in external SPI RAM, %sDMA-capable\r\n", esp_ptr_dma_ext_capable(a) ? "" : "NOT ");
+  else {
+    const char *where =
+         esp_ptr_in_drom(a) ? "DROM"  : 
+        (esp_ptr_in_rom(a)  ? "ROM"   : 
+        (esp_ptr_in_iram(a) ? "I-RAM" :
+        (esp_ptr_in_dram(a) ? "D-RAM" : NULL)));
+
+    if (where) {
+      q_printf("%% The address is in SoC internal %s", where);
+
+      where = esp_ptr_in_diram_dram(a) ? "DIRAM D" : 
+             (esp_ptr_in_diram_iram(a) ? "DIRAM I" : NULL);
+
+      if (where)
+        q_printf(" (region: %s)", where);
+
+      q_printf(", %sDMA-capable\r\n", esp_ptr_dma_capable(a) ? "" : "NOT ");      
+
+    } else {
+
+      where = esp_ptr_in_rtc_iram_fast(a) ? "RTC IRAM (fast)" :
+             (esp_ptr_in_rtc_dram_fast(a) ? "RTC DRAM (fast)" :
+             (esp_ptr_in_rtc_slow(a) ? "RTC SLOW" : NULL));
+
+      if (where)
+        q_printf("%% The address is in RTC peri: %s\r\n", where);
+      else
+        q_print("%% The address belongs to peripheral\r\n");
+    }
+  } 
 }
 
 // Implementation of "show memory address ARG1 ARG2 ... ARGn"
@@ -89,7 +128,7 @@ static int cmd_show_memory_address(int argc, char **argv) {
         isp = false;                // Generic 32bit hex display
 
   while (i < argc) {
-    if (isnum(argv[i])) {
+    if (q_isnumeric(argv[i])) {
       count = q_atol(argv[3], count);
       count_is_specified = true;
     } else {
@@ -133,16 +172,70 @@ static int cmd_show_memory_address(int argc, char **argv) {
     return 2; //argv[2] is bad
   }
 
+  memory_display_ptr_info(address);
+
   return memory_display_content(address,count,length,isu,isf,isp);
 }
 
+// "show memory map"
+//
+static int cmd_show_memory_map(int argc, char **argv) {
 
-// "show memory ARG1 ARG2 ... ARGn"
+  const char *text;
+
+  q_print("% <r>SoC memory map: (region name and address range)  </>\r\n");
+
+#if CONFIG_IDF_TARGET_ESP32
+  text = "% \r\n"
+          "% <d>DATA ROM</>   [0x3F400000 .. 0x3F800000]\r\n"
+          "% <b>SPI RAM</>    [0x3F800000 .. 0x3FC00000] (overlaps DATA ROM a little)\r\n"
+          "% <i>PERIFERALS</> [0x3ff7000  .. 0x3FF7ffff]\r\n"
+          "% <b>RTC DRAM</>   [0x3FF80000 .. 0x3FF82000]\r\n"
+          "% <b>DRAM</>       [0x3FFAE000 .. 0x40000000]\r\n"
+          "% <d>CACHE</>      [0x40070000 .. 0x40078000]\r\n"
+          "% <b>IRAM</>       [0x40080000 .. 0x400AA000]\r\n"
+          "% <b>RTC IRAM</>   [0x400C0000 .. 0x400C2000]\r\n"
+          "% <d>IROM</>       [0x400D0000 .. 0x40400000]\r\n"
+          "% <b>RTC DATA</>   [0x50000000 .. 0x50002000]\r\n";
+
+#elif CONFIG_IDF_TARGET_ESP32S3
+  text = "% \r\n"
+          "% <d>DROM</>        [0x3C000000 .. 0x3E000000]\r\n"
+          "% <b>SPI RAM</>     [0x3C000000 .. 0x3E000000] (overlaps DATA ROM!)\r\n"
+          "% <b>DRAM</>        [0x3FC88000 .. 0x3FD00000]\r\n"
+          "% <b>IRAM</>        [0x40370000 .. 0x403E0000]\r\n"
+          "% <d>IROM</>        [0x42000000 .. 0x44000000]\r\n"
+          "% <b>RTC DATA</>    [0x50000000 .. 0x50002000]\r\n"
+          "% <i>PERIPHERALS</> [0x60000000 .. 0x600FE000]\r\n"
+          "% <b>RTC IRAM</>    [0x600FE000 .. 0x60100000]\r\n"
+          "% <b>RTC DRAM</>    [0x600FE000 .. 0x60100000]\r\n";
+#else
+  text = "% <e>Uhm, looks like I don't have a memory map for this CPU</>\r\n"
+         "% Go to Github and create a feature request\r\n";
+#endif
+
+  q_print( text );
+
+  return 0;
+}
+
+
+// "show memory [ARG1 ARG2 ... ARGn]"
+// All show memory commands are handled here. The "show memory" logic is implemented in the function while
+// "show memory ADDRESS" and "show memory map" are implemented as separate functions
 //
 static int cmd_show_memory(int argc, char **argv) {
 
     if (argc < 3) { // "show memory"
       unsigned int total;
+
+      q_printf("%% <r>-- Memory caps --                                  </r>\r\n"
+               "%%\r\n"
+               "%% DRAM and IRAM are sharing the same memory space: %s\r\n"
+               "%% RTC_DRAM and RTC_IRAM are sharing the same memory space: %s\r\n",
+                esp_dram_match_iram() ? "NO" : "yes",
+                esp_rtc_dram_match_rtc_iram() ? "NO" : "yes");
+
       q_printf( "%% <r>-- Heap information --                                 </>\r\n%%\r\n"
                 "%% If using \"malloc()\" (default allocator))\":\r\n"
                 "%% <i>%u</> bytes total, <i>%u</> available, %u max per allocation\r\n%%\r\n"
@@ -164,23 +257,29 @@ static int cmd_show_memory(int argc, char **argv) {
                 "% to change build target in Arduino IDE (<i>Tools->Board</>) or enable\r\n"
                 "% PSRAM (<i>Tools->PSRAM:->Enabled</>)\r\n");
 
-      q_print("%\r\n%<r> -- Low watermarks (minimum available memory) --</>\r\n%\r\n");
+      q_print("%\r\n%<r> -- Low watermarks / Heap integrity --</>\r\n%\r\n");
 
-      q_printf("%% Internal SRAM  : <i>%u</> bytes, heap integrity check: %s</>\r\n"
-               "%% External SPIRAM: <i>%u</> bytes, heap integrity check: %s</>\r\n",
+      q_printf("%% Internal SRAM  : dropped to <i>%u</> bytes, heap integrity check: %s</>\r\n"
+               "%% External SPIRAM: dropped to <i>%u</> bytes, heap integrity check: %s</>\r\n",
                heap_caps_get_minimum_free_size( MALLOC_CAP_INTERNAL ), 
                heap_caps_check_integrity(MALLOC_CAP_INTERNAL, false) ? "<g>PASS" : "<w>FAIL",
                heap_caps_get_minimum_free_size( MALLOC_CAP_SPIRAM ), 
                heap_caps_check_integrity(MALLOC_CAP_SPIRAM, false) ? "<g>PASS" : "<w>FAIL");
-                
 
-
-      // this one gets printed only #if MEMTEST == 1
+      // Devel: this one gets printed only #if MEMTEST == 1
       q_memleaks(" -- Entries allocated by ESPShell --");
       return 0;
     }
-    //"show memory ADDRESS ..."
-    return cmd_show_memory_address(argc, argv);
+    
+    // "show memory ADDRESS ..."
+    if (q_isnumeric(argv[2])) 
+      return cmd_show_memory_address(argc, argv);
+
+    // "show memory map"
+    if (!q_strcmp(argv[2], "map"))
+      return cmd_show_memory_map(argc, argv);
+
+    return 2;
 }
 
 #endif //

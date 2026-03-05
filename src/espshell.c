@@ -959,13 +959,3 @@ _Static_assert((NVS_TYPE_U8 == 0x01) && (NVS_TYPE_I32 == 0x14), "nvs0.h code rev
 _Static_assert(WIFI_CIPHER_TYPE_UNKNOWN == 12, "wifi0.h code review is required");
 #endif
 
-
-
-/*
-
-extern void vPortSetStackWatchpoint( void *pxStackStart );
-
-void __attribute__((used)) __wrap_vPortSetStackWatchpoint( void *pxStackStart ) {
-  pxStackStart = pxStackStart;
-}
-*/
