@@ -21,3 +21,7 @@ Roadmap:
 
 5.3 Port a single-user, single-threaded simple FTP server - to be able to 
    upload a premade filesystem (i.e. files and directories)
+
+7.4 Investigate possibility to cache numeric values of argv[], so subsequent access (i.e. pin X loop or alias)
+    will not spend time on q_atoi/q_atol/q_atof. We cache handler address according to the argv[0] for the same reason already. Why not
+    to cache all numerics?
