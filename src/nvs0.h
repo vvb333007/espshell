@@ -825,7 +825,7 @@ static int cmd_nvs_new(int argc, char **argv) {
   char *blob = &foo[0];
   char *str = &foo[0];
   size_t size;
-  bool is_str, is_blob, is_signed;
+  bool is_str, is_blob, is_signed, is_float;
   
   if (argc < 3)
     return CMD_MISSING_ARG;
@@ -843,9 +843,9 @@ static int cmd_nvs_new(int argc, char **argv) {
   }
 
   // Read user type definition
-  end = userinput_read_ctype(argc, argv, 2, &size, &is_str, &is_blob, &is_signed);
+  end = userinput_read_ctype(argc, argv, 2, &size, &is_str, &is_blob, &is_signed, &is_float);
 
-  if (size > 8 || (size == 0 && !is_str && !is_blob)) {
+  if (is_float || size > 8 || (size == 0 && !is_str && !is_blob)) {
     q_print("% Sorry, can not parse your type definition\r\n"
             "% Use C syntax: \"<i>char</>\", \"<i>unsigned long long int</>\", \"<i>char *</>\" and so on\r\n"
             "% Use \"<i>char *</>\" to create strings; for blobs use \"<i>char []</>\"\r\n");

@@ -1711,12 +1711,21 @@ KEYWORDS_DECL(main) {
     HELPK("% \"<b>show <i>memory</> <i>ADDRESS</> [<o>COUNT</>] [<o>unsigned|signed|char|int|short|float|void *</>]\"\r\n"
           "%\r\n"
           "% Display COUNT elements starting from the memory address ADDRESS\r\n"
-          "% Data type can be provided (e.g. \"show mem 0x3fff0000 10 unsigned int\")\r\n"
+          "% Data type can be provided (e.g. \"show mem 0x3fff0000 unsigned int\")\r\n"
           "% to hint espshell on how to display individual data items. \r\n"
+          "%\r\n"
           "% Default data type is \"unsigned char\"\r\n"
-          "% Address is either decimal or hex (with or without leading \"0x\")\r\n%\r\n"
+          "% Address is either decimal or hex (with or without leading \"0x\")\r\n"
+          "%\r\n"
           "% COUNT is optional and its default value is 256 bytes. Can be decimal or hex\r\n"
-          "% NOTE: if type specifier is used and COUNT is not set, then COUNT defaults to 1"),NULL},
+          "% NOTE: if type specifier is used and COUNT is not set, then COUNT defaults to 1\r\n"
+          "% <u>Examples</>:\r\n"
+          "%   <b>show mem 0x3fff000</>              : display a 256 byte hexdump\r\n"
+          "%   <b>show mem 0x3fff000 10</>           : display 10 byte hexdump\r\n"
+          "%   <b>show mem 0x3fff000 int</>          : display 1 integer\r\n"
+          "%   <b>show mem 0x3fff000 10 uint16_t</>  : display 10 ushorts\r\n"
+          "%   <b>show mem 0x3fff000 10 float</>     : display 10 floats\r\n"
+          "%   <b>show mem 0x3fff000 10 float hex</> : display 10 floats as seen in RAM"),NULL},
 
 
 #if WITH_ESPCAM

@@ -239,6 +239,17 @@ static bool pin_can_wakeup(uint8_t pin);
 
 static bool nv_save_config(); // saves sensitive espshell information: hostid and timezone
 
+static int userinput_read_ctype(int     argc,      // IN
+                                char  **argv,      // IN
+                                int     start,     // IN
+                                size_t *size0,     // OUT
+                                bool   *is_str,    // OUT
+                                bool   *is_blob,   // OUT
+                                bool   *is_signed, // OUT
+                                bool   *is_float  // OUT
+                                );
+
+
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 3, 0)
 extern bool esp_gpio_is_pin_reserved(unsigned int gpio);
 #else
@@ -959,3 +970,23 @@ _Static_assert((NVS_TYPE_U8 == 0x01) && (NVS_TYPE_I32 == 0x14), "nvs0.h code rev
 _Static_assert(WIFI_CIPHER_TYPE_UNKNOWN == 12, "wifi0.h code review is required");
 #endif
 
+
+
+// Code below requires "-Wl,--wrap=phy_printf" in ESP32-S3 linker script file
+// which is normally found in ...Arduino15\packages\esp32\tools\esp32s3-libs\VERSION\flags\ld_flags
+//
+#if 0
+
+extern void phy_printf(const char *, ... );
+
+void __attribute__((used)) __wrap_phy_printf(const char *format, ... ) {
+
+  int len;
+  va_list arg;
+
+  va_start(arg, format);
+  len = __printfv(format, arg);
+  va_end(arg);
+
+}
+#endif

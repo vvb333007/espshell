@@ -1441,10 +1441,17 @@ static int q_print(const char *str) {
 }
 
 // print /Address : Value/ pairs, decoding the data according to data type
-// 1,2 and 4 bytes long data types are supported
+// 1,2,4 and 8 bytes long data types are supported
 // If it is more than 1 element in the table, then print a header also
 //
-static void q_printtable(const unsigned char *p, unsigned int count, unsigned char length, bool isu, bool isf, bool isp) {
+static void q_printtable(const unsigned char *p,
+                        unsigned int count,
+                        unsigned char length,
+                        bool isu,
+                        bool isf,
+                        bool isp,
+                        bool force_hex) {
+
     if (p && count && length) {
       if (count > 1)
         q_printf("%% Array of %u elements, %u bytes each\r\n%%  Address   :  Value    \r\n",count,length);
@@ -1453,15 +1460,22 @@ static void q_printtable(const unsigned char *p, unsigned int count, unsigned ch
         if (isp) {
           q_printf("%p\r\n", (void *)(*((intptr_t *)p)));
         } else if (isf) {
-          q_printf("%ff\r\n", *((float *)p));
+            if (force_hex)
+              q_printf("0x%08x)\r\n",*((float *)p));
+            else
+              q_printf("%ff\r\n", *((float *)p));
         } else {
           if (length == sizeof(unsigned int)) {
-            if (isu)
+            if (force_hex)
+              q_printf("0x%08x)\r\n",*((unsigned int *)p));
+            else if (isu)
               q_printf("%u (0x%x)\r\n",*((unsigned int *)p),*((unsigned int *)p));
             else
               q_printf("%i\r\n",*((signed int *)p));
           } else if (length == sizeof(unsigned short)) {
-            if (isu)
+            if (force_hex)
+              q_printf("0x%04x)\r\n",*((unsigned short *)p));
+            else if (isu)
               q_printf("%u (0x%x)\r\n",*((unsigned short *)p),*((unsigned short *)p));
             else
               q_printf("%i\r\n",*((signed short *)p));
@@ -1470,6 +1484,11 @@ static void q_printtable(const unsigned char *p, unsigned int count, unsigned ch
               q_printf("%u (0x%x)\r\n",*((unsigned char *)p),*((unsigned char *)p));
             else
               q_printf("%i\r\n",*((signed char *)p));
+          } else if (length == sizeof(unsigned long long)) {
+            if (isu)
+              q_printf("%llu\r\n",*((unsigned long long *)p));
+            else
+              q_printf("%ll\r\n",*((signed long long *)p));
           } else {
             MUST_NOT_HAPPEN( true ); // fatal error, likely memory corruption. abort the shell, don't make things worse
           }

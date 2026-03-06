@@ -10,6 +10,10 @@
  * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
+// TODO: Add "as hex" keyword: "show memory 0x40000000 10 int as hex"
+// TODO: This will require q_printtable() etc to be refactored. Right now the output format is hard linked
+// TODO: to the type: "int" is displayed as "%d", "void *" as "%p" but there is no way to dump array of "int" as hex
+
 #if COMPILING_ESPSHELL
 
 // Gets called by ESP-IDF if memory allocation fails. Registered as a callback
@@ -20,8 +24,10 @@ static void out_of_memory_event(size_t size, uint32_t caps,const char * function
   if (taskid_arduino_sketch())
     task_suspend(taskid_arduino_sketch());
 
-  q_printf("\r\n%% <w> Boom! Out of memory in \"%s\" (asked %u bytes, caps: %x)</>\r\n"
-           "%% Sketch is suspended, you resume with \"resume\"\r\n",
+  // in OOM event we can not call q_printf as it can try to malloc() its output buffer.
+  // Instead we call ROM function
+  esp_rom_printf("\r\n%% <w> Boom! Out of memory in \"%s\" (asked %u bytes, caps: %x)</>\r\n"
+           "%% Sketch is suspended, you can resume it with \"resume\" command\r\n",
            function_name,
            size,
            (unsigned int)caps);
@@ -35,7 +41,8 @@ static int memory_display_content(unsigned char *address,  // starting address
                                   unsigned char length,    // element size in bytes
                                   bool isu,                // display as unsigned?
                                   bool isf,                // display as floating point numbers?
-                                  bool isp) {              // display as pointers?
+                                  bool isp,                // display as %p?
+                                  bool force_hex) {              // force display as %x
 
   // Some memory regions on ESP32-family chips are not byte-accessible: instead these regions can only be read
   // in chunks of 4 bytes; Check if requested memory region is byte-accessible and warn the user
@@ -57,7 +64,7 @@ static int memory_display_content(unsigned char *address,  // starting address
 
   // If length == 1 then it is "char". We display unsigned char as ordinary hexdump, and signed as a table
   if (length > 1 || !isu) 
-    q_printtable(address, count, length, isu, isf, isp);
+    q_printtable(address, count, length, isu, isf, isp, force_hex);
   else
     q_printhex(address, count * length);
 
@@ -113,59 +120,62 @@ static int cmd_show_memory_address(int argc, char **argv) {
 
   unsigned char *address;
   unsigned int count = 256;
-  unsigned char length = 1;
+  unsigned int length = 1;
 
   // read the address. NULL will be returned if address is 0 or has incorrect syntax.
   address = (unsigned char *)hex2uintptr(argv[2]);
 
   // read the rest of arguments if specified
-  int i = 3;
+  // If we have numeric arg next to the address - it is the "count", otherwise it is a CTYPE
+  int end;
   bool count_is_specified = false,  // user has provided COUNT
-        sign_is_specified = false,  // "signed" or "unsigned" keywords seen
         type_is_specified = false,  // "char", "void", "int", "short" ... etc seen
+        is_float = false, is_str = false, is_blob = false, is_signed = true,
         isu = false,                // Display unsigned values
-        isf = false,                // Display as floating point
-        isp = false;                // Generic 32bit hex display
+        is_hex = false;             // Force hex display
 
-  while (i < argc) {
-    if (q_isnumeric(argv[i])) {
+  if (argc > 3) {
+    end = 3;
+    if (q_isnumeric(argv[3])) {
       count = q_atol(argv[3], count);
       count_is_specified = true;
-    } else {
+      end++;
+    }
+
+    if (end < argc) {
+
+      end = userinput_read_ctype(argc, argv, end, &length, &is_str, &is_blob, &is_signed, &is_float);
+
+      //q_printf("end=%d,length=%d,is_str=%d,is_blob=%d,is_signed=%d,is_float=%d)\r\n", end, length, is_str, is_blob, is_signed, is_float);
+
+      if (length > 8 || (length == 0 && !is_str && !is_blob)) {
+        q_print("% Sorry, can not parse your type definition\r\n"
+                "% Use C syntax: \"<i>char</>\", \"<i>unsigned long long int</>\", \"<i>char *</>\" and so on\r\n");
+        return CMD_FAILED;
+      }
+      type_is_specified = true;
+      isu = !is_signed;
+
       // Type was provided. 
       // Most likely user wants to see *(var), not just 256 bytes of memory content, so if /count/ was not explicitly set, make count = 1
       // or we risk LoadProhibited exception here
       if (!count_is_specified)
         count = 1;
 
-      type_is_specified = true;
-
-
-      if (!q_strcmp(argv[i],"signed")) { isu = false; sign_is_specified = true; } else
-      if (!q_strcmp(argv[i],"unsigned")) { isu = true; sign_is_specified = true; } else
-      if (!q_strcmp(argv[i],"void*") || argv[i][0] == '*') isp = true; else
-      if (!q_strcmp(argv[i],"float")) isf = true; else
-      if (!q_strcmp(argv[i],"int") || !q_strcmp(argv[i],"long")) length = sizeof(int); else
-      if (!q_strcmp(argv[i],"short")) length = sizeof(short); else
-      if (!q_strcmp(argv[i],"char") || !q_strcmp(argv[i],"void")) {} else
-        q_printf("%% Unrecognized keyword \"%s\" ignored\r\n",argv[i]);
-      if (isp || isf)
+      if (is_blob || is_str)
         length = sizeof(void *);
     }
-    i++;
+
+    if (end < argc) {
+      if (!q_strcmp(argv[end],"hex"))
+        is_hex = true;
+    }
+  } else {
+      isu = true;
   }
 
-  // Make simple form "sh mem ADDRESS" to use isu=true, length=1, count=256
-  // If signedness was not specified but type was specified, then we assume SIGNED argument: "int" == "signed int"
-  if (!sign_is_specified) {
-    if (!type_is_specified)
-      isu = true;
-    else
-      isu = false;
-  } else {
-    if (isf /* || isp*/) // don't warn users on requests like "unsigned int *" : it is a pointer anyway
-      q_print("% \"signed\" and \"unsigned\" keywords were ignored\r\n");
-  }
+  if (type_is_specified == false)
+    isu = true;
 
   if (!is_valid_address(address, count * length)) {
     HELP(q_print("% Bad address range. Must be  a hex number > 0x2000000 (e.g. 0x3fff0000)\r\n"));
@@ -174,7 +184,7 @@ static int cmd_show_memory_address(int argc, char **argv) {
 
   memory_display_ptr_info(address);
 
-  return memory_display_content(address,count,length,isu,isf,isp);
+  return memory_display_content(address,count,length,isu,is_float,is_blob || is_str, is_hex);
 }
 
 // "show memory map"
@@ -229,12 +239,12 @@ static int cmd_show_memory(int argc, char **argv) {
     if (argc < 3) { // "show memory"
       unsigned int total;
 
-      q_printf("%% <r>-- Memory caps --                                  </r>\r\n"
+      q_printf("%% <r>-- Memory caps --                                  </>\r\n"
                "%%\r\n"
-               "%% DRAM and IRAM are sharing the same memory space: %s\r\n"
-               "%% RTC_DRAM and RTC_IRAM are sharing the same memory space: %s\r\n",
-                esp_dram_match_iram() ? "NO" : "yes",
-                esp_rtc_dram_match_rtc_iram() ? "NO" : "yes");
+               "%% Note1: DRAM and IRAM are %ssharing the same memory space.\r\n"
+               "%% Note2: RTC_DRAM and RTC_IRAM are %ssharing the same memory space\r\n",
+                esp_dram_match_iram() ? "not " : "",
+                esp_rtc_dram_match_rtc_iram() ? "not " : "");
 
       q_printf( "%% <r>-- Heap information --                                 </>\r\n%%\r\n"
                 "%% If using \"malloc()\" (default allocator))\":\r\n"
@@ -259,8 +269,8 @@ static int cmd_show_memory(int argc, char **argv) {
 
       q_print("%\r\n%<r> -- Low watermarks / Heap integrity --</>\r\n%\r\n");
 
-      q_printf("%% Internal SRAM  : dropped to <i>%u</> bytes, heap integrity check: %s</>\r\n"
-               "%% External SPIRAM: dropped to <i>%u</> bytes, heap integrity check: %s</>\r\n",
+      q_printf("%% Internal SRAM  : dropped as low as <i>%u</> bytes, heap integrity check: %s</>\r\n"
+               "%% External SPIRAM: dropped as low as <i>%u</> bytes, heap integrity check: %s</>\r\n",
                heap_caps_get_minimum_free_size( MALLOC_CAP_INTERNAL ), 
                heap_caps_check_integrity(MALLOC_CAP_INTERNAL, false) ? "<g>PASS" : "<w>FAIL",
                heap_caps_get_minimum_free_size( MALLOC_CAP_SPIRAM ), 
@@ -279,7 +289,7 @@ static int cmd_show_memory(int argc, char **argv) {
     if (!q_strcmp(argv[2], "map"))
       return cmd_show_memory_map(argc, argv);
 
-    return 2;
+    return 2; // unrecognized argv[2]
 }
 
 #endif //

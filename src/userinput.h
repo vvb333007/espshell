@@ -589,16 +589,17 @@ static int userinput_read_ctype(int     argc,      // IN
                                 size_t *size0,     // OUT
                                 bool   *is_str,    // OUT
                                 bool   *is_blob,   // OUT
-                                bool   *is_signed  // OUT
+                                bool   *is_signed, // OUT
+                                bool   *is_float  // OUT
                                 ) {
 
   size_t size = 0;
   uint8_t ll = 0;   // how many times did we see "long" keyword
 
-  if ((start >= argc) || !is_str || !is_blob || !is_signed || !size0)
+  if ((start >= argc) || !is_str || !is_blob || !is_signed || !size0 || !is_float)
     return start;
 
-  *is_str = *is_blob = false;
+  *is_float = *is_str = *is_blob = false;
   *is_signed = true;
 
   while (start < argc) {
@@ -607,10 +608,6 @@ static int userinput_read_ctype(int     argc,      // IN
     if (!q_strcmp(argv[start],"uint32_t"))  { *is_signed = false; size = 4; } else
     if (!q_strcmp(argv[start],"uint16_t"))  { *is_signed = false; size = 2; } else
     if (!q_strcmp(argv[start],"uint8_t"))   { *is_signed = false; size = 1; } else
-    if (!q_strcmp(argv[start],"int64_t"))   { *is_signed = true; size = 8; } else
-    if (!q_strcmp(argv[start],"int32_t"))   { *is_signed = true; size = 4; } else
-    if (!q_strcmp(argv[start],"int16_t"))   { *is_signed = true; size = 2; } else
-    if (!q_strcmp(argv[start],"int8_t"))    { *is_signed = true; size = 1; } else
 
 
     if (!q_strcmp(argv[start],"signed"))   { *is_signed = true; size = 1; } else
@@ -624,14 +621,22 @@ static int userinput_read_ctype(int     argc,      // IN
     // e.g. unsigned short int is still 16 bit
     if (!q_strcmp(argv[start],"int"))       size = size < 2 ? 4 : size; else
 
+    if (!q_strcmp(argv[start],"int64_t"))   { *is_signed = true; size = 8; } else
+    if (!q_strcmp(argv[start],"int32_t"))   { *is_signed = true; size = 4; } else
+    if (!q_strcmp(argv[start],"int16_t"))   { *is_signed = true; size = 2; } else
+    if (!q_strcmp(argv[start],"int8_t"))    { *is_signed = true; size = 1; } else
+
+
     if (!q_strcmp(argv[start],"long"))      size = 4 * (++ll);    else
+
+    if (!q_strcmp(argv[start],"float"))     { size = sizeof(float); *is_float = true; }   else
 
     // Detect arrays
     if (!q_strcmp("char[", argv[start]) ||
         argv[start][0] == '[' ||
         argv[start][0] == ']')             *is_blob = true;       else
 
-    // Detect strings
+    // Detect strings/pointers
     if (argv[start][0] == '*' ||
         !q_strcmp(argv[start],"char*"))    *is_str = true;        else break;
 
