@@ -1345,7 +1345,7 @@ static inline  char *q_findchar(const char *str, char sym) {
 // TODO: if we have PSRMA: allocate permanent 5kb buffer to minimize calls to vsnprintf 
 static int __printfv(const char *format, va_list arg) {
 
-  /*static */char buf[128 + 1]; //TODO: profile the shell to find out an optimal size. optimal == no calls to q_malloc
+  /*static */char buf[2*128 + 1]; //TODO: profile the shell to find out an optimal size. optimal == no calls to q_malloc
   char *temp = buf;
   uint32_t len;
   int ret;

@@ -161,51 +161,6 @@ static bool add_unique( struct nvsnamespace **nvs_namespaces, const char *name) 
   }
   return false;
 }
-#if 0
-// This function reads scalar C types and pointers and returns element size
-// Examples of valid inputs:
-// "char"
-// "unsigned short int"
-// "long long int"
-// "char*" "char *"
-// "char[123]", "char[]"
-// TODO: refactor convar.h to use read_ctype()
-//
-static size_t read_ctype(int argc, char **argv, int start, bool *is_str, bool *is_blob, bool *is_signed) {
-  if ((start >= argc) ||
-      !is_str || !is_blob || !is_signed)
-    return 0;
-
-  size_t size = 0;
-  uint8_t ll = 0;   // how many times did we see "long" keyword
-
-  *is_str = *is_blob = false;
-  *is_signed = true;
-
-  while (start < argc) {
-    if (!q_strcmp(argv[start],"signed"))   *is_signed = true;     else
-    if (!q_strcmp(argv[start],"unsigned")) *is_signed = false;    else
-    if (!q_strcmp(argv[start],"char"))      size = 1;             else
-    if (!q_strcmp(argv[start],"short"))     size = 2;             else
-    // "int" means 32 bit ONLY if there are no other specifiers.
-    // e.g. unsigned short int is still 16 bit
-    if (!q_strcmp(argv[start],"int"))       size = size < 2 ? 4
-                                                          : size; else
-    if (!q_strcmp(argv[start],"long"))      size = 4 * (++ll);    else
-    // Detect arrays
-    if (!q_strcmp("char[", argv[start]) ||
-        argv[start][0] == '[' ||
-        argv[start][0] == ']')             *is_blob = true;       else
-    // Detect strings
-    if (argv[start][0] == '*' ||
-        !q_strcmp(argv[start],"char*"))    *is_str = true;
-    start++;
-  }
-
-  return size;
-}
-#endif
-
 
 // Convert decoded C-type to NVS data type:
 // 1. call read_ctype()

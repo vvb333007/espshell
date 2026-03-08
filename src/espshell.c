@@ -978,6 +978,7 @@ _Static_assert(WIFI_CIPHER_TYPE_UNKNOWN == 12, "wifi0.h code review is required"
 #if 0
 
 extern void phy_printf(const char *, ... );
+extern void wifi_log(int x, int y, int z, const char *format, ...);
 
 void __attribute__((used)) __wrap_phy_printf(const char *format, ... ) {
 
@@ -989,4 +990,20 @@ void __attribute__((used)) __wrap_phy_printf(const char *format, ... ) {
   va_end(arg);
 
 }
+
+void __attribute__((used)) __wrap_wifi_log(int x, int y, int z, const char *format, ... ) {
+
+  int len;
+  va_list arg;
+
+  x = x;
+  y = y;
+  z = z;
+
+  va_start(arg, format);
+  len = __printfv(format, arg);
+  va_end(arg);
+
+}
+
 #endif

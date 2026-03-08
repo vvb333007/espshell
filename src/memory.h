@@ -112,9 +112,6 @@ static void memory_display_ptr_info(const void *a) {
 
 // Implementation of "show memory address ARG1 ARG2 ... ARGn"
 // This one is called from cmd_show()
-// TODO:refactor to use read_ctype
-// TODO:refactor with switch()
-// TODO:refactor ifs
 
 static int cmd_show_memory_address(int argc, char **argv) {
 
