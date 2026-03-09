@@ -145,85 +145,17 @@ static const char *random_hint() {
   return Hints[(tick++) % (sizeof(Hints)/sizeof(Hints[0]))];
 }
 
-// "? keys"
-// display keyboard usage help page
-static int help_keys(UNUSED int argc, UNUSED char **argv) {
-
-  q_print( Keys_Manual );
-  return 0;
-}
 
 
-// TODO: hidden command "screen WIDTH HEIGHT"
-//static uint8_t TermCols = 80, TermLines = 25;
-
-// "? NAME"
-// Displays a manual page for NAME (e.g. "? pin")
+// Display command directory content
 //
-static int help_command(int argc, char **argv) {
-
-  int i;
-  int found = 0;
-  const char *brief = ""; 
-  const struct keywords_t *key = keywords_get();
-
-  MUST_NOT_HAPPEN(argc < 2);
-
-try_one_more_time:
-
-  i = 0;
-  // go through all matched commands (only name is matched) and print their
-  // help lines. hidden commands are ignored
-  while (key[i].cmd) {
-    if (key[i].help || key[i].brief) {
-      if (!q_strcmp(argv[1], key[i].cmd)) {
-
-        // TODO: add page delay ("-- press Enter for the next page --")
-        // Print header
-        if (key[i].brief)
-          brief = key[i].brief;
-        q_printf("\r\n%%<r> -- %40.40s --</>\r\n", brief);
-
-        // Print help page
-        q_printf("%s\r\n\r\n",key[i].help ? key[i].help                        // use /.help/ if it is exists
-                                          : (key[i].brief ? key[i].brief  // otherwise use /.brief/
-        /* This one can not happen --------------> */     : "Help page is missing"));
-
-        
-        
-        found++;
-      }
-    }
-    i++;
-  }
-  
-  if (!found) {
-    if (key != KEYWORDS(main)) {
-      key = KEYWORDS(main);
-      goto try_one_more_time;
-    }
-    q_printf(Error_No_Manual ,argv[1]);
-    return CMD_FAILED;
-  }
-
-  return 0;
-}
-
-
-
-//"?"
-// Display commands list for currently used command directory. There are few "command directories": main ,
-// uart, i2c, sequence, files, ...
-// Every command directory has its own set of commands, which is displayed by entering "?" and pressing <Enter>
 //
-static int help_command_list(int argc, char **argv) {
+static bool help_list_dir(const struct keywords_t *key, const char *banner) {
 
   int i = 0;
   const char *prev = "";
 
-  const struct keywords_t *key = keywords_get();
-
-  q_print(List_Banner);
+  HELP(q_print( banner == NULL ? List_Banner : banner));
 
   //run through the key[] and print brief info for every entry
   // 1. for repeating entries (same command name) only the first entry's description
@@ -247,45 +179,97 @@ static int help_command_list(int argc, char **argv) {
     prev = key[i].cmd;
     i++;
   }
-
-  return 0;
+  return true;
 }
+
+
+// Display full help for a command /cmd/ which is searched in a command directory /key/
+//
+//
+static bool help_for_dir_command(const struct keywords_t *key, const char *cmd) {
+
+  int i = 0, found = 0;
+  const char *brief = ""; 
+
+  MUST_NOT_HAPPEN(key == NULL || cmd == NULL);
+
+  // go through all matched commands (only name is matched) and print their
+  // help lines. hidden commands are ignored
+  while (key[i].cmd) {
+    if (key[i].help || key[i].brief) {
+      if (!q_strcmp(cmd, key[i].cmd)) {
+
+        // Print header
+        if (key[i].brief)
+          brief = key[i].brief;
+
+        q_printf("\r\n%%<r> -- %40.40s --</>\r\n", brief);
+
+        // Print help page
+        q_printf("%s\r\n\r\n",key[i].help ? key[i].help                        // use /.help/ if it is exists
+                                          : (key[i].brief ? key[i].brief  // otherwise use /.brief/
+        /* This one can not happen --------------> */     : "Help page is missing"));
+
+        found++;
+      }
+    }
+    i++;
+  }
+
+  return found > 0;
+}
+
 
 // pressing "?" during command line editing will display help
 // page for a command if there is a command name typed (may be partially)
 //
-static bool help_page_for_inputline(unsigned char *raw) {
+// However, the "show ?" and "show ARG ?" are special cases:
+//
+//  a) When user types "show ?", then command list of a hidden subdirectory "show" is displayed:
+//     we call help_command_list() for the "show" subdir;
+//
+//  b) When user types "show ARG ?", then we display a help page from the "show" subdir as if ARG was our
+//     argv[0]
+//
+static bool help_page_for_inputline(unsigned char *raw0) {
 
-  if (raw) {
+  bool ret = false;
 
-    // skip leading whitespace
-    while (*raw && isspace(*raw))
-      raw++;
+  if (raw0) {
 
-    // got characters?
-    if (*raw) {
-      unsigned char *end = raw + 1;
-      char qm[] = {'?', '\0'};
+    char *raw = q_strdup((const char *)raw0, MEM_TMP);
 
-      //find next whitespace (or string end)
-      while (*end && !isspace(*end))
-        end++;
+    if (raw == NULL)
+      return false;
 
-      // save whitespace code (it is most likely 0x20 but who knows)
-      // and replace it with \0; create fake argc/argv to call "? KEYWORD" handler
-      unsigned char tmp = *end;
-      *end = '\0';
-      char *argv[2] = { qm, (char *)raw };
-      help_command(2, argv);
+    int argc;
+    char **argv = NULL;
 
-      // restore whitespace symbol
-      *end = tmp;
-      return true;
+    argc = argify((unsigned char *)raw, (unsigned char ***)&argv);
+
+    if (argc < 1) {
+
+      q_free(raw);
+      return false;
     }
-  }
-  return false;
-}
 
+    // if argv[0] != "show"
+    if (q_strcmp(argv[0], "show"))
+      ret = help_for_dir_command(keywords_get(), argv[0]);
+    else {
+    // if argv[0] == "show"
+      if (argc < 2)
+        ret = help_list_dir(KEYWORDS(show), "\r\n% Below is the full list of keywords for command \"show\"\r\n% Type \"show KEYWORD\" and press \"?\" to get help on KEYWORD\r\n%\r\n");
+      else
+        ret = help_for_dir_command(KEYWORDS(show), argv[1]);
+    }
+
+    q_free((void *)argv);
+    q_free(raw);
+    
+  }
+  return ret;
+}
 
 // "?"
 //
@@ -299,10 +283,32 @@ static bool help_page_for_inputline(unsigned char *raw) {
 //
 static int cmd_question(int argc, char **argv) {
 
-  return argc < 2 ? help_command_list(argc, argv)
-                  : (!strcmp(argv[1], "keys") ? help_keys(argc, argv)       // strcmp, not q_strcmp: we don't want false matches
-                                              : help_command(argc, argv));
+  //"?"
+  if (argc < 2) {
+    if (false == help_list_dir(keywords_get(), NULL))
+      return CMD_FAILED;
+    return 0;
+  }
+
+  //"? keys"
+  // strcmp, not q_strcmp: we don't want false matches
+  if (!strcmp(argv[1],"keys")) {
+    q_print( Keys_Manual );
+    return 0;
+  }
+
+  //"? COMMAND"
+  if (help_for_dir_command(keywords_get(), argv[1]))
+    return 0;
+
+  if (help_for_dir_command(KEYWORDS(main), argv[1]))
+    return 0;
+
+  q_printf(Error_No_Manual ,argv[1]);
+
+  return CMD_FAILED;
 }
 #endif  // WITH_HELP
+
 #endif //#if COMPILING_ESPSHELL
 

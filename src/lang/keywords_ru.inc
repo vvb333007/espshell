@@ -1418,161 +1418,45 @@ KEYWORDS_DECL(main) {
   HELPK("Доступ к NVS (энергонезависимое хранилище)") },
 #endif
 
-  // "show iomux" goes first, to define a /.brief/ for subsequent entries.
-  // There is MANY_ARGS modifier even though number of arguments is known and is 1: this is just to route all "show ARG1 ARG2 ... ARGn"
-  // commands to cmd_show(). It simply means that this command always matches any command starting with "show ".
-  //
-  // Other "show" commands below are lacking a command handler pointer and are here just for help lines
-  // 
-{ "show", cmd_show, MANY_ARGS,              // <--- этот обработчик ловит все варианты команды "show"
-  HELPK("% \"<b>show <i>iomux</>\"\r\n"
-        "%\r\n"
-        "% Показать доступные функции IO_MUX для каждого пина\r\n"
-        "% Также отображается текущая IO_MUX-функция, назначенная каждому пину"),
-  "Отображение системной информации" },
 
-// Записи ниже используются только для /полной/ строки помощи
-// (/краткая/ строка копируется из первой записи \"show\")
-#if WITH_WIFI
-{ "show", HELP_ONLY,
-  HELPK("% \"<b>show <i>wifi ap|sta</> NUM\"\r\n"
-        "%\r\n"
-        "% Показать параметры WiFi-интерфейса (AP или STA)"),
-  NULL },
-#endif
+  { "show", cmd_show, MANY_ARGS,              // <---  this handler catches all "show" command variants
+    HELPK("% Специальная команда \"show\" — отображает системную информацию:\r\n"
+          "% \r\n"
+          "% <i>show KEYWORD1 KEYWORD2 ... KEYWORDn</>\r\n"
+          "% <i>Полный список</> доступных ключевых слов можно получить, набрав \"show ?\"\r\n"
+          "% (т.е. используйте контекстную справку, нажав \"?\" после ввода команды)\r\n"
+          "\r\n"
+          "Чтобы получить <i>дополнительную справку</> по ключевому слову, наберите \"show KEYWORD ?\"\r\n"
+          "Например, чтобы получить справку по \"show memory\", наберите \"show memory\" и нажмите \"?\"\r\n"
+          "\r\n"
+          "Краткий список ключевых слов (используйте \"<b>show ?</>\" для полного списка):\r\n"
+           "   <i>show wifi [<o>ap | sta | clients</>]\r\n"
+           "   <i>show time</>\r\n"
+           "   <i>show iomux</>\r\n"
+           "   <i>show version</>\r\n"
+           "   <i>show uart</> NUM\r\n"
+           "   <i>show tasks</>\r\n"
+           "   <i>show cpuid</>\r\n"
+           "   <i>show pwm</>\r\n"
+           "   <i>show pin</> NUM1 NUM2 ... NUMn\r\n"
+           "   <i>show memory</> [<o>...</>] \r\n"
+           "   <i>show camera</> [<o>models | pinout | ...</>]\r\n"
+           "   <i>...</>\r\n"
+           "<u>Примеры</>:\r\n"
+           "  <i>show iomux</>    : показать конфигурацию IO_MUX\r\n"
+           "  <i>show wifi sta</> : показать информацию о WiFi-станции\r\n"
+           "  <i>show pin 1</>    : показать информацию о GPIO#1\r\n"
+           "  <i>show wifi ?</>   : контекстная справка: синтаксис и примеры \"show wifi\"\r\n"),
 
-{ "show", HELP_ONLY,
-  HELPK("% \"<b>show <i>nap</> NUM\"\r\n"
-        "%\r\n"
-        "% Показать параметры сна CPU"),
-  NULL },
-
-{ "show", HELP_ONLY,
-  HELPK("% \"<b>show <i>uart</> NUM\"\r\n"
-        "%\r\n"
-        "% Показать настройки и параметры UART"),
-  NULL },
-
-{ "show", HELP_ONLY,
-  HELPK("% \"<b>show <i>tasks</>\"\r\n"
-        "%\r\n"
-        "% Показать ID задач FreeRTOS и дополнительную информацию\r\n"
-        "% Эти ID можно использовать в командах \"kill\", \"suspend\" и других"),
-  NULL },
-
-{ "show", HELP_ONLY,
-  HELPK("% \"<b>show <i>cpuid</>\"\r\n"
-        "%\r\n"
-        "% Показать информацию о CPU, версиях используемых компонентов и uptime\r\n"
-        "% Также отображается температура CPU в градусах Цельсия"),
-  NULL },
-
-{ "show", HELP_ONLY,
-  HELPK("% \"<b>show <i>pwm</>\"\r\n"
-        "%\r\n"
-        "% Показать активные PWM-генераторы:\r\n"
-        "% номер GPIO, частота и скважность"),
-  NULL },
-
-{ "show", HELP_ONLY,
-  HELPK("% \"<b>show <i>pin</> ARG1 ARG2 .. ARGn\"\r\n"
-        "%\r\n"
-        "% Показать информацию о пинах ARG1, ARG2, ..., ARGn\r\n"
-        "% одновременно"),
-  NULL },
-
-{ "show", HELP_ONLY,
-  HELPK("% \"<b>show <i>counters</>\"\r\n"
-        "%\r\n"
-        "% Состояние и значения счетчиков импульсов / измерителей частоты\r\n"
-        "% В зависимости от используемого SoC может быть до 8 аппаратных счетчиков"),
-  NULL },
-
-{ "show", HELP_ONLY,
-  HELPK("% \"<b>show <i>sequence</> NUMBER\"\r\n"
-        "%\r\n"
-        "% Показать конфигурацию последовательности с указанным номером:\r\n"
-        "% \"show sequence 6\"  - показать конфигурацию последовательности №6"),
-  NULL },
-
-#if WITH_FS
-{ "show", HELP_ONLY,
-  HELPK("% \"<b>show <i>mount</> [<o>/PATH</>]\"\r\n"
-        "%\r\n"
-        "% Показать информацию о смонтированных файловых системах и разделах\r\n"
-        "% \"show mount\"           - показать информацию о файловых системах\r\n"
-        "% \"show mount /my_disk\"  - показать информацию о точке монтирования \"/my_disk\""),
-  NULL },
-#endif
-
-{ "show", HELP_ONLY,
-  HELPK("% \"<b>show <i>memory</>\"\r\n"
-        "%\r\n"
-        "% Показать информацию о HEAP и доступной памяти"),
-  NULL },
-
-{ "show", HELP_ONLY,
-  HELPK("% \"<b>show <i>memory</> <i>ADDRESS</> [<o>COUNT</>] "
-        "[<o>unsigned|signed|char|int|short|float|void *</>]\"\r\n"
-        "%\r\n"
-        "% Показать COUNT элементов, начиная с адреса памяти ADDRESS\r\n"
-        "% Можно указать тип данных (например: "
-        "\"show mem 0x3fff0000 10 unsigned int\"),\r\n"
-        "% чтобы подсказать espshell, как отображать отдельные элементы данных.\r\n"
-        "% Тип данных по умолчанию — \"unsigned char\"\r\n"
-        "% Адрес может быть задан в десятичном или шестнадцатеричном виде\r\n"
-        "% (с префиксом \"0x\" или без него)\r\n"
-        "%\r\n"
-        "% COUNT является необязательным параметром, значение по умолчанию — 256 байт.\r\n"
-        "% Может задаваться в десятичном или шестнадцатеричном виде\r\n"
-        "% ПРИМЕЧАНИЕ: если указан тип данных, а COUNT не задан,\r\n"
-        "% то COUNT по умолчанию равен 1"),
-  NULL},
+    "Отобразить системную информацию"},
 
 
-#if WITH_ESPCAM
-{ "show", HELP_ONLY,
-  HELPK("% \"<b>show <i>camera</> <i>models | resolutions | settings | sensor</>\"\r\n"
-        "%\r\n"
-        "% <i>models</>     : Показать список поддерживаемых плат\r\n"
-        "% <i>resolutions</>: Показать список поддерживаемых разрешений\r\n"
-        "% <i>settings</>   : Показать текущие настройки камеры\r\n"
-        "% <i>sensor</>     : Показать низкоуровневую информацию о сенсоре камеры\r\n"
-        "% Пример: \"show camera settings\""),
-  NULL},
 
-{ "show", HELP_ONLY,
-  HELPK("% \"<b>show <i>camera</> <i>pinout</> [<o>MODEL</> | <o>custom</>]\"\r\n"
-        "%\r\n"
-        "% Показать распиновку камеры для модели MODEL\r\n"
-        "% Имя модели можно опустить — тогда будет показана текущая распиновка\r\n"
-        "% В качестве имени модели можно указать \"custom\",\r\n"
-        "% чтобы отобразить пользовательскую распиновку камеры"),
-  NULL},
-#endif
 
-#if WITH_ALIAS
-{ "show", HELP_ONLY,
-  HELPK("% \"<b>show</> <i>alias</> [<o>ALIAS_NAME</>]\"\r\n"
-        "%\r\n"
-        "% \"show alias\"      - Показать список настроенных алиасов\r\n"
-        "% \"show alias NAME\" - Показать содержимое алиаса NAME"),
-  NULL},
 
-{ "show", HELP_ONLY,
-  HELPK("% \"<b>show <i>if</> [<o>NUM</>]\"\r\n"
-        "%\r\n"
-        "% Показать краткий список условий \"if\"\r\n"
-        "% При указании ID условия отображаются подробности"),
-  NULL},
 
-{ "show", HELP_ONLY,
-  HELPK("% \"<b>show <i>every</> [<o>NUM</>]\"\r\n"
-        "%\r\n"
-        "% Показать краткий список условий \"every\"\r\n"
-        "% При указании ID условия отображаются подробности"),
-  NULL},
-#endif
+
+
 
   { "hostid", cmd_hostid, MANY_ARGS, HIDDEN_KEYWORD },
 
@@ -2206,6 +2090,160 @@ KEYWORDS_DECL(camera) {
 KEYWORDS_REG(camera);
 #endif // WITH_ESPCAM
 
+KEYWORDS_DECL(show) {
+
+#if WITH_WIFI
+  { "wifi", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>wifi ap|sta</> NUM\"\r\n"
+          "%\r\n"
+          "% Отображает параметры WiFi-интерфейса (режим AP или STA)"),"Параметры WiFi"},
+#endif
+  { "nap", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>nap</> NUM\"\r\n"
+          "%\r\n"
+          "% Отображает параметры сна процессора"),"Настройки сна"},
+  { "time", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>time</>\"\r\n"
+          "%\r\n"
+          "% Отображает текущее время и настройки времени"),"Время и дата"},
+  { "iomux", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>iomux</> NUM\"\r\n"
+          "%\r\n"
+          "% Отображает таблицу IO_MUX и текущую привязку GPIO"),"Конфигурация IO_MUX"},
+
+  { "version", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>version</> NUM\"\r\n"
+          "%\r\n"
+          "% Отображает информацию о версии"),"Версия ПО"},
+
+  { "uart", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>uart</> NUM\"\r\n"
+          "%\r\n"
+          "% Отображает настройки и параметры UART"),"Конфигурация UART"},
+
+  { "tasks", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>tasks</>\"\r\n"
+          "%\r\n"
+          "% Отображает ID задач и другую информацию о задачах FreeRTOS\r\n"
+          "% Эти ID могут использоваться как аргументы для команд \"kill\", \"suspend\" и других"), "Запущенные задачи"},
+
+  { "cpuid", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>cpuid</>\"\r\n"
+          "%\r\n"
+          "% Отображает информацию о CPU ID, версиях компонентов и времени работы системы\r\n"
+          "% Также отображается температура процессора в градусах Цельсия"),"Информация о CPU, HW и FW"},
+
+  { "pwm", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>pwm</>\"\r\n"
+          "%\r\n"
+          "% Отображает активные генераторы PWM:\r\n"
+          "% номер GPIO, частоту и скважность"),"Активные PWM"},
+
+  { "pin", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>pin</> ARG1 ARG2 .. ARGn\"\r\n"
+          "%\r\n"
+          "% Отображает информацию о выводах ARG1, ARG2, ..., ARGn\r\n"
+          "% одновременно"),"Информация о GPIO"},
+
+  { "counters",  NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>counters</>\"\r\n"
+          "%\r\n"
+          "% Состояние и значения счётчиков импульсов / измерителей частоты\r\n"
+          "% В зависимости от используемого SoC может быть до 8 аппаратных счётчиков"),"Счётчики импульсов / частотомеры"},
+
+  { "sequence", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>sequence</> NUMBER\"\r\n"
+          "%\r\n"
+          "% Отображает конфигурацию последовательности импульсов с заданным номером:\r\n"
+          "% \"show sequence 6\"  - показать конфигурацию последовательности №6"),"Показать последовательность импульсов"},
+#if WITH_FS
+  { "mount", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>mount</> [<o>/PATH</>]\"\r\n"
+          "%\r\n"
+          "% Отображает информацию о смонтированных файловых системах и разделах\r\n"
+          "% \"show mount\"           - показать информацию о файловых системах\r\n"
+          "% \"show mount /my_disk\"  - показать информацию о точке монтирования \"/my_disk\""), "Смонтированные файловые системы и fstab"},
+#endif
+  { "memory", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>memory</> [map]\"\r\n"
+          "%\r\n"
+          "% Отображает информацию о HEAP / доступной памяти / карте памяти"),"Карта памяти"},
+
+  { "memory", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>memory</> <i>ADDRESS</> [<o>COUNT</>] [<o>unsigned|signed|char|int|short|float|void *</>]\"\r\n"
+          "%\r\n"
+          "% Отображает COUNT элементов, начиная с адреса памяти ADDRESS\r\n"
+          "% Можно указать тип данных (например \"show mem 0x3fff0000 unsigned int\")\r\n"
+          "% чтобы подсказать espshell, как отображать отдельные элементы данных.\r\n"
+          "%\r\n"
+          "% Тип данных по умолчанию \"unsigned char\"\r\n"
+          "% Адрес может быть указан в десятичном или шестнадцатеричном виде (с \"0x\" или без)\r\n"
+          "%\r\n"
+          "% COUNT необязателен, значение по умолчанию 256 байт. Может быть десятичным или hex\r\n"
+          "% ПРИМЕЧАНИЕ: если указан тип данных, а COUNT не задан — COUNT по умолчанию равен 1\r\n"
+          "% <u>Примеры</>:\r\n"
+          "%   <b>show mem 0x3fff000</>              : вывести hex-дамп 256 байт\r\n"
+          "%   <b>show mem 0x3fff000 10</>           : вывести hex-дамп 10 байт\r\n"
+          "%   <b>show mem 0x3fff000 int</>          : вывести одно целое число\r\n"
+          "%   <b>show mem 0x3fff000 10 uint16_t</>  : вывести 10 ushorts\r\n"
+          "%   <b>show mem 0x3fff000 10 float</>     : вывести 10 float\r\n"
+          "%   <b>show mem 0x3fff000 10 float hex</> : вывести 10 float как они лежат в RAM"),"Содержимое памяти"},
+
+
+#if WITH_ESPCAM
+  { "camera", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>camera</> <i>models | resolutions | settings | sensor</>\"\r\n"
+          "%\r\n"
+          "% <i>models</>     : список поддерживаемых плат\r\n"
+          "% <i>resolutions</>: список поддерживаемых разрешений\r\n"
+          "% <i>settings</>   : текущие настройки камеры\r\n"
+          "% <i>sensor</>     : низкоуровневая информация о сенсоре\r\n"
+          "% Пример: \"show camera settings\"\r\n"
+          ),"Параметры камеры"},
+
+  { "camera", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>camera</> <i>pinout</> [<o>MODEL</> | <o>custom</>]\"\r\n"
+          "%\r\n"
+          "% Отображает распиновку камеры для модели MODEL\r\n"
+          "% Имя модели можно опустить — тогда будет показана текущая распиновка\r\n"
+          "% Можно указать \"custom\" для отображения пользовательской распиновки\r\n"
+          ),NULL},
+
+#endif
+
+#if WITH_ALIAS
+  { "alias", NULL, MANY_ARGS,
+    HELPK("% \"<b>show</> <i>alias</> [<o>ALIAS_NAME</>]\"\r\n"
+          "%\r\n"
+          "% \"show alias\"     - показать список настроенных алиасов\r\n"
+          "% \"show alias NAME\"- показать определение алиаса NAME "), "Алиасы"},
+
+  { "if", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>if</> [<o>NUM</>]\"\r\n"
+          "%\r\n"
+          "% Показывает краткий список условий \"if\"\r\n"
+          "% При указании ID условия выводится подробная информация"),"Условия"},
+
+  { "every", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>every</> [<o>NUM</>]\"\r\n"
+          "%\r\n"
+          "% Показывает краткий список периодических задач \"every\"\r\n"
+          "% При указании ID задачи выводится подробная информация"),"Периодические задачи"},
+
+#endif
+
+#if WITH_DEVEL
+  { "subdirs", cmd_show_subdirs, HIDDEN_KEYWORD },
+#endif
+
+
+  /* Last entry must be all-zeros */\
+  { \
+    NULL, NULL, 0, NULL, NULL \
+  }
+};
+
+KEYWORDS_REG(show);
 
 static const char *Subdir_message = "%% Вход в режим %s. Ctrl+Z или \"exit\", чтобы выйти из режима\r\n"
                             "%% Основные команды доступны, хоть и не отображаются по \"?\"\r\n";

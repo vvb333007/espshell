@@ -1488,7 +1488,7 @@ static void q_printtable(const unsigned char *p,
             if (isu)
               q_printf("%llu\r\n",*((unsigned long long *)p));
             else
-              q_printf("%ll\r\n",*((signed long long *)p));
+              q_printf("%lld \r\n",*((signed long long *)p));
           } else {
             MUST_NOT_HAPPEN( true ); // fatal error, likely memory corruption. abort the shell, don't make things worse
           }

@@ -1630,144 +1630,46 @@ KEYWORDS_DECL(main) {
     HELPK("Non-Volatile Storage access") },
 #endif
 
-  // "show iomux" goes first, to define a /.brief/ for subsequent entries.
-  // There is MANY_ARGS modifier even though number of arguments is known and is 1: this is just to route all "show ARG1 ARG2 ... ARGn"
-  // commands to cmd_show(). It simply means that this command always matches any command starting with "show ".
+  // Actual "show" command help & variats are under "show" subdir, which is
+  // otherwise unused hidden directory. It is declared at the very end of all keywords arrays
+  // This is a workaround for the shell limitations.
   //
-  // Other "show" commands below are lacking a command handler pointer and are here just for help lines
-  // 
+  // "? show"         displays this help below
+  // "show ?"         same as above
+  // "? show KEYWORD" same as above
+  // "show KEYWORD ?" displays help on "show KEYWORD"
+
+  //
   { "show", cmd_show, MANY_ARGS,              // <---  this handler catches all "show" command variants
-    HELPK("% \"<b>show <i>iomux</>\"\r\n"
-          "%\r\n"
-          "% Display IO_MUX functions available for each pin\r\n"
-          "% Displays an IO_MUX function currently assigned for every pin"),"Display system information"},
+    HELPK("% Special command \"show\" - display system information:\r\n"
+          "% \r\n"
+          "% <i>show KEYWORD1 KEYWORD2 ... KEYWORDn</>\r\n"
+          "% The <i>full list</> of available keywords can be obtaining by typing \"show ?\"\r\n"
+          "% (i.e. use context help by pressing \"?\" after something is typed)\r\n"
+          "\r\n"
+          "To display <i>additional help</> on each keyword type \"show KEYWORD ?\"\r\n"
+          "For example, to get help on \"show memory\" type \"show memory\" and press \"?\"\r\n"
+          "\r\n"
+          "Brief list of keywords (use \"<b>show ?</>\" for full list):\r\n"
+           "   <i>show wifi [<o>ap | sta | clients</>]\r\n"
+           "   <i>show time</>\r\n"
+           "   <i>show iomux</>\r\n"
+           "   <i>show version</>\r\n"
+           "   <i>show uart</> NUM\r\n"
+           "   <i>show tasks</>\r\n"
+           "   <i>show cpuid</>\r\n"
+           "   <i>show pwm</>\r\n"
+           "   <i>show pin</> NUM1 NUM2 ... NUMn\r\n"
+           "   <i>show memory</> [<o>...</>] \r\n"
+           "   <i>show camera</> [<o>models | pinout | ...</>]\r\n"
+           "   <i>...</>\r\n"
+           "<u>Examples</>:\r\n"
+           "  <i>show iomux</>    : display IO_MUX configuration\r\n"
+           "  <i>show wifi sta</> : display WiFi station information\r\n"
+           "  <i>show pin 1</>    : display GPIO#1 information\r\n"
+           "  <i>show wifi ?</>   : Context help: \"show wifi\" syntax and examples\r\n"),
 
-  // Entries below are only for the /full/ help line (/brief/ line is copied from the first "show" entry 
-#if WITH_WIFI
-  { "show", HELP_ONLY,
-    HELPK("% \"<b>show <i>wifi ap|sta</> NUM\"\r\n"
-          "%\r\n"
-          "% Display WiFi interface parameters (AP or STA)"),NULL},
-#endif
-  { "show", HELP_ONLY,
-    HELPK("% \"<b>show <i>nap</> NUM\"\r\n"
-          "%\r\n"
-          "% Display CPU sleep parameters"),NULL},
-
-  { "show", HELP_ONLY,
-    HELPK("% \"<b>show <i>uart</> NUM\"\r\n"
-          "%\r\n"
-          "% Display UART settings & parameters"),NULL},
-
-  { "show", HELP_ONLY,
-    HELPK("% \"<b>show <i>tasks</>\"\r\n"
-          "%\r\n"
-          "% Display Task ID's and other information for FreeRTOS tasks\r\n"
-          "% These IDs can be arguments to \"kill\", \"suspend\" and other commands"),NULL},
-
-  { "show", HELP_ONLY,
-    HELPK("% \"<b>show <i>cpuid</>\"\r\n"
-          "%\r\n"
-          "% Display CPU ID information, used components versions and uptime\r\n"
-          "% CPU temperature in Celsius is also displayed"),NULL},
-
-  { "show", HELP_ONLY,
-    HELPK("% \"<b>show <i>pwm</>\"\r\n"
-          "%\r\n"
-          "% Display currently active PWM generators:\r\n"
-          "% GPIO number, frequency and duty cycle"),NULL},
-
-  { "show", HELP_ONLY,
-    HELPK("% \"<b>show <i>pin</> ARG1 ARG2 .. ARGn\"\r\n"
-          "%\r\n"
-          "% Display information on pins ARG1, ARG2, ..., ARGn\r\n"
-          "% at once"),NULL},
-
-  { "show",  HELP_ONLY,
-    HELPK("% \"<b>show <i>counters</>\"\r\n"
-          "%\r\n"
-          "% Pulse counters / frequency meters states and values\r\n"
-          "% Depending on a SoC used it may be up to 8 hardware counters"),NULL},
-
-  { "show", HELP_ONLY,
-    HELPK("% \"<b>show <i>sequence</> NUMBER\"\r\n"
-          "%\r\n"
-          "% Display sequence configuration for given index:\r\n"
-          "% \"show sequence 6\"  - display Sequence #6 configuration"),NULL},
-#if WITH_FS
-  { "show", HELP_ONLY,
-    HELPK("% \"<b>show <i>mount</> [<o>/PATH</>]\"\r\n"
-          "%\r\n"
-          "% Display information about mounted filesystems, partitions.\r\n"
-          "% \"show mount\"           - display filesystem information\r\n"
-          "% \"show mount /my_disk\"  - display information about mountpoint \"/my_disk\""), NULL},
-#endif
-  { "show", HELP_ONLY,
-    HELPK("% \"<b>show <i>memory</>\"\r\n"
-          "%\r\n"
-          "% Display HEAP information / availability"),NULL},
-
-  { "show", HELP_ONLY,
-    HELPK("% \"<b>show <i>memory</> <i>ADDRESS</> [<o>COUNT</>] [<o>unsigned|signed|char|int|short|float|void *</>]\"\r\n"
-          "%\r\n"
-          "% Display COUNT elements starting from the memory address ADDRESS\r\n"
-          "% Data type can be provided (e.g. \"show mem 0x3fff0000 unsigned int\")\r\n"
-          "% to hint espshell on how to display individual data items. \r\n"
-          "%\r\n"
-          "% Default data type is \"unsigned char\"\r\n"
-          "% Address is either decimal or hex (with or without leading \"0x\")\r\n"
-          "%\r\n"
-          "% COUNT is optional and its default value is 256 bytes. Can be decimal or hex\r\n"
-          "% NOTE: if type specifier is used and COUNT is not set, then COUNT defaults to 1\r\n"
-          "% <u>Examples</>:\r\n"
-          "%   <b>show mem 0x3fff000</>              : display a 256 byte hexdump\r\n"
-          "%   <b>show mem 0x3fff000 10</>           : display 10 byte hexdump\r\n"
-          "%   <b>show mem 0x3fff000 int</>          : display 1 integer\r\n"
-          "%   <b>show mem 0x3fff000 10 uint16_t</>  : display 10 ushorts\r\n"
-          "%   <b>show mem 0x3fff000 10 float</>     : display 10 floats\r\n"
-          "%   <b>show mem 0x3fff000 10 float hex</> : display 10 floats as seen in RAM"),NULL},
-
-
-#if WITH_ESPCAM
-  { "show", HELP_ONLY,
-    HELPK("% \"<b>show <i>camera</> <i>models | resolutions | settings | sensor</>\"\r\n"
-          "%\r\n"
-          "% <i>models</>     : Displays list of supported boards\r\n"
-          "% <i>resolutions</>: List of supported resolutions\r\n"
-          "% <i>settings</>   : Displays current camera settings\r\n"
-          "% <i>sensor</>     : Displays camera low-level information\r\n"
-          "% Example: \"show camera settings\"\r\n"
-          ),NULL},
-
-  { "show", HELP_ONLY,
-    HELPK("% \"<b>show <i>camera</> <i>pinout</> [<o>MODEL</> | <o>custom</>]\"\r\n"
-          "%\r\n"
-          "% Displays camera pinout for camera model MODEL\r\n"
-          "% Model name can be omitted and then current camera pinout is displayed\r\n"
-          "% Model name can be \"custom\" to display your custom camera pinout\r\n"
-          ),NULL},
-
-#endif
-#if WITH_ALIAS
-  { "show", HELP_ONLY,
-    HELPK("% \"<b>show</> <i>alias</> [<o>ALIAS_NAME</>]\"\r\n"
-          "%\r\n"
-          "% \"show alias\"     - Display list of configured aliases\r\n"
-          "% \"show alias NAME\"- Display alias NAME listing "),NULL},
-
-  { "show", HELP_ONLY,
-    HELPK("% \"<b>show <i>if</> [<o>NUM</>]\"\r\n"
-          "%\r\n"
-          "% Displays brief list of \"if\" conditions\r\n"
-          "% Displays details if condition ID is specified"),NULL},
-
-  { "show", HELP_ONLY,
-    HELPK("% \"<b>show <i>every</> [<o>NUM</>]\"\r\n"
-          "%\r\n"
-          "% Displays brief list of \"every\" conditions\r\n"
-          "% Displays details if condition ID is specified"),NULL},
-
-#endif
+    "Display system information"},
 
   { "hostid", cmd_hostid, MANY_ARGS, HIDDEN_KEYWORD },
 
@@ -1812,6 +1714,8 @@ KEYWORDS_DECL(main) {
           "%   <i>pin 2</> - show GPIO2 information"), 
     NULL },
 
+  // TODO: refactor as new "show": create a hidden "pin" group with all keywords explained.
+  
   { "pin", cmd_pin, MANY_ARGS,
     HELPK("% \"<b>pin</> <i>PIN_NUM</> [<o>ARG1 | ARG2 | ... | ARGn]*</>\"\r\n"
           "%\r\n"
@@ -2349,6 +2253,169 @@ KEYWORDS_DECL(camera) {
 };
 KEYWORDS_REG(camera);
 #endif // WITH_ESPCAM
+
+// Hidden directory just for help pages
+//
+KEYWORDS_DECL(show) {
+
+#if WITH_WIFI
+  { "wifi", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>wifi ap|sta</> NUM\"\r\n"
+          "%\r\n"
+          "% Display WiFi interface parameters (AP or STA)"),"WiFi parameters"},
+#endif
+  { "nap", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>nap</> NUM\"\r\n"
+          "%\r\n"
+          "% Display CPU sleep parameters"),"Sleep configuration"},
+  { "time", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>time</>\"\r\n"
+          "%\r\n"
+          "% Display current time and time settings"),"Time and date"},
+  { "iomux", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>iomux</> NUM\"\r\n"
+          "%\r\n"
+          "% Display IO_MUX table and current GPIO mapping"),"IO_MUX configuration"},
+
+  { "version", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>version</> NUM\"\r\n"
+          "%\r\n"
+          "% Display version information"),"Software version"},
+
+  { "uart", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>uart</> NUM\"\r\n"
+          "%\r\n"
+          "% Display UART settings & parameters"),"UART configuration"},
+
+  { "tasks", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>tasks</>\"\r\n"
+          "%\r\n"
+          "% Display Task ID's and other information for FreeRTOS tasks\r\n"
+          "% These IDs can be arguments to \"kill\", \"suspend\" and other commands"), "Show running tasks"},
+
+  { "cpuid", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>cpuid</>\"\r\n"
+          "%\r\n"
+          "% Display CPU ID information, used components versions and uptime\r\n"
+          "% CPU temperature in Celsius is also displayed"),"Show CPU, HW and FW information"},
+
+  { "pwm", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>pwm</>\"\r\n"
+          "%\r\n"
+          "% Display currently active PWM generators:\r\n"
+          "% GPIO number, frequency and duty cycle"),"Show active PWM"},
+
+  { "pin", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>pin</> ARG1 ARG2 .. ARGn\"\r\n"
+          "%\r\n"
+          "% Display information on pins ARG1, ARG2, ..., ARGn\r\n"
+          "% at once"),"Show GPIO"},
+
+  { "counters",  NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>counters</>\"\r\n"
+          "%\r\n"
+          "% Pulse counters / frequency meters states and values\r\n"
+          "% Depending on a SoC used it may be up to 8 hardware counters"),"Show pulse counters/frequency meters"},
+
+  { "sequence", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>sequence</> NUMBER\"\r\n"
+          "%\r\n"
+          "% Display sequence configuration for given index:\r\n"
+          "% \"show sequence 6\"  - display Sequence #6 configuration"),"Display pulse sequence"},
+#if WITH_FS
+  { "mount", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>mount</> [<o>/PATH</>]\"\r\n"
+          "%\r\n"
+          "% Display information about mounted filesystems, partitions.\r\n"
+          "% \"show mount\"           - display filesystem information\r\n"
+          "% \"show mount /my_disk\"  - display information about mountpoint \"/my_disk\""), "Mounted filesystems and fstab"},
+#endif
+  { "memory", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>memory</> [map]\"\r\n"
+          "%\r\n"
+          "% Display HEAP information / availability / map"),"Memory map"},
+
+  { "memory", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>memory</> <i>ADDRESS</> [<o>COUNT</>] [<o>unsigned|signed|char|int|short|float|void *</>]\"\r\n"
+          "%\r\n"
+          "% Display COUNT elements starting from the memory address ADDRESS\r\n"
+          "% Data type can be provided (e.g. \"show mem 0x3fff0000 unsigned int\")\r\n"
+          "% to hint espshell on how to display individual data items. \r\n"
+          "%\r\n"
+          "% Default data type is \"unsigned char\"\r\n"
+          "% Address is either decimal or hex (with or without leading \"0x\")\r\n"
+          "%\r\n"
+          "% COUNT is optional and its default value is 256 bytes. Can be decimal or hex\r\n"
+          "% NOTE: if type specifier is used and COUNT is not set, then COUNT defaults to 1\r\n"
+          "% <u>Examples</>:\r\n"
+          "%   <b>show mem 0x3fff000</>              : display a 256 byte hexdump\r\n"
+          "%   <b>show mem 0x3fff000 10</>           : display 10 byte hexdump\r\n"
+          "%   <b>show mem 0x3fff000 int</>          : display 1 integer\r\n"
+          "%   <b>show mem 0x3fff000 10 uint16_t</>  : display 10 ushorts\r\n"
+          "%   <b>show mem 0x3fff000 10 float</>     : display 10 floats\r\n"
+          "%   <b>show mem 0x3fff000 10 float hex</> : display 10 floats as seen in RAM"),"Display memory content"},
+
+
+#if WITH_ESPCAM
+  { "camera", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>camera</> <i>models | resolutions | settings | sensor</>\"\r\n"
+          "%\r\n"
+          "% <i>models</>     : Displays list of supported boards\r\n"
+          "% <i>resolutions</>: List of supported resolutions\r\n"
+          "% <i>settings</>   : Displays current camera settings\r\n"
+          "% <i>sensor</>     : Displays camera low-level information\r\n"
+          "% Example: \"show camera settings\"\r\n"
+          ),"Camera parameters"},
+
+  { "camera", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>camera</> <i>pinout</> [<o>MODEL</> | <o>custom</>]\"\r\n"
+          "%\r\n"
+          "% Displays camera pinout for camera model MODEL\r\n"
+          "% Model name can be omitted and then current camera pinout is displayed\r\n"
+          "% Model name can be \"custom\" to display your custom camera pinout\r\n"
+          ),NULL},
+
+#endif
+
+#if WITH_ALIAS
+  { "alias", NULL, MANY_ARGS,
+    HELPK("% \"<b>show</> <i>alias</> [<o>ALIAS_NAME</>]\"\r\n"
+          "%\r\n"
+          "% \"show alias\"     - Display list of configured aliases\r\n"
+          "% \"show alias NAME\"- Display alias NAME listing "), "Show aliases"},
+
+  { "if", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>if</> [<o>NUM</>]\"\r\n"
+          "%\r\n"
+          "% Displays brief list of \"if\" conditions\r\n"
+          "% Displays details if condition ID is specified"),"Show conditions"},
+
+  { "every", NULL, MANY_ARGS,
+    HELPK("% \"<b>show <i>every</> [<o>NUM</>]\"\r\n"
+          "%\r\n"
+          "% Displays brief list of \"every\" conditions\r\n"
+          "% Displays details if condition ID is specified"),"Show periodic jobs"},
+
+#endif
+
+#if WITH_DEVEL
+  { "subdirs", cmd_show_subdirs, HIDDEN_KEYWORD },
+#endif
+
+
+  /* Last entry must be all-zeros */\
+  { \
+    NULL, NULL, 0, NULL, NULL \
+  }
+};
+
+KEYWORDS_REG(show);
+
+
+
+
+
+
 
 // Displayed when user tries to "exit" from the main commands directory.
 // Language-specific versions are in lang/keywords_ru.h
