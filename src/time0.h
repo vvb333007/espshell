@@ -126,7 +126,7 @@ static void time_apply_zone() {
   tzset();
 }
 
-// Time zone relative to UTC. E.g. Bangkok is UTC+7, so command will be "time zone 7" or "time zone +7"
+// Time zone relative to UTC. E.g. Bangkok is "UTC-7:00", so command will be "time zone 7" or "time zone +7:00"
 // "time zone 1"
 // "time zone -1 hour 45 minutes"
 // "time zone 45 minutes"
@@ -160,7 +160,7 @@ static int cmd_time_zone(int argc, char **argv) {
 
 
   snprintf(Time.zone,sizeof(Time.zone),"UTC%c%02d:%02d",
-                            val < 0 ? '+' : '-',
+                            val < 0 ? '+' : '-', //Note that sign is inverted! This is specified in timezone format standart
                             (int )val / 3600,
                             ((int )val % 3600) / 60);
   

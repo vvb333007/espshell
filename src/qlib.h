@@ -1461,7 +1461,7 @@ static void q_printtable(const unsigned char *p,
           q_printf("%p\r\n", (void *)(*((intptr_t *)p)));
         } else if (isf) {
             if (force_hex)
-              q_printf("0x%08x)\r\n",*((float *)p));
+              q_printf("0x%08x)\r\n",*((unsigned int *)p)); // TODO: warning
             else
               q_printf("%ff\r\n", *((float *)p));
         } else {

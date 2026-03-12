@@ -104,8 +104,12 @@ static void memory_display_ptr_info(const void *a) {
 
       if (where)
         q_printf("%% The address is in RTC peri: %s\r\n", where);
-      else
-        q_print("%% The address belongs to peripheral\r\n");
+      else {
+//        if ( a >= 0x60000000) //TODO:
+          //q_print("%% The address belongs to a peripheral\r\n");
+        //else
+          q_print("%% Unknown region\r\n");
+      }
     }
   } 
 }
@@ -194,28 +198,47 @@ static int cmd_show_memory_map(int argc, char **argv) {
 
 #if CONFIG_IDF_TARGET_ESP32
   text = "% \r\n"
-          "% <d>DATA ROM</>   [0x3F400000 .. 0x3F800000]\r\n"
-          "% <b>SPI RAM</>    [0x3F800000 .. 0x3FC00000] (overlaps DATA ROM a little)\r\n"
-          "% <i>PERIFERALS</> [0x3ff7000  .. 0x3FF7ffff]\r\n"
-          "% <b>RTC DRAM</>   [0x3FF80000 .. 0x3FF82000]\r\n"
-          "% <b>DRAM</>       [0x3FFAE000 .. 0x40000000]\r\n"
-          "% <d>CACHE</>      [0x40070000 .. 0x40078000]\r\n"
-          "% <b>IRAM</>       [0x40080000 .. 0x400AA000]\r\n"
-          "% <b>RTC IRAM</>   [0x400C0000 .. 0x400C2000]\r\n"
-          "% <d>IROM</>       [0x400D0000 .. 0x40400000]\r\n"
-          "% <b>RTC DATA</>   [0x50000000 .. 0x50002000]\r\n";
+          "% <d>DATA ROM</>   [0x3F400000 .. 0x3f7fffff]\r\n"
+          "% <b>PSRAM</>      [0x3F800000 .. 0x3fbfffff]\r\n"
+          "% <i>PERIFERALS</> [0x3ff70000 .. 0x3ff7ffff]\r\n"
+          "% <b>RTC DRAM</>   [0x3FF80000 .. 0x3ff81fff]\r\n"
+          "% <b>DRAM</>       [0x3FFAE000 .. 0x3fffffff]\r\n"
+          "% <d>CACHE</>      [0x40070000 .. 0x4007ffff]\r\n"
+          "% <b>IRAM</>       [0x40080000 .. 0x400A9fff]\r\n"
+          "% <b>RTC IRAM</>   [0x400C0000 .. 0x400C1fff]\r\n"
+          "% <d>IROM</>       [0x400D0000 .. 0x403fffff]\r\n"
+          "% <b>RTC DATA</>   [0x50000000 .. 0x50001fff]\r\n";
 
 #elif CONFIG_IDF_TARGET_ESP32S3
   text = "% \r\n"
-          "% <d>DROM</>        [0x3C000000 .. 0x3E000000]\r\n"
-          "% <b>SPI RAM</>     [0x3C000000 .. 0x3E000000] (overlaps DATA ROM!)\r\n"
-          "% <b>DRAM</>        [0x3FC88000 .. 0x3FD00000]\r\n"
-          "% <b>IRAM</>        [0x40370000 .. 0x403E0000]\r\n"
-          "% <d>IROM</>        [0x42000000 .. 0x44000000]\r\n"
-          "% <b>RTC DATA</>    [0x50000000 .. 0x50002000]\r\n"
-          "% <i>PERIPHERALS</> [0x60000000 .. 0x600FE000]\r\n"
-          "% <b>RTC IRAM</>    [0x600FE000 .. 0x60100000]\r\n"
-          "% <b>RTC DRAM</>    [0x600FE000 .. 0x60100000]\r\n";
+          "% <d>DROM</>        [0x3C000000 .. 0x3Dffffff]\r\n"
+          "% <b>PSRAM</>       [0x3C000000 .. 0x3Dffffff] (overlaps DATA ROM!)\r\n"
+          "% <b>DRAM</>        [0x3FC88000 .. 0x3FCfffff]\r\n"
+          "% <b>IRAM</>        [0x40370000 .. 0x403dffff]\r\n"
+          "% <d>IROM</>        [0x42000000 .. 0x43ffffff]\r\n"
+          "% <b>RTC DATA</>    [0x50000000 .. 0x50001fff]\r\n"
+          "% <i>PERIPHERALS</> [0x60000000 .. 0x600FDfff]\r\n"
+          "% <b>RTC IRAM</>    [0x600FE000 .. 0x600fffff]\r\n"
+          "% <b>RTC DRAM</>    [0x600FE000 .. 0x600fffff]\r\n";
+#elif CONFIG_IDF_TARGET_ESP32S2
+
+  text = "% \r\n"
+          "% <d>DATA ROM</>   [0x3F000000 .. 0x3ff7ffff]\r\n"
+          "% <d>CACHE</>      [0x3F000000 .. 0x3f4fffff] (overlaps data ROM)\r\n"
+          "% <b>PSRAM</>      [0x3F500000 .. 0x3ff7ffff] (overlaps data ROM)\r\n"
+          "% <i>PERIFERALS</> [0x3ff80000 .. 0x3ff8dfff]\r\n"
+          "% <b>RTC DRAM</>   [0x3FF9e000 .. 0x3ff9ffff]\r\n"
+          "% <b>DRAM</>       [0x3FFB0000 .. 0x3fffffff]\r\n"
+          "% <b>IRAM</>       [0x40020000 .. 0x4006ffff]\r\n"
+          "% <b>RTC IRAM</>   [0x40070000 .. 0x40071fff]\r\n"
+          "% <d>IROM</>       [0x40080000 .. 0x407fffff]\r\n"
+          "% <b>RTC DATA</>   [0x50000000 .. 0x50001fff]\r\n";
+// TODO: add support for the models below
+//#elif CONFIG_IDF_TARGET_ESP32C3
+//#elif CONFIG_IDF_TARGET_ESP32C6
+//#elif CONFIG_IDF_TARGET_ESP32H2
+//#elif CONFIG_IDF_TARGET_ESP32H4
+//#elif CONFIG_IDF_TARGET_ESP32P4
 #else
   text = "% <e>Uhm, looks like I don't have a memory map for this CPU</>\r\n"
          "% Go to Github and create a feature request\r\n";

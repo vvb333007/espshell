@@ -1817,8 +1817,26 @@ KEYWORDS_DECL(main) {
     HELPK("Camera commands") },
 
 #endif //WITH_ESPCAM
+
+  { "var", cmd_var, MANY_ARGS,
+  HELPK("% \"<b>var ADDRESS NAME C-TYPE</>\"\r\n"
+      "%\r\n"
+      "% Create a new variable. The variable will be associated with the\r\n"
+      "% specified ADDRESS and interpreted as having type CTYPE. This allows\r\n"
+      "% reading and writing arbitrary memory locations.\r\n"
+      "%\r\n"
+      "% <u>Examples:</>\r\n"
+      "%   <i>var 0x3fce4000 g_ic int * []</> - array of pointers named g_ic\r\n"
+      "%   <i>var 0x3fce4000 g_ic int *</>    - pointer to int\r\n"
+      "%   <i>var 0x3fce4000 x int</>         - int at address 0x3fce4000\r\n"
+      "%\r\n"
+      "% <u>Writing to address 0x3fce4000:</>\r\n"
+      "%   <i>var x 10</>                    - store int(10) at 0x3fce4000\r\n"
+      "%   <i>var g_ic[16] 10</>             - store int(10) at 0x3fce4040\r\n"
+      ),
+  NULL },
   
-  { "var", cmd_var, 2,
+  { "var", HELP_ONLY,
     HELPK("% \"<b>var</> <i>VARIABLE_NAME</> [<o>NEW_VALUE</>]\"\r\n"
           "%\r\n"
           "%  a. Display a sketch variable value\r\n"
@@ -1835,7 +1853,7 @@ KEYWORDS_DECL(main) {
     ),
       HELPK("Sketch variables") },
 
-  { "var", cmd_var, 1,
+  { "var", HELP_ONLY,
     HELPK("% \"<b>var</> <i>NUMBER</>\"\r\n"
           "%\r\n"
           "% Display a NUMBER in different bases and perform an unsafe C-style\r\n"
@@ -1851,6 +1869,7 @@ KEYWORDS_DECL(main) {
           ),
     NULL },
 
+
   { "var", cmd_var_show, NO_ARGS,
     HELPK("% \"<b>var</>\"\r\n"
           "%\r\n"
@@ -1861,6 +1880,7 @@ KEYWORDS_DECL(main) {
           "%   <i>var</> - display the list of variables\r\n"
           ),
     NULL },
+
 #if WITH_ALIAS
 
   { "if", cmd_if, MANY_ARGS,

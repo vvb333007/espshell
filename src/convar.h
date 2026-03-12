@@ -347,10 +347,10 @@ static int convar_value_as_string(struct convar *var, char *out, int olen) {
       snprintf(out, olen, "0x%x", comp.uval);
     else if (var->isu) {
         unsigned int val = var->size == sizeof(int) ? comp.uval : (var->size == sizeof(short) ? comp.ush : comp.uchar);
-        snprintf(out, olen, "%u", val);
+        snprintf(out, olen, "%u /* %x */", val, val);
     } else {
         signed int val = var->size == sizeof(int) ? comp.ival : (var->size == sizeof(short) ? comp.ish : comp.ichar);
-        snprintf(out, olen, "%i", val);
+        snprintf(out, olen, "%i /* %x */", val, val);
     }
     return 0;
   }
@@ -437,7 +437,7 @@ static int convar_show_var(char *name) {
         for (int i = 0; i < var->counta; i++) {
           var0.ptr = (void *)((char *)(*(void **)var->ptr) + var->sizea * i); // love pointer arithmetic :)
           convar_value_as_string(&var0,out,sizeof(out));
-          q_printf("%%    <g>%s</>, // %s[%u]\r\n",out,var->name,i);
+          q_printf("%%    [%u] = <g>%s</>,\r\n",i ,out);
         }
         q_print("% };\r\n");
       } else 
@@ -565,8 +565,59 @@ static int cmd_var_show(int argc, char **argv) {
   return convar_show_var(argv[1]);
 }
 
+
+
+// "var ADDRESS VAR_NAME C-TYPE"
+// Register new variables in runtime. This one is used to gain write access to an arbitrary memory location
+//
+static int cmd_var_address(int argc, char **argv) {
+
+  uint8_t *address;
+  size_t length;
+  char *name;
+  int end = 3;
+  bool is_float, is_ptr, is_array, is_signed;
+
+  // Min 4 args: "var 0x0 name char"  
+  if (argc < 4)
+    return CMD_MISSING_ARG;
+
+  // Read association address and the variable name
+  address = (uint8_t *)hex2uintptr(argv[1]);
+
+  // Read CTYPE
+  if (end == userinput_read_ctype(argc, argv, end, &length, &is_ptr, &is_array, &is_signed, &is_float)) {
+    HELP(q_print("% A variable type is expected (e.g. \"char\" or \"unsigned int []\")\r\n"));
+    return end;
+  }
+
+  name = q_strdup(argv[2], MEM_STATIC); //TODO:
+  if (name == NULL)
+    return CMD_FAILED;
+
+  //TODO: read array size from CTYPE:   [10]
+
+  // Array of pointers
+  if (is_ptr && is_array)
+    espshell_varadda( name, address, sizeof(void *), 256, 0, 1, 0);
+  // Simple scalar type
+  else if (!is_ptr && !is_array) 
+    espshell_varadd( name, address, length , is_float, 0, !is_signed);
+  // A pointer
+  else if (is_ptr)
+    espshell_varaddp( name, address, length, is_float, 1, !is_signed);
+  else
+  // An array
+    espshell_varadda( name, address, length, 256, is_float, 0, !is_signed);
+
+  return 0;
+}
+
+
+
 // "var"           -- bypassed to cmd_var_show()
 // "var X"         -- bypassed to cmd_var_show()
+// "var ADDRESS X CTYPE" -- bypassed to cmd_var_address()
 // "var X NUMBER"  -- set variable X to the value NUMBER
 //
 static int cmd_var(int argc, char **argv) {
@@ -582,6 +633,12 @@ static int cmd_var(int argc, char **argv) {
 
   if (argc < 3)
     return cmd_var_show(argc, argv);
+
+  // Associate address with the variable argv[2]
+  // e.g "var 0x3fced08c g_ic unsigned int []"
+  //
+  if (q_isnumeric(argv[1]))
+    return cmd_var_address(argc, argv);
 
   // Set variable
   struct convar *var;

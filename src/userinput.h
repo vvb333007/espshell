@@ -636,9 +636,13 @@ static int userinput_read_ctype(int     argc,      // IN
         argv[start][0] == '[' ||
         argv[start][0] == ']')             *is_blob = true;       else
 
+    if (!q_strcmp(argv[start],"void")) { /* skip "void" */ } else
+
+
     // Detect strings/pointers
     if (argv[start][0] == '*' ||
-        !q_strcmp(argv[start],"char*"))    *is_str = true;        else break;
+        !q_strcmp(argv[start],"void*") ||
+        !q_strcmp(argv[start],"char*"))     *is_str = true;   else      break;
 
     start++;
   }
