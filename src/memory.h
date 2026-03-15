@@ -16,6 +16,23 @@
 
 #if COMPILING_ESPSHELL
 
+
+// Region of address space that holds peripherals. These are not defined for Xtensa arch for some reason
+// so we do it manually. Values are from TRMs
+//
+#if CONFIG_IDF_TARGET_ESP32
+#  define SOC_PERIPHERAL_LOW  0x3ff70000UL
+#  define SOC_PERIPHERAL_HIGH 0x3ff7ffffUL
+#elif CONFIG_IDF_TARGET_ESP32S2
+#  define SOC_PERIPHERAL_LOW  0x3ff80000UL
+#  define SOC_PERIPHERAL_HIGH 0x3ff80000UL
+#elif CONFIG_IDF_TARGET_ESP32S3
+#  define SOC_PERIPHERAL_LOW  0x60000000UL
+#  define SOC_PERIPHERAL_HIGH 0x600fdfffUL
+#endif
+
+
+
 // Gets called by ESP-IDF if memory allocation fails. Registered as a callback
 // in espshell_initonce()
 //
@@ -103,11 +120,11 @@ static void memory_display_ptr_info(const void *a) {
              (esp_ptr_in_rtc_slow(a) ? "RTC SLOW" : NULL));
 
       if (where)
-        q_printf("%% The address is in RTC peri: %s\r\n", where);
+        q_printf("%% The address is in <i>RTC peri</>: %s\r\n", where);
       else {
-//        if ( a >= 0x60000000) //TODO:
-          //q_print("%% The address belongs to a peripheral\r\n");
-        //else
+        if ( (uintptr_t)a >= SOC_PERIPHERAL_LOW && (uintptr_t)a <= SOC_PERIPHERAL_HIGH)
+          q_print("%% The address belongs to a <i>peripheral</>\r\n");
+        else
           q_print("%% Unknown region\r\n");
       }
     }
@@ -145,7 +162,7 @@ static int cmd_show_memory_address(int argc, char **argv) {
 
     if (end < argc) {
 
-      end = userinput_read_ctype(argc, argv, end, &length, &is_str, &is_blob, &is_signed, &is_float);
+      end = userinput_read_ctype(argc, argv, end, &length, &is_str, &is_blob, &is_signed, &is_float, NULL);
 
       //q_printf("end=%d,length=%d,is_str=%d,is_blob=%d,is_signed=%d,is_float=%d)\r\n", end, length, is_str, is_blob, is_signed, is_float);
 
@@ -179,7 +196,7 @@ static int cmd_show_memory_address(int argc, char **argv) {
     isu = true;
 
   if (!is_valid_address(address, count * length)) {
-    HELP(q_print("% Bad address range. Must be  a hex number > 0x2000000 (e.g. 0x3fff0000)\r\n"));
+    HELP(q_print("% Bad address range. Must be  a hex number (e.g. 0x3fff0000)\r\n"));
     return 2; //argv[2] is bad
   }
 

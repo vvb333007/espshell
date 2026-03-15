@@ -579,9 +579,8 @@ bad:
 // "char"
 // "unsigned short int"
 // "long long int"
-// "char*" "char *"
-// "char[123]", "char[]"
-// TODO: refactor convar.h to use userinput_read_ctype()
+// "char*" "char * []"
+// "char[123]", "char []"
 //
 static int userinput_read_ctype(int     argc,      // IN
                                 char  **argv,      // IN
@@ -590,22 +589,42 @@ static int userinput_read_ctype(int     argc,      // IN
                                 bool   *is_str,    // OUT
                                 bool   *is_blob,   // OUT
                                 bool   *is_signed, // OUT
-                                bool   *is_float  // OUT
+                                bool   *is_float,  // OUT
+                                size_t *arr_cnt    // OUT   for "int [10]" gets 10
                                 ) {
 
+
+  bool   is_str0, is_blob0, is_signed0, is_float0;
+  size_t arr_cnt0;
   size_t size = 0;
   uint8_t ll = 0;   // how many times did we see "long" keyword
 
-  if ((start >= argc) || !is_str || !is_blob || !is_signed || !size0 || !is_float)
-    return start;
 
+  // Fixup NULL pointers, if any. Computed values will be lost
+  if (!is_str) is_str = &is_str0;
+  if (!is_signed) is_signed = &is_signed0;
+  if (!is_blob) is_blob = &is_blob0;
+  if (!is_float) is_float = &is_float0;
+  if (!arr_cnt) arr_cnt = &arr_cnt0;
+
+  // Initialize output to safe values before parsing
   *is_float = *is_str = *is_blob = false;
   *is_signed = true;
 
+  if (size0)
+    *size0 = 0;
+
+  // Is there anything to parse after all?
+  if (start >= argc)
+    return start;
+
+
+  // Run through argvs, fetch type and store type definition in pointers provided
   while (start < argc) {
 
-    if (!q_strcmp(argv[start],"uint64_t"))  { *is_signed = false; size = 8; } else
+    // uint32_t goes first to catch "uint" shortened keyword, so "uint" will be processed as "uint32_t"
     if (!q_strcmp(argv[start],"uint32_t"))  { *is_signed = false; size = 4; } else
+    if (!q_strcmp(argv[start],"uint64_t"))  { *is_signed = false; size = 8; } else
     if (!q_strcmp(argv[start],"uint16_t"))  { *is_signed = false; size = 2; } else
     if (!q_strcmp(argv[start],"uint8_t"))   { *is_signed = false; size = 1; } else
 
@@ -619,6 +638,7 @@ static int userinput_read_ctype(int     argc,      // IN
 
     // "int" means 32 bit ONLY if there are no other specifiers.
     // e.g. unsigned short int is still 16 bit
+    // Again it goes before intXX_t to catch "int"
     if (!q_strcmp(argv[start],"int"))       size = size < 2 ? 4 : size; else
 
     if (!q_strcmp(argv[start],"int64_t"))   { *is_signed = true; size = 8; } else
@@ -647,7 +667,9 @@ static int userinput_read_ctype(int     argc,      // IN
     start++;
   }
 
-  *size0 = size;
+
+  if (size0)
+    *size0 = size;
 
   return start;
 }

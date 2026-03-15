@@ -239,6 +239,7 @@ static bool pin_can_wakeup(uint8_t pin);
 
 static bool nv_save_config(); // saves sensitive espshell information: hostid and timezone
 
+// declared in userinput.h
 static int userinput_read_ctype(int     argc,      // IN
                                 char  **argv,      // IN
                                 int     start,     // IN
@@ -246,7 +247,8 @@ static int userinput_read_ctype(int     argc,      // IN
                                 bool   *is_str,    // OUT
                                 bool   *is_blob,   // OUT
                                 bool   *is_signed, // OUT
-                                bool   *is_float  // OUT
+                                bool   *is_float,  // OUT
+                                size_t *arr_cnt    // OUT
                                 );
 
 

@@ -591,7 +591,7 @@ static int8_t bypass_va = false; // convar.
 static bool __attribute__((const)) is_valid_address(const void *addr, unsigned int count) {
   
   return  bypass_va ||
-          (((uintptr_t)addr >= 0x20000000UL) && ((uintptr_t)addr + count <= 0x80000000UL));
+          (((uintptr_t)addr >= 0x3f000000UL) && ((uintptr_t)addr + count < 0x80000000UL));
 }
 
 #if MEMTEST

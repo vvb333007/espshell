@@ -1623,7 +1623,7 @@ KEYWORDS_DECL(main) {
           "% Enter the NVS (Non-Volatile Storage) editor/viewer. If PARTITION_NAME is omitted,\r\n"
           "% the system’s default partition is used.\r\n"
           "%\r\n"
-          "% <u>Examples:</u>\r\n"
+          "% <u>Examples:</>\r\n"
           "%   <i>nvs</>           - edit/view the default NVS\r\n"
           "%   <i>nvs CustomNVS</> - edit/view the NVS located on the CustomNVS partition\r\n"
           ),
@@ -1792,7 +1792,7 @@ KEYWORDS_DECL(main) {
           "%   <i>count 4</>             - count pulses & measure frequency on GPIO4 for 1000 ms\r\n"
           "%   <i>count 4 2000</>        - same as above, but measurement time is 2 seconds\r\n"
           "%   <i>count 4 filter 100</>  - count pulses, ignoring those <u>shorter than</> 100 ns\r\n"
-          "%   <i>count 4 infinite &</>  - count pulses in the <u>background</u> continuously\r\n"
+          "%   <i>count 4 infinite &</>  - count pulses in the <u>background</> continuously\r\n"
           "%   <i>count 4 trigger</>     - wait for the first pulse, then start counting\r\n"
           "%   <i>count 4 trigger 2000 filter 300 &</> - wait for the first pulse, then count\r\n"
           "%     pulses for 2 seconds in the background, ignoring pulses shorter than 300 ns\r\n"
@@ -2006,7 +2006,7 @@ KEYWORDS_DECL(main) {
     HELPK("% \"<b>exec NAME [NAME NAME ... NAME ]</>\"\r\n"
           "%\r\n"
           "% a) Execute an alias (or multiple aliases if more than one NAME is provided)\r\n"
-          "%    Aliases are <u>lists of commands</u>; use \"alias\" to create or edit them\r\n"
+          "%    Aliases are <u>lists of commands</>; use \"alias\" to create or edit them\r\n"
           "%\r\n"
           "% b) Execute a shell script from the filesystem, a file named /NAME\r\n"
           "%    The filesystem must be mounted, and /FILE_NAME must start with \"/\"\r\n"
@@ -2280,22 +2280,42 @@ KEYWORDS_DECL(show) {
 
 #if WITH_WIFI
   { "wifi", NULL, MANY_ARGS,
-    HELPK("% \"<b>show <i>wifi ap|sta</> NUM\"\r\n"
+    HELPK("% \"<b>show <i>wifi ap | sta | clients</>\"\r\n"
           "%\r\n"
-          "% Display WiFi interface parameters (AP or STA)"),"WiFi parameters"},
+          "% Display WiFi interface information (AP or STA mode)\r\n"
+          "%   <i>ap</>      : show Access Point interface information\r\n"
+          "%   <i>sta</>     : show Station interface information\r\n"
+          "%   <i>clients</> : list stations connected to this AP\r\n"
+          "% <u>Examples</>:\r\n"
+          "%   <i>show wifi ap</>      : display Access Point information\r\n"
+          "%   <i>show wifi clients</> : list connected stations\r\n"
+          ),"WiFi parameters"},
 #endif
   { "nap", NULL, MANY_ARGS,
     HELPK("% \"<b>show <i>nap</> NUM\"\r\n"
           "%\r\n"
           "% Display CPU sleep parameters"),"Sleep configuration"},
+          
   { "time", NULL, MANY_ARGS,
     HELPK("% \"<b>show <i>time</>\"\r\n"
           "%\r\n"
           "% Display current time and time settings"),"Time and date"},
-  { "iomux", NULL, MANY_ARGS,
-    HELPK("% \"<b>show <i>iomux</> NUM\"\r\n"
-          "%\r\n"
-          "% Display IO_MUX table and current GPIO mapping"),"IO_MUX configuration"},
+
+{ "iomux", NULL, MANY_ARGS,
+  HELPK("% \"<b>show <i>iomux</> [START_PIN [END_PIN]]\"\r\n"
+        "%\r\n"
+        "% Display the IO_MUX table and current GPIO mapping\r\n"
+        "% If START_PIN is omitted, the entire table is displayed.\r\n"
+        "% If START_PIN is specified, entries from START_PIN to the end are displayed.\r\n"
+        "% If both START_PIN and END_PIN are specified, only that range of the IO_MUX\r\n"
+        "% table is shown.\r\n"
+        "%\r\n"
+        "% <u>Examples</>:\r\n"
+        "%\r\n"
+        "%   <i>show iomux</>        : display the entire table\r\n"
+        "%   <i>show iomux 10</>     : entries 10..MAX_PIN_NUMBER\r\n"
+        "%   <i>show iomux 10 20</>  : entries corresponding to GPIO10..GPIO20\r\n"
+        ),"IO_MUX configuration"},
 
   { "version", NULL, MANY_ARGS,
     HELPK("% \"<b>show <i>version</> NUM\"\r\n"
@@ -2351,7 +2371,7 @@ KEYWORDS_DECL(show) {
           "% \"show mount /my_disk\"  - display information about mountpoint \"/my_disk\""), "Mounted filesystems and fstab"},
 #endif
   { "memory", NULL, MANY_ARGS,
-    HELPK("% \"<b>show <i>memory</> [map]\"\r\n"
+    HELPK("% \"<b>show <i>memory</> [<o>map</>]\"\r\n"
           "%\r\n"
           "% Display HEAP information / availability / map"),"Memory map"},
 
@@ -2423,10 +2443,8 @@ KEYWORDS_DECL(show) {
 #endif
 
 
-  /* Last entry must be all-zeros */\
-  { \
-    NULL, NULL, 0, NULL, NULL \
-  }
+  /* Last entry must be all-zeros */
+  { NULL, NULL, 0, NULL, NULL }
 };
 
 KEYWORDS_REG(show);

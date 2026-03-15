@@ -25,9 +25,10 @@
 // Individual array elements (whether real arrays or pointers) can be accessed as VARIABLE_NAME[INDEX].
 //
 // TODO: Review this code. Possible buffer overflows may occur due to use of strcpy and sprintf. 
-// TODO:These should be replaced with strlcpy and snprintf.
+// TODO: These should be replaced with strlcpy and snprintf.
 // TODO: Verify that variables with names longer than CONVAR_NAMELEN_MAX - 1 cannot be registered.
 // TODO: Add support "long long", 64bit type
+// TODO: Parse array sizes "[NUM]"
 
 //
 // "Console Variable" (convar) descriptors are created by convar_add() 
@@ -84,17 +85,10 @@ typedef union composite_u {
 //       
 static struct convar *var_head = NULL;
 
-// Helper constants which are used by convar_typenameX() to construct type names like "char" or "unsigned int"
-static const char *__uch = "unsigned char";
-static const char *__ush = "unsigned short";
-static const char *__uin = "unsigned int";
-static const char *__ucha = "unsigned char *";
-static const char *__usha = "unsigned short *";
-static const char *__uina = "unsigned int *";
 
 // Check if variable has supported type. ESPShell supports only basic C types
 // which can fit 1,2 or 4 bytes
-static bool variable_type_is_ok(unsigned int size) {
+static bool convar_is_size_ok(unsigned int size) {
   if (size != sizeof(char) && size != sizeof(short) && size != sizeof(int) && size != sizeof(float)) {
     q_printf("%% Variable was not registered (unsupported size: %u)\r\n",size);
     return false;
@@ -102,6 +96,28 @@ static bool variable_type_is_ok(unsigned int size) {
   return true;
 }
 
+// For strings "[123]" return 123, for strings "[]" return def
+//
+static unsigned int  read_array_size(const char *name0, unsigned int def) {
+
+  char name[CONVAR_NAMELEN_MAX], *index, *br;
+
+  if (!name0)
+    return 42;
+
+  strlcpy(name, name0, sizeof(name));
+
+  if (NULL != (br = (char *)q_findchar(name,'['))) {
+    
+    *br = '\0';
+    index = br + 1;
+    if (NULL != (br = (char *)q_findchar(index,']'))) {
+      *br = '\0';
+      return q_atol(index, def);
+    }
+  }
+  return def;
+}
 
 // Register new sketch variable.
 // Memory allocated for variable descriptor is never free()'d. This function is not
@@ -118,7 +134,7 @@ void espshell_varadd(const char *name, void *ptr, int size, bool isf, bool isp, 
 
   struct convar *var;
 
-  if (variable_type_is_ok(size))
+  if (convar_is_size_ok(size))
     if ((var = (struct convar *)q_malloc(sizeof(struct convar), MEM_STATIC)) != NULL) {
       var->next = var_head;
       var->name = name;
@@ -139,7 +155,7 @@ void espshell_varaddp(const char *name, void *ptr, int size, bool isf, bool isp,
 
   struct convar *var;
 
-  if (variable_type_is_ok(size))
+  if ((isp && (size == 0)) || convar_is_size_ok(size))
     if ((var = (struct convar *)q_malloc(sizeof(struct convar), MEM_STATIC)) != NULL) {
    
       var->next = var_head;
@@ -148,7 +164,7 @@ void espshell_varaddp(const char *name, void *ptr, int size, bool isf, bool isp,
       var->ptr = ptr;
       var->isp = 1;
       var->isf = 0;
-      var->isu = 0;
+      var->isu = isu;
       var->size = sizeof( void * );
       var->sizea = size;
       var->counta = 1;
@@ -170,7 +186,7 @@ void espshell_varadda(const char *name, void *ptr, int size,int count, bool isf,
 
   struct convar *var;
 
-  if (variable_type_is_ok(size))
+  if (convar_is_size_ok(size))
     if ((var = (struct convar *)q_malloc(sizeof(struct convar), MEM_STATIC)) != NULL) {
 
       var->gpp = ptr;                   // actual pointer to the array (i.e. &array[0])
@@ -179,7 +195,7 @@ void espshell_varadda(const char *name, void *ptr, int size,int count, bool isf,
       var->ptr = &var->gpp;             // "address of a variable" for arrays it is always points to GPP
       var->isp = 1;                     // It is a pointer
       var->isf = 0;
-      var->isu = 0;
+      var->isu = isu;                   // array element is signed or not?
       var->size = sizeof( void * );     // size of a pointer is a constant
       var->sizea = size;                // size of array element
       var->counta = count;              // number of elements in the array
@@ -196,17 +212,24 @@ void espshell_varadda(const char *name, void *ptr, int size,int count, bool isf,
 //
 static const char *convar_typename(struct convar *var) {
 
+  const char *__uch  = "unsigned char";
+  const char *__ush  = "unsigned short";
+  const char *__uin  = "unsigned int";
+  //const char *__ull  = "unsigned long long";
+  const char *__ucha = "unsigned char *";
+  const char *__usha = "unsigned short *";
+  const char *__uina = "unsigned int *";
+  //const char *__ulla = "unsigned long long *";
+
   int off = var->isu ? 0 : 9; // offset to strings like "unsigned int" to make them "int" (i.e. skip first 9 bytes)
 
   return var ? (var->isf  ? "float"
-                          : (var->isp ? (var->isfa ? "float *"
-                                                   : (var->ispa ? "void **"
-                                                                : (var->sizea == sizeof(int) ? __uina + off
-                                                                                             :  (var->sizea == sizeof(short) ? __usha + off
-                                                                                                                             : __ucha + off)))) 
-                                      : (var->size == sizeof(int) ? __uin + off 
-                                                                  : (var->size == sizeof(short) ? __ush + off 
-                                                                                                : __uch + off))))
+                          : (var->isp ? (var->isfa ? "float *" :
+                                        (var->ispa ? "void **" :
+                                        (var->sizea == sizeof(int)   ? __uina + off :
+                                        (var->sizea == sizeof(short) ? __usha + off : __ucha + off))))
+                          : (var->size == sizeof(int) ? __uin + off
+                          : (var->size == sizeof(short) ? __ush + off : __uch + off))))
              : "(null)";
 }
 
@@ -259,6 +282,7 @@ static struct convar *convar_get(char *name) {
     return var_head;
 
   // Variable name is an array element? (e.g. "buff[11]")
+  // TODO: refactor to use read_array_size()
   if ((br = (char *)q_findchar(name,'[')) != NULL) {
 
     static char name0[CONVAR_NAMELEN_MAX] = { 0 };
@@ -340,6 +364,13 @@ static int convar_value_as_string(struct convar *var, char *out, int olen) {
 
   if (var && out && olen) {
     composite_t comp;
+
+    // Dynamically created variables may cause headache :(
+    if (!is_valid_address(var->ptr,var->size)) {
+      snprintf(out,olen,"<w>?? <address %p is not readable></>", var->ptr);
+      return -1;
+    }
+
     memcpy(&comp, var->ptr, var->size);
     if (var->isf)
       snprintf(out, olen, "%f", comp.fval);
@@ -347,10 +378,13 @@ static int convar_value_as_string(struct convar *var, char *out, int olen) {
       snprintf(out, olen, "0x%x", comp.uval);
     else if (var->isu) {
         unsigned int val = var->size == sizeof(int) ? comp.uval : (var->size == sizeof(short) ? comp.ush : comp.uchar);
-        snprintf(out, olen, "%u /* %x */", val, val);
+        if (val > 1024)
+          snprintf(out, olen, "%u //*%x*/", val, val);
+        else
+          snprintf(out, olen, "%u", val);
     } else {
         signed int val = var->size == sizeof(int) ? comp.ival : (var->size == sizeof(short) ? comp.ish : comp.ichar);
-        snprintf(out, olen, "%i /* %x */", val, val);
+          snprintf(out, olen, "%i", val);
     }
     return 0;
   }
@@ -402,50 +436,63 @@ static int convar_compare(struct convar *var, struct convar *var2) {
 static int convar_show_var(char *name) {
 
   struct convar *var;
+  char out[CONVAR_BUFSIZ]; 
 
   if ((var = convar_get(name)) == NULL) {
     HELP(q_printf("%% <e>\"%s\" : No such variable registered. (type \"var\" to see the list)</>\r\n", name));
     return 1;
   }
 
-  char out[CONVAR_BUFSIZ]; 
-
   if (convar_value_as_string(var,out,sizeof(out)) == 0) {
-    // Print value
-    q_printf("%% %s <i>%s</> = <g>%s</>;  ", convar_typename(var), var->name, out);
-    // In case of a pointer or array, print its content
+
+    // For arrays and pointers display array base address
     if (var->isp) {
-      if (var->counta == 1) { // arrays of 1 element are treated as plain pointers
-        if (var->sizea > 0)
-          q_printf("// A pointer to %u-byte memory region", var->sizea);
-        else
-          q_printf("// A pointer (variable size memory region)");
+
+      if (var->counta > 1)
+        q_printf("%% Array <i>%s[%u]</> at address <g>%s</>, %u byte%s per element\r\n", var->name, var->counta, out, PPA(var->sizea));
+      else {
+        if (var->sizea < 1) {
+          q_print("%% void *<i>%s</> = <g>%s</>;\r\n");
+          return 0;
+        } else
+          q_printf("%% Pointer <i>&%s</> == %p, <i>%s</> == <g>%s</>, sizeof(*%s) == %u\r\n", var->name, var->ptr, var->name, out, var->name, var->sizea);
       }
-      else
-        q_printf("// Array of %u elements, (%u bytes per element)", var->counta, var->sizea);
+
+      // In case of a pointer or array, print its content
+
       if (var->counta < ARRAY_TOO_BIG) {
-        q_printf("\r\n%% %s = {\r\n", convar_typename2(var));
 
         struct convar var0 = { 0 };
-        
+
+        q_printf("\r\n%% %s = {\r\n", convar_typename2(var));
+
+        // Create dummy variable. It will be used to display array elements
+        // Fill common fielfd, but leave .ptr not set
         var0.name = var->name;
         var0.isf = var->isfa;
         var0.isp = var->ispa;
         var0.isu = var->isua;
-        var0.size = var->sizea;
+        var0.size = var->sizea ? var->sizea : 1; // void pointers have sizea==0 and counta==1
 
+        // Go through all elements, calculate real pointer for everyt array element
         for (int i = 0; i < var->counta; i++) {
+          int err;
           var0.ptr = (void *)((char *)(*(void **)var->ptr) + var->sizea * i); // love pointer arithmetic :)
-          convar_value_as_string(&var0,out,sizeof(out));
-          q_printf("%%    [%u] = <g>%s</>,\r\n",i ,out);
+          err = convar_value_as_string(&var0,out,sizeof(out));
+          q_printf("%%    [%u] = <%c>%s</>,\r\n",
+                    i,
+                    !err ? 'g' : 'w', // color tag. red on failure, green on success
+                    out);
         }
         q_print("% };\r\n");
       } else 
         q_print(", too many to display\r\n%% Use \"var Name[Index]\" to display individual array elements\r\n");
     } else
-      q_print(CRLF);
-  }
+      q_printf("%% %s <i>%s</> = <g>%s</>;\r\n", convar_typename(var), var->name, out);
+
     return 0;
+  }
+  return CMD_FAILED;
 }
 
 
@@ -460,8 +507,8 @@ static int convar_show_list() {
       HELP(q_print(VarOops));
     else
       q_print("% Sketch variables:\r\n<r>"
-              "% Variable X name | sizeof(X) |     typeof(X)    |  Value/Address  </>\r\n"
-              "%-----------------+-----------+------------------+-----------------\r\n");
+              "% Variable X name | sizeof(X) |     typeof(X)    |  Value or Address // Hex view</>\r\n"
+              "%-----------------+-----------+------------------+------------------------------\r\n");
 
     while (var) {
 
@@ -469,7 +516,7 @@ static int convar_show_list() {
         out[0] = '\0';
 
       
-      q_printf("%%<i>%16s</> | %9u | %16s | %16s \r\n",
+      q_printf("%%<i>%16s</> | %9u | %16s | %24s \r\n",
                var->name,
                var->size,
                convar_typename(var),
@@ -582,33 +629,48 @@ static int cmd_var_address(int argc, char **argv) {
   if (argc < 4)
     return CMD_MISSING_ARG;
 
-  // Read association address and the variable name
+  // Read association address and check if it is sane
   address = (uint8_t *)hex2uintptr(argv[1]);
+  if (!is_valid_address(address, 4)) {
+    HELP(q_print("% <e>The address is out of range. Valid range is 0x3f000000..0x7fffffff</>\r\n"));
+    return 1;
+  }
 
   // Read CTYPE
-  if (end == userinput_read_ctype(argc, argv, end, &length, &is_ptr, &is_array, &is_signed, &is_float)) {
-    HELP(q_print("% A variable type is expected (e.g. \"char\" or \"unsigned int []\")\r\n"));
+  if (end == userinput_read_ctype(argc, argv, end, &length, &is_ptr, &is_array, &is_signed, &is_float, NULL)) {
+    HELP(q_print("% A variable type is expected (e.g. \"<i>void * []</>\",  \"<i>char</>\" or \"<i>int []</>\")\r\n"));
     return end;
   }
 
+  // Allocated once but never freed
   name = q_strdup(argv[2], MEM_STATIC); //TODO:
   if (name == NULL)
     return CMD_FAILED;
 
-  //TODO: read array size from CTYPE:   [10]
+  
 
-  // Array of pointers
-  if (is_ptr && is_array)
-    espshell_varadda( name, address, sizeof(void *), 256, 0, 1, 0);
+  // Array of pointers is always saved as "void *[]" no matter what real pointer type was:
+  // int * [] is the same as void * [] - both are arrays of pointers
+  if (is_ptr && is_array) {
+    espshell_varadda( name, address, sizeof(void *), read_array_size(argv[argc - 1], 64), 0, 1, 0);
+  } else 
   // Simple scalar type
-  else if (!is_ptr && !is_array) 
+  if (!is_ptr && !is_array) {
     espshell_varadd( name, address, length , is_float, 0, !is_signed);
+  } else
   // A pointer
-  else if (is_ptr)
+  if (is_ptr) {
     espshell_varaddp( name, address, length, is_float, 1, !is_signed);
-  else
-  // An array
-    espshell_varadda( name, address, length, 256, is_float, 0, !is_signed);
+  } else {
+    // An array. The "[]" part is always the last argv element
+    espshell_varadda( name, 
+                      address,
+                      length,                              // element size
+                      read_array_size(argv[argc - 1], 64), // array element count
+                      is_float,
+                      0,
+                      !is_signed);
+  }
 
   return 0;
 }

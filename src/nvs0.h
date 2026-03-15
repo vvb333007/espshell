@@ -798,7 +798,7 @@ static int cmd_nvs_new(int argc, char **argv) {
   }
 
   // Read user type definition
-  end = userinput_read_ctype(argc, argv, 2, &size, &is_str, &is_blob, &is_signed, &is_float);
+  end = userinput_read_ctype(argc, argv, 2, &size, &is_str, &is_blob, &is_signed, &is_float, NULL);
 
   if (is_float || size > 8 || (size == 0 && !is_str && !is_blob)) {
     q_print("% Sorry, can not parse your type definition\r\n"
