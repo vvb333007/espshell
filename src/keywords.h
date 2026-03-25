@@ -1834,7 +1834,7 @@ KEYWORDS_DECL(main) {
       "%   <i>var x 10</>                    - store int(10) at 0x3fce4000\r\n"
       "%   <i>var g_ic[16] 10</>             - store int(10) at 0x3fce4040\r\n"
       ),
-  NULL },
+  HELPK("Sketch variables") },
   
   { "var", HELP_ONLY,
     HELPK("% \"<b>var</> <i>VARIABLE_NAME</> [<o>NEW_VALUE</>]\"\r\n"
@@ -1851,7 +1851,7 @@ KEYWORDS_DECL(main) {
           "% Note #1: Partial (shortened) variable names may be used\r\n"
           "% Note #2: Use the prefixes \"0x\" for hex, \"0\" for octal, and \"0b\" for binary numbers\r\n"
     ),
-      HELPK("Sketch variables") },
+      NULL },
 
   { "var", HELP_ONLY,
     HELPK("% \"<b>var</> <i>NUMBER</>\"\r\n"
