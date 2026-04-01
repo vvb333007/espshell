@@ -180,14 +180,38 @@ static void userinput_show(argcargv_t *aa) {
   }
 }
 
-// Find corresponding command handler (cmd_..) for given argv[0]
+
+// Find corresponding command handler (cmd_..) for given command name (const char *)
+// Used in "show KEYWORD" processing, where handler is selected by KEYWORD in command directory "show"
+// Lacks extra logic which is used for command processing
+//
+// /name/  : normalized name (no leading/trailing whitespace)
+// /where/ : directory for search. NULL defaults to "main" keywords array
+//
+// Returns: 1. A valid memory pointer (pointer to the handler function) if everything was ok
+//          2. NULL if there is no suitable handler for the command
+//
+static cmd_handler_t userinput_find_handler_by_name(const struct keywords_t *key, const char *name) {
+  int i = 0;
+  while (key[i].cmd) {
+    if (!q_strcmp(name, key[i].cmd))
+      return key[i].cb;
+    i++;
+  }
+  return NULL;
+}
+
+
+// Find corresponding command handler (cmd_..) for given aa. 
 // and put it to /aa->gpp/
+//
+// /aa/ must be prepared beforehand (see espshell.c, user input processing)
+// The command name is expected to be at aa->argv[0], aa->argc is expected to be > 0
 //
 // Returns 0 on success
 //         CMD_NOT_FOUND on "no such command"
 //         CMD_MISSING_ARG on "wrong number of arguments"
 //
-
 static int userinput_find_handler(argcargv_t *aa) {
 
   int i;
@@ -203,9 +227,10 @@ static int userinput_find_handler(argcargv_t *aa) {
   // We reassign argv[1] to point to argv[0]+1 so exec sees its argument
   if (aa->argv[0][0] == '/') {
     aa->gpp = cmd_exec;
-    // MEM_INC2 macro in argify() guarantees that argv[1] is a valid writeable address, even if argc==1
+
+    // NOTE: MEM_INC2 macro in argify() guarantees that argv[1] is a valid writeable address, even if argc==1
     if (aa->argc < 2) {
-      aa->argv[1] = &aa->argv[0][1];
+      aa->argv[1] = &aa->argv[0][1]; // see note above
       aa->argc = 2;
     }
     return 0;

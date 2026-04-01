@@ -253,15 +253,23 @@ static bool help_page_for_inputline(unsigned char *raw0) {
       return false;
     }
 
-    // if argv[0] != "show"
+    // if /command/ is NOT "show" then we just display a help page for the command
+    // if /command/ IS "show" then we either display "show" directory content ("show ?")
+    // or we display help pages on the last token ("show pin ?")
+    // We use argv[argc-1] instead of argv[1] here because of future "pin" help system refactoring
     if (q_strcmp(argv[0], "show"))
       ret = help_for_dir_command(keywords_get(), argv[0]);
     else {
-    // if argv[0] == "show"
+    // "show ?"
       if (argc < 2)
-        ret = help_list_dir(KEYWORDS(show), "\r\n% Below is the full list of keywords for command \"show\"\r\n% Type \"show KEYWORD\" and press \"?\" to get help on KEYWORD\r\n%\r\n");
+        ret = help_list_dir(KEYWORDS(show),
+                              "\r\n"
+                              "% Below is the <i>full list of keywords</> for command \"show\"\r\n"
+                              "% Type \"<i>show KEYWORD</>\" and press \"?\" to get help on KEYWORD\r\n"
+                              "%\r\n");
       else
-        ret = help_for_dir_command(KEYWORDS(show), argv[1]);
+      // "show keyword ?"
+        ret = help_for_dir_command(KEYWORDS(show), argv[argc - 1]);
     }
 
     q_free((void *)argv);
@@ -297,13 +305,15 @@ static int cmd_question(int argc, char **argv) {
     return 0;
   }
 
-  //"? COMMAND"
+  //"? COMMAND". Look in the current command directory
   if (help_for_dir_command(keywords_get(), argv[1]))
     return 0;
 
+  // Nothing was found. Look in the main command directory
   if (help_for_dir_command(KEYWORDS(main), argv[1]))
     return 0;
 
+  // Still nothing?
   q_printf(Error_No_Manual ,argv[1]);
 
   return CMD_FAILED;

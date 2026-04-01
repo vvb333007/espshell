@@ -1655,6 +1655,16 @@ static int cmd_wifi_dhcp(int argc, char **argv) {
 // up SSID PASSWORD [max-conn NUM | channel NUM ]*      <-- ap
 // up SSID                                             <-- ap
 //
+// TODO: multiple SSIDs to connect/reconnect:
+//  esp32#> up SSID1 PASS1 SSID2 PASS2 SSID3 PASS3
+//  esp32#> reconnect disable | enable
+//  esp32#> reconnect periodic TIMESPEC
+//  esp32#> reconnect periodic TIMESPEC
+//  esp32#> reconnect policy order       -> prefer leftmost SSIDs when looking for candidates
+//  esp32#> reconnect policy rssi        -> prefer higher RSSI
+//  esp32#> reconnect policy snr         -> prefer better SNR
+//  esp32#> reconnect policy round-robin -> cycle SSIDs
+
 static int cmd_wifi_up(int argc, char **argv) {
 
   uint8_t bssid[6];
@@ -1719,8 +1729,9 @@ print_error_notice_and_exit:
         if (argc > 3)
           if (!q_strcmp(argv[3],"auto-connect"))
             Wifi.sta_reconnect = true;
-          HELP(q_print("% Auto-reconnect is enabled\r\n"));
       }
+
+      HELP(q_printf("%% Auto-reconnect is %sabled\r\n", Wifi.sta_reconnect));
     }
 
     if (ESP_OK == esp_wifi_set_config(WIFI_IF_STA, &stac))

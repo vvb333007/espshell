@@ -20,60 +20,24 @@ static int cmd_show_version(UNUSED int argc, UNUSED char **argv) {
   return 0;
 }
 
-typedef int (*show_cb_t)(int, char **); 
-
-// Calltable for "show KEYWORD ..." 
-// Prototypes are in keywords.h, at the very beginning
-static const struct {
-  const char     *key;
-  const show_cb_t cb;
-} show_keywords[] = {
-  #if WITH_WIFI
-  { "wifi", cmd_show_wifi },
-#endif
-#if WITH_ALIAS
-  { "alias", cmd_show_alias },
-  { "ifs", cmd_show_ifs },
-#endif
-#if WITH_TIME
-  { "time", cmd_show_time },
-#endif  
-  { "nap", cmd_show_nap },
-  { "uart", cmd_show_uart },
-  { "tasks", cmd_show_tasks },
-  { "pwm", cmd_show_pwm },
-  { "counters", cmd_show_counters },
-  { "memory", cmd_show_memory },
-  { "iomux", cmd_show_iomux },
-  { "pin", cmd_show_pin },
-#if WITH_FS  
-  { "mount", cmd_show_mount },
-#endif    
-  { "sequence", cmd_show_sequence },
-#if WITH_ESPCAM
-  { "camera", cmd_show_camera },
-#endif
-  { "cpuid", cmd_show_cpuid },
-  { "version", cmd_show_version },
-  { "subdirs", cmd_show_subdirs },   // hidden developer command, implemented in keywords.h-
-  
-  {NULL,NULL}
-};
 
 //"show KEYWORD ARG1 ARG2 .. ARGn"
-// Select corresponding callback from the array above and execute it
-// Callback functions are command handlers and are implemented all over the library;
+// 
+// Find corresponding handler based on argv[1] and execute it.
 //
 static int cmd_show(int argc, char **argv) {
 
+  cmd_handler_t cb;
+
   if (argc < 2)
     return CMD_MISSING_ARG;
-    
-  for (int i = 0; show_keywords[i].key; i++)
-    if (!q_strcmp(argv[1],show_keywords[i].key))
-      return show_keywords[i].cb(argc,argv);
 
-  HELP(q_print("% Show what?\r\n"));
+
+    // TODO: for now we ignore argc_max
+  if (NULL != (cb = userinput_find_handler_by_name(KEYWORDS(show), argv[1])))
+    return cb(argc, argv);
+
+  HELP(q_print("% Show what? Enter \"show ?\" to see what is available\r\n"));
 
   return 1; //  keyword argv[1] is bad
 }

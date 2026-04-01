@@ -974,38 +974,65 @@ _Static_assert(WIFI_CIPHER_TYPE_UNKNOWN == 12, "wifi0.h code review is required"
 
 
 
-// Code below requires "-Wl,--wrap=phy_printf" in ESP32-S3 linker script file
+// Code below requires "-Wl,--wrap=phy_printf -Wl,--wrap=wifi_log" in ESP32-S3 linker script file
 // which is normally found in ...Arduino15\packages\esp32\tools\esp32s3-libs\VERSION\flags\ld_flags
 //
 #if 0
 
 extern void phy_printf(const char *, ... );
 extern void wifi_log(int x, int y, int z, const char *format, ...);
+extern void __real_wifi_log(int x, int y, int z, const char *format, ...);
+extern int ets_printf(const char *, ... );
+extern int g_log_level;
 
-void __attribute__((used)) __wrap_phy_printf(const char *format, ... ) {
+static IRAM_ATTR void phy_printfv(const char *format, va_list arg) {
+
+  char buf[2*128 + 1];
+  char *temp = buf;
+  uint32_t len;
+  
+  va_list copy;
+
+  // make fake vsnprintf to find out required buffer length
+  va_copy(copy, arg);
+  len = vsnprintf(NULL, 0, format, copy);
+  va_end(copy);
+
+  if (len > 0) {
+    if (len >= sizeof(buf))
+      len = sizeof(buf) - 1;
+
+    vsnprintf(temp, len + 1, format, arg);
+    ets_printf(temp);
+    if (temp[len - 1] == '\n')
+      ets_printf("\r");
+  }    
+}
+
+
+void IRAM_ATTR __attribute__((used)) __wrap_phy_printf(const char *format, ... ) {
 
   int len;
   va_list arg;
 
   va_start(arg, format);
-  len = __printfv(format, arg);
+  phy_printfv(format, arg);
   va_end(arg);
 
 }
 
-void __attribute__((used)) __wrap_wifi_log(int x, int y, int z, const char *format, ... ) {
+void IRAM_ATTR __attribute__((used)) __wrap_wifi_log(int x, int y, int z, const char *format, int a, int b, int c, int d, int e) {
 
-  int len;
-  va_list arg;
+  //va_list arg;
+ // va_start(arg, format);
+//  ets_printf("WIFI[%d:%d:%d] : \"%p\" ",x,y,z,format);
+  //phy_printfv(format, arg);
+  //va_end(arg);
 
-  x = x;
-  y = y;
-  z = z;
+  //ets_printf("\r\n");
 
-  va_start(arg, format);
-  len = __printfv(format, arg);
-  va_end(arg);
-
+  //g_log_level = 0x77777777;
+  //__real_wifi_log(x,y,z,format,a,b,c,d);
 }
 
 #endif

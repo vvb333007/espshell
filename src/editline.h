@@ -16,11 +16,14 @@
 // Memory allocation/use strategy must be reviewed, may be use 1 big enough preallocated buffer (Screen)
 
 
-#define MEM_INC 64   // generic  buffer increments
-#define MEM_INC2 16  // Dont touch this!!! Defines the size of preallocated argv (number of entries, not bytes!)
-                     // ESPShell expects that there will be free space in case of no-arg command (see espshell_find_handler(), "/" processing)
+#define MEM_INC 64   // generic  buffer increments, bytes
 
-#define SCREEN_INC 256  // "Screen" buffer increments
+#define MEM_INC2 16  // Dont touch this!!! Defines the size of argv allocator granularity (number of entries, not bytes!)
+                     // ESPShell expects that there will be free space in case of no-arg command (see espshell_find_handler(), "/" processing)
+                     // ESPShell expects that there is at least one free entry at the end of argv, so whole array can be shifted 
+                     // right to one entry
+
+#define SCREEN_INC 256  // "Screen" buffer increments, bytes
 
 #define DISPOSE(p) q_free((char *)(p))
 #define NEW(T, c, Typ) ((T *)q_malloc((unsigned int)(sizeof(T) * (c)), Typ))
@@ -1054,6 +1057,7 @@ bk_kill_word() {
 // Allocates array of pointers and fills it with pointers
 // to individual tokens. Whitespace is the token separator.
 // Original string /line/ gets modified ('\0' are inserted)
+// NOTE: argv[argc] is always accessible and contains NULL. This is required for argv_array_shift_right()
 //
 // Usage:
 //
@@ -1068,12 +1072,15 @@ bk_kill_word() {
 // ...
 // if (argv)
 //   free(argv);
-static int
-argify(unsigned char *line, unsigned char ***avp) {
+//
+static int argify(unsigned char *line, unsigned char ***avp) {
   
   unsigned char *c, **p, **_new;
   int ac, i;
 
+  // 16 entries initially. For every command line with argc < 16 (most of commands if not all) we
+  // guarantee at least 1 entry at the end which can be accessed
+  //
   i = MEM_INC2;
   if ((*avp = p = NEW(unsigned char *, i, MEM_ARGIFY)) == NULL)
     return 0;
@@ -1098,7 +1105,12 @@ argify(unsigned char *line, unsigned char ***avp) {
       in_quote = false;
       if (*c && *c != '\n') {
 
-        if (ac + 1 == i) {
+        // IMPORTANT NOTE: Why i-1 and not just i?
+        // We realloc earlier than necessary, because we need to guarantee at least 1 extra entry at the end.
+        // So when we parse command line with 16 args (#0..#15) we increase argv size when we hit entry #14
+        //
+        // Just /i/ will result in UB when argc is divisible by MEM_INC2
+        if (ac + 1 == i - 1) {
 
           _new = NEW(unsigned char *, i + MEM_INC2, MEM_ARGIFY);
 
@@ -1132,8 +1144,15 @@ argify(unsigned char *line, unsigned char ***avp) {
       c++;
   }
 
+  // Implicitly terminate input string after last meaningful symbol
   *c = '\0';
+
+  // Yes, argv[argc] is valid memory reference and can be used for load/store access.
+  // See notes on extra space above.
+  //
   p[ac] = NULL;
+
+  //printf("i=%d, ac=%d\r\n",i,ac);
 
   return ac;
 }

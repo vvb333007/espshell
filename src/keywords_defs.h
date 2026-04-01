@@ -12,14 +12,22 @@
 
 #if COMPILING_ESPSHELL
 
+// Callback function type. This is the type of every command handler in the espshell. Command handlers are functions
+// which implement espshell commands. Functions are scattered throughout the code but have distinct names: handler function
+// name always starts with "cmd_" and continues with command name: for example, handler function for command "count" is cmd_count(),
+// handler function for the command "up" in a subdirectory "wifi" is cmd_wifi_up()
 //
+typedef int (*cmd_handler_t)(int argc, char **argv);
+
 // Shell command entry. There are arrays of these entries defined. Each array represents
 // a command **subtree** (or subdirectory). Root (main) command tree is called keywords_main[]
+// See keywords.h for the full tree of commands
+//
 struct keywords_t {
   const char *cmd;               // Command keyword or "*"
 
 #define HELP_ONLY NULL,0             // keywords.h: used for entries whose sole purpose is to carry help lines: so-called /full/  and /brief/
-  int (*cb)(int argc, char **argv);  // Callback to call (one of cmd_xxx functions)
+  cmd_handler_t cb;  // Callback to call (one of cmd_xxx functions) TODO: make typedef, because it is used in userinput.c
 
 #define MANY_ARGS -1                 // command accepts any number of arguments including zero
 #define NO_ARGS 0                    // command accepts no arguments
@@ -27,8 +35,8 @@ struct keywords_t {
 
 #define HIDDEN_KEYWORD NULL, NULL    // keywords.h: /help/ and /brief/ initializer which is used to hide command from the commands list
 
-  const char *help;              // Help text displayed on "? command"
-  const char *brief;             // Brief text displayed on "?". NULL means "use help text, not brief"
+  const char *help;              // A help page for the command (multiline)
+  const char *brief;             // Brief (1 line) description. If NULL, then ->help is used instead of ->brief
 };
 
 // HELP(...) and HELPK(...) macros: arguments are evaluated only when compiled WITH_HELP, otherwise 
@@ -45,6 +53,7 @@ struct keywords_t {
                          "%\r\n" \
                          "% \"?\"         - Display a list of available commands\r\n" \
                          "% \"? <i>KEYWORD</>\" - Show the help page for the specified command\r\n" \
+                         "% \"<i>KEYWORD</> ?\" - The question mark is used as a hot-key\r\n" \
                          "% \"? <i>keys</>\"    - Show information about terminal keys supported by ESPShell", \
                          "Commands list & help" }, \
                          { "help", cmd_question, MANY_ARGS, HIDDEN_KEYWORD }, //an alias for the "?" command.
@@ -80,49 +89,54 @@ struct keywords_t {
 
 // A macro to declare a keywords array:
 // KEYWORDS_DECL(keywords_main) {
-//  {} , {} ...
+//  { ... },
+//  { ... },
+//  ...
 // };
 //
-
 #define KEYWORDS_DECL(_Key) \
   static const struct keywords_t keywords_ ## _Key [] =
 
+// Register keywords array (command directory) upon startup. This enables extra color marks for commands
+// which are command directories. Registration is not mandatory.
+//
 static void keywords_register(const struct keywords_t *key, const char *name, int const count);
 
+// Create template constructor function. These are called on startup
 #define KEYWORDS_REG(_Key) \
  /* Each keywords array has its own constructor which registers this particular array */ \
   static void __attribute__((constructor)) __init_kwd_ ## _Key () { \
     keywords_register(keywords_ ## _Key, # _Key, sizeof(keywords_ ## _Key) / sizeof(keywords_ ## _Key[0])); \
   }
 
-// Pointer to a keywords array by its "name": KEYWORDS(main), KEYWORDS(files) ...
+// Get pointer to a keywords array by its name: KEYWORDS(main), KEYWORDS(files) ...
 #define KEYWORDS(_Key) \
   keywords_ ## _Key
 
-// Set keywords list by its name: keywords_set(main), keywords_set(files) ...
+// Set currently used keywords list by its name: keywords_set(main), keywords_set(files) ...
 #define keywords_set(_Key) \
   keywords = KEYWORDS(_Key)
 
-// Set keywords list by ptr: keywords_set_ptr(KEYWORDS(main))
+// Set currently used keywords list by ptr: keywords_set_ptr(KEYWORDS(main))
 #define keywords_set_ptr(_Ptr) \
   keywords = _Ptr
 
-// Pointer to a keywords array currently active
+// Get pointer to a currently used keywords array
 #define keywords_get() \
   keywords
 
 
-// Max number of command directories (including "main")
+// Max number of command directories which can be registered. (including "main")
 #define MAX_CMD_SUBDIRS 16
 
-// All command directories. This array is populated by KEYWORDS_REG. A keyword array is not required to be registered
+// Some stats on commands and command directories
+// This array is populated by KEYWORDS_REG().
+//
 static struct {
-  const struct keywords_t *key;
-  const char *name;
-  uint8_t count;
+  const struct keywords_t *key;  // pointer to keywords
+  const char *name;              // directory name (e.g. "wifi", "uart" or "main")
+  uint8_t count;                 // number of commands
 } Subdirs[MAX_CMD_SUBDIRS] = { 0 };
-
-
 
 
 #endif // #if COMPILING_ESPSHELL

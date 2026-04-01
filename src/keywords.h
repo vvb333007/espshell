@@ -135,18 +135,44 @@ static int cmd_exec(int, char **);
 // if/every
 #if WITH_ALIAS
 static int cmd_if(int, char **);
-static int cmd_show_ifs(int, char **);
 #endif
 
-// some "show" commands
+// The following group of show handlers are used in a dedicated command directory "show".
+// It is a hidden directory: we reference it by argv[1] of the show command
+//
+// Master "show" handler. All "show" variants are handled here
 static int cmd_show(int, char **);
-static int cmd_show_pin(int, char **);
-#if WITH_TIME
-//#  error "time0.h module is not ready yet. Not sure if it even compiles. Turn WITH_TIME off"
-static int cmd_show_time(int, char **);
+
+// All other "show" handlers
+#if WITH_WIFI
+static int cmd_show_wifi(int, char **);
 #endif
-static int cmd_show_sequence(int, char **);
+static int cmd_show_nap(int, char **);
+static int cmd_show_time(int, char **);
+static int cmd_show_iomux(int, char **);
+static int cmd_show_version(int, char **);
 static int cmd_show_uart(int, char **);
+static int cmd_show_tasks(int, char **);
+static int cmd_show_cpuid(int, char **);
+static int cmd_show_pwm(int, char **);
+static int cmd_show_pin(int, char **);
+static int cmd_show_counters(int, char **);
+static int cmd_show_sequence(int, char **);
+#if WITH_FS
+static UNUSED int cmd_show_mount(int, char **);
+#endif
+static int cmd_show_memory(int, char **);
+#if WITH_CAMERA
+static UNUSED int cmd_show_camera(int, char **);
+#endif
+#if WITH_ALIAS
+static UNUSED int cmd_show_alias(int, char **);
+static UNUSED int cmd_show_ifs(int, char **);
+#endif
+#if WITH_DEVEL
+static UNUSED int cmd_show_subdirs(int, char **);
+#endif
+
 // common entries
 static int cmd_exit(int, char **);
 #if WITH_HELP
@@ -203,8 +229,14 @@ static int cmd_nvs_export(int, char **);
 #  endif
 #endif
 
+// User command handler. Implemented through weak function call
+// see espshell.h / SHELL_USER_HANDLER macro and examples/shell_user_handler/
+//
+// Implements command "misc ARG1 ARG2 ... ARGn"
+//
 static int  cmd_misc(int argc, char **argv);
 
+// Use localized version?
 #ifdef WITH_LANG
 #  include "lang/keywords_ru.inc"
 #else
@@ -1644,24 +1676,22 @@ KEYWORDS_DECL(main) {
     HELPK("% Special command \"show\" - display system information:\r\n"
           "% \r\n"
           "% <i>show KEYWORD1 KEYWORD2 ... KEYWORDn</>\r\n"
-          "% The <i>full list</> of available keywords can be obtaining by typing \"show ?\"\r\n"
-          "% (i.e. use context help by pressing \"?\" after something is typed)\r\n"
+          "% \r\n"
+          "% The <i>1) full list</> of available keywords can be obtaining by typing \"show ?\"\r\n"
+          "% (i.e. use context help by pressing \"?\" after \"show\" is typed)\r\n"
           "\r\n"
-          "To display <i>additional help</> on each keyword type \"show KEYWORD ?\"\r\n"
+          "To display <i>2) additional help</> on each keyword type \"show KEYWORD ?\"\r\n"
           "For example, to get help on \"show memory\" type \"show memory\" and press \"?\"\r\n"
           "\r\n"
           "Brief list of keywords (use \"<b>show ?</>\" for full list):\r\n"
            "   <i>show wifi [<o>ap | sta | clients</>]\r\n"
            "   <i>show time</>\r\n"
-           "   <i>show iomux</>\r\n"
-           "   <i>show version</>\r\n"
+           "   <i>show iomux [ <o>FIRST_GPIO</> [ <o>LAST_GPIO</> ]]</>\r\n"
            "   <i>show uart</> NUM\r\n"
            "   <i>show tasks</>\r\n"
            "   <i>show cpuid</>\r\n"
            "   <i>show pwm</>\r\n"
            "   <i>show pin</> NUM1 NUM2 ... NUMn\r\n"
-           "   <i>show memory</> [<o>...</>] \r\n"
-           "   <i>show camera</> [<o>models | pinout | ...</>]\r\n"
            "   <i>...</>\r\n"
            "<u>Examples</>:\r\n"
            "  <i>show iomux</>    : display IO_MUX configuration\r\n"
@@ -1955,8 +1985,8 @@ KEYWORDS_DECL(main) {
           "%   <i>if clear 6</>       : Clear counters for condition #6\r\n"
           "%   <i>if clear all</>     : Clear counters for all conditions (all, means ALL)\r\n"
           "%   <i>if clear gpio 7</>  : Clear counters for rising/falling conditions of GPIO#7"
-          "%   <i>if clear poll</></> : Clear counters for entries with the \"poll\" keyword\r\n"
-          "%   <i>every clear 8</>       : Clear counters for condition #6\r\n"
+          "%   <i>if clear poll</>    : Clear counters for entries with the \"poll\" keyword\r\n"
+          "%   <i>every clear 8</>    : Clear counters for condition #6\r\n"
           ),
     NULL },
 
@@ -2274,12 +2304,12 @@ KEYWORDS_DECL(camera) {
 KEYWORDS_REG(camera);
 #endif // WITH_ESPCAM
 
-// Hidden directory just for help pages
-//
+// Hidden directory just for help pages for the "show" command
+// Handlers of this group expect argv[0] == "show"
 KEYWORDS_DECL(show) {
 
 #if WITH_WIFI
-  { "wifi", NULL, MANY_ARGS,
+  { "wifi", cmd_show_wifi, MANY_ARGS,
     HELPK("% \"<b>show <i>wifi ap | sta | clients</>\"\r\n"
           "%\r\n"
           "% Display WiFi interface information (AP or STA mode)\r\n"
@@ -2291,17 +2321,17 @@ KEYWORDS_DECL(show) {
           "%   <i>show wifi clients</> : list connected stations\r\n"
           ),"WiFi parameters"},
 #endif
-  { "nap", NULL, MANY_ARGS,
+  { "nap", cmd_show_nap, MANY_ARGS,
     HELPK("% \"<b>show <i>nap</> NUM\"\r\n"
           "%\r\n"
           "% Display CPU sleep parameters"),"Sleep configuration"},
           
-  { "time", NULL, MANY_ARGS,
+  { "time", cmd_show_time, MANY_ARGS,
     HELPK("% \"<b>show <i>time</>\"\r\n"
           "%\r\n"
           "% Display current time and time settings"),"Time and date"},
 
-{ "iomux", NULL, MANY_ARGS,
+{ "iomux", cmd_show_iomux, MANY_ARGS,
   HELPK("% \"<b>show <i>iomux</> [START_PIN [END_PIN]]\"\r\n"
         "%\r\n"
         "% Display the IO_MUX table and current GPIO mapping\r\n"
@@ -2317,65 +2347,65 @@ KEYWORDS_DECL(show) {
         "%   <i>show iomux 10 20</>  : entries corresponding to GPIO10..GPIO20\r\n"
         ),"IO_MUX configuration"},
 
-  { "version", NULL, MANY_ARGS,
+  { "version", cmd_show_version, MANY_ARGS,
     HELPK("% \"<b>show <i>version</> NUM\"\r\n"
           "%\r\n"
           "% Display version information"),"Software version"},
 
-  { "uart", NULL, MANY_ARGS,
+  { "uart", cmd_show_uart, MANY_ARGS,
     HELPK("% \"<b>show <i>uart</> NUM\"\r\n"
           "%\r\n"
           "% Display UART settings & parameters"),"UART configuration"},
 
-  { "tasks", NULL, MANY_ARGS,
+  { "tasks", cmd_show_tasks, MANY_ARGS,
     HELPK("% \"<b>show <i>tasks</>\"\r\n"
           "%\r\n"
           "% Display Task ID's and other information for FreeRTOS tasks\r\n"
           "% These IDs can be arguments to \"kill\", \"suspend\" and other commands"), "Show running tasks"},
 
-  { "cpuid", NULL, MANY_ARGS,
+  { "cpuid", cmd_show_cpuid, MANY_ARGS,
     HELPK("% \"<b>show <i>cpuid</>\"\r\n"
           "%\r\n"
           "% Display CPU ID information, used components versions and uptime\r\n"
           "% CPU temperature in Celsius is also displayed"),"Show CPU, HW and FW information"},
 
-  { "pwm", NULL, MANY_ARGS,
+  { "pwm", cmd_show_pwm, MANY_ARGS,
     HELPK("% \"<b>show <i>pwm</>\"\r\n"
           "%\r\n"
           "% Display currently active PWM generators:\r\n"
           "% GPIO number, frequency and duty cycle"),"Show active PWM"},
 
-  { "pin", NULL, MANY_ARGS,
+  { "pin", cmd_show_pin, MANY_ARGS,
     HELPK("% \"<b>show <i>pin</> ARG1 ARG2 .. ARGn\"\r\n"
           "%\r\n"
           "% Display information on pins ARG1, ARG2, ..., ARGn\r\n"
           "% at once"),"Show GPIO"},
 
-  { "counters",  NULL, MANY_ARGS,
+  { "counters",  cmd_show_counters, MANY_ARGS,
     HELPK("% \"<b>show <i>counters</>\"\r\n"
           "%\r\n"
           "% Pulse counters / frequency meters states and values\r\n"
           "% Depending on a SoC used it may be up to 8 hardware counters"),"Show pulse counters/frequency meters"},
 
-  { "sequence", NULL, MANY_ARGS,
+  { "sequence", cmd_show_sequence, MANY_ARGS,
     HELPK("% \"<b>show <i>sequence</> NUMBER\"\r\n"
           "%\r\n"
           "% Display sequence configuration for given index:\r\n"
           "% \"show sequence 6\"  - display Sequence #6 configuration"),"Display pulse sequence"},
 #if WITH_FS
-  { "mount", NULL, MANY_ARGS,
+  { "mount", cmd_show_mount, MANY_ARGS,
     HELPK("% \"<b>show <i>mount</> [<o>/PATH</>]\"\r\n"
           "%\r\n"
           "% Display information about mounted filesystems, partitions.\r\n"
           "% \"show mount\"           - display filesystem information\r\n"
           "% \"show mount /my_disk\"  - display information about mountpoint \"/my_disk\""), "Mounted filesystems and fstab"},
 #endif
-  { "memory", NULL, MANY_ARGS,
+  { "memory", cmd_show_memory, MANY_ARGS,
     HELPK("% \"<b>show <i>memory</> [<o>map</>]\"\r\n"
           "%\r\n"
           "% Display HEAP information / availability / map"),"Memory map"},
 
-  { "memory", NULL, MANY_ARGS,
+  { "memory", cmd_show_memory, MANY_ARGS,
     HELPK("% \"<b>show <i>memory</> <i>ADDRESS</> [<o>COUNT</>] [<o>unsigned|signed|char|int|short|float|void *</>]\"\r\n"
           "%\r\n"
           "% Display COUNT elements starting from the memory address ADDRESS\r\n"
@@ -2397,7 +2427,7 @@ KEYWORDS_DECL(show) {
 
 
 #if WITH_ESPCAM
-  { "camera", NULL, MANY_ARGS,
+  { "camera", cmd_show_camera, MANY_ARGS,
     HELPK("% \"<b>show <i>camera</> <i>models | resolutions | settings | sensor</>\"\r\n"
           "%\r\n"
           "% <i>models</>     : Displays list of supported boards\r\n"
@@ -2407,7 +2437,7 @@ KEYWORDS_DECL(show) {
           "% Example: \"show camera settings\"\r\n"
           ),"Camera parameters"},
 
-  { "camera", NULL, MANY_ARGS,
+  { "camera", cmd_show_camera, MANY_ARGS,
     HELPK("% \"<b>show <i>camera</> <i>pinout</> [<o>MODEL</> | <o>custom</>]\"\r\n"
           "%\r\n"
           "% Displays camera pinout for camera model MODEL\r\n"
@@ -2418,19 +2448,19 @@ KEYWORDS_DECL(show) {
 #endif
 
 #if WITH_ALIAS
-  { "alias", NULL, MANY_ARGS,
+  { "alias", cmd_show_alias, MANY_ARGS,
     HELPK("% \"<b>show</> <i>alias</> [<o>ALIAS_NAME</>]\"\r\n"
           "%\r\n"
           "% \"show alias\"     - Display list of configured aliases\r\n"
           "% \"show alias NAME\"- Display alias NAME listing "), "Show aliases"},
 
-  { "if", NULL, MANY_ARGS,
+  { "if", cmd_show_ifs, MANY_ARGS,
     HELPK("% \"<b>show <i>if</> [<o>NUM</>]\"\r\n"
           "%\r\n"
           "% Displays brief list of \"if\" conditions\r\n"
           "% Displays details if condition ID is specified"),"Show conditions"},
 
-  { "every", NULL, MANY_ARGS,
+  { "every", cmd_show_ifs, MANY_ARGS,
     HELPK("% \"<b>show <i>every</> [<o>NUM</>]\"\r\n"
           "%\r\n"
           "% Displays brief list of \"every\" conditions\r\n"
@@ -2439,7 +2469,7 @@ KEYWORDS_DECL(show) {
 #endif
 
 #if WITH_DEVEL
-  { "subdirs", cmd_show_subdirs, HIDDEN_KEYWORD },
+  { "subdirs", cmd_show_subdirs, MANY_ARGS, HIDDEN_KEYWORD },
 #endif
 
 
@@ -2545,7 +2575,7 @@ static int cmd_exit(int argc, char **argv) {
   return 0;
 }
 
-
+#if WITH_DEVEL
 // Developer command "show subdirs"
 // Shows **registered** command directories.
 //
@@ -2569,7 +2599,7 @@ static int cmd_show_subdirs(int argc, char **argv) {
   q_printf("Total: %u entries (%u of them are hidden) in %u subdirs\r\n", total, hidden, idx);
   return 0;
 }
-
+#endif //WITH_DEVEL
 
 
 #endif // #if COMPILING_ESPSHELL
