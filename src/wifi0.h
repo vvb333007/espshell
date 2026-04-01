@@ -1731,7 +1731,7 @@ print_error_notice_and_exit:
             Wifi.sta_reconnect = true;
       }
 
-      HELP(q_printf("%% Auto-reconnect is %sabled\r\n", Wifi.sta_reconnect));
+      HELP(q_printf("%% Auto-reconnect is %sabled\r\n", Wifi.sta_reconnect ? "en" : "dis"));
     }
 
     if (ESP_OK == esp_wifi_set_config(WIFI_IF_STA, &stac))
