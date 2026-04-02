@@ -551,6 +551,7 @@ static int exec_in_background(argcargv_t *aa_current) {
 
   // Start an async task. If the user does not specify a core,
   // pin it to the same core on which ESPShell is running.
+  // TODO: make a "default_core" convar to make it configurable [0,1,ANY]
   if ((id = task_new(amp_helper_task, ha, aa_current->argv[0], core)) == NULL) {
     q_print("% <e>Can not start a new task. Resources low? Adjust STACKSIZE macro in \"espshell.h\"</>\r\n");
     userinput_unref(aa_current);
@@ -626,7 +627,7 @@ espshell_command(char *p, argcargv_t *aa) {
 
     // Tokenize user input, create /aa/. 
     // This will destroy contents of /p/ : its whitespace will be replaced with '\0's
-    //
+    // The argcargv_t structure will be allocated and populated by the tokenizer
     if ((aa = userinput_tokenize(p)) == NULL) {
 free_p_and_exit:
       q_free(p);
@@ -786,7 +787,7 @@ static  void espshell_initonce() {
   static bool inited = false;
 
   if (!inited) {
-    VERBOSE(esp_rom_printf("% Init once\r\n"));
+    VERBOSE(q_rom_printf("%% Init once\r\n"));
     inited = true;
 
     // Set default prompt: e.g. "esp32#>"
@@ -832,11 +833,15 @@ static void espshell_task(const void *arg) {
 
   // arg is not NULL - first time call: start the task and return immediately
   if (arg) {
+
     MUST_NOT_HAPPEN (shell_task != NULL);
-    VERBOSE(esp_rom_printf("%% Spawning the shell task..\r\n"));
+
+    // it is too early for the q_print() : UART driver is not yet initialized.
+    VERBOSE(q_rom_printf("%% Spawning the shell task..\r\n"));
+
+    // Scheduler is not yet started but we can postpone task startup
     if ((shell_task = task_new(espshell_task, NULL, "ESPShell", shell_core)) == NULL) {
-      // it is too early for the q_print() : UART driver is not yet initialized.
-      esp_rom_printf("%% ESPShell failed to start its task\r\n");
+      q_rom_printf("%% ESPShell failed to start its task\r\n");
     }
   } else {
     // arg is NULL - we were called by task_new() and we are running as separate process now.

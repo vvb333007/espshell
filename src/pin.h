@@ -1025,7 +1025,7 @@ static int cmd_pin_loop(int argc, char **argv,unsigned int pin, unsigned int *st
 //
 // Big fat "pin" command. Processes multiple arguments
 // TODO: Caching of arguments for looped commands: should we use some sort of microcode
-// TODO: join flags where possible to single call
+// TODO: process "pin 1 2 3 low 4 5 6 high" correctly via pin bitmap
 //
 static int cmd_pin(int argc, char **argv) {
 
@@ -1240,7 +1240,7 @@ pin_set_level:
     // e.g. "pin 2 low high loop infinite &". Otherwise we have to "kill -9" instead of "kill".
     // A killpoint decreases "pin 2 low high loop infinite &" performance from 354kHz down to 151kHz
     if (!seen_delay) {
-      uint32_t sig = 0;
+      uint32_t sig = 0; 
       if (task_wait_for_signal(&sig,0)) {
         //q_print("% Termination signal\r\n");
         if (sig == SIGNAL_TERM || sig == SIGNAL_KILL)

@@ -899,8 +899,8 @@ static int cmd_show_wifi(int argc, char **argv) {
 
   // Link == netif status
   link_up = esp_netif_is_netif_up(ni);
-  // Protocol: AP->always UP, STA->only when associated
-  proto_up = (ifx == WIFI_IF_STA) ? (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) : true;
+  // Protocol: AP->same as link_up, STA->only when associated
+  proto_up = (ifx == WIFI_IF_STA) ? (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) : link_up;
 
   q_printf("%%<r> Network interface WIFI %s is %s                      </>\r\n",
              ap_sta_str(ifx),
@@ -1656,14 +1656,15 @@ static int cmd_wifi_dhcp(int argc, char **argv) {
 // up SSID                                             <-- ap
 //
 // TODO: multiple SSIDs to connect/reconnect:
-//  esp32#> up SSID1 PASS1 SSID2 PASS2 SSID3 PASS3
-//  esp32#> reconnect disable | enable
-//  esp32#> reconnect periodic TIMESPEC
-//  esp32#> reconnect periodic TIMESPEC
-//  esp32#> reconnect policy order       -> prefer leftmost SSIDs when looking for candidates
-//  esp32#> reconnect policy rssi        -> prefer higher RSSI
-//  esp32#> reconnect policy snr         -> prefer better SNR
-//  esp32#> reconnect policy round-robin -> cycle SSIDs
+//  esp32#> wifi sta
+//  esp32-sta> up SSID1 PASS1 SSID2 PASS2 SSID3 PASS3
+//  esp32-sta> reconnect disable | enable
+//  esp32-sta> reconnect periodic TIMESPEC
+//  esp32-sta> ip sla icmp-echo ADDRESS|tcp-connect ADDRESS:PORT|disabled [every TIMESPEC]
+//  esp32-sta> reconnect policy order       -> prefer leftmost SSIDs when looking for candidates
+//  esp32-sta> reconnect policy rssi        -> prefer higher RSSI
+//  esp32-sta> reconnect policy snr         -> prefer better SNR
+//  esp32-sta> reconnect policy round-robin -> cycle SSIDs
 
 static int cmd_wifi_up(int argc, char **argv) {
 

@@ -1372,10 +1372,12 @@ static int __printfv(const char *format, va_list arg) {
   return ret;
 }
 
-// same as printf() but uses global var 'uart' to direct
-// its output to different uarts
-// NOTE: add -Wall or at least -Wformat to Arduino's c_flags for __attribute__ to have
-//       effect.
+// Shell's printf(). Directs its output to the user console, not to UART0 as printf does.
+// This function must be called after shell initialized . Before that q_rom_printf() must be used, especially
+// if called from constructor functions
+//
+#define q_rom_printf esp_rom_printf
+
 static int PRINTF_LIKE q_printf(const char *format, ...) {
   int len;
   va_list arg;

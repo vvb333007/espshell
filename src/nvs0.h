@@ -11,12 +11,16 @@
  */
 
 // -- NVS editor and viewer --
+//
 // This module adds support for "ls", "set", "new" and "dump" commands which let user to view/modify NVS content
 // On ESP32 NVS is emulated by using a dedicated partition on the main flash chip. Information there is stored
 // in form of key=value pairs, however there is also such thing as a namespace. It is a kind of a directory in a
 // filesystem which allows us to have same key=value pairs under different namespaces
 //
 // Command "nvs" has one optional argument: the NVS partition name (which is "nvs" by default)
+//
+// TODO: accept shortened namespace names: no one wants to enter "cd nvs.net80211", "cd nvs" must be enough
+// TODO: support 64bit values.
 
 
 #if COMPILING_ESPSHELL
@@ -25,12 +29,13 @@
 #include <nvs_flash.h>
 #include <nvs.h>
 
-#define DEF_NVS_PARTITION "nvs"
-#define DEF_ESPSHELL_NAMESPACE "espshell"
+#define DEF_NVS_PARTITION "nvs"              // Default flash partition which holds NVS data
+#define DEF_ESPSHELL_NAMESPACE "espshell"    // Our private namespace
 
 // Initialize NVS library.
 // Upon startup it is called from a constructor function _nvs_init() and by that time q_print is not yet available
 // so we use printf for reporting (/early/ == /true/)
+//
 // TODO: do not erase data on error! Let user to backup all the data and manually erase it
 //
 static void nv_init(bool early) {
@@ -39,13 +44,19 @@ static void nv_init(bool early) {
   const char *partition;
 
   if (early) {
+    // Are we called early as a part of startup process?
     partition = DEF_NVS_PARTITION;
   } else {
+    // Normal operation. Context contains NVS flash partition name (default is "nvs"), and is set 
+    // during "nvs PARTITION_NAME" command execution
     partition = context_get_ptr(const char);
     if (!partition)
       partition = DEF_NVS_PARTITION;
   }
 
+  // TODO: Note user that we are about to delete its valuable data
+  // TODO: Let user choose to manually backup the data via esptool or anything suitable
+  //
   err = nvs_flash_init_partition(partition);
   if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
       nvs_flash_erase_partition(partition);
@@ -56,7 +67,7 @@ static void nv_init(bool early) {
     // q_printf() will not work if called too early
     const char *msg = "%% NV flash init failed, hostid and WiFi driver settings are lost\r\n";
     if (early)
-      printf(msg);
+      q_rom_printf(msg);
     else
       q_print(msg);
   }
@@ -260,6 +271,9 @@ static char *nv_set_cwd(const char *cwd) {
   return Nv_cwd;
 }
 
+// Allocates memory and creates single linked list containing
+// all namespaces found on NVS. User of this API must q_free() all list elements
+//
 static struct nvsnamespace *nv_get_namespaces(const char *partition) {
   nvs_iterator_t it;
   struct nvsnamespace *nvs_namespaces = NULL;
@@ -372,7 +386,7 @@ static void nv_list_keys(const char *partition, const char *namespace) {
 }
 
 #if WITH_FS
-// Export a namespace to a file
+// Export a namespace to a file. If /namespace/ == "*" or "/" then all namespaces will be exported
 // Files can be executed by shell via "exec /PATH"
 //
 static void nv_export_namespace(FILE *fp, const char *partition, const char *namespace) {
@@ -768,8 +782,9 @@ static int cmd_nvs_dump(int argc, char **argv) {
 }
 
 // new KEY C-TYPE [VALUE]
-// Create a zero record. For scalar types, blobs and strings it is just 0 written
-// unless VALUE is provided
+// Create a zero record and optionally fill it with data.
+// For scalar types, blobs and strings it is just 0 written unless VALUE is provided. For vectors it is 1 byte zero vector
+//
 static int cmd_nvs_new(int argc, char **argv) {
 
   int ret = CMD_FAILED, end;

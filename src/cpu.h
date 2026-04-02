@@ -116,6 +116,7 @@ static const char *Rr_desc_percore[] = {
     [RESET_REASON_CPU0_RTC_WDT]    = "RTC watch dog resets CPU",
     [RESET_REASON_SYS_BROWN_OUT]   = "VDD voltage is not stable and resets the digital core",
     [RESET_REASON_SYS_RTC_WDT]     = "RTC watch dog resets digital core and rtc module",
+#if CONFIG_IDF_TARGET_ESP32S3    
     [RESET_REASON_CPU0_MWDT1]      = "Main watch dog 1 resets CPU",
     [RESET_REASON_SYS_SUPER_WDT]   = "Super watch dog resets the digital core and rtc module",
     [RESET_REASON_SYS_CLK_GLITCH]  = "Glitch on clock resets the digital core and rtc module",
@@ -123,6 +124,7 @@ static const char *Rr_desc_percore[] = {
     [RESET_REASON_CORE_USB_UART]   = "USB UART resets the digital core",
     [RESET_REASON_CORE_USB_JTAG]   = "USB JTAG resets the digital core",
     [RESET_REASON_CORE_PWR_GLITCH] = "Glitch on power resets the digital core",
+#endif    
 };
 
 // Deep-sleep wakeup source. Entries containing "(light sleep)" should never appear

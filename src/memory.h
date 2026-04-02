@@ -43,7 +43,7 @@ static void out_of_memory_event(size_t size, uint32_t caps,const char * function
 
   // in OOM event we can not call q_printf as it can try to malloc() its output buffer.
   // Instead we call ROM function
-  esp_rom_printf("\r\n%% <w> Boom! Out of memory in \"%s\" (asked %u bytes, caps: %x)</>\r\n"
+  q_rom_printf("\r\n%% <w> Boom! Out of memory in \"%s\" (asked %u bytes, caps: %x)</>\r\n"
            "%% Sketch is suspended, you can resume it with \"resume\" command\r\n",
            function_name,
            size,
