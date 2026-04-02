@@ -1118,7 +1118,9 @@ has_been_interrupted:
         case 'h' : 
                   if (unlikely(X(1) == 'o')) {
                     gpio_hold_en((gpio_num_t)pin);
+#if SOC_GPIO_SUPPORT_HOLD_IO_IN_DSLP && !SOC_GPIO_SUPPORT_HOLD_SINGLE_IO_IN_DSLP                    
                     gpio_deep_sleep_hold_en();
+#endif                    
                   } else {
         // high
                     level = 1;
@@ -1186,7 +1188,9 @@ pin_set_level:
         // release
         case 'r' : 
                   if (has3 && X(2) == 'l') {
+#if SOC_GPIO_SUPPORT_HOLD_IO_IN_DSLP && !SOC_GPIO_SUPPORT_HOLD_SINGLE_IO_IN_DSLP                    
                     gpio_deep_sleep_hold_dis();
+#endif                    
                     gpio_hold_dis((gpio_num_t)pin);
                   } else if (has3 && X(2) == 's')
         // reset

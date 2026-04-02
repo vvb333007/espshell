@@ -37,6 +37,7 @@
 //
 #if COMPILING_ESPSHELL
 
+#include <driver/ledc.h>
 
 #ifndef LEDC_CHANNEL_MAX
 #  define LEDC_CHANNEL_MAX SOC_LEDC_CHANNEL_NUM

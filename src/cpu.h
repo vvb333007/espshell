@@ -102,32 +102,8 @@ static const char *Rr_desc[] = {
 
 };
 
-// Reset reason (per-core, ROM)
-static const char *Rr_desc_percore[] = { 
-
-    [RESET_REASON_CHIP_POWER_ON]   = "Power on reset",
-    [RESET_REASON_CORE_SW]         = "Software resets the digital core by RTC_CNTL_SW_SYS_RST",
-    [RESET_REASON_CORE_DEEP_SLEEP] = "Deep sleep reset the digital core",
-    [RESET_REASON_CORE_MWDT0]      = "Main watch dog 0 resets digital core",
-    [RESET_REASON_CORE_MWDT1]      = "Main watch dog 1 resets digital core",
-    [RESET_REASON_CORE_RTC_WDT]    = "RTC watch dog resets digital core",
-    [RESET_REASON_CPU0_MWDT0]      = "Main watch dog 0 resets CPU",
-    [RESET_REASON_CPU0_SW]         = "Software resets CPU by RTC_CNTL_SW_XXXCPU_RST",
-    [RESET_REASON_CPU0_RTC_WDT]    = "RTC watch dog resets CPU",
-    [RESET_REASON_SYS_BROWN_OUT]   = "VDD voltage is not stable and resets the digital core",
-    [RESET_REASON_SYS_RTC_WDT]     = "RTC watch dog resets digital core and rtc module",
-#if CONFIG_IDF_TARGET_ESP32S3    
-    [RESET_REASON_CPU0_MWDT1]      = "Main watch dog 1 resets CPU",
-    [RESET_REASON_SYS_SUPER_WDT]   = "Super watch dog resets the digital core and rtc module",
-    [RESET_REASON_SYS_CLK_GLITCH]  = "Glitch on clock resets the digital core and rtc module",
-    [RESET_REASON_CORE_EFUSE_CRC]  = "eFuse CRC error resets the digital core",
-    [RESET_REASON_CORE_USB_UART]   = "USB UART resets the digital core",
-    [RESET_REASON_CORE_USB_JTAG]   = "USB JTAG resets the digital core",
-    [RESET_REASON_CORE_PWR_GLITCH] = "Glitch on power resets the digital core",
-#endif    
-};
-
 // Deep-sleep wakeup source. Entries containing "(light sleep)" should never appear
+//
 static const char *Ws_desc[] = {
     [ESP_SLEEP_WAKEUP_UNDEFINED] = "<w>an undefined event",
     [ESP_SLEEP_WAKEUP_ALL] =  "",
@@ -152,7 +128,206 @@ static const char *Ws_desc[] = {
 #ifdef ESP_SLEEP_WAKEUP_VBAT_UNDER_VOLT        
     [ESP_SLEEP_WAKEUP_VBAT_UNDER_VOLT] = "<w>VDD_BAT under voltage",
 #endif    
-  };
+};
+
+
+// Reset reason (per-core, ROM). These are CPU-depended with unique codes so array is
+// initialized in anonymous way.
+//
+static const char *Rr_desc_percore[] = { 
+
+#if CONFIG_IDF_TARGET_ESP32
+
+  "",
+  "Power on reset",
+  "",
+  "Software resets the digital core",
+  "",
+  "Deep sleep reset the digital core",
+  "SDIO module resets the digital core",
+  "Main watch dog 0 resets digital core",
+  "Main watch dog 1 resets digital core",
+  "RTC watch dog resets digital core",
+  "",
+  "Main watch dog 0 resets CPUx",
+  "Software resets CPUx",
+  "RTC watch dog resets CPUx",
+  "CPU0 resets CPU1 by DPORT_APPCPU_RESETTING",
+  "Reset when the VDD voltage is not stable",
+  "RTC watch dog resets digital core and rtc module",
+
+#elif CONFIG_IDF_TARGET_ESP32S2
+
+  "",
+  "Power on reset",
+  "",
+  "Software resets the digital core by RTC_CNTL_SW_SYS_RST",
+  "",
+  "Deep sleep reset the digital core",
+  "",
+  "Main watch dog 0 resets digital core",
+  "Main watch dog 1 resets digital core",
+  "RTC watch dog resets digital core",
+  "",
+  "Main watch dog 0 resets CPU 0",
+  "Software resets CPU 0 by RTC_CNTL_SW_PROCPU_RST",
+  "RTC watch dog resets CPU 0",
+  "",
+  "VDD voltage is not stable and resets the digital core",
+  "RTC watch dog resets digital core and rtc module",
+  "Main watch dog 1 resets CPU 0",
+  "Super watch dog resets the digital core and rtc module",
+  "Glitch on clock resets the digital core and rtc module",
+  "eFuse CRC error resets the digital core",
+
+#elif CONFIG_IDF_TARGET_ESP32S3
+
+  "",
+  "Power on reset",
+  "",
+  "Software resets the digital core by RTC_CNTL_SW_SYS_RST",
+  "",
+  "Deep sleep reset the digital core",
+  "",
+  "Main watch dog 0 resets digital core",
+  "Main watch dog 1 resets digital core",
+  "RTC watch dog resets digital core",
+  "",
+  "Main watch dog 0 resets CPUx",
+  "Software resets CPUx by RTC_CNTL_SW_xCPU_RST",
+  "RTC watch dog resets CPUx",
+  "",
+  "VDD voltage is not stable and resets the digital core",
+  "RTC watch dog resets digital core and rtc module",
+  "Main watch dog 1 resets CPUx",
+  "Super watch dog resets the digital core and rtc module",
+  "Glitch on clock resets the digital core and rtc module",
+  "eFuse CRC error resets the digital core",
+  "USB UART resets the digital core",
+  "USB JTAG resets the digital core",
+  "Glitch on power resets the digital core",
+
+#elif CONFIG_IDF_TARGET_ESP32C3
+
+  "",
+  "Power on reset",
+  "",
+  "Software resets the digital core by RTC_CNTL_SW_SYS_RST",
+  "",
+  "Deep sleep reset the digital core",
+  "",
+  "Main watch dog 0 resets digital core",
+  "Main watch dog 1 resets digital core",
+  "RTC watch dog resets digital core",
+  "",
+  "Main watch dog 0 resets CPU 0",
+  "Software resets CPU 0 by RTC_CNTL_SW_PROCPU_RST",
+  "RTC watch dog resets CPU 0",
+  "",
+  "VDD voltage is not stable and resets the digital core",
+  "RTC watch dog resets digital core and rtc module",
+  "Main watch dog 1 resets CPU 0",
+  "Super watch dog resets the digital core and rtc module",
+  "Glitch on clock resets the digital core and rtc module",
+  "eFuse CRC error resets the digital core",
+  "USB UART resets the digital core",
+  "USB JTAG resets the digital core",
+  "Glitch on power resets the digital core",
+
+#elif CONFIG_IDF_TARGET_ESP32C6
+
+  "",
+  "Power on reset",
+  "",
+  "Software resets the digital core (hp system) by LP_AON_HPSYS_SW_RESET",
+  "",
+  "Deep sleep reset the digital core (hp system)",
+  "SDIO module resets the digital core (hp system)",
+  "Main watch dog 0 resets digital core (hp system)",
+  "Main watch dog 1 resets digital core (hp system)",
+  "RTC watch dog resets digital core (hp system)",
+  "",
+  "Main watch dog 0 resets CPU 0",
+  "Software resets CPU 0 by LP_AON_CPU_CORE0_SW_RESET",
+  "RTC watch dog resets CPU 0",
+  "",
+  "VDD voltage is not stable and resets the digital core",
+  "RTC watch dog resets digital core and rtc module",
+  "Main watch dog 1 resets CPU 0",
+  "Super watch dog resets the digital core and rtc module",
+  "",
+  "eFuse CRC error resets the digital core (hp system)",
+  "USB UART resets the digital core (hp system)",
+  "USB JTAG resets the digital core (hp system)",
+  "",
+  "JTAG resets the CPU 0",
+
+#elif CONFIG_IDF_TARGET_ESP32H4
+
+  "",
+  "Power on reset",
+  "",
+  "Software resets the digital core (hp system) by LP_AON_HPSYS_SW_RESET",
+  "",
+  "Deep sleep reset the digital core (hp system)",
+  "",
+  "Main watch dog 0 resets digital core (hp system)",
+  "Main watch dog 1 resets digital core (hp system)",
+  "RTC watch dog resets digital core (hp system)",
+  "",
+  "Main watch dog 0 resets CPU 0",
+  "Software resets CPU 0 by LP_AON_CPU_CORE0_SW_RESET",
+  "RTC watch dog resets CPU 0",
+  "",
+  "VDD voltage is not stable and resets the digital core",
+  "RTC watch dog resets digital core and rtc module",
+  "Main watch dog 1 resets CPU 0",
+  "Super watch dog resets the digital core and rtc module",
+  "",
+  "eFuse CRC error resets the digital core (hp system)",
+  "USB UART resets the digital core (hp system)",
+  "USB JTAG resets the digital core (hp system)",
+  "JTAG resets the CPU 0",
+
+#elif CONFIG_IDF_TARGET_ESP32P4
+
+  "",
+  "Power on reset",
+  "",
+  "Software resets the digital core",
+  "",
+  "Deep sleep reset the digital core, check when doing sleep bringup",
+  "",
+  "MWDT core reset",
+  "",
+  "RWDT core reset",
+  "",
+  "MWDT HP CPU 0/1 reset",
+  "Software resets HP CPU 0/1",
+  "RWDT resets digital core",
+  "",
+  "VDD voltage is not stable and resets the digital core",
+  "RWDT system reset",
+  "",
+  "Super watch dog resets the digital core and rtc module",
+  "Glitch on power resets the digital core and rtc module",
+  "eFuse CRC error resets the digital core",
+  "",
+  "USB Serial/JTAG controller's JTAG resets the digital core",
+  "USB Serial/JTAG controller's UART resets the digital core",
+  "Triggered when a reset command from JTAG is received",
+  "",
+  "Triggered when the CPU enters lockup (exception inside the exception)",
+
+#else
+
+  //c2,c5 and h2 are missing 
+  "","","","","","","","","","","","","","","","",
+  "","","","","","","","","","","","","","","","",
+
+#endif
+};
+
   
 
 // Update variables located in RTC SLOW_MEM and in .noinit section

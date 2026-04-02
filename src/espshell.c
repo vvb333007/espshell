@@ -151,7 +151,9 @@
 #include <sdmmc_cmd.h>
 
 // Camera
+#if WITH_ESPCAM
 #  include <esp_camera.h>
+#endif
 
 
 // Espressif devteam has changed their core API once again

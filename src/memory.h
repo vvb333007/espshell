@@ -15,7 +15,7 @@
 // TODO: to the type: "int" is displayed as "%d", "void *" as "%p" but there is no way to dump array of "int" as hex
 
 #if COMPILING_ESPSHELL
-
+#include <esp_memory_utils.h>
 
 // Region of address space that holds peripherals. These are not defined for Xtensa arch for some reason
 // so we do it manually. Values are from TRMs
