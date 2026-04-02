@@ -289,6 +289,34 @@ static const char *Rr_desc_percore[] = {
   "USB JTAG resets the digital core (hp system)",
   "JTAG resets the CPU 0",
 
+#elif CONFIG_IDF_TARGET_ESP32H2
+
+  "",
+  "Power on reset",
+  "",
+  "Software resets the digital core by RTC_CNTL_SW_SYS_RST",
+  "",
+  "Deep sleep reset the digital core",
+  "",
+  "Main watch dog 0 resets digital core",
+  "Main watch dog 1 resets digital core",
+  "RTC watch dog resets digital core",
+  "",
+  "Main watch dog 0 resets CPU 0",
+  "Software resets CPU 0 by RTC_CNTL_SW_PROCPU_RST",
+  "RTC watch dog resets CPU 0",
+  "",
+  "VDD voltage is not stable and resets the digital core",
+  "RTC watch dog resets digital core and rtc module",
+  "Main watch dog 1 resets CPU 0",
+  "Super watch dog resets the digital core and rtc module",
+  "",
+  "eFuse CRC error resets the digital core",
+  "USB UART resets the digital core",
+  "USB JTAG resets the digital core",
+  "Glitch on power resets the digital core",
+  "JTAG resets the CPU 0",
+
 #elif CONFIG_IDF_TARGET_ESP32P4
 
   "",
@@ -321,7 +349,7 @@ static const char *Rr_desc_percore[] = {
 
 #else
 
-  //c2,c5 and h2 are missing 
+  //c2,c5 are missing 
   "","","","","","","","","","","","","","","","",
   "","","","","","","","","","","","","","","","",
 
