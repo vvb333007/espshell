@@ -203,7 +203,7 @@ static bool help_for_dir_command(const struct keywords_t *key, const char *cmd) 
         if (key[i].brief)
           brief = key[i].brief;
 
-        q_printf("\r\n%%<r> -- %40.40s --</>\r\n", brief);
+        q_printf("\r\n%%<r> -- 📚👇 %40.40s --</>\r\n", brief);
 
         // Print help page
         q_printf("%s\r\n\r\n",key[i].help ? key[i].help                        // use /.help/ if it is exists

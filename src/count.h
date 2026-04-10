@@ -469,7 +469,7 @@ bad_filter:
   units[unit].pin = pin;
   units[unit].interval = (wait == COUNT_INFINITE ? wait : wait * 1000ULL); // store planned time, update it with real one later
   
-  q_printf("%% %s pulses on GPIO%d...", units[unit].trigger ? "Waiting for" : "Counting", pin);
+  q_printf("%% %s pulses on GPIO%d...", units[unit].trigger ? "⏳ Waiting for" : "⌚ Counting", pin);
   if (is_foreground_task())
     HELP(q_print("(press <Enter> to abort)"));
   q_print(CRLF);

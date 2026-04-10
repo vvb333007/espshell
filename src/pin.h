@@ -344,6 +344,24 @@ static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
   uint32_t drv, fun_sel, sig_out;
   uint8_t start_pin = 0, stop_pin = PIN_MAX;
 
+  // helper function which prints header and a line. depending on the argument
+  // it prints either header then line or line then header
+  //
+  void draw_header() {
+
+    q_print("%<r>🔌Pin");
+    for (i = 0; i < IOMUX_NFUNC; i++)
+       q_printf("│ Function %d ",i);
+    q_print("</>\r\n");
+  }
+
+  void draw_hline() {
+    q_print("%─────");
+    for (i = 0; i < IOMUX_NFUNC; i++)
+      q_print("┼────────────");
+    q_print("</>\r\n");
+  }
+
   // Read optional "start from" pin number
   if (argc > 2)
     start_pin = q_atol(argv[2], start_pin);
@@ -356,27 +374,22 @@ static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
     HELP(q_printf( "%% NOTE: Displaying only pins <i>%u..%u</>. Use \"<i>show iomux</>\" to display all\r\n",start_pin,stop_pin));
   HELP(q_print( "% IO MUX has <i>" xstr(IOMUX_NFUNC) "</> functions for every pin. The mapping is as follows:\r\n"));
 
-  // Table header Save space.
-  q_print("% Pin ");
-  for (i = 0; i < IOMUX_NFUNC; i++)
-     q_printf("| Function<i>%d</> ",i);
-  q_print("\r\n%-----");
-  for (i = 0; i < IOMUX_NFUNC; i++)
-     q_print("+-----------");
-  q_print(CRLF);
+  
+  draw_header();
+  draw_hline();
 
   // run through all the pins
   for (pin = start_pin; pin <= stop_pin; pin++) {
     
     if (pin_exist_silent(pin)) {
 
-      char color = 'n', mark = ' ';
+      char color = 'n', *mark = " ";
 
       if (pin_is_input_only_pin(pin)) {
         color = 'g';
-        mark = '+';
+        mark = "➜";
       } else if (pin_is_reserved(pin)) { // reserved at startup (flash/psram)
-        mark = '!';
+        mark = "✖";
         color = 'w';
       }
 #if 0      
@@ -385,7 +398,7 @@ static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
         color = 'i';
       }
 #endif      
-      q_printf( "%% %c<%c>%02u</> ",mark,color,pin);
+      q_printf( "%% %s<%c>%02u</> ",mark,color,pin);
 
       // get pin IO_MUX function currently selected
       // TODO: just read IOMUX register.
@@ -396,19 +409,23 @@ static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
       // Highligh function that is currently assigned to the pin (via pre/post tags)
       for (int i = 0; i < IOMUX_NFUNC; i++) {
         const char *pre = (i == fun_sel) ? "<r>" : "";    // gcc must fold two comparisions into one
-        const char *post = (i == fun_sel) ? "*</>" : " ";
+        const char *post = (i == fun_sel) ? "✅</>" : "  ";
         
-        q_printf("|%s %-9.9s%s", pre, iomux_funame(pin, i), post);
+        q_printf("│%s %-9.9s%s", pre, iomux_funame(pin, i), post);
         
       }
       q_print(CRLF);
     }
   }
+
+  draw_hline();
+  draw_header();
+
   HELP(q_print( "\r\n"
-                "% Legend:\r\n"
-                "%   Function, that is currently assigned to the pin is <r>marked with \"*\"</>\r\n"
-                "%   Input-only pins (marked \"+\") are <g>green</> (ESP32 only)\r\n"
-                "%   Pins that are <w>RESERVED</> are labelled with \"<b>!</>\", avoid them!\r\n"));
+                "% <u>Legend</>:\r\n"
+                "%   Function, that is currently assigned to the pin is <r>marked with \"✅\"</>\r\n"
+                "%   Input-only pins (marked \"➜\") are <g>green</> (ESP32 only)\r\n"
+                "%   Pins that are <w>reserved</> are labelled with \"<b>✖</>\", avoid them!\r\n"));
   return 0;
 }
 
@@ -706,6 +723,7 @@ static inline bool pin_is_input_only_pin(int pin) {
 #  define STRAPPING_PINS (1 << 8) | (1 << 9) | (1 << 25)
 #else
 #  define STRAPPING_PINS 0
+// TODO: Add H4, P4
 #  warning "Unsupported (yet) target, pin_is_strapping_pin() is disabled. Dont hesitate to add support by yourself!"
 #endif
 

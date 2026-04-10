@@ -185,7 +185,7 @@ static int cmd_colors(int argc, char **argv) {
 static NORETURN void must_not_happen(const char *message, const char *file, int line) {
 
   // Print location & cause of this MUST NOT HAPPEN event
-  q_printf("%% ESPShell internal error: \"<i>%s</>\"\r\n"
+  q_printf("%% 💀ESPShell internal error: \"<i>%s</>\"\r\n"
            "%% in %s:%u, ESPShell is stopped, sketch is resumed\r\n",
            message,
            file,  
@@ -211,7 +211,7 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
 }
 
 // Default handler for the user-specific "misc" command.
-// If the user defines cmd_misc_user(), it will be used
+// If the user defines cmd_misc_user(), it will be used. See examples/user_command/user_command.ino
 //
 extern int __attribute__((weak)) cmd_misc_user(int argc, char **argv);
 
@@ -242,11 +242,13 @@ static int cmd_hostid(int argc, char **argv) {
     // only alphanumerics are allowed in prompt id: bad symbols (e.g. ANSI escape sequences) can screw 
     // the terminal up making shell IO not possible 
     for (int i = 0; argv[1][i]; i++)
-      if (!isalnum((int)(argv[1][i]))) {
-        HELP(q_print("%% Only alpha-numeric symbols are allowed\r\n"));
+      if (!isalnum((int)(argv[1][i])) && argv[1][i] != '_' && argv[1][i] != '-' && argv[1][i] != '.') {
+        HELP(q_print("%% Only these symbols are allowed in hostid:\r\n"
+                     "%% Alphanumerics: a-zA-Z0-9, an underscore \"_\", a minus sign \"-\" and a dot \".\"\r\n"
+        ));
         return 1;
       }
-    // Copy user input.
+    // Copy user input and update NVS
     strlcpy(PromptID,argv[1],sizeof(PromptID));
     nv_save_config();
   }

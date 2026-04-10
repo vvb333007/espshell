@@ -18,8 +18,11 @@
 #include <soc/rtc.h>
 
 // Really old ESP-IDF / ArduinoCore may be missing these frequency values on particular targets.
+// ESP32P4  does not have these
+// TODO: Add support for newer CPUs
+//
 #if !defined(APB_CLK_FREQ) || !defined(MODEM_REQUIRED_MIN_APB_CLK_FREQ)
-#  error "Please update ESP-IDF and/or Arduino Core libraries to a newer version"
+#  error "Unsupported CPU or very old ESP-IDF / Arduino Core"
 #endif
 
 // For performance profiling:
@@ -421,6 +424,7 @@ static void __attribute__((constructor)) cpu_read_frequencies() {
 //
 static int cmd_show_cpuid(int argc, char **argv) {
 
+  float temp;
   esp_chip_info_t chip_info;
   const char *chipid = "ESP32-(Unknown)";
 
@@ -471,11 +475,12 @@ static int cmd_show_cpuid(int argc, char **argv) {
 
   // Just in case
   cpu_read_frequencies();
+  temp = temperatureRead();
 
-  q_print("% <u>Hardware:</>\r\n");
+  q_print("% <u>🔩 Hardware:</>\r\n");
   q_printf("%% CPU ID: %s, (%u core%s), Chip revision: %d.%d\r\n"
            "%% CPU frequency is %uMhz, Crystal: %uMhz, APB bus %uMhz\r\n"
-           "%% Chip temperature: %.1f deg. Celsius\r\n",
+           "%% Chip temperature: 🌡️%.1f°C (%.1f°F)\r\n",
            chipid,
            PPA(chip_info.cores),
            (chip_info.revision >> 8) & 0xf,
@@ -483,7 +488,8 @@ static int cmd_show_cpuid(int argc, char **argv) {
            CPUFreq,
            XTALFreq,
            APBFreq,
-           temperatureRead());
+           temp,
+           temp * 9 / 5 + 32);
 
   if (!apb_freq_is_optimal()) {
     q_printf("%% <i>APB frequency is not optimal</i>");
@@ -495,22 +501,22 @@ static int cmd_show_cpuid(int argc, char **argv) {
   q_print("% SoC features: ");
 
   if (chip_info.features & CHIP_FEATURE_EMB_FLASH)
-    q_print("Embedded flash, ");
+    q_print("🧩 Embedded flash, ");
   if (chip_info.features & CHIP_FEATURE_WIFI_BGN)
-    q_print("WiFi 2.4GHz, ");
+    q_print("📡 WiFi 2.4GHz, ");
   if (chip_info.features & CHIP_FEATURE_BLE)
-    q_print("Bluetooth LE, ");
+    q_print("🔵BT Low Energy, ");
   if (chip_info.features & CHIP_FEATURE_BT)
-    q_print("Bluetooth, ");
+    q_print("🔵BT Classic, ");
   if (chip_info.features & CHIP_FEATURE_IEEE802154)
-    q_print("IEEE 802.15.4, ");
+    q_print("📶 IEEE 802.15.4, ");
   if (chip_info.features & CHIP_FEATURE_EMB_PSRAM)
-    q_print("embedded PSRAM, ");
+    q_print("🧩embedded PSRAM, ");
 
   unsigned long psram;
   // "external SPIRAM\r\n" below belongs to the "SoC features"
   if ((psram = heap_caps_get_total_size(MALLOC_CAP_SPIRAM)) > 0)
-    q_printf("external PSRAM\r\n%% PSRAM (SPIRAM) size: %lu (%lu MB)",psram,  psram / (1024 * 1024));
+    q_printf("💾 PSRAM\r\n%% PSRAM (SPIRAM) size: %lu (%lu MB)",psram,  psram / (1024 * 1024));
   
   //
   // global variable g_rom_flashchip is defined in linker file.
@@ -538,10 +544,10 @@ static int cmd_show_cpuid(int argc, char **argv) {
   //       encode SPI bus type (Normal, Dual, Quad) but this field is not standartized
   //
   if (id & 0x2000) type = "Quad SPI"; else
-  if (id & 0x4000) type = "Dual SPI"; else
+  if (id & 0x4000) type = "QIO"; else
                    type = "Unknown";
 
-  q_printf( "\r\n%%\r\n%% <u>Flash chip (SPI Flash):</>\r\n"
+  q_printf( "\r\n%%\r\n%% <u>💾 Flash chip (SPI Flash):</>\r\n"
             "%% Chip ID: 0x%04X (%s), manufacturer ID: %02X (%s)\r\n"
             "%% Size <i>%lu</> bytes (%lu MB)\r\n"
             "%% Block size is <i>%lu</>, sector size is %lu and page size is %lu",
@@ -555,7 +561,7 @@ static int cmd_show_cpuid(int argc, char **argv) {
             g_rom_flashchip.sector_size,
             g_rom_flashchip.page_size);
 
-  q_print("\r\n%\r\n% <u>Firmware:</>\r\n");
+  q_print("\r\n%\r\n% <u>🧾 Firmware:</>\r\n");
   q_printf( "%% Sketch is running on <b>" ARDUINO_BOARD "</>, (an <b>" ARDUINO_VARIANT "</> variant), uses:\r\n"
             "%% Arduino Core version <i>%s</>, which uses\r\n"
             "%% Espressif ESP-IDF version \"<i>%u.%u.%u</>\"\r\n"
@@ -563,7 +569,7 @@ static int cmd_show_cpuid(int argc, char **argv) {
             ESP_ARDUINO_VERSION_STR, 
             ESP_IDF_VERSION_MAJOR,ESP_IDF_VERSION_MINOR,ESP_IDF_VERSION_PATCH);
 
-  q_print("%\r\n% <u>Last boot:</>\r\n");            
+  q_print("%\r\n% <u>⏰ Last boot:</>\r\n");            
   cmd_uptime(argc, argv);
   return 0;
 }
@@ -825,10 +831,12 @@ static int cmd_nap(int argc, char **argv) {
   if (argc > 1) {
     if (!q_strcmp(argv[1],"deep"))
       deep = true;
+    else
+      return 1;
   }
 
   if (!is_alarm_set(deep)) {
-    HELP(q_printf("%% When should we wakeup?\r\n"));
+    HELP(q_printf("%% When should we wakeup? Set wake up alarm first (\"nap alarm ...\")\r\n"));
     return CMD_FAILED;
   }
 

@@ -594,9 +594,12 @@ static void display_ap_details(wifi_ap_record_t *ap, const char *requested_bssid
 
     // SSID, BSSID and Security
     //q_printf("%%\r\n%%<r>Access point \"%s\" (BSSID: %s)    </>\r\n%%\r\n", ap->ssid[0] ? (char *)ap->ssid : "[Hidden name]", requested_bssid);
-    q_printf("%% Security: [%s], Pairwise cipher: %s, Group cipher: %s\r\n",
+    q_printf("%% %s Security: [%s], Pairwise cipher: %s%s, Group cipher: %s%s\r\n",
+          ap->authmode > 0 ? "🔒" : "🔓",
           Wifi_auth[ap->authmode],
+          ap->pairwise_cipher > 0 ? "🔑" : "",
           Wifi_cipher[ap->pairwise_cipher], 
+          ap->group_cipher > 0 ? "🔑" : "",
           Wifi_cipher[ap->group_cipher]);
 
     // WPS capabilities
@@ -610,7 +613,7 @@ static void display_ap_details(wifi_ap_record_t *ap, const char *requested_bssid
                                                                                           : "below primary"));
 
     // Signal power & bandwidth
-    q_printf("%%\r\n%% Signal power (RSSI): %d dBm, used antenna#%d\r\n",ap->rssi,(int)ap->ant);
+    q_printf("%%\r\n%% 📶 Signal power (RSSI): %d dBm, used antenna#%d\r\n",ap->rssi,(int)ap->ant);
     q_printf("%% Bandwidth: %s\r\n", bw_desc[((unsigned)ap->bandwidth) & 7]);
 
     // PHY modes as advertised by an AP
@@ -902,11 +905,11 @@ static int cmd_show_wifi(int argc, char **argv) {
   // Protocol: AP->same as link_up, STA->only when associated
   proto_up = (ifx == WIFI_IF_STA) ? (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) : link_up;
 
-  q_printf("%%<r> Network interface WIFI %s is %s                      </>\r\n",
+  q_printf("%%<r>📡 Network interface WIFI %s is %s                      </>\r\n",
              ap_sta_str(ifx),
              up_down_str(proto_up && link_up));
 
-  q_printf("%% Link: <i>%s</>, Protocol: <i>%s</>\r\n",
+  q_printf("%% 🔗Link: <i>%s</>, 🌐Protocol: <i>%s</>\r\n",
             up_down_str(link_up),
             up_down_str(proto_up));
 

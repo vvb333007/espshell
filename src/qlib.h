@@ -103,6 +103,14 @@ static NORETURN void must_not_happen(const char *message, const char *file, int 
 #define q_delay(_Delay) vTaskDelay(_Delay / portTICK_PERIOD_MS);
 #define q_micros()      esp_timer_get_time()
 #define q_millis()      ((unsigned long )(q_micros() / 1000ULL))
+#ifdef __XTENSA__
+#  define q_coreid() xt_utils_get_core_id()
+#elif __riscv
+#  define q_coreid() rv_utils_get_core_id();
+#else
+#  warning "Don't know how to read CPU core id, code review is required"
+#  define q_coreid() 0
+#endif
 
 
 // Scheduler "task-switch" requests
@@ -1826,6 +1834,7 @@ static UNUSED bool mb_initialize(struct mb_pool *pool,
 }
 
 
+
 // MB allocation.
 //
 // Algorithm:
@@ -1842,15 +1851,7 @@ static void *mb_get(struct mb_pool *mb) {
   struct node_link *n;
   uint8_t *ret = NULL;
   size_t old;
-  uint32_t cpu;
-
-#ifdef __XTENSA__
-  cpu = xt_utils_get_core_id();
-#elif __riscv
-  cpu = rv_utils_get_core_id();
-#else
-#  error "Don't know how to read CPU core id :("
-#endif
+  uint32_t cpu = q_coreid();
 
   // Fast path: try to take a block from the local list
   portENTER_CRITICAL(&mb->lock[cpu]);
@@ -1914,7 +1915,7 @@ static void mb_put(struct mb_pool *mb, void *p) {
   uint8_t cpu;
 
   if (unlikely(p == NULL))
-    return;
+    return; 
 
   cpu = c[mb->size];
 

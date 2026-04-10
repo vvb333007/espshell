@@ -31,6 +31,10 @@
 #  define SOC_PERIPHERAL_HIGH 0x600fdfffUL
 #endif
 
+// Final check
+#if !defined(SOC_PERIPHERAL_LOW) || !defined(SOC_PERIPHERAL_HIGH)
+#  error "SOC_PERIPHERAL_LOW and/or SOC_PERIPHERAL_HIGH are not defined, code review is required"
+#endif
 
 
 // Gets called by ESP-IDF if memory allocation fails. Registered as a callback
@@ -43,7 +47,7 @@ static void out_of_memory_event(size_t size, uint32_t caps,const char * function
 
   // in OOM event we can not call q_printf as it can try to malloc() its output buffer.
   // Instead we call ROM function
-  q_rom_printf("\r\n%% <w> Boom! Out of memory in \"%s\" (asked %u bytes, caps: %x)</>\r\n"
+  q_rom_printf("\r\n%% <w>💀 Boom! Out of memory in \"%s\" (asked %u bytes, caps: %x)</>\r\n"
            "%% Sketch is suspended, you can resume it with \"resume\" command\r\n",
            function_name,
            size,
@@ -51,7 +55,7 @@ static void out_of_memory_event(size_t size, uint32_t caps,const char * function
 }
 
 
-// Display memory contens
+// Display memory contens, starting from /address/: Display /count/ elements of /length/ bytes each.
 //
 static int memory_display_content(unsigned char *address,  // starting address
                                   unsigned int count,      // number of elements to display
@@ -125,7 +129,7 @@ static void memory_display_ptr_info(const void *a) {
         if ( (uintptr_t)a >= SOC_PERIPHERAL_LOW && (uintptr_t)a <= SOC_PERIPHERAL_HIGH)
           q_print("%% The address belongs to a <i>peripheral</>\r\n");
         else
-          q_print("%% Unknown region\r\n");
+          q_print("%% Flash / PSRAM cache ?\r\n");
       }
     }
   } 
@@ -202,6 +206,9 @@ static int cmd_show_memory_address(int argc, char **argv) {
 
   memory_display_ptr_info(address);
 
+  // TODO: check if memory is byte accessible or not and perform malloc()/read, copy data there and then
+  // TODO: display memory content
+  //
   return memory_display_content(address,count,length,isu,is_float,is_blob || is_str, is_hex);
 }
 

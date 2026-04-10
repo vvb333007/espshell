@@ -81,7 +81,7 @@
 #define PROMPT_UART "esp32-uart%u>"     // UART prompt
 #define PROMPT_SEQ "esp32-seq%u>"       // Sequence (RMT) subtree prompt
 #define PROMPT_FILES "esp32#(%s%s%s)>"  // File manager prompt (format string is /color tag/, /current working directory/, /color tag/)
-#define PROMPT_SEARCH "Search: "        // History search prompt
+#define PROMPT_SEARCH "Search🔎: "        // History search prompt
 #define PROMPT_ESPCAM "esp32-cam>"      // ESPCam settings directory
 #define PROMPT_ALIAS "esp32-alias>"     // Alias editing directory.
 #define PROMPT_WIFISTA "esp32-sta>"     // WiFi STA
@@ -878,7 +878,7 @@ static void espshell_task(const void *arg) {
       //
       if ( shell_prio <= (prio = task_get_priority(taskid_arduino_sketch()))) {
         shell_prio = prio + 1;
-        task_set_priority(shell_task, prio);
+        task_set_priority(shell_task, shell_prio);
         HELP(q_printf("%% Shell task priority has been raised to %u\r\n", shell_prio));
       }
     }
