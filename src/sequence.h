@@ -1007,13 +1007,13 @@ static UNUSED int cmd_seq_decode(int argc, char **argv) {
 
 // capture PIN [SYM_NUM|all] [TIMEOUT_MILLIS]
 //
-// TODO: this code does not work. Waiting for Arduino Core to fix RMT issues
+#define TIMO_QUANTUM 10
 
 static int cmd_seq_capture(int argc, char **argv) {
 
   uint8_t pin;
   rmt_data_t *rbuf;         // rx buffer 
-  size_t rbuf_size = 64;  // rx buffer length (symbols count)
+  size_t rbuf_size = 32;  // rx buffer length (symbols count)
   uint32_t num_syms = 0;    // requested symbols count
   uint32_t timo = 2000;     // rx timeout if >0
   int seq_idx;
@@ -1039,6 +1039,11 @@ static int cmd_seq_capture(int argc, char **argv) {
         timo = 2000;
   }
 
+  if (timo < TIMO_QUANTUM)
+    timo = TIMO_QUANTUM;
+
+  printf("time=%u\r\n",timo);
+
   // Allocate RX buffer
   if (NULL == ( rbuf = (rmt_data_t *)q_malloc(sizeof(rmt_data_t )*rbuf_size, MEM_SEQUENCE))) {
     q_print("% Out of memory\r\n");
@@ -1053,22 +1058,58 @@ static int cmd_seq_capture(int argc, char **argv) {
   if (rmtInit(pin, RMT_RX_MODE, RMT_MEM_NUM_BLOCKS_2, seq_tick2freq(s->tick))) {
     // Apply some settings
 
+    rmtSetRxMaxThreshold(pin, 2000);
+    rmtSetRxMinThreshold(pin, 0);
 
 
-    if (rmtSetCarrier(pin, s->mod_freq ? true : false,
+    if (1/*rmtSetCarrier(pin, s->mod_freq ? true : false,
                            s->mod_high == 1 ? false : true,
                            s->mod_freq,
-                           s->mod_duty)) {
-      // Receive data (blocking call)                            
-      if (rmtRead(pin, rbuf, &rbuf_size, timo == 0 ? RMT_WAIT_FOR_EVER : timo)) {
-        q_printf("%% RMT : %u symbols has been received\r\n", rbuf_size);
+                           s->mod_duty)*/) {
 
-        seq_freemem(seq_idx);
-        s->seq = rbuf;
-        s->seq_len = rbuf_size;
-        return 0;
-      } else
-      q_print("% RMT failed to rmtRead\r\n");
+      // Start async read
+      HELP(q_printf("%% Capturing on GPIO#%u => sequence#%u (max %u samples/symbols)...\r\n", pin, seq_idx, rbuf_size));
+      rmtReadAsync(pin, rbuf, &rbuf_size);
+
+      // Wait for data.
+      bool fg = is_foreground_task(), done;
+
+      while ((timo > 0) && (done = rmtReceiveCompleted(pin)) == false) {
+        // delay is too short: delay_interruptible() will not check anykey_pressed() for foreground tasks :(
+        // For background tasks it will catch "kill" events
+        //
+        if (fg)
+          if (anykey_pressed()) {
+interrupted:
+            // TODO: we can't call rmt_disable() here as we have no access to the handle
+            //       if we just free() our rbuf then async read may write to freed memory
+            //       so the only option is to reinitialize pin, which should disable reception so we can
+            //       safely free() out rbuf            
+            VERBOSE(q_print("% Stop receiver...\r\n"));
+            pinMode(pin, INPUT);
+
+            q_printf("%% Capture was unsuccessfull (%s)\r\n", timo < TIMO_QUANTUM ? "timeout" : "user interrupt");
+            q_free(rbuf);
+
+            return CMD_FAILED;
+          }
+        if (delay_interruptible(TIMO_QUANTUM) != TIMO_QUANTUM)
+          goto interrupted;
+
+        timo -= TIMO_QUANTUM;
+      }
+
+      if (!done)
+        goto interrupted;
+
+      q_printf("%% Captured: %u symbols, saved in sequence#%u\r\n", rbuf_size,seq_idx);
+
+      seq_freemem(seq_idx);
+      s->seq = rbuf;
+      s->seq_len = rbuf_size;
+
+      return 0;
+
     } else
       q_print("% RMT failed to set carrier (bad frequency / duty range?)\r\n");
   } else

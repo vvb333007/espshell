@@ -55,7 +55,7 @@ static void out_of_memory_event(size_t size, uint32_t caps,const char * function
 }
 
 // Size in KiB of max allowed memory dump length, convar
-static uint8_t s_dump_lim = 4;
+static int8_t s_dump_lim = 4;
 
 // Display memory contens, starting from /address/: Display /count/ elements of /length/ bytes each.
 // We limit the size of any memory dump to 4kB. Higher values are questionable and may create instability
@@ -74,7 +74,7 @@ static int memory_display_content(unsigned char *address,  // starting address
 q_printf("%%\r\n"
          "%% You requested to display > %u KiB of binary data. That is too much for a\r\n"
          "%% single screen. If this is exactly what you intended and not just a typo, use\r\n"
-         "%% command <i>var s_memdump_lim %u</> to increase the limit and try again\r\n",
+         "%% command <i>var s_dump_lim %u</> to increase the limit and try again\r\n",
          s_dump_lim,
          (count * length + 1024) >> 10);             
 

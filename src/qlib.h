@@ -1601,7 +1601,7 @@ static unsigned int delay_interruptible(unsigned int duration) {
   if (!is_foreground_task()) {
     uint32_t note;
     if (task_wait_for_signal(&note, duration) == true) {
-      now = q_millis() - now; // Interrupted
+      now = q_millis() - now; // Interrupted. TODO: FIXME: if now == duration by chance? must be fixed!!
       return now ? now : (unsigned int)(-1);
     }
     return duration;           // Success! (Important: return exactly what was passed as an argument, not real time!)
