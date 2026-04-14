@@ -383,7 +383,8 @@ static int cmd_show_iomux(UNUSED int argc, UNUSED char **argv) {
     
     if (pin_exist_silent(pin)) {
 
-      char color = 'n', *mark = " ";
+      char color = 'n';
+      const char *mark = " ";
 
       if (pin_is_input_only_pin(pin)) {
         color = 'g';

@@ -452,6 +452,7 @@ static int convar_show_var(char *name) {
         q_printf("%% Array <i>%s[%u]</> at address <g>%s</>, %u byte%s per element\r\n", var->name, var->counta, out, PPA(var->sizea));
       else {
         if (var->sizea < 1) {
+          // TODO: what is this???
           q_print("%% void *<i>%s</> = <g>%s</>;\r\n");
           return 0;
         } else

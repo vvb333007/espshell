@@ -489,7 +489,7 @@ static int cmd_show_cpuid(int argc, char **argv) {
            XTALFreq,
            APBFreq,
            temp,
-           temp * 9 / 5 + 32);
+           temp * 9.0f / 5.0f + 32.0f);
 
   if (!apb_freq_is_optimal()) {
     q_printf("%% <i>APB frequency is not optimal</i>");
@@ -505,7 +505,7 @@ static int cmd_show_cpuid(int argc, char **argv) {
   if (chip_info.features & CHIP_FEATURE_WIFI_BGN)
     q_print("📡 WiFi 2.4GHz, ");
   if (chip_info.features & CHIP_FEATURE_BLE)
-    q_print("🔵BT Low Energy, ");
+    q_print("🔹BT Low Energy, ");
   if (chip_info.features & CHIP_FEATURE_BT)
     q_print("🔵BT Classic, ");
   if (chip_info.features & CHIP_FEATURE_IEEE802154)

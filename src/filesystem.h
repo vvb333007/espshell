@@ -2066,11 +2066,12 @@ static int cmd_files_ls(int argc, char **argv) {
     for (int i = 0; i < MOUNTPOINTS_NUM; i++)
       if (mountpoints[i].mp) {
         if (!found) {
+          q_print("% Root directory (Special Read-Only directory) listing:\r\n");
           q_print("%-- Used space, Kbytes --        *  Mounted on\r\n");
           found = true;
         }
         
-        q_printf("%%         <b>%9u K</>               MP  [<i>%s</>]\r\n",
+        q_printf("%%         <b>%9u K</>            🏁  [<i>%s</>]\r\n",
                   (unsigned int)(files_space_used(i) / 1024),
                   mountpoints[i].mp);
         
@@ -2127,7 +2128,7 @@ static int cmd_files_ls(int argc, char **argv) {
             total_f++;
             total_fsize += st.st_size;
 
-            q_printf("%% %9u  %s     <g>%s</>\r\n", (unsigned int)st.st_size, buf, ent->d_name);
+            q_printf("%% %9u  %s   📝 <g>%s</>\r\n", (unsigned int)st.st_size, buf, ent->d_name);
 
           }
         } else

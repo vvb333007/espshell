@@ -25,7 +25,7 @@
 #  define SOC_PERIPHERAL_HIGH 0x3ff7ffffUL
 #elif CONFIG_IDF_TARGET_ESP32S2
 #  define SOC_PERIPHERAL_LOW  0x3ff80000UL
-#  define SOC_PERIPHERAL_HIGH 0x3ff80000UL
+#  define SOC_PERIPHERAL_HIGH 0x3ff8ffffUL
 #elif CONFIG_IDF_TARGET_ESP32S3
 #  define SOC_PERIPHERAL_LOW  0x60000000UL
 #  define SOC_PERIPHERAL_HIGH 0x600fdfffUL
@@ -54,8 +54,12 @@ static void out_of_memory_event(size_t size, uint32_t caps,const char * function
            (unsigned int)caps);
 }
 
+// Size in KiB of max allowed memory dump length, convar
+static uint8_t s_dump_lim = 4;
 
 // Display memory contens, starting from /address/: Display /count/ elements of /length/ bytes each.
+// We limit the size of any memory dump to 4kB. Higher values are questionable and may create instability
+// because of lengthy printfs
 //
 static int memory_display_content(unsigned char *address,  // starting address
                                   unsigned int count,      // number of elements to display
@@ -65,19 +69,42 @@ static int memory_display_content(unsigned char *address,  // starting address
                                   bool isp,                // display as %p?
                                   bool force_hex) {              // force display as %x
 
+  if (count * length > s_dump_lim * 1024) {
+
+q_printf("%%\r\n"
+         "%% You requested to display > %u KiB of binary data. That is too much for a\r\n"
+         "%% single screen. If this is exactly what you intended and not just a typo, use\r\n"
+         "%% command <i>var s_memdump_lim %u</> to increase the limit and try again\r\n",
+         s_dump_lim,
+         (count * length + 1024) >> 10);             
+
+    return CMD_FAILED;
+  }
+
   // Some memory regions on ESP32-family chips are not byte-accessible: instead these regions can only be read
   // in chunks of 4 bytes; Check if requested memory region is byte-accessible and warn the user
   // if memory can not be read. These memory regions can be read as signed/unsigned int, void * and float
-  // because all these types are 4 bytes long
+  // because all these types are 4 bytes long. If region is not byte-accesible, then address MUST be
+  // aligned to 32 bit boundary or we segfault
   //
-  if (length != sizeof(unsigned int))
-    if (!esp_ptr_byte_accessible(address) || !esp_ptr_byte_accessible(address + length * count)) {
-      //TODO: make safe function (buffered read) to read byte-by-byte . For now just warn the user
+  if (!esp_ptr_byte_accessible(address) || !esp_ptr_byte_accessible(address + length * count)) {
+    
+    if (length != sizeof(uint32_t)) {
       q_printf("%% A memory region within [0x%p..0x%p] is not byte-accessible\r\n"
-               "%% Try \"<i>show memory 0x%p %u *</>\" instead, to see a hexdump\r\n", address, address+length*count,address, count / 4 + 1);
+               "%% Try \"<i>show memory 0x%p %u *</>\" instead to see 4 bytes\r\n",
+               address,
+               address+length*count,
+               address,
+               count / 4 + 1);
       return CMD_FAILED;
     }
-  
+
+    if ((uintptr_t)address & 3) {
+      q_printf("%% <e>The memory region requires 32-bit aligned access</>\r\n"
+               "%% <e>Try address 0x%x instead of %p</>\r\n", (uintptr_t)address & ~3, address);
+      return CMD_FAILED;
+    }
+  }
 
   // dont print this header when using short form of q  _printhex.
   if (length >= tbl_min_len)
@@ -97,47 +124,56 @@ static int memory_display_content(unsigned char *address,  // starting address
 //
 static void memory_display_ptr_info(const void *a) {
 
-  if (esp_ptr_external_ram(a))
-    q_printf("%% Address is in external SPI RAM, %sDMA-capable\r\n", esp_ptr_dma_ext_capable(a) ? "" : "NOT ");
-  else {
-    const char *where =
-         esp_ptr_in_drom(a) ? "DROM"  : 
-        (esp_ptr_in_rom(a)  ? "ROM"   : 
-        (esp_ptr_in_iram(a) ? "I-RAM" :
-        (esp_ptr_in_dram(a) ? "D-RAM" : NULL)));
+  const char *where = "Cache / Unknown";
+  void *diram_alias = NULL;
+  bool dma_capable = false, byte_accessible = false;
 
-    if (where) {
-      q_printf("%% The address is in SoC internal %s", where);
 
-      where = esp_ptr_in_diram_dram(a) ? "DIRAM D" : 
-             (esp_ptr_in_diram_iram(a) ? "DIRAM I" : NULL);
+  // Quick sanity check. Catch misstyped addresses (extra or absent bytes)
+  //
+  if (!is_valid_address(a,1)) {
+    q_print("%<e> Address is not in memory, check the address</>\r\n"
+            "% You can view valid address range with \"<i>show memory map</>\"\r\n");
+    return ;
+  }
 
-      if (where)
-        q_printf(" (region: %s)", where);
+  // Collect memory caps
+  byte_accessible = esp_ptr_byte_accessible(a);
 
-      q_printf(", %sDMA-capable\r\n", esp_ptr_dma_capable(a) ? "" : "NOT ");      
+  if (esp_ptr_external_ram(a)) {
+    where = "external SPI RAM";
+    dma_capable = esp_ptr_dma_ext_capable(a);
+  } else {
+    dma_capable = esp_ptr_dma_capable(a);
+    if (esp_ptr_in_drom(a)) where =  "SoC internal D-ROM"; else
+    if (esp_ptr_in_rom(a)) where =  "SoC internal I-ROM"; else
+    if (esp_ptr_in_dram(a)) where =  "SoC internal D-RAM"; else
+    if (esp_ptr_in_iram(a)) where =  "SoC internal I-RAM"; else
+    if (esp_ptr_in_diram_dram(a)) where = "SoC internal DIRAM,D"; else
+    if (esp_ptr_in_diram_iram(a)) { where = "SoC internal DIRAM,I"; diram_alias = esp_ptr_diram_iram_to_dram(a); } else
+    if (esp_ptr_in_rtc_iram_fast(a)) where = "SoC internal RTC IRAM (fast)";  else
+    if (esp_ptr_in_rtc_dram_fast(a)) { where = "SoC internal RTC DRAM (fast)"; diram_alias = esp_ptr_rtc_dram_to_iram(a); } else
+    if (esp_ptr_in_rtc_slow(a)) where = "SoC internal RTC SLOW MEM"; else
+    if ( (uintptr_t)a >= SOC_PERIPHERAL_LOW && (uintptr_t)a <= SOC_PERIPHERAL_HIGH) where = "peripheral";
+    
+    // Display where in internal memory pointer /a/ points
+    q_printf("%% The address <i>%p</> belongs to the <i>%s</>\r\n"
+             "%% Memory is %sDMA-capable, allows %s\r\n",
+             a,
+             where,
+             dma_capable ? "" : "NOT ",
+             byte_accessible ? "unaligned/byte access" : "<i>aligned, 32-bit access only</>");
 
-    } else {
 
-      where = esp_ptr_in_rtc_iram_fast(a) ? "RTC IRAM (fast)" :
-             (esp_ptr_in_rtc_dram_fast(a) ? "RTC DRAM (fast)" :
-             (esp_ptr_in_rtc_slow(a) ? "RTC SLOW" : NULL));
-
-      if (where)
-        q_printf("%% The address is in <i>RTC peri</>: %s\r\n", where);
-      else {
-        if ( (uintptr_t)a >= SOC_PERIPHERAL_LOW && (uintptr_t)a <= SOC_PERIPHERAL_HIGH)
-          q_print("%% The address belongs to a <i>peripheral</>\r\n");
-        else
-          q_print("%% Flash / PSRAM cache ?\r\n");
-      }
-    }
-  } 
+    if (diram_alias)
+      q_printf("%% Dual bus access: accessible via <i>%p</>", diram_alias);
+  }
 }
+
 
 // Implementation of "show memory address ARG1 ARG2 ... ARGn"
 // This one is called from cmd_show()
-
+//
 static int cmd_show_memory_address(int argc, char **argv) {
 
   unsigned char *address;
@@ -200,7 +236,7 @@ static int cmd_show_memory_address(int argc, char **argv) {
     isu = true;
 
   if (!is_valid_address(address, count * length)) {
-    HELP(q_print("% Bad address range. Must be  a hex number (e.g. 0x3fff0000)\r\n"));
+    HELP(q_print("% Bad address . Use \"show memory map\" to see valid address ranges\r\n"));
     return 2; //argv[2] is bad
   }
 
@@ -283,7 +319,7 @@ static int cmd_show_memory(int argc, char **argv) {
     if (argc < 3) { // "show memory"
       unsigned int total;
 
-      q_printf("%% <r>-- Memory caps --                                  </>\r\n"
+      q_printf("%% <r>-- Memory caps --                                       </>\r\n"
                "%%\r\n"
                "%% Note1: DRAM and IRAM are %ssharing the same memory space.\r\n"
                "%% Note2: RTC_DRAM and RTC_IRAM are %ssharing the same memory space\r\n",
@@ -311,7 +347,7 @@ static int cmd_show_memory(int argc, char **argv) {
                 "% to change build target in Arduino IDE (<i>Tools->Board</>) or enable\r\n"
                 "% PSRAM (<i>Tools->PSRAM:->Enabled</>)\r\n");
 
-      q_print("%\r\n%<r> -- Low watermarks / Heap integrity --</>\r\n%\r\n");
+      q_print("%\r\n%<r> -- Low watermarks / Heap integrity --                  </>\r\n%\r\n");
 
       q_printf("%% Internal SRAM  : dropped as low as <i>%u</> bytes, heap integrity check: %s</>\r\n"
                "%% External SPIRAM: dropped as low as <i>%u</> bytes, heap integrity check: %s</>\r\n",

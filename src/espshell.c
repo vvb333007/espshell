@@ -80,13 +80,13 @@
 #define PROMPT_SPI "esp32-spi%u>"       // SPI prompt
 #define PROMPT_UART "esp32-uart%u>"     // UART prompt
 #define PROMPT_SEQ "esp32-seq%u>"       // Sequence (RMT) subtree prompt
-#define PROMPT_FILES "esp32#(%s%s%s)>"  // File manager prompt (format string is /color tag/, /current working directory/, /color tag/)
+#define PROMPT_FILES "esp32#(%s📁 %s%s)>"  // File manager prompt (format string is /color tag/, /current working directory/, /color tag/)
 #define PROMPT_SEARCH "Search🔎: "        // History search prompt
 #define PROMPT_ESPCAM "esp32-cam>"      // ESPCam settings directory
 #define PROMPT_ALIAS "esp32-alias>"     // Alias editing directory.
 #define PROMPT_WIFISTA "esp32-sta>"     // WiFi STA
 #define PROMPT_WIFIAP "esp32-ap>"       // WiFi SoftAP
-#define PROMPT_NVS "esp32-nvs(/%s)>"     // NVS editor/viewer
+#define PROMPT_NVS "esp32-nvs(📁 /%s)>"     // NVS editor/viewer
 
 // Includes. Lots of them.
 // classic C
@@ -807,6 +807,8 @@ static  void espshell_initonce() {
     convar_add(cam_ledc_chan);  // Avoiding interference: LEDC channels used by ESPCAM for generating XCLK
     convar_add(cam_ledc_timer);    // Avoiding interference: ESP32 TIMER used by ESPCAM
 #endif
+    convar_add(s_dump_lim);    // Maximum allowed "show memory ADDRESS" size in KiB
+
 
     // Register OOM callback
     heap_caps_register_failed_alloc_callback(out_of_memory_event); // declared in memory.h
@@ -855,6 +857,7 @@ static void espshell_task(const void *arg) {
     //
     while (!console_isup())
       q_delay(CONSOLE_UP_POLL_DELAY);
+    
 
 #if DISABLE_TWDT
     // Disable TaskWatchdog

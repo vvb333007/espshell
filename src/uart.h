@@ -39,6 +39,7 @@ uart_tap(int remote) {
     while (1) {
       int av;
       // fails when interface is down. must not happen.
+      //TODO: XXXXX!!!!!
       if ((av = console_available()) <= 0)
         break;
       // must not happen unless UART FIFO sizes were changed in ESP-IDF
