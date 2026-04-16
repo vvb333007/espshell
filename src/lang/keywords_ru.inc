@@ -329,6 +329,23 @@ KEYWORDS_DECL(sequence) {
   { "modulation", cmd_seq_modulation, 2, HIDDEN_KEYWORD },
   { "modulation", cmd_seq_modulation, 1, HIDDEN_KEYWORD },
 
+
+{ "filter", cmd_seq_filter, 1,
+    HELPK("% \"<b>filter <i>N</>\"\r\n"
+          "% \"<b>filter disable</>\"\r\n"
+          "%\r\n"
+          "% Игнорировать RX-импульсы (см. команду \"capture\") короче, чем N наносекунд\r\n"
+          "% Чтобы отключить фильтрацию, используйте \"<i>filter disable</i>\""
+          ), HELPK("Фильтр захватываемого сигнала") },
+
+  { "idle-threshold", cmd_seq_idle_threshold, 1,
+    HELPK("% \"<b>idle-threshold <i>TICK</>\"\r\n"
+          "% \"<b>idle-threshold auto</>\"\r\n"
+          "%\r\n"
+          "% Прием окончен, если в течение TICK тиков не происходит изменения сигнала\r\n"
+          "% Если не уверены, установите \"<i>auto</>\" или 32767"
+          ), HELPK("Обнаружение простоя при захвате") },
+
 { "eot", cmd_seq_eot, 1,
   HELPK("% \"<b>eot</> <i>high|low</>\"\r\n"
         "%\r\n"
@@ -2275,10 +2292,3 @@ KEYWORDS_DECL(show) {
 };
 
 KEYWORDS_REG(show);
-
-static const char *Subdir_message = "%% Вход в режим %s. Ctrl+Z или \"exit\", чтобы выйти из режима\r\n"
-                            "%% Основные команды доступны, хоть и не отображаются по \"?\"\r\n";
-
-static const char *Exit_message =   "% Не в каталоге команд; (чтобы закрыть шелл, введите \"exit ex\")\r\n";
-
-

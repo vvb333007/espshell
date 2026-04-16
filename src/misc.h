@@ -255,4 +255,49 @@ static int cmd_hostid(int argc, char **argv) {
   return 0;
 }
 
+//"exit"
+//"exit exit"
+// exits from a command subdirectory or closes the shell ("exit exit")
+//
+static int cmd_exit(int argc, char **argv) {
+  // Change directory to main, restore main prompt
+  // If "exit" was executed from the main tree, then either exit the shell or display a hint
+  if (change_command_directory(0, KEYWORDS(main), PROMPT, NULL) == KEYWORDS(main)) {
+    if (argc > 1 && !q_strcmp(argv[1], "exit"))
+      Exit = true; // Causes REPL to abort
+    else {
+      HELP(q_print( Exit_message ));
+    }
+  }
+  return 0;
+}
+
+#if WITH_DEVEL
+// Developer command "show subdirs"
+// Shows **registered** command directories.
+//
+static int cmd_show_subdirs(int argc, char **argv) {
+
+  int idx = 0, total = 0, hidden = 0;
+
+  // Go through all registered subdirs (see how KEYWORDS_REG() is used)
+  while(Subdirs[idx].key) {
+    int i = 0, ih = 0; // Number of commands/hidden commands
+    while(Subdirs[idx].key[i].cmd) {
+      i++;
+      if (Subdirs[idx].key[i].help == NULL && Subdirs[idx].key[i].brief == NULL)
+        ih++;
+    }
+    q_printf("Dir: \"%s\", %u entries, %u hidden\r\n", Subdirs[idx].name, i, ih);
+    total += i;
+    hidden += ih;
+    idx++;
+  }
+  q_printf("Total: %u entries (%u of them are hidden) in %u subdirs\r\n", total, hidden, idx);
+  return 0;
+}
+
+#endif //WITH_DEVEL
+
+
 #endif // #if COMPILING_ESPSHELL

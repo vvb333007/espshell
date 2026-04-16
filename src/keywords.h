@@ -26,206 +26,218 @@
 //
 // Handlers are associated with commands below, see "-- Shell Commands --" section below
 
+
 // Camera commands
 #if WITH_ESPCAM
-static int cmd_camera_if(int, char **);
-static int cmd_camera_gain(int, char **);
-static int cmd_camera_balance(int, char **);
-static int cmd_camera_exposure(int, char **);
-static int cmd_camera_qbcss(int, char **);
-static int cmd_camera_size(int, char **);
-static int cmd_camera_mode(int, char **);
-static int cmd_camera_capture(int, char **);
-static int cmd_camera_filesize(int, char **);
-static int cmd_camera_save(int, char **);
-static int cmd_camera_down(int, char **);
-static int cmd_camera_up(int, char **);
-static int cmd_camera_pinout(int, char **);
+has_handler( cmd_camera_if );
+has_handler( cmd_camera_gain );
+has_handler( cmd_camera_balance );
+has_handler( cmd_camera_exposure );
+has_handler( cmd_camera_qbcss );
+has_handler( cmd_camera_size );
+has_handler( cmd_camera_mode );
+has_handler( cmd_camera_capture );
+has_handler( cmd_camera_filesize );
+has_handler( cmd_camera_save );
+has_handler( cmd_camera_down );
+has_handler( cmd_camera_up );
+has_handler( cmd_camera_pinout );
 #endif // WITH_ESPCAM
 
 //i2c commands
-static int cmd_i2c_if(int, char **);
-static int cmd_i2c_clock(int, char **);
-static int cmd_i2c_up(int, char **);
-static int cmd_i2c_down(int, char **);
-static int cmd_i2c_read(int, char **);
-static int cmd_i2c_write(int, char **);
-static int cmd_i2c_scan(int, char **);
+has_handler( cmd_i2c_if );
+has_handler( cmd_i2c_clock );
+has_handler( cmd_i2c_up );
+has_handler( cmd_i2c_down );
+has_handler( cmd_i2c_read );
+has_handler( cmd_i2c_write );
+has_handler( cmd_i2c_scan );
 
-#if WITH_SPI
 // spi commands
-static int cmd_spi_if(int, char **);
-static int cmd_spi_clock(int, char **);
-static int cmd_spi_up(int, char **);
-static int cmd_spi_down(int, char **);
-static int cmd_spi_write(int, char **);
+#if WITH_SPI
+has_handler( cmd_spi_if );
+has_handler( cmd_spi_clock );
+has_handler( cmd_spi_up );
+has_handler( cmd_spi_down );
+has_handler( cmd_spi_write );
 #endif //WITH_SPI
 
 // uart commands
-static int cmd_uart_if(int, char **);
-static int cmd_uart_baud(int, char **);
-static int cmd_uart_tap(int, char **);
-static int cmd_uart_up(int, char **);
-static int cmd_uart_down(int, char **);
-static int cmd_uart_read(int, char **);
-static int cmd_uart_write(int, char **);
+has_handler( cmd_uart_if );
+has_handler( cmd_uart_baud );
+has_handler( cmd_uart_tap );
+has_handler( cmd_uart_up );
+has_handler( cmd_uart_down );
+has_handler( cmd_uart_read );
+has_handler( cmd_uart_write );
 
-#if WITH_FS
 // filesystem commands
-static int cmd_files_if(int, char **);
-static int cmd_files_mount0(int, char **);
-static int cmd_files_mount(int, char **);
+#if WITH_FS
+has_handler( cmd_files_if );
+has_handler( cmd_files_mount0 );
+has_handler( cmd_files_mount );
+// FAT on SD support
 #  if WITH_SD
-static int cmd_files_mount_sd(int, char **);
+has_handler( cmd_files_mount_sd );
 #  endif
-static int cmd_files_unmount(int, char **);
-static int cmd_files_cd(int, char **);
-static int cmd_files_ls(int, char **);
-static int cmd_files_rm(int, char **);
-static int cmd_files_mv(int, char **);
-static int cmd_files_cp(int, char **);
-static int cmd_files_write(int, char **);
-static int cmd_files_insdel(int, char **);
-static int cmd_files_mkdir(int, char **);
-static int cmd_files_cat(int, char **);
-static int cmd_files_touch(int, char **);
-static int cmd_files_format(int, char **);
+has_handler( cmd_files_unmount );
+has_handler( cmd_files_cd );
+has_handler( cmd_files_ls );
+has_handler( cmd_files_rm );
+has_handler( cmd_files_mv );
+has_handler( cmd_files_cp );
+has_handler( cmd_files_write );
+has_handler( cmd_files_insdel );
+has_handler( cmd_files_mkdir );
+has_handler( cmd_files_cat );
+has_handler( cmd_files_touch );
+has_handler( cmd_files_format );
 #endif  //WITH_FS
 
 // automation
-static int cmd_echo(int, char **);
+has_handler( cmd_echo );
 
 // system
-static int cmd_suspend(int, char **);
-static int cmd_priority(int, char **);
-static int cmd_resume(int, char **);
-static int cmd_kill(int, char **argv);
-static int cmd_cpu(int, char **);
-static int cmd_uptime(int, char **);
-static int NORETURN cmd_reload(int, char **);
-static int cmd_nap(int, char **);
-static int cmd_nap_alarm(int, char **);
+has_handler( cmd_suspend );
+has_handler( cmd_priority );
+has_handler( cmd_resume );
+has_handler( cmd_kill );
+has_handler( cmd_cpu );
+has_handler( cmd_uptime );
+has_handler( NORETURN cmd_reload );
+has_handler( cmd_nap );
+has_handler( cmd_nap_alarm );
 
-// pin-realated commands: pwm, pulse counter and pin
-static int cmd_pwm(int, char **);
-static int cmd_count(int, char **);
-static int cmd_pin(int, char **);
+// GPIO commands: pwm, pulse counter and pin
+has_handler( cmd_pwm );
+has_handler( cmd_count );
+has_handler( cmd_pin );
 
 // RMT sequences
-static int cmd_seq_if(int, char **);
-static int cmd_seq_eot(int argc, char **argv);
-static int cmd_seq_modulation(int argc, char **argv);
-static int cmd_seq_zeroone(int argc, char **argv);
-static int cmd_seq_tick(int argc, char **argv);
-static int cmd_seq_bits(int argc, char **argv);
-static int cmd_seq_levels(int argc, char **argv);
-static int cmd_seq_bytes(int argc, char **argv);
-static int cmd_seq_loop(int argc, char **argv);
-static int cmd_seq_save(int argc, char **argv);
-static int cmd_seq_decode(int argc, char **argv);
-static int cmd_seq_capture(int argc, char **argv);
-static int cmd_seq_profile(int argc, char **argv);
+has_handler( cmd_seq_if );
+has_handler( cmd_seq_filter );
+has_handler( cmd_seq_idle_threshold );
+has_handler( cmd_seq_idle_threshold );
+has_handler( cmd_seq_eot );
+has_handler( cmd_seq_modulation );
+has_handler( cmd_seq_zeroone );
+has_handler( cmd_seq_tick );
+has_handler( cmd_seq_bits );
+has_handler( cmd_seq_levels );
+has_handler( cmd_seq_bytes );
+has_handler( cmd_seq_loop );
+has_handler( cmd_seq_save );
+has_handler( cmd_seq_decode );
+has_handler( cmd_seq_capture );
+has_handler( cmd_seq_profile );
 
 // sketch variables
-static int cmd_var(int, char **);
-static int cmd_var_show(int, char **);
+has_handler( cmd_var );
+has_handler( cmd_var_show );
 
 // alias/file execution
-static int cmd_exec(int, char **);
-// if/every
+has_handler( cmd_exec );
+
+// if/every/alias commands
 #if WITH_ALIAS
-static int cmd_if(int, char **);
+has_handler( cmd_if );
 #endif
 
 // The following group of show handlers are used in a dedicated command directory "show".
 // It is a hidden directory: we reference it by argv[1] of the show command
 //
 // Master "show" handler. All "show" variants are handled here
-static int cmd_show(int, char **);
+has_handler( cmd_show );
 
 // All other "show" handlers
 #if WITH_WIFI
-static int cmd_show_wifi(int, char **);
+has_handler( cmd_show_wifi );
 #endif
-static int cmd_show_nap(int, char **);
-static int cmd_show_time(int, char **);
-static int cmd_show_iomux(int, char **);
-static int cmd_show_version(int, char **);
-static int cmd_show_uart(int, char **);
-static int cmd_show_tasks(int, char **);
-static int cmd_show_cpuid(int, char **);
-static int cmd_show_pwm(int, char **);
-static int cmd_show_pin(int, char **);
-static int cmd_show_counters(int, char **);
-static int cmd_show_sequence(int, char **);
+has_handler( cmd_show_nap );
+has_handler( cmd_show_time );
+has_handler( cmd_show_iomux );
+has_handler( cmd_show_version );
+has_handler( cmd_show_uart );
+has_handler( cmd_show_tasks );
+has_handler( cmd_show_cpuid );
+has_handler( cmd_show_pwm );
+has_handler( cmd_show_pin );
+has_handler( cmd_show_counters );
+has_handler( cmd_show_sequence );
+has_handler( cmd_show_memory );
+
 #if WITH_FS
-static UNUSED int cmd_show_mount(int, char **);
-#endif
-static int cmd_show_memory(int, char **);
-#if WITH_CAMERA
-static UNUSED int cmd_show_camera(int, char **);
-#endif
-#if WITH_ALIAS
-static UNUSED int cmd_show_alias(int, char **);
-static UNUSED int cmd_show_ifs(int, char **);
-#endif
-#if WITH_DEVEL
-static UNUSED int cmd_show_subdirs(int, char **);
+has_handler(UNUSED cmd_show_mount );
 #endif
 
-// common entries
-static int cmd_exit(int, char **);
+#if WITH_CAMERA
+has_handler(UNUSED cmd_show_camera );
+#endif
+
+#if WITH_ALIAS
+has_handler(UNUSED cmd_show_alias );
+has_handler(UNUSED cmd_show_ifs );
+#endif
+
+#if WITH_DEVEL
+has_handler(UNUSED cmd_show_subdirs );
+#endif
+
+// common entries: "?" and "Exit"
+has_handler( cmd_exit );
 #if WITH_HELP
-static int cmd_question(int, char **);
+has_handler( cmd_question );
 #endif
 
 // hidden commands, misc.c
-static int cmd_history(int, char **);
+has_handler( cmd_history );
 #if WITH_COLOR
-static int cmd_colors(int, char **);
+has_handler( cmd_colors );
 #endif
-static int cmd_tty(int, char **);
-static int cmd_hostid(int, char **);
+has_handler( cmd_tty );
+has_handler( cmd_hostid );
 
 // Alias commands
 #if WITH_ALIAS
-static int cmd_alias_if(int, char **);
-static int cmd_alias_quit(int, char **);
-static int cmd_alias_list(int, char **);
-static int cmd_alias_delete(int, char **);
-static int cmd_alias_asterisk(int, char **);
+has_handler( cmd_alias_if );
+has_handler( cmd_alias_quit );
+has_handler( cmd_alias_list );
+has_handler( cmd_alias_delete );
+has_handler( cmd_alias_asterisk );
 #endif
 
+// Command "time" and NTP support
 #if WITH_TIME
-static int cmd_time(int, char **);
+has_handler( cmd_time );
 #endif
 
+// WIFI AP & STA interfaces
 #if WITH_WIFI
-static int cmd_wifi_storage(int , char **);
-static int cmd_wifi_if(int, char **);
-static int cmd_wifi_up(int, char **);
-static int cmd_wifi_down(int, char **);
-static int cmd_wifi_scan(int, char **);
-static int cmd_wifi_mac(int, char **);
-static int cmd_wifi_hostname(int, char **);
-static int cmd_wifi_ip_address(int, char **);
-static int cmd_wifi_natp(int, char **);
-static int cmd_wifi_ntp(int, char **);
-static int cmd_wifi_dhcp(int, char **);
-static int cmd_wifi_kick(int, char **);
+has_handler( cmd_wifi_storage );
+has_handler( cmd_wifi_if );
+has_handler( cmd_wifi_up );
+has_handler( cmd_wifi_down );
+has_handler( cmd_wifi_scan );
+has_handler( cmd_wifi_mac );
+has_handler( cmd_wifi_hostname );
+has_handler( cmd_wifi_ip_address );
+has_handler( cmd_wifi_natp );
+has_handler( cmd_wifi_ntp );
+has_handler( cmd_wifi_dhcp );
+has_handler( cmd_wifi_kick );
 #endif
 
 // NVS editor/viewer
 #if WITH_NVS
-static int cmd_nvs_if(int, char **);
-static int cmd_nvs_cd(int, char **);
-static int cmd_nvs_ls(int, char **);
-static int cmd_nvs_rm(int, char **);
-static int cmd_nvs_set(int, char **);
-static int cmd_nvs_new(int, char **);
-static int cmd_nvs_dump(int, char **);
+has_handler( cmd_nvs_if );
+has_handler( cmd_nvs_cd );
+has_handler( cmd_nvs_ls );
+has_handler( cmd_nvs_rm );
+has_handler( cmd_nvs_set );
+has_handler( cmd_nvs_new );
+has_handler( cmd_nvs_dump );
 #  if WITH_FS
-static int cmd_nvs_export(int, char **);
+has_handler( cmd_nvs_export );
 #  endif
 #endif
 
@@ -234,7 +246,7 @@ static int cmd_nvs_export(int, char **);
 //
 // Implements command "misc ARG1 ARG2 ... ARGn"
 //
-static int  cmd_misc(int argc, char **argv);
+has_handler( cmd_misc );
 
 // Use localized version?
 #ifdef WITH_LANG
@@ -544,9 +556,15 @@ KEYWORDS_DECL(sequence) {
   { "one", cmd_seq_zeroone, 1, HIDDEN_KEYWORD },  //1 arg command
 
   { "head", cmd_seq_zeroone, 2,
-    HELPK("% \"<b>head L/D L/D</>\"\r\n"
+    HELPK("% \"<b>head LEVEL/DURATION LEVEL/DURATION</>\"\r\n"
           "%\r\n"
-          "% Symbol, transmitted before the main data stream"), HELPK("Sequence header") },
+          "% Symbol, transmitted before the main data stream\r\n"
+          "% <i>LEVEL</> is either 1 or 0 and \r\n"
+          "% <i>DURATION</> is the duration measured in ticks [0..32767] (see \"tick\" command) \r\n"
+          "%\r\n"
+          "% <u>Example:</>\r\n"
+          "%   <i>head 1/50 0/50</> - HIGH for 50 ticks, then LOW 50 ticks\r\n"
+          ), HELPK("Sequence header") },
 
   { "tail", cmd_seq_zeroone, 1,
     HELPK("% \"<b>tail L/D</>\"\r\n"
@@ -609,6 +627,22 @@ KEYWORDS_DECL(sequence) {
   
   { "modulation", cmd_seq_modulation, 2, HIDDEN_KEYWORD },
   { "modulation", cmd_seq_modulation, 1, HIDDEN_KEYWORD },
+
+  { "filter", cmd_seq_filter, 1,
+    HELPK("% \"<b>filter NANOSECONDS</>\"\r\n"
+          "% \"<b>filter disable</>\"\r\n"
+          "%\r\n"
+          "% Ignore RX pulses (see command \"capture\") shorter than NANOSECONDS\r\n"
+          "% To disable filtering use \"<i>filter disable</i>\""
+          ), HELPK("Capture signal filter") },
+
+  { "idle-threshold", cmd_seq_idle_threshold, 1,
+    HELPK("% \"<b>idle-threshold NUMBER_OF_TICKS</>\"\r\n"
+          "% \"<b>idle-threshold auto</>\"\r\n"
+          "% \r\n"
+          "% RX is considered IDLE if no signal change occurs within %u ticks: <i>%s</>\r\n"
+          "% If not sure, set to \"<i>auto</>\" or to 32767"
+          ), HELPK("Capture idle detect") },
 
   { "eot", cmd_seq_eot, 1,
     HELPK("% \"<b>eot</> <i>high|low</>\"\r\n"
@@ -2478,130 +2512,7 @@ KEYWORDS_DECL(show) {
 };
 
 KEYWORDS_REG(show);
-
-
-
-
-
-
-
-// Displayed when user tries to "exit" from the main commands directory.
-// Language-specific versions are in lang/keywords_ru.h
-const char *Exit_message   = "% Not in a subdirectory; (to close the shell type \"exit ex\")\r\n";
-
-// Displayed when user enters some command subdirectory
-const char *Subdir_message = "%% Entering %s mode. Ctrl+Z or \"exit\" to return\r\n"
-                             "%% Main commands are still available (but not visible in \"?\" command list)\r\n";
 #endif // #if !defined WITH_LANG
-
-
-// Current keywords list in use, 
-// It is an thread-specific variable (every task has its own copy of this variable)
-// Background commands obtain a copy of this variable and initialize their own (see struct helper_arg and its use)
-//
-static _Thread_local const struct keywords_t *keywords = KEYWORDS(main);
-
-
-////////////////////////////// functions and command handlers ///////////////////////
-
-// Register a command tree. This one called by a C startup code as part of KEYWORDS_REG() macro
-// well before app_main(), setup() or loop()
-//
-static void keywords_register(const struct keywords_t *key, const char *name, int const count) {
-  static unsigned char idx = 0;
-  MUST_NOT_HAPPEN(idx >= MAX_CMD_SUBDIRS);
-  Subdirs[idx].key = key;
-  Subdirs[idx].name = name;
-  Subdirs[idx].count = count;
-  idx++;
-}
-
-// Check, if given name can be a command directory
-//
-static bool is_command_directory(const char *p) {
-  if (p && *p) {
-    int idx = 0;
-
-    while(Subdirs[idx].name) {
-      if (!q_strcmp(p, Subdirs[idx].name))
-        return true;
-      idx++;
-    }
-  }
-  return false;
-}
-
-
-// Called from cmd_uart_if(), cmd_i2c_if(),cmd_seq_if() and others to set a new command list (command directory); 
-// Displays user supplied text,  returns a pointer to the keywords tree used before
-//
-static const struct keywords_t *change_command_directory(
-                                    uintptr_t context,            // An arbitrary number which will be stored until next directory change
-                                    const struct keywords_t *dir, // New command list 
-                                    const char *prom,             // New prompt
-                                    const char *text) {           // User-defined text which will be displayed after entering new directory
-  static uint8_t count = 0;                                    
-  const struct keywords_t *old_dir;
-
-  // Save user-supplied Context into thread-local variable
-  context_set(context);
-  old_dir = keywords_get();
-  // Set a new pointer to currently used keywords array; set the prompt
-  keywords_set_ptr(dir);
-  prompt_set(prom);
-
-  if (text && count < 3) {
-    count++;
-    HELP(q_printf(Subdir_message, text));
-  }
-
-  return old_dir;
-}
-
-//"exit"
-//"exit exit"
-// exits from a command subdirectory or closes the shell ("exit exit")
-//
-static int cmd_exit(int argc, char **argv) {
-  // Change directory to main, restore main prompt
-  // If "exit" was executed from the main tree, then either exit the shell or display a hint
-  if (change_command_directory(0, KEYWORDS(main), PROMPT, NULL) == KEYWORDS(main)) {
-    if (argc > 1 && !q_strcmp(argv[1], "exit"))
-      Exit = true; // Causes REPL to abort
-    else {
-      HELP(q_print( Exit_message ));
-    }
-  }
-  return 0;
-}
-
-#if WITH_DEVEL
-// Developer command "show subdirs"
-// Shows **registered** command directories.
-//
-static int cmd_show_subdirs(int argc, char **argv) {
-
-  int idx = 0, total = 0, hidden = 0;
-
-  // Go through all registered subdirs (see how KEYWORDS_REG() is used)
-  while(Subdirs[idx].key) {
-    int i = 0, ih = 0; // Number of commands/hidden commands
-    while(Subdirs[idx].key[i].cmd) {
-      i++;
-      if (Subdirs[idx].key[i].help == NULL && Subdirs[idx].key[i].brief == NULL)
-        ih++;
-    }
-    q_printf("Dir: \"%s\", %u entries, %u hidden\r\n", Subdirs[idx].name, i, ih);
-    total += i;
-    hidden += ih;
-    idx++;
-  }
-  q_printf("Total: %u entries (%u of them are hidden) in %u subdirs\r\n", total, hidden, idx);
-  return 0;
-}
-#endif //WITH_DEVEL
-
-
 #endif // #if COMPILING_ESPSHELL
 
 

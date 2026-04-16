@@ -478,9 +478,9 @@ static int cmd_show_cpuid(int argc, char **argv) {
   temp = temperatureRead();
 
   q_print("% <u>🔩 Hardware:</>\r\n");
-  q_printf("%% CPU ID: %s, (%u core%s), Chip revision: %d.%d\r\n"
-           "%% CPU frequency is %uMhz, Crystal: %uMhz, APB bus %uMhz\r\n"
-           "%% Chip temperature: 🌡️%.1f°C (%.1f°F)\r\n",
+  q_printf("%% CPU ID: <i>%s</>, (%u core%s), Chip revision: %d.%d\r\n"
+           "%% CPU frequency is <i>%u</>Mhz, Crystal: %uMhz, APB bus %uMhz\r\n"
+           "%% Chip temperature: 🌡️<i>%.1f°</>C (%.1f°F)\r\n",
            chipid,
            PPA(chip_info.cores),
            (chip_info.revision >> 8) & 0xf,
@@ -569,7 +569,7 @@ static int cmd_show_cpuid(int argc, char **argv) {
             ESP_ARDUINO_VERSION_STR, 
             ESP_IDF_VERSION_MAJOR,ESP_IDF_VERSION_MINOR,ESP_IDF_VERSION_PATCH);
 
-  q_print("%\r\n% <u>⏰ Last boot:</>\r\n");            
+  q_print("%\r\n% <u>⏳ Last boot:</>\r\n");            
   cmd_uptime(argc, argv);
   return 0;
 }
@@ -649,10 +649,12 @@ static bool is_alarm_set(bool deep) {
   if ((Nap_alarm_set & (1<<ESP_SLEEP_WAKEUP_EXT0)) ||
       (Nap_alarm_set & (1<<ESP_SLEEP_WAKEUP_EXT1)) ||
       (Nap_alarm_set & (1<<ESP_SLEEP_WAKEUP_TIMER)) ||
+      (Nap_alarm_set & (1<<ESP_SLEEP_WAKEUP_WIFI)) ||
+      (Nap_alarm_set & (1<<ESP_SLEEP_WAKEUP_BT)) ||
       (Nap_alarm_set & (1<<ESP_SLEEP_WAKEUP_TOUCHPAD)))
       return true;
-  
-  if ((Nap_alarm_set & (1 << ESP_SLEEP_WAKEUP_UART))) {
+   
+  if ((Nap_alarm_set & (1 << ESP_SLEEP_WAKEUP_UART | ESP_SLEEP_WAKEUP_UART1 | ESP_SLEEP_WAKEUP_UART2 ))) {
     if (deep) {
       q_print("% Please note that UART wakeup only works when directly connected to\r\n"
               "% UART. It does not work with USB-UART bridges, commonly found in DevKit clones\r\n");
@@ -668,8 +670,11 @@ static bool is_alarm_set(bool deep) {
 //
 static int cmd_show_nap(UNUSED int argc, UNUSED char **argv) {
   if (Nap_alarm_set == 0)
-    q_print("% There are no sleep alarms set\r\n");
+    q_print("% ⏰ There are no sleep alarms set\r\n"
+            "% Use command \"<i>nap alarm ... </>\" to set one\r\n");
   else {
+    q_print("% ⏰ Sleep alarm is configured: \r\n");
+
     if (Nap_alarm_set & (1<<ESP_SLEEP_WAKEUP_TIMER))
       q_printf("%% Enabled wakeup source: TIMER, duration: %llu sec\r\n", Nap_alarm_time / 1000000ULL);
 
@@ -682,7 +687,7 @@ static int cmd_show_nap(UNUSED int argc, UNUSED char **argv) {
     if (Nap_alarm_set & (1<<ESP_SLEEP_WAKEUP_TOUCHPAD))
       q_printf("%% Enabled wakeup source: Touch sensor\r\n");
 
-    if (Nap_alarm_set & (1<<ESP_SLEEP_WAKEUP_UART))
+    if (Nap_alarm_set & ((1<<ESP_SLEEP_WAKEUP_UART) || (1<<ESP_SLEEP_WAKEUP_UART1) || (1<<ESP_SLEEP_WAKEUP_UART2)))
       q_printf("%% Enabled wakeup source: UART RX\r\n"); //TODO: display which UART
   }
   return 0;
@@ -692,7 +697,7 @@ static int cmd_show_nap(UNUSED int argc, UNUSED char **argv) {
 //
 // nap alarm uart NUM [THRESHOLD]
 // nap alarm low|high|touch NUM1 [NUM2 NUM3 ... NUMn]
-// nap alarm <TIME> [<TIME> <TIME> .. <TIME>]
+// nap alarm <TIMESPEC>
 // nap alarm disable-all
 //
 static int cmd_nap_alarm(int argc, char **argv) {
@@ -789,7 +794,10 @@ static int cmd_nap_alarm(int argc, char **argv) {
 
     VERBOSE(q_printf("%% Sleep wakeup source: uart%d\r\n",u));
 
-    Nap_alarm_set |= 1 << ESP_SLEEP_WAKEUP_UART;
+    int flag = (u == 0) ? ESP_SLEEP_WAKEUP_UART
+                        : (u == 1 ? ESP_SLEEP_WAKEUP_UART1
+                                  : ESP_SLEEP_WAKEUP_UART2);
+    Nap_alarm_set |= 1 << flag;
     
     if (argc > 4) {
       if ((threshold = q_atoi(argv[4], -1)) < 0) {
@@ -829,6 +837,14 @@ static int cmd_nap(int argc, char **argv) {
   bool deep = false;
 
   if (argc > 1) {
+    //
+    //"nap alarm" (argc==2) gets routed to this handler, because it is 2-arg handler.
+    // If so - reroute this call to a proper handler where it can display an error message: 
+    // "nap alarm" reaquires an argument
+    //
+    if (!q_strcmp(argv[1],"alarm"))
+      return cmd_nap_alarm(argc, argv);
+
     if (!q_strcmp(argv[1],"deep"))
       deep = true;
     else
@@ -843,14 +859,14 @@ static int cmd_nap(int argc, char **argv) {
   // Copy Nap_alarm_time to SLOW_MEM just before going to sleep.
   Nap_alarm_time2 = Nap_alarm_time;
 
-  HELP(q_printf("%% Entering %s sleep\r\n", deep ? "deep" : "light"));
   // There is a bug in current version of ESP-IDF (5.5.1) which prevents USB-CDC from being correctly reinitialized 
   // after the light sleep
   if (console_here(-1) == 99 && !deep) {
-    q_print("% WARNING: console device is USB-CDC. Light sleep may fail to wake up\r\n"
-            "%          But lets hope for the best. Otherwise press the RST button\r\n");
+    q_print("% WARNING💀: console device is USB-CDC. Light sleep may fail to wake up\r\n"
+            "%            But lets hope for the best. Otherwise press the RST button\r\n");
   }
 
+  HELP(q_printf("%% Entering %s sleep\r\n", deep ? "deep" : "light"));
   // give a chance to the q_print above to do its job
   q_delay(100);
 

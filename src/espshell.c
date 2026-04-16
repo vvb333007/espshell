@@ -240,6 +240,7 @@ static bool pin_is_reserved(unsigned char pin);
 static bool pin_can_wakeup(uint8_t pin);
 
 static bool nv_save_config(); // saves sensitive espshell information: hostid and timezone
+static const struct keywords_t *change_command_directory(uintptr_t,const struct keywords_t *,const char *,const char *text);
 
 // declared in userinput.h
 static int userinput_read_ctype(int     argc,      // IN
@@ -291,6 +292,7 @@ typedef __typeof__(Context) context_t;
 
 // Currently active prompt. It is shared between tasks, but only
 // foreground tasks are allowed to modify it.
+//
 static const char * prompt = PROMPT;
 
 // Prompts are module-local, usually implemented as a static buffer
@@ -306,6 +308,7 @@ static void prompt_set(const char *new_prompt) {
 static inline const char *prompt_get() {
   return prompt;
 }
+
 
 // .inc files contain the same variables as belolw but with all text translated to Russian (UTF-8)
 #ifdef WITH_LANG
@@ -444,6 +447,34 @@ static int espshell_command(char *p, argcargv_t *aa);
 #include "show.h"               // "show KEYWORD [ARG1 ARG2 ... ARGn]" command
 #include "question.h"           // cmd_question(), context help handler and help pages
 
+
+// Command directory switcher.
+// Called from cmd_uart_if(), cmd_i2c_if(),cmd_seq_if() and others to set a new command list 
+// (command directory); 
+// Displays user supplied text,  returns a pointer to the keywords tree used before
+//
+static const struct keywords_t *change_command_directory(
+                                    uintptr_t context,            // An arbitrary number which will be stored until next directory change
+                                    const struct keywords_t *dir, // New command list 
+                                    const char *prom,             // New prompt
+                                    const char *text) {           // User-defined text which will be displayed after entering new directory
+  static uint8_t count = 0;                                    
+  const struct keywords_t *old_dir;
+
+  // Save user-supplied Context into thread-local variable
+  context_set(context);
+  old_dir = keywords_get();
+  // Set a new pointer to currently used keywords array; set the prompt
+  keywords_set_ptr(dir);
+  prompt_set(prom);
+
+  if (text && count < 3) {
+    count++;
+    HELP(q_printf(Subdir_message, text));
+  }
+
+  return old_dir;
+}
 
 
 // Display espshell error code in a human-readable form
@@ -854,7 +885,10 @@ static void espshell_task(const void *arg) {
     //
     // Wait until user code calls Serial.begin() or otherwise initializes Serial, disable Task Watchdogs for
     // IDLE tasks and for the loop()
-    //
+
+    // Set default command directory (i.e. "main")
+    keywords = KEYWORDS(main);
+
     while (!console_isup())
       q_delay(CONSOLE_UP_POLL_DELAY);
     

@@ -125,13 +125,17 @@ static void keywords_register(const struct keywords_t *key, const char *name, in
 #define keywords_get() \
   keywords
 
+// Helper macro to make forward declarations for command handlers
+//
+#define has_handler(_Name) static int _Name(int argc, char **argv)
 
-// Max number of command directories which can be registered. (including "main")
-#define MAX_CMD_SUBDIRS 16
+
 
 // Some stats on commands and command directories
 // This array is populated by KEYWORDS_REG().
 //
+#define MAX_CMD_SUBDIRS 16       // Max number of command directories which can be registered. (including "main")
+
 static struct {
   const struct keywords_t *key;  // pointer to keywords
   const char *name;              // directory name (e.g. "wifi", "uart" or "main")
@@ -139,5 +143,64 @@ static struct {
 } Subdirs[MAX_CMD_SUBDIRS] = { 0 };
 
 
+// Current keywords list in use. It is initialized upon startup in espshell_initonce() / espshell.c
+static _Thread_local const struct keywords_t *keywords;
+
+// Two messages which must be defined here and can not be moved to the language definition files:
+// thats why we inline translations here; TODO: refactor
+//
+#if WITH_LANG
+static const char *Exit_message =   "% Не в каталоге команд; (чтобы закрыть шелл, введите \"exit ex\")\r\n";
+
+static const char *Subdir_message = "%% Вход в режим %s. Ctrl+Z или \"exit\", чтобы выйти из режима\r\n"
+                                    "%% Основные команды доступны, хоть и не отображаются по \"?\"\r\n";
+#else
+// Displayed when user tries to "exit" from the main commands directory.
+static const char *Exit_message   = "% Not in a subdirectory; (to close the shell type \"exit ex\")\r\n";
+
+// Displayed when user enters some command subdirectory
+static const char *Subdir_message = "%% Entering %s mode. Ctrl+Z or \"exit\" to return\r\n"
+                                    "%% Main commands are still available (but not visible in \"?\" command list)\r\n";
+#endif
+
+
+// Register a command tree. This one called by a C startup code as part of KEYWORDS_REG() macro
+// well before app_main(), setup() or loop(). It could be called after startup to register additional
+// command directories if required
+//
+static void keywords_register(const struct keywords_t *key, const char *name, int const count) {
+
+  static unsigned char idx = 0;
+
+#if WITH_DEVEL
+  if (idx >= MAX_CMD_SUBDIRS) {
+    esp_rom_printf("%% BOOM !!! Increase MAX_CMD_SUBDIRS value\r\n");
+    abort();
+  }
+#endif  
+
+  Subdirs[idx].key = key;
+  Subdirs[idx].name = name;
+  Subdirs[idx].count = count;
+  idx++;
+}
+
+// Check, if given name is a command directory name. This check relies on subdirs registration:
+// if a command directory chose not to register via KEYWORDS_REG macro then this directory becomes
+// invisible for this function
+//
+static bool is_command_directory(const char *p) {
+
+  if (p && *p) {
+    int idx = 0;
+
+    while(Subdirs[idx].name) {
+      if (!q_strcmp(p, Subdirs[idx].name))
+        return true;
+      idx++;
+    }
+  }
+  return false;
+}
 #endif // #if COMPILING_ESPSHELL
 
