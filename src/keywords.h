@@ -249,7 +249,7 @@ has_handler( cmd_nvs_export );
 has_handler( cmd_misc );
 
 // Use localized version?
-#ifdef WITH_LANG
+#if WITH_LANG
 #  include "lang/keywords_ru.inc"
 #else
 // -- Commands and Subdirectories --

@@ -19,7 +19,7 @@
 #if WITH_HELP
 #include <esp_random.h>
 
-#ifdef WITH_LANG
+#if WITH_LANG
 #  include "lang/question_messages_ru.inc"
 #else
 static const char *Hints[] = {

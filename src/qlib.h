@@ -575,7 +575,7 @@ static __attribute__((const)) const char *tag2ansi(char tag) {
 // printf("You are %u%s on the queue", NEE(1))  --> "You are 1st on the queue"
 // printf("You are %u%s on the queue", NEE(2))  --> "You are 2nd on the queue"
 //
-#ifdef WITH_LANG
+#if WITH_LANG
 #  define PPA(_X) _X, ""    // russian plural ending are not trivial.
 #  define NEE(_X) _X, "-й"
 #else

@@ -311,7 +311,7 @@ static inline const char *prompt_get() {
 
 
 // .inc files contain the same variables as belolw but with all text translated to Russian (UTF-8)
-#ifdef WITH_LANG
+#if WITH_LANG
 #  include "lang/espshell_messages_ru.inc"
 #else
 static const char *Failed =
@@ -1015,6 +1015,9 @@ _Static_assert((NVS_TYPE_U8 == 0x01) && (NVS_TYPE_I32 == 0x14), "nvs0.h code rev
 #if WITH_WIFI
 _Static_assert(WIFI_CIPHER_TYPE_UNKNOWN == 12, "wifi0.h code review is required");
 #endif
+
+
+
 
 
 
