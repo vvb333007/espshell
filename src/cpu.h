@@ -476,8 +476,6 @@ static int cmd_show_cpuid(int argc, char **argv) {
   // Just in case
   cpu_read_frequencies();
   temp = temperatureRead();
-extern int SENS;
-  q_printf("%08x\r\n",&SENS);
 
   q_print("% <u>🔩 Hardware:</>\r\n");
   q_printf("%% CPU ID: <i>%s</>, (%u core%s), Chip revision: %d.%d\r\n"
