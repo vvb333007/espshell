@@ -260,52 +260,98 @@ static int cmd_show_memory_map(int argc, char **argv) {
   text = "% \r\n"
           "% <d>DATA ROM</>   [0x3F400000 .. 0x3f7fffff]\r\n"
           "% <b>PSRAM</>      [0x3F800000 .. 0x3fbfffff]\r\n"
-          "% <i>PERIFERALS</> [0x3ff70000 .. 0x3ff7ffff]\r\n"
-          "% <b>RTC DRAM</>   [0x3FF80000 .. 0x3ff81fff]\r\n"
-          "% <b>DRAM</>       [0x3FFAE000 .. 0x3fffffff]\r\n"
+          "% <i>PERIFERALS</> [0x3ff70000 .. 0x3ff7ffff] (MMIO registers)\r\n"
+          "% <b>RTC DRAM</>   [0x3ff80000 .. 0x3ff81fff]\r\n"
+          "% <b>DRAM</>       [0x3ffae000 .. 0x3fffffff]\r\n"
           "% <d>CACHE</>      [0x40070000 .. 0x4007ffff]\r\n"
-          "% <b>IRAM</>       [0x40080000 .. 0x400A9fff]\r\n"
-          "% <b>RTC IRAM</>   [0x400C0000 .. 0x400C1fff]\r\n"
-          "% <d>IROM</>       [0x400D0000 .. 0x403fffff]\r\n"
+          "% <b>IRAM</>       [0x40080000 .. 0x400a9fff]\r\n"
+          "% <b>RTC IRAM</>   [0x400c0000 .. 0x400c1fff]\r\n"
+          "% <d>IROM</>       [0x400d0000 .. 0x403fffff]\r\n"
           "% <b>RTC DATA</>   [0x50000000 .. 0x50001fff]\r\n";
-
 #elif CONFIG_IDF_TARGET_ESP32S3
   text = "% \r\n"
-          "% <d>DROM</>        [0x3C000000 .. 0x3Dffffff]\r\n"
-          "% <b>PSRAM</>       [0x3C000000 .. 0x3Dffffff] (overlaps DATA ROM!)\r\n"
-          "% <b>DRAM</>        [0x3FC88000 .. 0x3FCfffff]\r\n"
+          "% <d>DROM</>        [0x3c000000 .. 0x3dffffff] May be shadowed by PSRAM\r\n"
+          "% <b>PSRAM</>       [0x3c000000 .. 0x3dffffff] (overlaps DATA ROM!)\r\n"
+          "% <b>DRAM</>        [0x3Fc88000 .. 0x3Fcfffff]\r\n"
           "% <b>IRAM</>        [0x40370000 .. 0x403dffff]\r\n"
           "% <d>IROM</>        [0x42000000 .. 0x43ffffff]\r\n"
           "% <b>RTC DATA</>    [0x50000000 .. 0x50001fff]\r\n"
-          "% <i>PERIPHERALS</> [0x60000000 .. 0x600FDfff]\r\n"
-          "% <b>RTC IRAM</>    [0x600FE000 .. 0x600fffff]\r\n"
-          "% <b>RTC DRAM</>    [0x600FE000 .. 0x600fffff]\r\n";
+          "% <i>PERIPHERALS</> [0x60000000 .. 0x600fdfff] (MMIO registers)\r\n"
+          "% <b>RTC DI-RAM</>  [0x600fe000 .. 0x600fffff]\r\n";
 #elif CONFIG_IDF_TARGET_ESP32S2
-
   text = "% \r\n"
-          "% <d>DATA ROM</>   [0x3F000000 .. 0x3ff7ffff]\r\n"
-          "% <d>CACHE</>      [0x3F000000 .. 0x3f4fffff] (overlaps data ROM)\r\n"
-          "% <b>PSRAM</>      [0x3F500000 .. 0x3ff7ffff] (overlaps data ROM)\r\n"
-          "% <i>PERIFERALS</> [0x3ff80000 .. 0x3ff8dfff]\r\n"
-          "% <b>RTC DRAM</>   [0x3FF9e000 .. 0x3ff9ffff]\r\n"
-          "% <b>DRAM</>       [0x3FFB0000 .. 0x3fffffff]\r\n"
+          "% <d>DATA ROM</>   [0x3f000000 .. 0x3ff7ffff]  May be shadowed by PSRAM/CACHE\r\n"
+          "% <d>CACHE</>      [0x3f000000 .. 0x3f4fffff] (overlaps data ROM!)\r\n"
+          "% <b>PSRAM</>      [0x3f500000 .. 0x3ff7ffff] (overlaps data ROM!)\r\n"
+          "% <i>PERIFERALS</> [0x3ff80000 .. 0x3ff8dfff] (MMIO registers)\r\n"
+          "% <b>RTC DRAM</>   [0x3ff9e000 .. 0x3ff9ffff]\r\n"
+          "% <b>DRAM</>       [0x3ffb0000 .. 0x3fffffff]\r\n"
           "% <b>IRAM</>       [0x40020000 .. 0x4006ffff]\r\n"
           "% <b>RTC IRAM</>   [0x40070000 .. 0x40071fff]\r\n"
           "% <d>IROM</>       [0x40080000 .. 0x407fffff]\r\n"
           "% <b>RTC DATA</>   [0x50000000 .. 0x50001fff]\r\n";
-// TODO: add support for the models below
-//#elif CONFIG_IDF_TARGET_ESP32C3
-//#elif CONFIG_IDF_TARGET_ESP32C6
-//#elif CONFIG_IDF_TARGET_ESP32H2
-//#elif CONFIG_IDF_TARGET_ESP32H4
-//#elif CONFIG_IDF_TARGET_ESP32P4
+#elif CONFIG_IDF_TARGET_ESP32C3
+  text = "% \r\n"
+          "% <d>DEBUG</>      [0x20000000 .. 0x27ffffff]\r\n"
+          "% <d>DATA ROM</>   [0x3c000000 .. 0x427fffff]\r\n"
+          "% <b>DIRAM-D</>    [0x3fc80000 .. 0x3fcdffff]\r\n"
+          "% <b>DIRAM-I</>    [0x4037C000 .. 0x403dffff]\r\n"
+          "% <d>INST ROM</>   [0x42000000 .. 0x420fffff]\r\n"
+          "% <b>RTC IRAM</>   [0x50000000 .. 0x50001fff]\r\n"
+          "% <b>RTC DRAM</>   [0x50000000 .. 0x50001fff]\r\n"
+          "% <b>RTC DATA</>   [0x50000000 .. 0x50001fff]\r\n"
+          "% <i>PERIFERALS</> [0x60000000 .. 0x600fffff] (MMIO registers)\r\n";
+
+#elif CONFIG_IDF_TARGET_ESP32C6
+  text = "% \r\n"
+          "% <d>CPU SUBSYS</> [0x20000000 .. 0x2fffffff]\r\n"
+          "% <b>IRAM</>       [0x40800000 .. 0x4087ffff]\r\n"
+          "% <b>DRAM</>       [0x40800000 .. 0x4087ffff]\r\n"
+          "% <d>DATA ROM</>   [0x42000000 .. 0x420fffff]\r\n"
+          "% <d>INST ROM</>   [0x42000000 .. 0x420fffff]\r\n"
+          "% <b>RTC IRAM</>   [0x50000000 .. 0x50003fff]\r\n"
+          "% <b>RTC DRAM</>   [0x50000000 .. 0x50003fff]\r\n"
+          "% <b>RTC DATA</>   [0x50000000 .. 0x50003fff]\r\n"
+          "% <i>PERIFERALS</> [0x60000000 .. 0x600fffff] (MMIO registers)\r\n";
+#elif CONFIG_IDF_TARGET_ESP32H2
+ text = "% \r\n"
+          "% <d>CPU PERI</>   [0x20000000 .. 0x2fffffff]\r\n"
+          "% <b>DI-RAM</>     [0x40800000 .. 0x4084ffff]\r\n"
+          "% <d>DI-ROM</>     [0x42000000 .. 0x420fffff]\r\n"
+          "% <b>RTC DI-RAM</> [0x50000000 .. 0x50000fff] (DRAM, IRAM and DATA)\r\n"
+          "% <i>PERIFERALS</> [0x60000000 .. 0x600fffff] (MMIO registers)\r\n";
+
+#elif CONFIG_IDF_TARGET_ESP32H4
+  text = "% \r\n"
+          "% <d>DEBUG</>      [0x20000000 .. 0x27ffffff]\r\n"
+          "% <b>DIRAM-I</>    [0x40810000 .. 0x4085ffff]\r\n"
+          "% <b>DIRAM-D</>    [0x40810000 .. 0x4085ffff]\r\n"
+          "% <d>DATA ROM</>   [0x42000000 .. 0x43ffffff] May be shadowed by EXTRAM\r\n"
+          "% <d>INST ROM</>   [0x42000000 .. 0x43ffffff] May be shadowed by EXTRAM\r\n"
+          "% <i>EXT RAM</>    [0x42000000 .. 0x43ffffff] Overlaps D/I ROM!\r\n"
+          "% <b>RTC IRAM</>   [0x50000000 .. 0x50003fff]\r\n"
+          "% <b>RTC DRAM</>   [0x50000000 .. 0x50003fff]\r\n"
+          "% <b>RTC DATA</>   [0x50000000 .. 0x50003fff]\r\n"
+          "% <i>PERIFERALS</> [0x60000000 .. 0x600fffff] (MMIO registers)\r\n";
+#elif CONFIG_IDF_TARGET_ESP32P4
+  text = "% \r\n"
+          "% <d>CPU SUBSYS</> [0x20000000 .. 0x2fffffff]\r\n"
+          "% <i>TCM</>        [0x30100000 .. 0x30101fff]\r\n"
+          "% <g>CPU PERI</>   [0x3ff00000 .. 0x3ff1ffff]\r\n"
+          "% <b>DIRAM-I</>    [0x4ff00000 .. 0x4ffbffff]\r\n"
+          "% <b>DIRAM-D</>    [0x4ff00000 .. 0x4ffbffff]\r\n"
+          "% <d>DATA ROM</>   [0x40000000 .. 0x43ffffff]\r\n"
+          "% <d>INST ROM</>   [0x40000000 .. 0x43ffffff]\r\n"
+          "% <i>EXT RAM</>    [0x48000000 .. 0x4bffffff] (External RAM)\r\n"
+          "% <i>PERIFERALS</> [0x50000000 .. 0x500fffff] (MMIO registers)\r\n"
+          "% <d>LP ROM</>     [0x50100000 .. 0x50103fff]\r\n"
+          "% <b>RTC DIRAM</>  [0x50108000 .. 0x5010ffff] DRAM, IRAM and DATA\r\n"
+          "% <b>LP PERI</>    [0x50110000 .. 0x5012ffff]\r\n"
 #else
   text = "% <e>Uhm, looks like I don't have a memory map for this CPU</>\r\n"
          "% Go to Github and create a feature request\r\n";
 #endif
-
   q_print( text );
-
   return 0;
 }
 
@@ -321,10 +367,13 @@ static int cmd_show_memory(int argc, char **argv) {
 
       q_printf("%% <r>-- Memory caps --                                       </>\r\n"
                "%%\r\n"
-               "%% Note1: DRAM and IRAM are %ssharing the same memory space.\r\n"
-               "%% Note2: RTC_DRAM and RTC_IRAM are %ssharing the same memory space\r\n",
-                esp_dram_match_iram() ? "not " : "",
-                esp_rtc_dram_match_rtc_iram() ? "not " : "");
+               "%s"
+               "%s",
+                esp_dram_match_iram() ? "%% Note1: <i>DRAM</> and <i>IRAM</> are sharing the same memory space\r\n"
+                                      : "",
+                esp_rtc_dram_match_rtc_iram() ? "%% Note2: <i>RTC_DRAM</> and <i>RTC_IRAM</> are sharing the same memory space\r\n"
+                                              : ""
+              );
 
       q_printf( "%% <r>-- Heap information --                                 </>\r\n%%\r\n"
                 "%% If using \"malloc()\" (default allocator))\":\r\n"
