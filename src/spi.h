@@ -14,17 +14,22 @@
 // TODO: not functional right now. Need an use-case
 #if COMPILING_ESPSHELL
 #if WITH_SPI
-#include <esp32-hal-spi.h>
 #if SOC_GPSPI_SUPPORTED
 
-// Some low-end Espressif SoCs do not have VSPI. ArduinoCore 3.0.7 for ESP32S2 choose SPI3 as the name for 3rd SPI
+#include <esp32-hal-spi.h>
+
+// Some Espressif SoCs do not have VSPI. ArduinoCore 3.0.7 for ESP32S2 choose SPI3 as the name for 3rd SPI
 #ifndef VSPI
 #  ifdef SPI3
 #    define VSPI SPI3
 #  else
-#    define VSPI 255
+#    define VSPI 255 // TODO: no magic numbers!
 #  endif
 #endif
+
+#define NUM_SPI 3 // TODO: no magic numbers!
+
+
 
 static int cmd_spi_if(int argc, char **argv) { 
 
@@ -34,35 +39,52 @@ static int cmd_spi_if(int argc, char **argv) {
   if (argc < 2)
     return CMD_MISSING_ARG;
 
-  #if 0
- if ((spi = q_atol(argv[1], SOC_SPI_NUM)) >= SOC_SPI_NUM) {
-    HELP(q_printf("%% <e>Valid SPI interface numbers are 0..%d</>\r\n", SOC_SPI_NUM - 1));
-    return 1;
-  }
-  #endif
+  // ESP-IDF style : "spi 3"
+  if (q_isnumeric(argv[1])) {
+
+    if ((spi = q_atol(argv[1], NUM_SPI)) >= NUM_SPI) {
+      HELP(q_printf("%% <e>Valid SPI interface numbers are 0..%d</>\r\n", NUM_SPI));
+      return 1;
+    }
+
+  } else
+  // Arduino style: "spi vspi"
   if (!q_strcmp(argv[1],"fspi")) spi = FSPI; else 
   if (!q_strcmp(argv[1],"vspi")) spi = VSPI; else 
-  if (!q_strcmp(argv[1],"hspi")) spi = HSPI; else  {
-    HELP(q_printf("%% Expected hspi, vspi or fspi instead of \"%s\"\r\n",argv[1]));
+  if (!q_strcmp(argv[1],"hspi")) spi = HSPI; else {
+
+    HELP(q_printf("%% <e>Expected SPI bus number or name (e.g. 1, 2, hspi or vspi)</>\r\n"));
     return 1;
   }
 
   // every SoC has FSPI and HSPI
   if (spi == 255) {
-    q_printf("%% This SoC doesn't have VSPI bus. Only FSPI and HSPI are available\r\n");
+
+    q_printf("%% This SoC does not have VSPI (spi3) bus.\r\n"
+             "%% Only FSPI (spi1) and HSPI(spi2) are available\r\n");
+
     return 0;
   }
   
+  if (spi == 0)
+    HELP(q_print("% <i>You are about to configure SPI0 (flash access bus). Be careful.</>\r\n"));
+
 
   sprintf(prom, PROMPT_SPI, spi);
   change_command_directory(spi, KEYWORDS(spi), prom, "SPI bus");
+
+
+
   return 0;
 }
 
 static int cmd_spi_clock(int argc, char **argv) { return 0; }
+static int cmd_spi_mode(int argc, char **argv) { return 0; }
+static int cmd_spi_order(int argc, char **argv) { return 0; }
+static int cmd_spi_chip_select(int argc, char **argv) { return 0; }
 static int cmd_spi_up(int argc, char **argv) { return 0; }
 static int cmd_spi_down(int argc, char **argv) { return 0; }
-static int cmd_spi_write(int argc, char **argv) { return 0; }
+static int cmd_spi_xfer(int argc, char **argv) { return 0; }
 #endif // SPI supported? 
 #endif
 #endif

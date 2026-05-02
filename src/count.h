@@ -498,7 +498,7 @@ bad_filter:
 
     // interrupted by the "kill" or a keypress while was in waiting state? 
     if (units[unit].been_triggered == 0) {
-      q_print("% Interrupted\r\n");
+              q_print("% Interrupted\r\n");
       wait = 0;
       goto release_hardware_and_exit;
     }

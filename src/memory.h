@@ -369,9 +369,9 @@ static int cmd_show_memory(int argc, char **argv) {
                "%%\r\n"
                "%s"
                "%s",
-                esp_dram_match_iram() ? "%% Note1: <i>DRAM</> and <i>IRAM</> are sharing the same memory space\r\n"
+                esp_dram_match_iram() ? "%% Note: <i>DRAM</> and <i>IRAM</> are sharing the same memory space\r\n"
                                       : "",
-                esp_rtc_dram_match_rtc_iram() ? "%% Note2: <i>RTC_DRAM</> and <i>RTC_IRAM</> are sharing the same memory space\r\n"
+                esp_rtc_dram_match_rtc_iram() ? "%% Note: <i>RTC_DRAM</> and <i>RTC_IRAM</> are sharing the same memory space\r\n"
                                               : ""
               );
 

@@ -872,12 +872,13 @@ static void espshell_task(const void *arg) {
     MUST_NOT_HAPPEN (shell_task != NULL);
 
     // it is too early for the q_print() : UART driver is not yet initialized.
-    VERBOSE(q_rom_printf("%% Spawning the shell task..\r\n"));
+    HELP(q_rom_printf("%% Spawning the shell task..\r\n"));
 
     // Scheduler is not yet started but we can postpone task startup
     if ((shell_task = task_new(espshell_task, NULL, "ESPShell", shell_core)) == NULL) {
       q_rom_printf("%% ESPShell failed to start its task\r\n");
     }
+    HELP(q_rom_printf("%% Main ESPShell task queued, waiting for FreeRTOS scheduler..\r\n"));
   } else {
     // arg is NULL - we were called by task_new() and we are running as separate process now.
     // shell_task is our task_id, shell_prio is our task priority and shell_core is the CPU core we are 
@@ -908,7 +909,7 @@ static void espshell_task(const void *arg) {
       shell_prio = 1; // a bit above the IDLE0/IDLE1 tasks
     } else {
       int prio;
-      taskid_remember(taskid_arduino_sketch());
+      taskid_remember(taskid_arduino_sketch()); // TBR
 
       // Check if our task priority is higher than that of the loop() task, so shell remains responsive
       // even if loop() does not yield() and we are running on the same core
@@ -921,7 +922,7 @@ static void espshell_task(const void *arg) {
     }
 
     // Read some startup data from nvram (if available)
-    VERBOSE(q_print("% Read configuration (NVS)\r\n"));
+    HELP(q_print("% Reading saved configuration (NVS)\r\n"));
     nv_load_config();
 
     HELP(q_print(WelcomeBanner));
@@ -943,6 +944,7 @@ static void espshell_task(const void *arg) {
     // Display "Sayonara!" banner
     HELP(q_print(Bye));
 
+    // TODO: work around the case when REPL was executing in a user sketch context (not a separate task)
     // Make espshell restart possible
     Exit = false;
     shell_task = NULL;

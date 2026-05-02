@@ -189,8 +189,10 @@ static const KEYMAP MetaMap[] = {
 //
 static void
 TTYflush() {
-  if (ScreenCount && (Echo > 0))
+  if (ScreenCount && (Echo > 0)) {
     console_write_bytes(Screen, ScreenCount);
+    console_flush();
+  }
   ScreenCount = 0;
 }
 

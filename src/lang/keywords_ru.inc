@@ -95,6 +95,48 @@ KEYWORDS_DECL(uart) {
         "%   <i>write ATI\\n\\rMixed\\20Text and \\20\\21\\ff</>"),
   HELPK("Отправить данные через UART") },
 
+{ "invert", cmd_uart_invert, MANY_ARGS,
+  HELPK("% \"<b>invert</> (<i>rx | tx | none</>)*\"\r\n"
+      "%\r\n"
+      "% Инвертировать сигналы UART: аппаратно инвертирует вход и выход\r\n"
+      "%\r\n"
+      "% <u>Примеры:</>\r\n"
+      "%   <i>invert none</>  - отключить инверсию\r\n"
+      "%   <i>invert rx</>    - инвертировать сигнал RX\r\n"
+      "%   <i>invert tx</>    - инвертировать сигнал TX\r\n"
+      "%   <i>invert tx rx</> - инвертировать RX и TX"
+      ),
+  HELPK("Инверсия сигналов") },
+
+{ "mode", cmd_uart_mode, 1,
+  HELPK("% \"<b>mode</> <i>normal | half | coldet | app | irda</>\"\r\n"
+      "%\r\n"
+      "% Выбрать режим работы UART\r\n"
+      "% Используйте \"normal\" или \"uart\" для обычного UART,\r\n"
+      "% либо выберите другой режим при наличии соответствующего оборудования:\r\n"
+      "% Например, режимы RS485 требуют подключенного интерфейсного чипа RS485\r\n"
+      "%\r\n"
+      "% <u>Примеры:</>\r\n"
+      "%   <i>mode normal</> - Обычный режим UART\r\n"
+      "%   <i>mode half</>   - Полудуплексный режим RS485 (управление через RTS)\r\n"
+      "%   <i>mode coldet</> - Режим обнаружения коллизий RS485\r\n"
+      "%   <i>mode app</>    - RS485 с управлением из приложения\r\n"
+      "%   <i>mode irda</>   - Режим IrDA"
+      ),
+  HELPK("Режимы UART") },
+
+{ "pin", cmd_uart_pin, MANY_ARGS,
+  HELPK("% \"<b>pin</> (<i>rx | tx | rts | cts</> NUM)*\"\r\n"
+      "%\r\n"
+      "% Переназначить пины UART\r\n"
+      "% Обратите внимание: это может нарушить синхронизацию с PeriMan\r\n"
+      "%\r\n"
+      "% <u>Примеры:</>\r\n"
+      "%   <i>pin rx 10</>               - изменить пин RX\r\n"
+      "%   <i>pin tx 10 rx 11 rts 22</>  - изменить пины TX, RX и RTS"
+      ),
+  HELPK("Изменение пинов UART") },
+
   // KEYWORDS_END contains common entries (like "exit") and a NULL entry at the very end
   // If this part is omitted  then NULL entry must be declared manually (see "alias" directory
   // at the beghinning of this file)
@@ -172,51 +214,81 @@ KEYWORDS_DECL(iic) {
 KEYWORDS_REG(iic)
 
 #if WITH_SPI
-//SPI subderictory keywords
-//No use cases so far, so it is disabled by default
+//SPI подкаталог команд
 KEYWORDS_DECL(spi) {
 
   KEYWORDS_BEGIN
 
-{ "up", cmd_spi_up, 3,
-  HELPK("% \"<b>up</> <i>MOSI MISO CLK</>\"\r\n"
-        "%\r\n"
-        "% Инициализировать интерфейс SPI в режиме MASTER, используя пины MOSI/MISO/CLK\r\n"
-        "% <u>Примеры:</>\r\n"
-        "%   <i>up 23 19 18</> - инициализировать SPI на пинах 23, 19, 18"),
-  HELPK("Инициализация интерфейса") },
+  { "up", cmd_spi_up, 3,
+    HELPK("% \"<b>up</> <i>MOSI MISO CLK [FREQUENCY_HZ]</>\"\r\n"
+          "%\r\n"
+          "% Инициализировать интерфейс SPI в режиме MASTER, используя\r\n"
+          "% пины MOSI/MISO/CLK\r\n"
+          "% <u>Примеры:</>\r\n"
+          "%   <i>up 23 19 18</> - инициализация SPI на пинах 23,19,18\r\n"
+          "%   <i>up 23 19 18 8000000</> - то же самое, но частота 8 МГц"),
+    HELPK("Инициализация интерфейса") },
 
-{ "up", cmd_spi_up, 0, HIDDEN_KEYWORD },
+  { "up", cmd_spi_up, 0, HIDDEN_KEYWORD },
 
-{ "clock", cmd_spi_clock, 1,
-  HELPK("% \"<b>clock</> <i>SPEED</>\"\r\n"
-        "%\r\n"
-        "% Установить тактовую частоту мастера SPI (SPI должен быть инициализирован)\r\n"
-        "% <u>Примеры:</>\r\n"
-        "%   <i>clock 1000000</> - установить частоту SPI в 1 МГц"),
-  HELPK("Установить частоту") },
+  { "clock", cmd_spi_clock, 1,
+    HELPK("% \"<b>clock</> <i>SPEED</>\"\r\n"
+          "%\r\n"
+          "% Установить частоту SPI master (SPI должен быть инициализирован)\r\n"
+          "% <u>Примеры:</>\r\n"
+          "%   <i>clock 1000000</> - установить частоту SPI 1 МГц"),
+    HELPK("Частота по умолчанию") },
 
-{ "write", cmd_spi_write, MANY_ARGS,
-  HELPK("% \"<b>write</> <i>CHIP_SELECT</> <g>D1</> [<o>D2 D3 ... Dn</>]\"\r\n"
-        "%\r\n"
-        "% Записать байты D1..Dn (шестнадцатеричные значения) на шину SPI при установке пина CHIP_SELECT в низкий уровень\r\n"
-        "% <u>Примеры:</>\r\n"
-        "%   <i>write 4 0 0xff</> - записать 2 байта, CS=4"),
-  HELPK("Отправить байты устройству") },
+  { "mode", cmd_spi_mode, 1,
+    HELPK("% \"<b>mode</> <i>0..3</>\"\r\n"
+          "%\r\n"
+          "% Режим SPI\r\n"
+          "% <u>Примеры:</>\r\n"
+          "%   <i>mode 0</> - режим SPI 0"),
+    HELPK("Режим по умолчанию") },
+
+  { "order", cmd_spi_order, 1,
+    HELPK("% \"<b>order</> <i>lsb | msb</>\"\r\n"
+          "%\r\n"
+          "% Порядок байтов: сначала LSB или MSB\r\n"
+          "% <u>Примеры:</>\r\n"
+          "%   <i>order msb</> - сначала MSB"),
+    HELPK("Порядок байтов по умолчанию") },
+
+  { "chip-select", cmd_spi_chip_select, MANY_ARGS,
+    HELPK("% \"<b>chip-select</> <i>PIN CHIP_NAME</> <o>[clock FREQ] [mode NUM] [order lsb|msb]</>\"\r\n"
+          "% \"<b>chip-select</> <i>PIN</>\"\r\n"
+          "%\r\n"
+          "% Связать имя устройства (CHIP_NAME) с пином CS\r\n"
+          "% Дополнительно можно задать параметры устройства: частоту, порядок байтов и режим SPI\r\n"
+          "% <u>Примеры:</>\r\n"
+          "%   <i>chip-select 10</>    - показать текущую привязку GPIO#10\r\n"
+          "%   <i>chip-select 10 Flash - Создать привязку</>\r\n"
+          "%   <i>chip-select 10 Flash clock 400000 order msb mode 3</>"),
+    HELPK("Привязка устройства") },
+
+  { "xfer", cmd_spi_xfer, MANY_ARGS,
+    HELPK("% \"<b>xfer</> <i>CHIP_ID</> <i>DATA_TO_SEND</> [<o>read COUNT</>] [<o>loop COUNT|infinite</>]\"\r\n"
+          "%\r\n"
+          "% Передать байты по SPI, выбрав устройство CHIP_ID (см. команду \"chip-select\")\r\n"
+          "% При необходимости считать ответ SPI, указав COUNT байт\r\n"
+          "% <u>Примеры:</>\r\n"
+          "%   <i>xfer my_chip \\aa\\55\\aa\\55</> - записать 4 байта\r\n"
+          "%   <i>xfer my_chip \\00 read 5</>   - записать 1 байт, прочитать 5 байт"),
+    HELPK("Передача данных устройству") },
 
 
-{ "down", cmd_spi_down, NO_ARGS,
-  HELPK("% \"<b>down</>\"\r\n"
-        "%\r\n"
-        "% Отключить интерфейс SPI X"),
-  HELPK("Отключить интерфейс SPI") },
+  { "down", cmd_spi_down, NO_ARGS,
+    HELPK("% \"<b>down</>\"\r\n"
+          "%\r\n"
+          "% Остановить интерфейс SPI"),
+    HELPK("Отключение SPI") },
 
 
   KEYWORDS_END
 };
 KEYWORDS_REG(spi)
 #endif //WITH_SPI
-
 //RMT (sequence) subderictory keywords
 //
 KEYWORDS_DECL(sequence) {

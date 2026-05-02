@@ -57,9 +57,13 @@ has_handler( cmd_i2c_scan );
 #if WITH_SPI
 has_handler( cmd_spi_if );
 has_handler( cmd_spi_clock );
+has_handler( cmd_spi_mode );
+has_handler( cmd_spi_order );
+has_handler( cmd_spi_xfer );
+has_handler( cmd_spi_chip_select );
 has_handler( cmd_spi_up );
 has_handler( cmd_spi_down );
-has_handler( cmd_spi_write );
+
 #endif //WITH_SPI
 
 // uart commands
@@ -70,6 +74,9 @@ has_handler( cmd_uart_up );
 has_handler( cmd_uart_down );
 has_handler( cmd_uart_read );
 has_handler( cmd_uart_write );
+has_handler( cmd_uart_mode );
+has_handler( cmd_uart_invert );
+has_handler( cmd_uart_pin );
 
 // filesystem commands
 #if WITH_FS
@@ -391,6 +398,48 @@ KEYWORDS_DECL(uart) {   // Declares the "uart" command directory.
           "%   <i>write ATI\\n\\rMixed\\20Text and \\20\\21\\ff</>"),
     HELPK("Send bytes over this UART") },
 
+  { "invert", cmd_uart_invert, MANY_ARGS,
+    HELPK("% \"<b>invert</> (<i>rx | tx | none</>)*\"\r\n"
+          "%\r\n"
+          "% Invert UART signals: Hardware will invert input and output signals\r\n"
+          "%\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>invert none</>  - turn inversion off\r\n"
+          "%   <i>invert rx</>    - invert RX signal\r\n"
+          "%   <i>invert tx</>    - invert TX signal\r\n"
+          "%   <i>invert tx rx</> - invert RX and TX signals"
+          ),
+    HELPK("Invert signals") },
+
+  { "mode", cmd_uart_mode, 1,
+    HELPK("% \"<b>mode</> <i>normal | half | coldet | app | irda</>\"\r\n"
+          "%\r\n"
+          "% Select UART hardware mode\r\n"
+          "% Use \"normal\" or \"uart\" if you need classic UART or\r\n"
+          "% choose another mode if you have proper hardware attached:\r\n"
+          "% E.g. RS485 modes require RS485 interface chip to be attached\r\n"
+          "%\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>mode normal</> - Regular UART mode\r\n"
+          "%   <i>mode half</>   - Half duplex RS485 UART mode control by RTS pin\r\n"
+          "%   <i>mode coldet</> - RS485 collision detection UART mode\r\n"
+          "%   <i>mode app</>    - Application control RS485 UART mode\r\n"
+          "%   <i>mode irda</>   - IRDA UART mode"
+          ),
+    HELPK("UART modes") },
+
+  { "pin", cmd_uart_pin, MANY_ARGS,
+    HELPK("% \"<b>pin</> (<i>rx | tx | rts | cts</> NUM)*\"\r\n"
+          "%\r\n"
+          "% Redefine UART pins\r\n"
+          "% Note that this may turn PeriMan out of sync\r\n"
+          "%\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>pin rx 10</>               - Change RX pin\r\n"
+          "%   <i>pin tx 10 rx 11 rts 22</>  - Change TX, RX and RTS pins"
+          ),
+    HELPK("Change UART pins") },
+
   // KEYWORDS_END contains common entries (like "exit") and a NULL entry at the very end
   // If this part is omitted  then NULL entry must be declared manually (see "alias" directory
   // at the beghinning of this file)
@@ -470,17 +519,17 @@ KEYWORDS_REG(iic)
 
 #if WITH_SPI
 //SPI subderictory keywords
-//No use cases so far, so it is disabled by default
 KEYWORDS_DECL(spi) {
 
   KEYWORDS_BEGIN
 
   { "up", cmd_spi_up, 3,
-    HELPK("% \"<b>up</> <i>MOSI MISO CLK</>\"\r\n"
+    HELPK("% \"<b>up</> <i>MOSI MISO CLK [FREQUENCY_HZ]</>\"\r\n"
           "%\r\n"
           "% Initialize SPI interface in MASTER mode, use pins MOSI/MISO/CLK\r\n"
           "% <u>Examples:</>\r\n"
-          "%   <i>up 23 19 18</> - Initialize SPI at pins 23,19,18"),
+          "%   <i>up 23 19 18</> - Initialize SPI at pins 23,19,18\r\n"
+          "%   <i>up 23 19 18 8000000</> - Same as above but 8MHz clock rate"),
     HELPK("Initialize interface") },
 
   { "up", cmd_spi_up, 0, HIDDEN_KEYWORD },
@@ -491,14 +540,44 @@ KEYWORDS_DECL(spi) {
           "% Set SPI master clock (SPI must be initialized)\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>clock 1000000</> - Set SPI clock to 1 MHz"),
-    HELPK("Set clock") },
+    HELPK("Default clock") },
 
-  { "write", cmd_spi_write, MANY_ARGS,
-    HELPK("% \"<b>write</> <i>CHIP_SELECT</> <g>D1</> [<o>D2 D3 ... Dn</>]\"\r\n"
+  { "mode", cmd_spi_mode, 1,
+    HELPK("% \"<b>mode</> <i>0..3</>\"\r\n"
           "%\r\n"
-          "% Write bytes D1..Dn (hex values) to SPI bus whicle setting CHIP_SELECT pin low\r\n"
+          "% SPI mode to use"
           "% <u>Examples:</>\r\n"
-          "%   <i>write 4 0 0xff</> - write 2 bytes, CS=4"),
+          "%   <i>mode 0</> - SPI Mode 0"),
+    HELPK("Default mode") },
+
+  { "order", cmd_spi_order, 1,
+    HELPK("% \"<b>order</> <i>lsb | msb</>\"\r\n"
+          "%\r\n"
+          "% Byte order : LSB or MSB first\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>order msb</> - Byte order: MSB first"),
+    HELPK("Default byte order") },
+
+  { "chip-select", cmd_spi_chip_select, MANY_ARGS,
+    HELPK("% \"<b>chip-select</> <i>PIN CHIP_NAME</> <o>[clock FREQ] [mode NUM] [order lsb|msb]</>\"\r\n"
+          "% \"<b>chip-select</> <i>PIN</>\"\r\n"
+          "%\r\n"
+          "% Associate CHIP_NAME and CS pin\r\n"
+          "% Optionally add per-device parameters: clock, byte order and SPI mode\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>chip-select 10</> - show current association\r\n"
+          "%   <i>chip-select 10 Flash</>\r\n"
+          "%   <i>chip-select 10 Flash clock 400000 order msb mode 3</>"),
+    HELPK("Device asociation") },
+
+  { "xfer", cmd_spi_xfer, MANY_ARGS,
+    HELPK("% \"<b>xfer</> <i>CHIP_ID</> <i>DATA_TO_SEND</> [<o>read COUNT</>] [<o>loop COUNT|infinite</>]\"\r\n"
+          "%\r\n"
+          "% Write bytes to SPI bus, selecting chip CHIP_ID (see command \"chip-select\")\r\n"
+          "% Optionally read SPI reply, requesting COUNT bytes\r\n"
+          "% <u>Examples:</>\r\n"
+          "%   <i>xfer my_chip \\aa\\55\\aa\\55</> - write 4 bytes\r\n"
+          "%   <i>xfer my_chip \\00 read 5</>   - write 1 byte, read 5 bytes"),
     HELPK("Send bytes to the device") },
 
 
@@ -1645,11 +1724,12 @@ KEYWORDS_DECL(main) {
 #if WITH_SPI
 #  warning "SPI submodule is barely functional and is under development now"
   { "spi", cmd_spi_if,1,
-    HELPK("% \"<b>spi</> [<o>fspi|hspi|vspi</>]\" \r\n"
+    HELPK("% \"<b>spi</> [<o>fspi|hspi|vspi|1|2|3</>]\" \r\n"
           "%\r\n"
           "% Enter SPI interface configuration mode \r\n"
           "% <u>Examples:</>\r\n"
-          "%   <i>spi vspi</> - configure/use interface SPI3 (VSPI)"),
+          "%   <i>spi vspi</> - configure/use interface SPI3 (VSPI)\r\n"
+          "%   <i>spi 2</> - configure/use interface SPI2 (HSPI)"),
     HELPK("SPI commands") },
 #endif
 

@@ -28,6 +28,7 @@
 //
 #include <Arduino.h>        // Types
 #include <HardwareSerial.h> // Serial macro
+
 #define COMPILING_ESPSHELL 1
 #include "espshell.h"       // SERIAL_IS_USB macro
 

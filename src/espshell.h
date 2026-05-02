@@ -40,6 +40,7 @@
 #define WITH_LITTLEFS 1          //   --    LittleFS
 #define WITH_FAT 1               //   --    FAT
 #define WITH_SD 1                // Support FAT filesystem on SD/TF card over SPI
+#define WITH_SPI 0               // Support SPI interface
 #if COMPILING_ESPSHELL
 #  define MOUNTPOINTS_NUM 5        // Max number of simultaneously mounted filesystems (must be >0)
 #  define STARTUP_ECHO 1           // echo mode at espshell startup (-1=blackhole, 0=no echo or 1=echo)

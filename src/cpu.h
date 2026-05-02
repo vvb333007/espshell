@@ -71,10 +71,9 @@ RTC_NOINIT_ATTR static uint32_t Reset_count;      // Number of times CPU was reb
 static unsigned char Reset_reason = 1;   // Last reset cause (index to Rr_desc). precached at startup
 static unsigned char Wakeup_source = 0;  // Wakeup source that caused wakeup event (index to Ws_desc)
 
-//static bool Light_sleep = false; // set to /true/ when going to light sleep.
-
 // The main purpose of this global variable is to attract user attention to "nap alarm" command.
 // Thats why there is no default wakeup source nor default wakeup interval
+//
 static int Nap_alarm_set = 0;
 static uint64_t Nap_alarm_time = 0; // Sleep duration, microseconds (if wakeup source == timer only)
 static RTC_DATA_ATTR uint64_t Nap_alarm_time2 = 0; // Copy of Nap_alarm_time but in SLOW_MEM to survive deep sleep
@@ -117,10 +116,12 @@ static const char *Ws_desc[] = {
     [ESP_SLEEP_WAKEUP_ULP] =  "the ULP co-processor/microcode",
     [ESP_SLEEP_WAKEUP_GPIO] =  "a GPIO (light sleep)",
     [ESP_SLEEP_WAKEUP_UART] =  "an UART (light sleep)",
-#ifdef ESP_SLEEP_WAKEUP_UART1    
+#ifdef ESP_SLEEP_WAKEUP_UART1
     [ESP_SLEEP_WAKEUP_UART1] =  "an UART1 (light sleep)",
+#endif
+#ifdef ESP_SLEEP_WAKEUP_UART2
     [ESP_SLEEP_WAKEUP_UART2] =  "an UART2 (light sleep)",
-#endif    
+#endif
     [ESP_SLEEP_WAKEUP_WIFI] =  "the WIFI (light sleep)",
     [ESP_SLEEP_WAKEUP_COCPU] = "the CO-CPU (INT)",
     [ESP_SLEEP_WAKEUP_COCPU_TRAP_TRIG] = "the CO-CPU (TRIG)",
@@ -654,7 +655,9 @@ static bool is_alarm_set(bool deep) {
       (Nap_alarm_set & (1<<ESP_SLEEP_WAKEUP_TOUCHPAD)))
       return true;
    
-  if ((Nap_alarm_set & (1 << ESP_SLEEP_WAKEUP_UART | ESP_SLEEP_WAKEUP_UART1 | ESP_SLEEP_WAKEUP_UART2 ))) {
+  if (Nap_alarm_set & ((1<<ESP_SLEEP_WAKEUP_UART ) |
+                        (1<<ESP_SLEEP_WAKEUP_UART1) |
+                        (1<<ESP_SLEEP_WAKEUP_UART2) )) {
     if (deep) {
       q_print("% Please note that UART wakeup only works when directly connected to\r\n"
               "% UART. It does not work with USB-UART bridges, commonly found in DevKit clones\r\n");
@@ -687,7 +690,9 @@ static int cmd_show_nap(UNUSED int argc, UNUSED char **argv) {
     if (Nap_alarm_set & (1<<ESP_SLEEP_WAKEUP_TOUCHPAD))
       q_printf("%% Enabled wakeup source: Touch sensor\r\n");
 
-    if (Nap_alarm_set & ((1<<ESP_SLEEP_WAKEUP_UART) || (1<<ESP_SLEEP_WAKEUP_UART1) || (1<<ESP_SLEEP_WAKEUP_UART2)))
+    if (Nap_alarm_set & ((1<<ESP_SLEEP_WAKEUP_UART) |
+                         (1<<ESP_SLEEP_WAKEUP_UART1) |
+                         (1<<ESP_SLEEP_WAKEUP_UART2)))
       q_printf("%% Enabled wakeup source: UART RX\r\n"); //TODO: display which UART
   }
   return 0;

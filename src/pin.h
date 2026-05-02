@@ -781,7 +781,7 @@ static int cmd_show_pin(int argc, char **argv) {
       else {
       // Normal GPIO
         res = pin_is_reserved(pin);
-        q_printf("%% GPIO%u is %s", pin, res ? "reserved" : "available");
+        q_printf("%% GPIO%u is %s", pin, res ? "reserved for SoC" : "available");
 
         if (pin_is_strapping_pin(pin))
           q_print(", strapping pin");

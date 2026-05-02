@@ -120,6 +120,8 @@ static inline bool uart_isup(unsigned char u) {
   return u >= NUM_UARTS ? false : uart_is_driver_installed(u);
 }
 
+
+// TODO: display pins allocated for the UART
 // TODO: cmd_uart_save()
 // esp32#>show uart NUM
 // esp32-uart1#>show
@@ -204,6 +206,115 @@ static int cmd_uart_if(int argc, char **argv) {
   // save /u/ in Context
   sprintf(prom, PROMPT_UART, u);
   change_command_directory(u, KEYWORDS(uart), prom, "UART configuration");
+  return 0;
+}
+
+//"invert rx|tx|cts|dsr|nothing"
+//
+static int cmd_uart_invert(int argc, char **argv) {
+
+  uart_signal_inv_t inv_sig = (uart_signal_inv_t )0;
+  unsigned char u = context_get_uint();
+
+  if (argc < 2)
+    return CMD_MISSING_ARG;
+
+  if (!uart_isup(u)) {
+      q_printf(Error_UART_Down, u);
+      return CMD_FAILED;
+  }
+
+  for (int i = 1; i < argc; i++) {
+    if (!q_strcmp(argv[i],"rx")) inv_sig |= UART_SIGNAL_RXD_INV;  else
+    if (!q_strcmp(argv[i],"tx")) inv_sig |= UART_SIGNAL_TXD_INV;  else
+    // Not currently used
+    if (!q_strcmp(argv[i],"cts")) inv_sig |= UART_SIGNAL_CTS_INV; else
+    if (!q_strcmp(argv[i],"dsr")) inv_sig |= UART_SIGNAL_DSR_INV; else
+    if (!q_strcmp(argv[i],"none") ||
+        !q_strcmp(argv[i],"nothing") ||
+        !q_strcmp(argv[i],"disable")) inv_sig = 0;                else return i;
+  }
+
+  if (ESP_OK != uart_set_line_inverse(u, inv_sig))
+    q_print("% Can not set line inverse\r\n");
+
+  return 0;
+}
+
+//"mode normal | half | coldet | app | irda"
+//
+static int cmd_uart_mode(int argc, char **argv) {
+
+  uart_mode_t mode = UART_MODE_UART;
+  unsigned char u = context_get_uint();
+
+  if (argc < 2)
+    return CMD_MISSING_ARG;
+
+  if (!uart_isup(u)) {
+      q_printf(Error_UART_Down, u);
+      return CMD_FAILED;
+  }
+
+  for (int i = 1; i < argc; i++) {
+    if (!q_strcmp(argv[i],"half"))   mode = UART_MODE_RS485_HALF_DUPLEX;   else
+    if (!q_strcmp(argv[i],"coldet")) mode = UART_MODE_RS485_COLLISION_DETECT;  else
+    if (!q_strcmp(argv[i],"app"))    mode = UART_MODE_RS485_APP_CTRL;      else
+    if (!q_strcmp(argv[i],"irda"))   mode = UART_MODE_IRDA;                else
+    if (!q_strcmp(argv[i],"normal") ||
+        !q_strcmp(argv[i],"uart"))   mode = UART_MODE_UART;                else return i;
+  }
+
+  if (ESP_OK != uart_set_mode(u, mode))
+    q_print("% Can not switch UART to the requested mode\r\n");
+
+  return 0;
+}
+
+//"pin rx|tx|rts|cts NUM"
+//
+static int cmd_uart_pin(int argc, char **argv) {
+
+  unsigned int pin, 
+               rx  = UART_PIN_NO_CHANGE,
+               tx  = UART_PIN_NO_CHANGE,
+               rts = UART_PIN_NO_CHANGE,
+               cts = UART_PIN_NO_CHANGE;  
+
+  unsigned char u = context_get_uint();
+
+  if (argc < 2)
+    return CMD_MISSING_ARG;
+
+  if (!uart_isup(u)) {
+      q_printf(Error_UART_Down, u);
+      return CMD_FAILED;
+  }
+
+  for (int i = 1; i < argc; i += 2) {
+
+    if (i + 1 >= argc)
+      return CMD_MISSING_ARG;
+
+    if (!q_isnumeric(argv[i + 1])) {
+      q_printf("%% Pin (GPIO) number is expected after \"%s\"\r\n",argv[i]);
+      return i + 1;
+    }
+
+    if (!pin_exist((pin = q_atol(argv[i + 1], DEF_BAD)))) 
+      return i + 1;
+
+    if (!q_strcmp(argv[i],"rx")) rx = pin;  else
+    if (!q_strcmp(argv[i],"tx")) tx = pin;  else
+    if (!q_strcmp(argv[i],"rts")) rts = pin; else
+    if (!q_strcmp(argv[i],"cts")) cts = pin; else return i;
+  }
+
+  if (ESP_OK != uart_set_pin(u, tx, rx, cts, rts)) {
+    q_print("% Failed to set new UART pins\r\n");
+    return CMD_FAILED;
+  }
+
   return 0;
 }
 
