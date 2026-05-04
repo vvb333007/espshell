@@ -29,23 +29,23 @@
 // Structure deallocated by userinput_unref()
 
 struct argcargv {
-  struct argcargv *next; // **logical** link: used by alias code to chain commands together. 
-  short ref;             // reference counter. normally 1 but async commands can increase it. alias commands also increase this
-  short argc;            // number of tokens after stripping "&" or alike
-  uint8_t has_amp:1;     // command has "&" at the end?
-  uint8_t has_core:1;      
-  uint8_t has_prio:1;
-  uint8_t reserved:5;
-  uint8_t prio;          // task priority. only valid if has_prio is set
-  uint8_t core;          // CPU core
-  char **argv;           // tokenized input string (array of pointers to various locations withn /userinput/)
-  char *userinput;       // original input string with '\0's inserted by tokenizer
-  int (*gpp)(int, char **); //callback that is associated with argv[0] command.
+  struct argcargv *next;  // **logical** link: used by alias code to chain commands together.
+  short ref;              // reference counter. normally 1 but async commands can increase it. alias commands also increase this
+  short argc;             // number of tokens after stripping "&" or alike
+  uint8_t has_amp : 1;    // command has "&" at the end?
+  uint8_t has_core : 1;
+  uint8_t has_prio : 1;
+  uint8_t reserved : 5;
+  uint8_t prio;              // task priority. only valid if has_prio is set
+  uint8_t core;              // CPU core
+  char **argv;               // tokenized input string (array of pointers to various locations withn /userinput/)
+  char *userinput;           // original input string with '\0's inserted by tokenizer
+  int (*gpp)(int, char **);  //callback that is associated with argv[0] command.
 };
 typedef struct argcargv argcargv_t;
 
 // Mutex to protect reference counters of argcargv_t structure.
-//
+// TODO: rewrite using _Atomics. We dont need a mutex here
 static mutex_t argv_mux = MUTEX_INIT;
 
 // Increase refcounter on argcargv structure. a == NULL is ok
@@ -65,7 +65,7 @@ static void userinput_ref(argcargv_t *a) {
 //
 static void userinput_unref(argcargv_t *a) {
   if (a) {
-    mutex_lock(argv_mux); 
+    mutex_lock(argv_mux);
     MUST_NOT_HAPPEN(a->ref < 1);
     a->ref--;
     // ref dropped to zero: delete everything
@@ -94,16 +94,16 @@ static char *userinput_strip(char *p) {
   if (p && *p) {
     int plen = strlen(p);
     // strip trailing whitespace
-    while (--plen >= 0 && isspace(((unsigned char )(p[plen])))) 
+    while (--plen >= 0 && isspace(((unsigned char)(p[plen]))))
       p[plen] = '\0';
 
     // find where non-ws input starts ..
-    while (*p && isspace(((unsigned char )(*p))))  
+    while (*p && isspace(((unsigned char)(*p))))
       p++;
 
     //  .. from there shift whole string left, killing all leading whitespace
     while (*p)
-      *p0++ = *p++; 
+      *p0++ = *p++;
 
     // finalize string
     *p0 = '\0';
@@ -127,9 +127,9 @@ static argcargv_t *userinput_tokenize(char *userinput) {
     if ((a = (argcargv_t *)q_malloc(sizeof(argcargv_t), MEM_ARGCARGV)) != NULL) {
 
       // use editline's argify() to extract tokens
-      a->gpp = NULL; // this pointer can be reused to skip command lookup phase at certain conditions:
-                     // aliases, as lists of precompiled argcargv_t's can update ->gpp on a first alias execution
-                     // and use this value on subsequent calls to "exec alias"
+      a->gpp = NULL;  // this pointer can be reused to skip command lookup phase at certain conditions:
+                      // aliases, as lists of precompiled argcargv_t's can update ->gpp on a first alias execution
+                      // and use this value on subsequent calls to "exec alias"
       a->argv = NULL;
       a->argc = argify((unsigned char *)userinput, (unsigned char ***)&(a->argv));
 
@@ -140,10 +140,10 @@ static argcargv_t *userinput_tokenize(char *userinput) {
         a->userinput = userinput;
         a->ref = 1;
         a->next = NULL;
-        a->has_amp  = 0;
+        a->has_amp = 0;
         a->has_prio = 0;
         a->prio = 0;
-        a->has_core  = 0;
+        a->has_core = 0;
         a->core = 0;
 
       } else {
@@ -165,17 +165,22 @@ static argcargv_t *userinput_tokenize(char *userinput) {
 static void userinput_show(argcargv_t *aa) {
   if (aa) {
     for (int i = 0; i < aa->argc; i++) {
-      // TODO: quoted arguments will show up unqoted.
-      q_print(aa->argv[i]);
+      // Quote args which have spaces in it
+      // TODO: quote all args which have chars <33 >127
+      if (q_findchar(aa->argv[i], ' '))
+        q_printf("\"%s\"", aa->argv[i]);
+      else
+        q_print(aa->argv[i]);
+
       q_print(" ");
     }
-    
+
     if (aa->has_amp) {
       q_print("&");
       if (aa->has_prio)
-        q_printf("%u",aa->prio);
+        q_printf("%u", aa->prio);
       if (aa->has_core)
-        q_printf(".%u",aa->core);
+        q_printf(".%u", aa->core);
     }
   }
 }
@@ -202,7 +207,7 @@ static cmd_handler_t userinput_find_handler_by_name(const struct keywords_t *key
 }
 
 
-// Find corresponding command handler (cmd_..) for given aa. 
+// Find corresponding command handler (cmd_..) for given aa.
 // and put it to /aa->gpp/
 //
 // /aa/ must be prepared beforehand (see espshell.c, user input processing)
@@ -215,10 +220,10 @@ static cmd_handler_t userinput_find_handler_by_name(const struct keywords_t *key
 static int userinput_find_handler(argcargv_t *aa) {
 
   int i;
-  bool found = false; // a candidate found (name match)
+  bool found = false;  // a candidate found (name match)
 
   // /keywords/ is an _Thread_local  pointer to one of /keywords_main/, /keywords_uart/ ... etc keyword tables.
-  // It points at main tree at startup and then can be switched. 
+  // It points at main tree at startup and then can be switched.
   const struct keywords_t *key = keywords_get();
 
   MUST_NOT_HAPPEN(aa == NULL);
@@ -230,23 +235,23 @@ static int userinput_find_handler(argcargv_t *aa) {
 
     // NOTE: MEM_INC2 macro in argify() guarantees that argv[1] is a valid writeable address, even if argc==1
     if (aa->argc < 2) {
-      aa->argv[1] = &aa->argv[0][1]; // see note above
+      aa->argv[1] = &aa->argv[0][1];  // see note above
       aa->argc = 2;
     }
     return 0;
   }
 
-one_more_try: // we get here if we weren't able to find any suitable handler in a command subdirectory
+one_more_try:  // we get here if we weren't able to find any suitable handler in a command subdirectory
 
-  i = 0;                  // start from keyword #0
-  
+  i = 0;  // start from keyword #0
+
   // Find a key[] entry for a given command (argv[0])
   //
   // 1. Go through the keywords array till the end
   while (key[i].cmd) {
 
     // 2. Next keyword matches user input?
-    // NOTE: A keyword that starts from "*" matches any user input. 
+    // NOTE: A keyword that starts from "*" matches any user input.
     //       This one is used in alias.h, to implement alias editing
     if (!q_strcmp(aa->argv[0], key[i].cmd) || key[i].cmd[0] == '*') {
 
@@ -259,10 +264,10 @@ one_more_try: // we get here if we weren't able to find any suitable handler in 
       if (((aa->argc - 1) == key[i].argc) || (key[i].argc < 0)) {
 
         // 5. We found the callback. It is only used when not NULL!
-        // There are entries with /cb/ set to NULL: those are for help text only, as they are processed 
+        // There are entries with /cb/ set to NULL: those are for help text only, as they are processed
         // by "?" command/keypress
         if (key[i].cb) {
-          
+
           aa->gpp = key[i].cb;
           //q_printf("\r\nFound %s -> %p\r\n",aa->argv[0],aa->gpp);
           return 0;
@@ -343,13 +348,31 @@ static int userinput_join(int argc, char **argv, int i /* START */, char **out) 
         // a backslash: escape sequence
         if (c == '\\') {
           switch (*p) {
-            case '\\':             p++;              c = '\\';              break;
-            case 'n':              p++;              c = '\n';              break;
-            case 'r':              p++;              c = '\r';              break;
-            case 't':              p++;              c = '\t';              break;
-            case '"':              p++;              c = '"';               break;
+            case '\\':
+              p++;
+              c = '\\';
+              break;
+            case 'n':
+              p++;
+              c = '\n';
+              break;
+            case 'r':
+              p++;
+              c = '\r';
+              break;
+            case 't':
+              p++;
+              c = '\t';
+              break;
+            case '"':
+              p++;
+              c = '"';
+              break;
             //case 'e':              p++;              c = '\e';            break;  //interferes with \HEX numbers
-            case 'v':              p++;              c = '\v';              break;
+            case 'v':
+              p++;
+              c = '\v';
+              break;
             //case 'b':              p++;              c = '\b';              break;  //interferes with \HEX numbers
             default:
               if (ishex2(p)) {
@@ -357,7 +380,7 @@ static int userinput_join(int argc, char **argv, int i /* START */, char **out) 
                 if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X'))
                   p += 2;
                 p++;
-                if (*p) 
+                if (*p)
                   p++;
               } else {
                 // unknown escape sequence: fallthrough to get "\" printed
@@ -386,8 +409,8 @@ static int userinput_join(int argc, char **argv, int i /* START */, char **out) 
 
 
 // Convert argc/argv (e.g "10","seconds","20","days","48","hours" to microseconds by adding up all timespecs.
-// Any negative value turn whole result negative: "-1 hour 45 min" is "-105 min",   "1 hour -45 min" is 
-// the same. 
+// Any negative value turn whole result negative: "-1 hour 45 min" is "-105 min",   "1 hour -45 min" is
+// the same.
 // Used to input a time interval: can be as simple as just a number: "21", which mean "25 seconds" or
 // complex, like  "21 day 480 h 1 sec 25 millis"
 //
@@ -397,7 +420,7 @@ static int userinput_join(int argc, char **argv, int i /* START */, char **out) 
 //         value of -1 means (process till the end). Pointer can be NULL which implies processing till the end
 //
 // Out: /stop/ is populated with index where processing stopped (i.e. element argv[stop] was not processed)
-//      processing stops when next token can not be understood. E.g. for input "1 say 2 week 3 apples" processing stops 
+//      processing stops when next token can not be understood. E.g. for input "1 say 2 week 3 apples" processing stops
 //      on apples, stop==5
 //      Returned value is in microseconds.
 //      Returned value of 0 must be treated as error.
@@ -419,11 +442,11 @@ static int64_t userinput_read_timespec(int argc, char **argv, int start, int *st
 
     if (!q_isnumeric(argv[start])) {
       if (!got_something)
-        q_printf("%% Numeric value expected instead of \"%s\"\r\n",argv[start]);
+        q_printf("%% Numeric value expected instead of \"%s\"\r\n", argv[start]);
       break;
     }
 
-    t = q_atoi(argv[start++],0);
+    t = q_atoi(argv[start++], 0);
     if (t < 0) {
       minus = true;
       t = -t;
@@ -438,15 +461,15 @@ static int64_t userinput_read_timespec(int argc, char **argv, int start, int *st
       break;
     }
 
-    if (!q_strcmp(argv[start],"milliseconds"))
+    if (!q_strcmp(argv[start], "milliseconds"))
       val += 1000ULL * (uint64_t)t;
-    else if (!q_strcmp(argv[start],"seconds"))
+    else if (!q_strcmp(argv[start], "seconds"))
       val += 1000000ULL * (uint64_t)t;
-    else if (!q_strcmp(argv[start],"minutes"))
+    else if (!q_strcmp(argv[start], "minutes"))
       val += 1000000ULL * 60ULL * (uint64_t)t;
-    else if (!q_strcmp(argv[start],"hours"))
+    else if (!q_strcmp(argv[start], "hours"))
       val += 1000000ULL * 60ULL * 60ULL * (uint64_t)t;
-    else if (!q_strcmp(argv[start],"days"))
+    else if (!q_strcmp(argv[start], "days"))
       val += 1000000ULL * 24ULL * 60ULL * 60ULL * (uint64_t)t;
     else {
       break;
@@ -505,11 +528,11 @@ static time_t userinput_read_datime(int argc, char **argv, int start, int *stop)
 
   //uint32_t t;
   time_t val = 0;
-  int stop0 = -1,v;
+  int stop0 = -1, v;
   bool pm = false, hour12 = false;
   int8_t month;
-  int8_t h,m,s;
-  bool hms_seen = false; // did we see HH:MM:SS already?
+  int8_t h, m, s;
+  bool hms_seen = false;  // did we see HH:MM:SS already?
 
   struct tm t = { 0 };
 
@@ -519,7 +542,7 @@ static time_t userinput_read_datime(int argc, char **argv, int start, int *stop)
   // Get local time and split it to /struct tm/
   time_t now = time(NULL);
   localtime_r(&now, &t);
-  
+
   // Reset some fields
   t.tm_wday = -1;
   t.tm_yday = -1;
@@ -535,59 +558,59 @@ static time_t userinput_read_datime(int argc, char **argv, int start, int *stop)
       // Day number is in range [1..31] while year number is >1970
       v = q_atoi(argv[start], 32);
       if (v > 31 && v < 1970) {
-        q_printf("%% Days are [1..31], years are [1970..inf]. What is %s? \r\n",argv[start]);
+        q_printf("%% Days are [1..31], years are [1970..inf]. What is %s? \r\n", argv[start]);
         goto bad;
       }
       if (v < 32)
         t.tm_mday = v;
       else
         t.tm_year = v - 1900;
-    } else 
-    // 2. No month has 'm' as its second letter, must be "am" or "pm"!
-    //    note that argv[1] is always references a valid allocated memory
-    if (argv[start][1] == 'm') {
-        hour12 = true;      
+    } else
+      // 2. No month has 'm' as its second letter, must be "am" or "pm"!
+      //    note that argv[1] is always references a valid allocated memory
+      if (argv[start][1] == 'm') {
+        hour12 = true;
         if (argv[start][0] == 'a')
           pm = false;
         else if (argv[start][0] == 'p')
           pm = true;
         else {
-          q_printf("%% Unknown token \"%s\", expected \"am\" or \"pm\"\r\n",argv[start]);
+          q_printf("%% Unknown token \"%s\", expected \"am\" or \"pm\"\r\n", argv[start]);
           goto bad;
         }
-    } else
-    // 3. A time? time can be in forms: hh:mm or hh:mm:ss, so first character is digit
-    if (argv[start][0] >= '0' && argv[start][0] <= '9') {
-      if (userinput_read_hms(argv[start],&h,&m,&s)) {
-        hms_seen = true;
-        t.tm_hour = h;
-        t.tm_min = m;
-        t.tm_sec = s;
-      } else {
-        q_printf("%% Can not recognize the input: \"%s\"\r\n",argv[start]);
-        goto bad;
-      }
-    } else
-    // 4. May be a month?
-    if ((month = time_month_by_name(argv[start])) > 0) {
-      t.tm_mon = month - 1;
-    } else 
-    // 5. Unrecognized keyword
-    {
-      q_printf("%% Unrecognized keyword \"%s\"\r\n",argv[start]);
-      goto bad;
-    }
+      } else
+        // 3. A time? time can be in forms: hh:mm or hh:mm:ss, so first character is digit
+        if (argv[start][0] >= '0' && argv[start][0] <= '9') {
+          if (userinput_read_hms(argv[start], &h, &m, &s)) {
+            hms_seen = true;
+            t.tm_hour = h;
+            t.tm_min = m;
+            t.tm_sec = s;
+          } else {
+            q_printf("%% Can not recognize the input: \"%s\"\r\n", argv[start]);
+            goto bad;
+          }
+        } else
+          // 4. May be a month?
+          if ((month = time_month_by_name(argv[start])) > 0) {
+            t.tm_mon = month - 1;
+          } else
+          // 5. Unrecognized keyword
+          {
+            q_printf("%% Unrecognized keyword \"%s\"\r\n", argv[start]);
+            goto bad;
+          }
   }
 
   // Convert to 24 if 12h format was used (i.e. "am" or "pm" keywords were seen)
   if (hms_seen && hour12) {
-    
+
     if (t.tm_hour == 12)
       t.tm_hour = t.tm_hour + (pm ? 12 : 0);
     else if (pm)
       t.tm_hour = t.tm_hour + 12;
   }
-  
+
   val = mktime(&t);
 bad:
   *stop = start;
@@ -607,22 +630,22 @@ bad:
 // "char*" "char * []"
 // "char[123]", "char []"
 //
-static int userinput_read_ctype(int     argc,      // IN
-                                char  **argv,      // IN
-                                int     start,     // IN
-                                size_t *size0,     // OUT
-                                bool   *is_str,    // OUT
-                                bool   *is_blob,   // OUT
-                                bool   *is_signed, // OUT
-                                bool   *is_float,  // OUT
-                                size_t *arr_cnt    // OUT   for "int [10]" gets 10
-                                ) {
+static int userinput_read_ctype(int argc,         // IN
+                                char **argv,      // IN
+                                int start,        // IN
+                                size_t *size0,    // OUT
+                                bool *is_str,     // OUT
+                                bool *is_blob,    // OUT
+                                bool *is_signed,  // OUT
+                                bool *is_float,   // OUT
+                                size_t *arr_cnt   // OUT   for "int [10]" gets 10
+) {
 
 
-  bool   is_str0, is_blob0, is_signed0, is_float0;
+  bool is_str0, is_blob0, is_signed0, is_float0;
   size_t arr_cnt0;
   size_t size = 0;
-  uint8_t ll = 0;   // how many times did we see "long" keyword
+  uint8_t ll = 0;  // how many times did we see "long" keyword
 
 
   // Fixup NULL pointers, if any. Computed values will be lost
@@ -648,46 +671,74 @@ static int userinput_read_ctype(int     argc,      // IN
   while (start < argc) {
 
     // uint32_t goes first to catch "uint" shortened keyword, so "uint" will be processed as "uint32_t"
-    if (!q_strcmp(argv[start],"uint32_t"))  { *is_signed = false; size = 4; } else
-    if (!q_strcmp(argv[start],"uint64_t"))  { *is_signed = false; size = 8; } else
-    if (!q_strcmp(argv[start],"uint16_t"))  { *is_signed = false; size = 2; } else
-    if (!q_strcmp(argv[start],"uint8_t"))   { *is_signed = false; size = 1; } else
+    if (!q_strcmp(argv[start], "uint32_t")) {
+      *is_signed = false;
+      size = 4;
+    } else if (!q_strcmp(argv[start], "uint64_t")) {
+      *is_signed = false;
+      size = 8;
+    } else if (!q_strcmp(argv[start], "uint16_t")) {
+      *is_signed = false;
+      size = 2;
+    } else if (!q_strcmp(argv[start], "uint8_t")) {
+      *is_signed = false;
+      size = 1;
+    } else
 
 
-    if (!q_strcmp(argv[start],"signed"))   { *is_signed = true; size = 1; } else
-    if (!q_strcmp(argv[start],"unsigned")) { *is_signed = false; size = 1; } else
+      if (!q_strcmp(argv[start], "signed")) {
+      *is_signed = true;
+      size = 1;
+    } else if (!q_strcmp(argv[start], "unsigned")) {
+      *is_signed = false;
+      size = 1;
+    } else
 
-    if (!q_strcmp(argv[start],"char"))      size = 1;             else
+      if (!q_strcmp(argv[start], "char")) size = 1;
+    else
 
-    if (!q_strcmp(argv[start],"short"))     size = 2;             else
+      if (!q_strcmp(argv[start], "short")) size = 2;
+    else
 
-    // "int" means 32 bit ONLY if there are no other specifiers.
-    // e.g. unsigned short int is still 16 bit
-    // Again it goes before intXX_t to catch "int"
-    if (!q_strcmp(argv[start],"int"))       size = size < 2 ? 4 : size; else
+      // "int" means 32 bit ONLY if there are no other specifiers.
+      // e.g. unsigned short int is still 16 bit
+      // Again it goes before intXX_t to catch "int"
+      if (!q_strcmp(argv[start], "int")) size = size < 2 ? 4 : size;
+      else
 
-    if (!q_strcmp(argv[start],"int64_t"))   { *is_signed = true; size = 8; } else
-    if (!q_strcmp(argv[start],"int32_t"))   { *is_signed = true; size = 4; } else
-    if (!q_strcmp(argv[start],"int16_t"))   { *is_signed = true; size = 2; } else
-    if (!q_strcmp(argv[start],"int8_t"))    { *is_signed = true; size = 1; } else
-
-
-    if (!q_strcmp(argv[start],"long"))      size = 4 * (++ll);    else
-
-    if (!q_strcmp(argv[start],"float"))     { size = sizeof(float); *is_float = true; }   else
-
-    // Detect arrays
-    if (!q_strcmp("char[", argv[start]) ||
-        argv[start][0] == '[' ||
-        argv[start][0] == ']')             *is_blob = true;       else
-
-    if (!q_strcmp(argv[start],"void")) { /* skip "void" */ } else
+        if (!q_strcmp(argv[start], "int64_t")) {
+        *is_signed = true;
+        size = 8;
+      } else if (!q_strcmp(argv[start], "int32_t")) {
+        *is_signed = true;
+        size = 4;
+      } else if (!q_strcmp(argv[start], "int16_t")) {
+        *is_signed = true;
+        size = 2;
+      } else if (!q_strcmp(argv[start], "int8_t")) {
+        *is_signed = true;
+        size = 1;
+      } else
 
 
-    // Detect strings/pointers
-    if (argv[start][0] == '*' ||
-        !q_strcmp(argv[start],"void*") ||
-        !q_strcmp(argv[start],"char*"))     *is_str = true;   else      break;
+        if (!q_strcmp(argv[start], "long")) size = 4 * (++ll);
+      else
+
+        if (!q_strcmp(argv[start], "float")) {
+        size = sizeof(float);
+        *is_float = true;
+      } else
+
+        // Detect arrays
+        if (!q_strcmp("char[", argv[start]) || argv[start][0] == '[' || argv[start][0] == ']') *is_blob = true;
+        else
+
+          if (!q_strcmp(argv[start], "void")) { /* skip "void" */ } else
+
+
+          // Detect strings/pointers
+          if (argv[start][0] == '*' || !q_strcmp(argv[start], "void*") || !q_strcmp(argv[start], "char*")) *is_str = true;
+          else break;
 
     start++;
   }
@@ -699,5 +750,5 @@ static int userinput_read_ctype(int     argc,      // IN
   return start;
 }
 
-#endif // WITH_TIME
-#endif //#if COMPILING_ESPSHELL
+#endif  // WITH_TIME
+#endif  //#if COMPILING_ESPSHELL

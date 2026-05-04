@@ -13,6 +13,7 @@
 // -- UART interface command handlers & utility functions --
 // baud, read, write, up, down and tap commands down below
 //
+// TODO: hardware flow control support
 
 #if COMPILING_ESPSHELL
 
@@ -25,95 +26,51 @@ static uint32_t __attribute__((const)) make_config(char bits, char parity, char 
     return 0x80000000 | (((bits - 5) << 2) | parity | (sbits << 4));
 }
 
-// uart_tap() : create uart-to-uart bridge between user's serial and "remote"
+
+// uart_tap() : create console-to-uart bridge between user's serial and "remote"
 // everything that comes from the user goes to "remote" and  vice versa
 //
-// returns  when BREAK_KEY is pressed
-// TODO: refactor to a single "while". refactor to interleave reads/writes from/to remote, make BREAK_KEY a convar
+// returns  
+// true  (recoverable) when Break_key is pressed (a convar, Ctrl+C by default) or
+// false (non-recoverable) when remote interface is down
 //
-static void
+static bool
 uart_tap(int remote) {
-  /* Infinite loop. Interrupted with Ctrl+C code on the UART*/
-  do {
-    // 1. read all user input and send it to remote
-    while (1) {
-      int av;
-      // fails when interface is down. must not happen.
-      //TODO: XXXXX!!!!!
-      if ((av = console_available()) <= 0)
-        break;
-      // must not happen unless UART FIFO sizes were changed in ESP-IDF
-      if (av > UART_RXTX_BUF)
-        av = UART_RXTX_BUF;
-        
-      char buf[av];
-      console_read_bytes(buf, av, portMAX_DELAY); // TODO: use shortest possible delay here
-      // CTRL+C. most likely sent as a single byte (av == 1), so get away with
-      // just checking if buf[0] == CTRL+C
-      if (buf[0] == BREAK_KEY)
-        return;
-      uart_write_bytes(remote, buf, av);
-      q_yield();
-    }
 
-    // 2. read all the data from remote uart and echo it to the user
-    while (1) {
-      size_t av = 0;
-      if (ESP_OK != uart_get_buffered_data_len(remote, &av)) {
-        HELP(q_printf(Error_UART_Down, remote));
-        return;
-      }
-      if (av > UART_RXTX_BUF)
-        av = UART_RXTX_BUF;
-      else if (!av)
-        break;
-
-      char *buf[av];
-
-      uart_read_bytes(remote, buf, av, portMAX_DELAY);
-      console_write_bytes(buf, av);
-      q_yield();
-    }
-  } while ( true );
-}
-
-#if 0
-static void
-uart_tap2(int remote) {
-
-  int av;
+  size_t av;
+  char rx;
   char buf[UART_RXTX_BUF];
 
-  /* Infinite loop. Interrupted with Ctrl+C code on the UART*/
-  while (1) {
-    if ((av = console_available()) > 0) {
-      if (av > UART_RXTX_BUF)
-        av = UART_RXTX_BUF;
-
-      console_read_bytes(buf, av, 3);
-
-      if (buf[0] == BREAK_KEY)
-        return;
-
-      uart_write_bytes(remote, buf, av);
-    }
+  /* Infinite loop. Interrupted with Break_key code on the UART*/
+  while ( true ) {
+  
+    // Process user side, char by char. If FIFO is empty - let other tasks do their job
+    if (console_read_bytes(&rx, 1, 3) == 1) {
+      if (rx == Break_key)
+        return true;
+      uart_write_bytes(remote, &rx, 1);
+    } else
+      q_yield();
     
-    if (ESP_OK != uart_get_buffered_data_len(remote, &av)) {
+    // Process remote side, bulk
+    if (ESP_OK == uart_get_buffered_data_len(remote, &av)) {
+      if (av > 0) {
+        if (av > UART_RXTX_BUF)
+          av = UART_RXTX_BUF;
+        // send to the user what was read from the remote
+        if ((av = uart_read_bytes(remote, buf, av, 3)) > 0)
+          console_write_bytes(buf, av);
+      }
+    } else {
+      // Hardware problems
       HELP(q_printf(Error_UART_Down, remote));
-      return;
+      break;
     }
 
-    if (av > 0) {
-      if (av > UART_RXTX_BUF)
-        av = UART_RXTX_BUF;
-      uart_read_bytes(remote, buf, av, portMAX_DELAY);
-      console_write_bytes(buf, av);
-    }
-    q_yield();
-  }
+  } // while( true )
 
+  return false;
 }
-#endif
 
 //check if UART has its driver installed
 static inline bool uart_isup(unsigned char u) {
@@ -310,6 +267,9 @@ static int cmd_uart_pin(int argc, char **argv) {
     if (!q_strcmp(argv[i],"cts")) cts = pin; else return i;
   }
 
+  // Bye-bye Periman :(. We can just call pinMode() here because it calls Periman's deinit
+  // effectively shutting down the UART. set_pin(), however reassign signals without changing Periman's saved values
+  // so Periman and ESP-IDF here go out of sync.
   if (ESP_OK != uart_set_pin(u, tx, rx, cts, rts)) {
     q_print("% Failed to set new UART pins\r\n");
     return CMD_FAILED;
@@ -482,8 +442,10 @@ static int cmd_uart_tap(int argc, char **argv) {
   if (uart != u) {
     if (uart_isup(u)) {
       q_printf("%% Tapping to UART%d, CTRL+C to exit\r\n", u);
-      uart_tap(u);  //TODO: inline it here
-      q_print("\r\n% Ctrl+C, exiting\r\n");
+      if (uart_tap(u))
+        q_print("\r\n% Ctrl+C, exiting\r\n");
+      else
+        q_print("\r\n% Remote UART is down, exiting\r\n");
     } else
       q_printf(Error_UART_Down, u);
   } else

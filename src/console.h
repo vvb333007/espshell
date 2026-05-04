@@ -19,7 +19,8 @@
 
 // espshell runs on this port:
 //
-static uart_port_t uart = STARTUP_PORT; // either UART number OR 99 for USB-CDC
+static uart_port_t uart      = STARTUP_PORT; // either UART number OR 99 for USB-CDC
+static int8_t      Break_key = BREAK_KEY;         // convar
 
 #if SERIAL_IS_USB
 // Arduino Nano ESP32 and many others use USB as their primary serial port, in hardware CDC mode.
@@ -31,95 +32,6 @@ extern bool console_isup();
 extern int  console_write_bytes(const void *buf, size_t len);
 extern int  console_available();
 extern int  console_read_bytes(void *buf, uint32_t len, TickType_t wait);
-
-#if 0
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/fcntl.h>
-#include <sys/time.h>
-#include <sys/param.h>
-#include <unistd.h>
-#include <stddef.h>
-
-
-static void set_blocking(bool en) {
-
-  int stdin_fileno = fileno(stdin);
-  int flags = fcntl(stdin_fileno, F_GETFL);
-
-  if (en)
-    flags &= ~O_NONBLOCK;
-  else
-    flags |= O_NONBLOCK;
-
-  fcntl(stdin_fileno, F_SETFL, flags);
-}
-
-
-
-// This is required for USB-CDC console to work correctly
-//
-//
-extern int __fbufsize(FILE *);
-static void console_flush() {
-
-#if CONFIG_LIBC_PICOLIBC
-    if (((struct __file_bufio *)(stdout))->len > 0)
-#else
-    if (__fbufsize(stdout) > 0)
-#endif
-        fflush(stdout);
-    fsync(fileno(stdout));
-}
-
-
-// Send characters to user terminal
-// Returns number of bytes written or <0 in case of error
-//
-static int console_write_bytes(const void *buf, size_t len) {
-  return write(fileno(stdout), buf, len);
-}
-
-// How many characters are available for read right now?
-// Returns number of characters in the fifo (can be zero) or <0 on failure (uart shutdown)
-//
-static INLINE int console_available() {
-  return 1;
-}
-
-// Read user input, with a timeout.
-// Returns number of bytes read on success or <0 on error
-//
-
-static int console_read_bytes(void *buf, uint32_t len, TickType_t wait) {
-
-  TickType_t x;
-  int r;
-  do {
-    //r = read(fileno(stdin), buf, len);
-    //if (r > 0)
-//      return r;
-    r = fgetc(stdin);
-    if (r > 0) {
-      *(char *)buf = (char )r;
-      return 1;
-    }
-    x = wait;
-    wait--;
-    vTaskDelay(500);
-    
-  } while( x != 0 );
-
-  
-
-  return 0;
-}
-
-// Is console device ( UART ) is up and running (can be used) ?
-static inline bool console_isup() {
-  return true;
-}
-#endif
 
 #else
 // Generic ESP32 boards usually use UART0 as their default console device.

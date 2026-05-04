@@ -147,7 +147,7 @@ static struct {
 static _Thread_local const struct keywords_t *keywords;
 
 // Two messages which must be defined here and can not be moved to the language definition files:
-// thats why we inline translations here; TODO: refactor
+// thats why we inline translations here; TODO: refactor, move to language-specific files
 //
 #if WITH_LANG
 static const char *Exit_message =   "% Не в каталоге команд; (чтобы закрыть шелл, введите \"exit ex\")\r\n";
@@ -173,6 +173,7 @@ static void keywords_register(const struct keywords_t *key, const char *name, in
   static unsigned char idx = 0;
 
 #if WITH_DEVEL
+  // TODO: refactor. 
   if (idx >= MAX_CMD_SUBDIRS) {
     esp_rom_printf("%% BOOM !!! Increase MAX_CMD_SUBDIRS value\r\n");
     abort();

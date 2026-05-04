@@ -19,7 +19,7 @@
 //
 // Command "nvs" has one optional argument: the NVS partition name (which is "nvs" by default)
 //
-// TODO: accept shortened namespace names: no one wants to enter "cd nvs.net80211", "cd nvs" must be enough
+// TODO: accept shortened namespace names: no one wants to enter "cd nvs.net80211", "cd nvs.." must be enough
 // TODO: support 64bit values.
 
 
@@ -300,14 +300,14 @@ static void nv_list_namespaces(const char *partition) {
   struct nvsnamespace *nvs_namespaces = nv_get_namespaces(partition);
 
   if (nvs_namespaces) {
-    q_print("%% NVS namespaces:\r\n");
+    q_print("% NVS namespaces: (use \"<i>cd <name></>\" to enter or create)\r\n");
     while (nvs_namespaces) {
 
       // TODO: unlink operation must be atomic
       struct nvsnamespace *n = nvs_namespaces;
       nvs_namespaces = nvs_namespaces->next;
 
-      q_printf("%%  Namespace \"%s\" : %d keys\r\n", n->name, n->count);
+      q_printf("%%  📁 <b>%-16.16s</> : %d key%s\r\n", n->name, PPA(n->count));
       q_free(n);
     }
   } else
@@ -349,7 +349,7 @@ static void nv_list_keys(const char *partition, const char *namespace) {
 
           count++;
           nvs_entry_info(it, &info);
-          q_printf("%%%3d| %-16.16s | %-6.6s | ", count, info.key, nt2ct(info.type));
+          q_printf("%%%3d| <i>%-16.16s</> | %-6.6s | ", count, info.key, nt2ct(info.type));
 
           length = sizeof(val_str);
 
@@ -534,6 +534,7 @@ static int cmd_nvs_cd(int argc, char **argv) {
     q_print("% Path is too long\r\n");
     return CMD_FAILED;
   }
+  // TODO: nv_set_cwd() handles names like "nvs*"
   nv_set_cwd(*p ? p : NULL);
   return 0;
 }
@@ -566,6 +567,7 @@ static int cmd_nvs_ls(int argc, char **argv) {
   if (root)
     nv_list_namespaces(partition);
   else
+    // TODO: nv_list_keys() handles namespace names like "nvs*"
     nv_list_keys(partition, namespace);
 
   return 0;
@@ -575,6 +577,7 @@ static int cmd_nvs_ls(int argc, char **argv) {
 // rm .|* - remove current namespace or if executed in root - remove all namespaces
 // rm ../test  - removes namespace
 // rm ../ - removes entire partition
+// TODO: rm nvs* - removes all namespaces that starts with "nvs"
 //
 static int cmd_nvs_rm(int argc, char **argv) {
   
@@ -742,8 +745,10 @@ static int cmd_nvs_dump(int argc, char **argv) {
     //
     if (ESP_OK != (err = nvs_get_blob(handle, argv[1], NULL, &length))) {
       if (ESP_OK != (err = nvs_get_str(handle, argv[1], NULL, &length))) {
-        q_printf("%% Blob \"%s\" does not exist. Make sure the key you are trying to dump\r\n"
-                 "%% <i>exists</> and has type <i>\"char *\" or \"char []\"</>\r\n",argv[1]);
+        q_printf("%% Blob \"%s\" does not exist.\r\n"
+                 "%% Make sure the key you are trying to dump <i>exists</> and\r\n"
+                 "%% has type <i>\"char *\" or \"char []\"</>\r\n",
+                 argv[1]);
         nvs_close(handle);
         return ret;
       }

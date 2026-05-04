@@ -189,7 +189,6 @@
 #  define DEBUG 1
 #  define VERBOSE( ... ) __VA_ARGS__ 
 #else
-#  undef DEBUG
 #  define VERBOSE( ... ) { /* Nothing here */ }
 #endif
 
@@ -839,6 +838,7 @@ static  void espshell_initonce() {
     convar_add(cam_ledc_timer);    // Avoiding interference: ESP32 TIMER used by ESPCAM
 #endif
     convar_add(s_dump_lim);    // Maximum allowed "show memory ADDRESS" size in KiB
+    convar_add(Break_key);     // BREAK code for UART TAP mode (Ctrl+C by default, code == 3)
 
 
     // Register OOM callback

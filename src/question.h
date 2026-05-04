@@ -172,7 +172,13 @@ static bool help_list_dir(const struct keywords_t *key, const char *banner) {
           if (!(brief = key[i].help))
             brief = "No description";
         // command : description
-        q_printf("%% <%c>%-11.11s</> : %s\r\n", is_command_directory(key[i].cmd) ? 'b' : 'i', key[i].cmd, brief);
+        bool is_dir = is_command_directory(key[i].cmd);
+        q_printf("%% %s%-11.11s</> : %s %s\r\n", 
+                  is_dir ? "<b>"
+                         : "<i>", 
+                  key[i].cmd,
+                  is_dir ? "📁" : "  ",
+                  brief);
       }
     }
 
