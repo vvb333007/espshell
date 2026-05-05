@@ -101,6 +101,21 @@ static inline bool files_path_is_root(const char *path) {
   return (path && (path[0] == '/' || path[0] == '\\') && (path[1] == '\0'));
 }
 
+// Close file opened with files_open() or fopen()
+// Correctly closes "/dev/console", "/dev/stdout" etc.
+//
+static void files_fclose(FILE *fp) {
+
+  if (fp != stdin && fp != stderr && fp != stdout) {
+    if (fp != NULL)
+      fclose(fp);
+    else {
+      VERBOSE(q_print("files_close() : NULL fp\r\n"));
+    }
+  }
+}
+
+
 // Mock GNU getline()
 // Reads a full line from a text file — all bytes up to the next '\n' character.
 // The '\n' line separator is consumed; '\r' and '\n' are stripped.
@@ -834,7 +849,7 @@ static int files_cat_binary(const char *path0, unsigned int line, unsigned int c
           }
           HELP(q_printf("%% EOF (%u bytes)\r\n", sent));
 fail:
-          fclose(f);
+          files_fclose(f);
         } else q_printf("%% <e>Failed to open \"%s\" for reading</>\r\n", path);
         q_free(p);
       } else q_print("%% Out of memory\r\n");
@@ -880,7 +895,7 @@ static int files_cat_text(const char *path, unsigned int line, unsigned int coun
     }
     if (p)
       q_free(p);
-    fclose(f);
+    files_fclose(f);
   } else
     q_printf("%% <e>Can not open file \"%s\" for reading</>\r\n", path);
   return 0;
@@ -1235,7 +1250,7 @@ static int files_exec(const char *name) {
     History = h;
     if (p)
       q_free(p);
-    fclose(f);
+    files_fclose(f);
     q_printf("%% file %s:, %d lines, %d errors\r\n",name,cline,errors);
   } else
     q_printf("%% file %s: failed to open\r\n",name);
@@ -1414,12 +1429,28 @@ static bool files_rcd(const char *path, int recursion_depth) {
   return false;
 }
 
+
+
 // Open file for reading and/or writing. Create file if does not exist. Create
 // all directories in the path
 //
 static FILE *files_fopen(const char *name, const char *mode) {
 
   FILE *fp;
+
+  // Fake file names to enable export straight to the user console:
+  // we must work around cases where file system is not available
+  // For special names "/dev/stdout" and "/dev/console" we simply use stdout.
+  // For other cases we try to open regular file
+  //
+  if (!q_strcmp(name,"/dev/stdout") ||
+      !q_strcmp(name,"/dev/stderr") ||
+      !q_strcmp(name,"/dev/console"))
+    return stdout;
+  else if (!q_strcmp(name,"/dev/stdin"))
+    return stdin;
+
+
 
   if (*mode == 'a' || *mode == 'w')
     if (files_create_dirs(name, PATH_HAS_FILENAME) < 0) {
@@ -1441,7 +1472,7 @@ static int files_touch(const char *name) {
 
   FILE *fp;
   if ((fp = files_fopen(name,"a+")) != NULL) {
-    fclose(fp);
+    files_fclose(fp);
     return 0;
   }
   q_printf("%% <e>Can't touch \"%s\" (errno=%d)</>\r\n", name, errno);
@@ -2318,8 +2349,8 @@ static int cmd_files_insdel(int argc, char **argv) {
     }
   }
   // have to close files so unlink() and rename() could do their job
-  fclose(f);
-  fclose(t);
+  files_fclose(f);
+  files_fclose(t);
   t = f = NULL;
 
   unlink(path);
@@ -2331,8 +2362,8 @@ static int cmd_files_insdel(int argc, char **argv) {
 
 free_memory_and_return:
   if (p) q_free(p);
-  if (f) fclose(f);
-  if (t) fclose(t);
+  if (f) files_fclose(f);
+  if (t) files_fclose(t);
   if (text && text != empty) q_free(text);
   if (upath) {
     unlink(upath);

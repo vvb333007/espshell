@@ -988,7 +988,7 @@ static int cmd_seq_save(int argc, char **argv) {
   fprintf(fp, "exit\r\n");
 
   if (fp)
-    fclose(fp);
+    files_fclose(fp);
 
   //prompt_set(p);
   return 0;

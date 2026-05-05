@@ -230,6 +230,7 @@ static int8_t time_month_by_name(const char *name);
 #endif
 static int   files_touch(const char *);
 static FILE *files_fopen(const char *, const char *);
+static void files_fclose(FILE *);
 static bool pin_is_input_only_pin(int pin);
 static bool inline __attribute__((const)) pin_isreal(uint8_t const pin);
 static bool inline __attribute__((const)) pin_isvirtual(uint8_t const pin);

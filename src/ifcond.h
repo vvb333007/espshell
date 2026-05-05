@@ -1275,7 +1275,7 @@ static int cmd_if_save(int argc, char **argv) {
   }
 
   rw_unlockr(&ifc_rw);
-  fclose(fp);
+  files_fclose(fp);
 
   return 0;
 }

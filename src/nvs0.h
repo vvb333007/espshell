@@ -883,9 +883,10 @@ static int cmd_nvs_new(int argc, char **argv) {
 }
 
 #if WITH_FS
-// export NAMESPACE /PATH : export all keys from the NAMESPACE
-// export * /PATH         : export all NVS content
-// export /PATH           : export current namespace
+
+// export [ * | . | NAMESPACE] PATH
+// export all keys from the NAMESPACE, export all NVS content or export current namespace
+//
 static int cmd_nvs_export(int argc, char **argv) {
 
   const char *namespace;
@@ -913,8 +914,8 @@ static int cmd_nvs_export(int argc, char **argv) {
   } else {
     namespace = argv[1];
     filename = argv[2];
-    // "export * /PATH" in a directory: ignore *
-    // "export . /PATH" in a directory: ignore .
+    // "export * PATH" in a directory: ignore *
+    // "export . PATH" in a directory: ignore .
     if ((*namespace == '*' || *namespace == '.') && (namespace[1] == '\0') && !nv_cwd_is_root())
       namespace = nv_get_cwd();
   }
@@ -923,8 +924,10 @@ static int cmd_nvs_export(int argc, char **argv) {
     q_printf("%% <e>Can not open file \"%s\" for writing</>\r\n", filename);
     return CMD_FAILED;
   }
+  
   nv_export_namespace(fp, partition, namespace);
-  fclose(fp);
+
+  files_fclose(fp);
 
   return 0;
 }
