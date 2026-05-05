@@ -42,6 +42,7 @@
 #define WITH_SD 1                // Support FAT filesystem on SD/TF card over SPI
 #define WITH_SPI 0               // Support SPI interface
 #if COMPILING_ESPSHELL
+#  define WITH_SPEED 0           // Set to 1 for -O2 optimization. Default is -Os (size)
 #  define MOUNTPOINTS_NUM 5        // Max number of simultaneously mounted filesystems (must be >0)
 #  define STARTUP_ECHO 1           // echo mode at espshell startup (-1=blackhole, 0=no echo or 1=echo)
 #  define STACKSIZE (5 * 1024)     // Shell task stack size
@@ -50,7 +51,6 @@
 #  define AUTO_COLOR 1             // Let ESPShell decide wheither to enable coloring or not. Command "color on|off|auto" is about that
 #  define DIR_RECURSION_DEPTH 127  // Max directory depth TODO: make a test with long "/a/a/a/.../a" path
 #  define SEQUENCES_NUM 10         // Max number of sequences available for the command "sequence"
-//#  define MEMTEST 1              // Enable memory logger (extra output on "show memory"). For shell self-diagnostics
 //#  define STARTUP_PORT 0         // Console port number, where shell will be deployed at startup.
                                    // Undefined=AUTO, 0=UART0, 1=UART1, 2=UART2, 99=USBCDC
 
@@ -75,10 +75,13 @@
 #  define WITH_SD 0
 #  warning "SD support is disabled (depends on FAT FS, which is disabled)"
 #endif
+
 // -- Developers section
 //
 #define WITH_DEVEL 1
+//#define MEMTEST 1         // Enable memory logger (extra output on "show memory"). For shell self-diagnostics
 //#define MPIPE_USES_MSGBUF // experimental MessagePipes using FreeRTOS MessageBuffers instead of Queues
+
 #endif // Compiling espshell
 
 

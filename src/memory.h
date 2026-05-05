@@ -365,14 +365,18 @@ static int cmd_show_memory(int argc, char **argv) {
     if (argc < 3) { // "show memory"
       unsigned int total;
 
-      q_printf("%% <r>-- Memory caps --                                       </>\r\n"
-               "%%\r\n"
-               "%s"
-               "%s",
-                esp_dram_match_iram() ? "%% Note: <i>DRAM</> and <i>IRAM</> are sharing the same memory space\r\n"
-                                      : "",
-                esp_rtc_dram_match_rtc_iram() ? "%% Note: <i>RTC_DRAM</> and <i>RTC_IRAM</> are sharing the same memory space\r\n"
-                                              : ""
+      bool di  = esp_dram_match_iram();
+      bool rdi = esp_rtc_dram_match_rtc_iram();
+
+      if (di || rdi) 
+        q_printf("%% <r>-- Memory caps --                                     </>\r\n"
+                 "%%\r\n"
+                 "%s"
+                 "%s",
+                 di ? "%% Note: <i>DRAM</> and <i>IRAM</> are sharing the same memory space\r\n"
+                    : "",
+                rdi ? "%% Note: <i>RTC_DRAM</> and <i>RTC_IRAM</> are sharing the same memory space\r\n"
+                    : ""
               );
 
       q_printf( "%% <r>-- Heap information --                                 </>\r\n%%\r\n"
@@ -398,12 +402,16 @@ static int cmd_show_memory(int argc, char **argv) {
 
       q_print("%\r\n%<r> -- Low watermarks / Heap integrity --                  </>\r\n%\r\n");
 
-      q_printf("%% Internal SRAM  : dropped as low as <i>%u</> bytes, heap integrity check: %s</>\r\n"
-               "%% External SPIRAM: dropped as low as <i>%u</> bytes, heap integrity check: %s</>\r\n",
+      q_printf("%% Internal SRAM  : dropped as low as <i>%u</> bytes, heap integrity check: %s</>\r\n",
                heap_caps_get_minimum_free_size( MALLOC_CAP_INTERNAL ), 
-               heap_caps_check_integrity(MALLOC_CAP_INTERNAL, false) ? "<g>PASS" : "<w>FAIL",
-               heap_caps_get_minimum_free_size( MALLOC_CAP_SPIRAM ), 
-               heap_caps_check_integrity(MALLOC_CAP_SPIRAM, false) ? "<g>PASS" : "<w>FAIL");
+               heap_caps_check_integrity(MALLOC_CAP_INTERNAL, false) ? "<g>PASS" : "<w>FAIL");
+
+      // `total` contains SPIRAM size or 0
+      if (total > 0)
+        q_printf("%% External SPIRAM: dropped as low as <i>%u</> bytes, heap integrity check: %s</>\r\n",
+                 heap_caps_get_minimum_free_size( MALLOC_CAP_SPIRAM ), 
+                 heap_caps_check_integrity(MALLOC_CAP_SPIRAM, false) ? "<g>PASS" : "<w>FAIL");
+
 
       // Devel: this one gets printed only #if MEMTEST == 1
       q_memleaks(" -- Entries allocated by ESPShell --");

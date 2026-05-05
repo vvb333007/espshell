@@ -55,41 +55,8 @@
 //
 #define COMPILING_ESPSHELL 1
 
-#pragma GCC diagnostic warning "-Wformat"  
-#pragma GCC optimize ("O2")            // Optimize for speed
-//#pragma GCC optimize ("Os")          // Optimize for size
+// -- Base #includes --
 
-// Limits
-#define CONSOLE_UP_POLL_DELAY 1000     // 1000ms. How often to check if Serial is up
-#define PWM_MAX_FREQUENCY 10000000     // Max frequency for PWM, 10Mhz. Must be below XTAL clock and well below APB frequency. 
-#define MAX_PROMPT_LEN 16              // Prompt length ( except for PROMPT_FILES), max length of a prompt
-#define MAX_PATH 256                   // max filesystem path len
-#define MAX_FILENAME MAX_PATH          // max filename len (equal to MAX_PATH for now)
-#define UART_DEF_BAUDRATE 115200
-#define UART_RXTX_BUF 512              
-#define I2C_RXTX_BUF 1024
-#define I2C_DEF_FREQ 100000            
-
-#define ESPSHELL_MAX_CNLEN 10          // Maximum length (strlen()) of a command name. This is for formatting of "?" command output
-                                       // NOTE!! If you change this, make sure initializer string is changed too in question.h:help_command_list()
-
-// Prompts used by command subdirectories.
-// Must be not longer than MAX_PROMPT_LEN, except for PROMPT_FILES which can be up to MAX_PATH
-#define PROMPT "esp32#>"                // Main prompt
-#define PROMPT_I2C "esp32-i2c%u>"       // I2C prompt
-#define PROMPT_SPI "esp32-spi%u>"       // SPI prompt
-#define PROMPT_UART "esp32-uart%u>"     // UART prompt
-#define PROMPT_SEQ "esp32-seq%u>"       // Sequence (RMT) subtree prompt
-#define PROMPT_FILES "esp32#(%s📁 %s%s)>"  // File manager prompt (format string is /color tag/, /current working directory/, /color tag/)
-#define PROMPT_SEARCH "Search🔎: "        // History search prompt
-#define PROMPT_ESPCAM "esp32-cam>"      // ESPCam settings directory
-#define PROMPT_ALIAS "esp32-alias>"     // Alias editing directory.
-#define PROMPT_WIFISTA "esp32-sta>"     // WiFi STA
-#define PROMPT_WIFIAP "esp32-ap>"       // WiFi SoftAP
-#define PROMPT_NVS "esp32-nvs(📁 /%s)>"     // NVS editor/viewer
-
-// Includes. Lots of them.
-// classic C
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -100,14 +67,17 @@
 #include <assert.h>
 #include <stdatomic.h>
 
-// Arduino
+// Arduino-specific stuff
 #include <Arduino.h>
-// ESP-IDF
+
+// ESP-IDF config
 #include "sdkconfig.h"
+
 // FreeRTOS
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-// ESP-IDF again
+
+// ESP-IDF 
 #include <soc/soc_caps.h>
 #include <soc/gpio_struct.h>
 #include <soc/pcnt_struct.h>
@@ -123,9 +93,9 @@
 
 // Low-level Xtensa and RISCV API
 #ifdef __XTENSA__
-#  include "xt_utils.h"
+#  include <xt_utils.h>
 #elif __riscv
-#  include "riscv/rv_utils.h"
+#  include <riscv/rv_utils.h>
 #endif
 
 // Arduino Core
@@ -155,8 +125,6 @@
 #  include <esp_camera.h>
 #endif
 
-
-// Espressif devteam has changed their core API once again
 #if __has_include("esp_private/esp_gpio_reserve.h")
 #  include "esp_private/esp_gpio_reserve.h"
 #elif __has_include("esp_gpio_reserve.h")
@@ -168,13 +136,35 @@
 // Compile-time settings
 #include "espshell.h"
 
-// Common macros used throughout the code, GCC-specific stuff, etc
+// -- GCC-specific macros --
+#pragma GCC diagnostic warning "-Wformat"
+
+#if WITH_SPEED
+#  pragma GCC optimize ("O2")            // Optimize for speed
+#else
+#  pragma GCC optimize ("Os")          // Optimize for size
+#endif
+
+
+#define xstr(s) ystr(s)
+#define ystr(s) #s
+
+// GCC-specific branch prediction optimization macros 
+#undef likely
+#undef unlikely
+#define unlikely(_X)   __builtin_expect(!!(_X), 0)
+#define likely(_X)     __builtin_expect(!!(_X), 1)
+
 #define UNUSED __attribute__((unused))
 #define INLINE inline __attribute__((always_inline))
 #define NORETURN __attribute__((noreturn))
 #define PRINTF_LIKE __attribute__((format(printf, 1, 2)))
 
-
+#define MUST_NOT_HAPPEN( ... ) \
+  do { \
+    if ( unlikely(__VA_ARGS__) ) \
+      must_not_happen(#__VA_ARGS__, __FILE__, __LINE__ ); \
+  } while( false )
 
 #if AUTOSTART
 #  define STARTUP_HOOK __attribute__((constructor))
@@ -189,16 +179,23 @@
 #  define DEBUG 1
 #  define VERBOSE( ... ) __VA_ARGS__ 
 #else
-#  define VERBOSE( ... ) { /* Nothing here */ }
+#  define VERBOSE( ... ) do { /* Nothing here */ } while (false)
 #endif
 
-// gcc stringify which accepts macro names
-#define xstr(s) ystr(s)
-#define ystr(s) #s
 
+// -- Limits --
+#define CONSOLE_UP_POLL_DELAY 1000     // 1000ms. How often to check if Serial is up
+#define PWM_MAX_FREQUENCY 10000000     // Max frequency for PWM, 10Mhz. Must be below XTAL clock and well below APB frequency. 
+#define MAX_PROMPT_LEN 16              // Prompt length ( except for PROMPT_FILES), max length of a prompt
+#define MAX_PATH 256                   // max filesystem path len
+#define MAX_FILENAME MAX_PATH          // max filename len (equal to MAX_PATH for now)
+#define UART_DEF_BAUDRATE 115200
+#define UART_RXTX_BUF 512              
+#define I2C_RXTX_BUF 1024
+#define I2C_DEF_FREQ 100000            
 
-
-#define BREAK_KEY 3    // Ctrl+C code
+#define ESPSHELL_MAX_CNLEN 10          // Maximum length (strlen()) of a command name. This is for formatting of "?" command output
+                                       // NOTE!! If you change this, make sure initializer string is changed too in question.h:help_command_list()
 
 // Special pin names.
 #define BAD_PIN    255 // Don't change! Non-existing pin number. 
@@ -211,11 +208,23 @@
 // Number of UARTs available
 #define NUM_UARTS SOC_UART_NUM
 
-//#define xPRAGMA(string) _Pragma(#string)
-//#define PRAGMA(string) xPRAGMA(string)
-//#define WD() PRAGMA(GCC diagnostic ignored "-Wformat")
+// Prompts used by command subdirectories.
+// Must be not longer than MAX_PROMPT_LEN, except for PROMPT_FILES which can be up to MAX_PATH
+#define PROMPT "esp32#>"                // Main prompt
+#define PROMPT_I2C "esp32-i2c%u>"       // I2C prompt
+#define PROMPT_SPI "esp32-spi%u>"       // SPI prompt
+#define PROMPT_UART "esp32-uart%u>"     // UART prompt
+#define PROMPT_SEQ "esp32-seq%u>"       // Sequence (RMT) subtree prompt
+#define PROMPT_FILES "esp32#(%s📁 %s%s)>"  // File manager prompt (format string is /color tag/, /current working directory/, /color tag/)
+#define PROMPT_SEARCH "Search🔎: "        // History search prompt
+#define PROMPT_ESPCAM "esp32-cam>"      // ESPCam settings directory
+#define PROMPT_ALIAS "esp32-alias>"     // Alias editing directory.
+#define PROMPT_WIFISTA "esp32-sta>"     // WiFi STA
+#define PROMPT_WIFIAP "esp32-ap>"       // WiFi SoftAP
+#define PROMPT_NVS "esp32-nvs(📁 /%s)>"     // NVS editor/viewer
 
 // -- Miscellaneous forwards, which can not be otherwhise resolved by rearrangement of #includes below
+
 void STARTUP_HOOK espshell_start();
 static bool task_wait_for_signal(uint32_t *sig, uint32_t timeout_ms); 
 static INLINE bool is_foreground_task();             

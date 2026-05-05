@@ -110,6 +110,7 @@ static void keywords_register(const struct keywords_t *key, const char *name, in
   }
 
 // Get pointer to a keywords array by its name: KEYWORDS(main), KEYWORDS(files) ...
+// If name is asciiz string then keywords_by_name(const char *) must be used (see below)
 #define KEYWORDS(_Key) \
   keywords_ ## _Key
 
@@ -124,6 +125,8 @@ static void keywords_register(const struct keywords_t *key, const char *name, in
 // Get pointer to a currently used keywords array
 #define keywords_get() \
   keywords
+
+// Get corresponding keywords array by its name (asciiz)
 
 // Helper macro to make forward declarations for command handlers
 //
@@ -165,25 +168,34 @@ static const char *Subdir_message = "%% Entering %s mode. Ctrl+Z or \"exit\" to 
 
 
 // Register a command tree. This one called by a C startup code as part of KEYWORDS_REG() macro
-// well before app_main(), setup() or loop(). It could be called after startup to register additional
-// command directories if required
+// well before app_main(), setup() or loop().
 //
 static void keywords_register(const struct keywords_t *key, const char *name, int const count) {
-
   static unsigned char idx = 0;
 
-#if WITH_DEVEL
-  // TODO: refactor. 
-  if (idx >= MAX_CMD_SUBDIRS) {
-    esp_rom_printf("%% BOOM !!! Increase MAX_CMD_SUBDIRS value\r\n");
-    abort();
-  }
-#endif  
+  // never happens in release
+  MUST_NOT_HAPPEN(idx >= MAX_CMD_SUBDIRS);
 
   Subdirs[idx].key = key;
   Subdirs[idx].name = name;
   Subdirs[idx].count = count;
   idx++;
+}
+
+// Get array by its asciiz name
+// Keywords array must be registered with KEYWORDS_REG() otherwise it is invisible for this function
+//
+static const struct keywords_t *keywords_by_name(const char *p) {
+
+  int idx = 0;
+  // Scan through Subdirs array to find out corresponding entry
+  if (p && *p)
+    while(Subdirs[idx].name) {
+      if (!q_strcmp(p, Subdirs[idx].name))
+        return Subdirs[idx].key;
+      idx++;
+    }
+  return NULL;
 }
 
 // Check, if given name is a command directory name. This check relies on subdirs registration:

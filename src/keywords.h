@@ -764,7 +764,14 @@ KEYWORDS_DECL(sequence) {
           "%\r\n"
           "% Save <u><b>this</> sequence in/from a text file; Text file can be modified and\r\n"
           "% its content is loaded back (see global \"exec\" command), or copy/pasted to the\r\n"
-          "% command line. Captured sequences (see \"capture\") also can be saved"), 
+          "% command line. Captured sequences (see \"capture\") also can be saved\r\n"
+          "%\r\n"
+          "% <u>Examples:</>\r\n"
+          "%\r\n"
+          "%   <i>save /ffat/seq.cfg</>   : Save to a file (absolute path)\r\n"
+          "%   <i>save ../seq.cfg</>      : Save to a file (relative path)\r\n"
+          "%   <i>save /dev/stdout</>     : Print to the user terminal\r\n"
+          ), 
     HELPK("Save sequence to a file") },
 #endif // WITH_FS    
 #if NOT_YET
@@ -2130,6 +2137,7 @@ KEYWORDS_DECL(main) {
           "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <b>if save <i>* /ffat/test.txt</> : Save all \"if\" entries\r\n"
+          "%   <b>if save <i>* /dev/console</>   : Display all \"if\" entries\r\n"
           "%   <b>every save <i>1 /ffat/test2</> : Save \"every\" entry #1"), NULL },
 // TODO: must use read_timespec()
   { "every", cmd_if, MANY_ARGS,
@@ -2281,10 +2289,10 @@ KEYWORDS_DECL(camera) {
           "% Dollar sign (\"$\") in filenames gets expanded to a sequental, random number\n\r"
           "% Its main use is to automate saving of multiple frames\n\r"
           "% <u>Examples:</>\n\r"
-          "%   <i>transfer</> /ffat/pix/12.jpg      : save to the file\n\r"
-          "%   <i>transfer uart</> 1                : transmit as is over uart1\n\r"
-          "%   <i>transfer</> /ffat/pix/file$.jpg   : save file0, file1, .. etc\n\r"
-          "%   <i>transfer uart</> 1 <o>ascii-hex</>: convert to ascii before transmit\n\r"
+          "%   <i>save</> /ffat/pix/12.jpg      : save to the file\n\r"
+          "%   <i>save uart</> 1                : transmit as is over uart1\n\r"
+          "%   <i>save</> /ffat/pix/file$.jpg   : save file0, file1, .. etc\n\r"
+          "%   <i>save uart</> 1 <o>ascii-hex</>: convert to ascii before transmit\n\r"
     ), "Save / transfer captured data" },
 
   { "pinout", cmd_camera_pinout, 16,

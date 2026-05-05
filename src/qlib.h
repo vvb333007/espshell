@@ -34,15 +34,6 @@ struct node_link;
 static void mb_put(struct mb_pool *, void *);
 static void *mb_get(struct mb_pool *);
 
-// GCC-specific branch prediction optimization macros 
-// Arduino Core is shipped with precompiled ESP-IDF where they have redefined likely() and unlikely() to be 
-// an empty statement. We just turn it back as it should be: it is used alot in /if/ expression which are rarely
-// executed (if at all)
-//
-#undef likely
-#undef unlikely
-#define unlikely(_X)   __builtin_expect(!!(_X), 0)
-#define likely(_X)     __builtin_expect(!!(_X), 1)
 
 // Memory type: a number from 0 to 15 to identify newly allocated memory block usage; 
 // Used as a second argument of q_malloc() 
@@ -70,16 +61,10 @@ enum {
   // NOTE: only values 0..15 are allowed, do not add more!
 };
 
-static NORETURN void must_not_happen(const char *message, const char *file, int line);
-
-// Check if condition ... is true and if it is - halt ESPShell
-// A wrapper for the must_not_happen() function
+// Helper function, prints location, message, halts espshell, resumes sketch. 
+// Used by espshell.h/MUST_NOT_HAPPEN() macro
 //
-#define MUST_NOT_HAPPEN( ... ) \
-  { \
-    if ( unlikely(__VA_ARGS__) ) \
-      must_not_happen(#__VA_ARGS__, __FILE__, __LINE__ ); \
-  }
+static NORETURN void must_not_happen(const char *message, const char *file, int line);
 
 #define NOT_YET() \
   do { \

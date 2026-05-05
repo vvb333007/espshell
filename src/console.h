@@ -16,6 +16,7 @@
 //
 // ESPShell uses abstract console_read../console_write.. and some other functions to print data or read user input.
 // Currently this abstraction layer is implemented for UARTs (natively) and USB (see hwcdc.cpp)
+#define BREAK_KEY 3    // Ctrl+C code
 
 // espshell runs on this port:
 //
