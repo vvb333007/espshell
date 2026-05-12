@@ -1793,19 +1793,20 @@ HELPK("Переменные скетча") },
   HELPK("Условные события GPIO") },
 
 { "if", HELP_ONLY,
-  HELPK("% \"<b>if <i>low|high</> PIN [<o>low|high PIN</>]* [<o>max-exec NUM</>] [<o>poll NUM</>] <i>exec</> ALIAS</>\"\r\n"
+  HELPK("% \"<b>if <i>low|high</> PIN [<o>low|high PIN</>]* [<o>max-exec NUM</>] [<o>poll TIMESPEC</>] <i>exec</> ALIAS</>\"\r\n"
         "%\r\n"
         "% Создать условие, которое периодически проверяется (опрос, polling)\r\n"
         "% Прерывания не используются; максимальная частота срабатывания ограничена\r\n"
         "% интервалом опроса\r\n"
         "%   <i>max-exec</> NUM : выполнить это условие не более NUM раз\r\n"
-        "%   <i>poll</>     NUM : интервал опроса в миллисекундах (по умолчанию: 1000 мс)\r\n"
+        "%   <i>poll</>     TIMESPEC : интервал опроса (по умолчанию: 1000 millis)\r\n"
         "%   <i>exec</>     ALIAS : алиас, который будет выполнен\r\n"
         "%\r\n"
         "% <u>Примеры</>:\r\n"
         "%   <i>if low 5 poll 10000 exec Comm</> : если GPIO 5 в состоянии LOW (проверка каждые 10 с)\r\n"
         "%   <i>if low 5 high 10 high 11 exec Comm</> : если GPIO 5 — LOW и GPIO 10/11 — HIGH\r\n"
         "%   <i>if low 5 max-exec 5 poll 1 exec Comm</> : выполнить до пяти раз, опрос каждые 1 мс\r\n"
+        "%   <i>if low 5 poll 1 min 1 sec exec Comm</> : .. опрос каждые 61сек\r\n"
         ),
   NULL },
 

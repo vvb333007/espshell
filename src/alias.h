@@ -452,19 +452,12 @@ static int cmd_exec(int argc, char **argv) {
     import = true;
 
   for (int i = 1; i < argc; i++) {
-    // exec: file starts with /, aliases - not.
-    // import: only files, no aliases
+    // for "exec": file starts with /, aliases - not.
+    // for "import": only files, no aliases
     if (argv[i][0] == '/' || import) {
 #if WITH_FS
-//      char *p = files_full_path(argv[i], PROCESS_ASTERISK);
-//      if (files_path_exist_file(p)) {
-        // files_exec() call full_path internally
         if (files_exec(argv[i]) != 0)
           errors++;
-//      } else {
-//        q_printf("%% \"Can't read <i>%s</>\". Is filesystem mounted?\r\n",p);
-//        errors++;
-//      }
 #else
       HELP(q_print("% No support for filesystems was compiled in\r\n"
                    "% Edit the espshell.h and set WITH_FS to \"1\"\r\n");

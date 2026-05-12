@@ -1285,7 +1285,7 @@ static int cmd_if_save(int argc, char **argv) {
 // being a gateway to other cmd_if_... handlers.
 //
 // if rising|falling NUM [low|high NUM]* [max-exec NUM] [rate-limit MSEC] exec ALIAS_NAME
-// if low|high NUM [low|high NUM]* [poll MSEC] [max-exec NUM] [rate-limit MSEC] exec ALIAS_NAME
+// if low|high NUM [low|high NUM]* [poll TIMESPEC] [max-exec NUM] [rate-limit MSEC] exec ALIAS_NAME
 // every ...
 //
 // TODO: this functions is huge. must be split in smaller routines
@@ -1330,7 +1330,7 @@ static int cmd_if(int argc, char **argv) {
     }
     
     // Internally, "every" statement uses the same mechanism "if .. poll" uses: "every" event is just
-    // and empty (conditionless) if:  "if poll 1000 exec alias". Read polling interval, make sure it is not zero
+    // and empty (conditionless) if:  "if poll 1000 millis exec alias". Read polling interval, make sure it is not zero
     // TODO: make poll to be 64 bit
     if (0 == (poll = (unsigned int)(userinput_read_timespec(argc, argv, 1, &stop) / 1000ULL)))
       return stop > 1 ? stop : CMD_FAILED;

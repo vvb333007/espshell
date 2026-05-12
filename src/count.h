@@ -33,7 +33,8 @@
  // "pcnt overflow interrupt" - an ISR which gets called each time counter reaches 20000 pulses
  // "GPIO anyedge interrupt" - an ISR which gets called on incoming pulse
  //
- // TODO: 1.0: "trigger" counter must record a timestamp & enable counting inside the ISR. Current implementation has a delay of tens
+ // TODO: 1.0: "trigger" counter must record a timestamp & enable counting inside the ISR. 
+ // TODO: Current implementation has a delay of tens
  // TODO: of microseconds before 1st pulse and actual counting since the code uses task notifications
  // TODO: Make /pcnt_counters/ _Atomic. Use atomic_load/atomic_store/atomic_fetch_add/sub
  // TODO: make lockless access to the units[] array: use _Atomic /.in_use/ for that
@@ -521,7 +522,8 @@ bad_filter:
  // /wait/ is expected to hold measurement interval value in microseconds or 0 at this point.
 release_hardware_and_exit:
 
-  // read 16-bit counter value, add Number_Of_Interrupts * Number_Of_Pulses_Per_Interrupt
+  // read 16-bit counter value, caclulate:
+  //  count + Number_Of_Interrupts * Number_Of_Pulses_Per_Interrupt + 1 trigger pulse (if any)
   pcnt_get_counter_value(unit, &count);
 
   count_release_interrupt(unit);

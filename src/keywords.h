@@ -2063,18 +2063,19 @@ KEYWORDS_DECL(main) {
     HELPK("Conditional GPIO events") },
 
   { "if", HELP_ONLY,
-    HELPK("% \"<b>if <i>low|high</> PIN [<o>low|high PIN</>]* [<o>max-exec NUM</>] [<o>poll NUM</>] <i>exec</> ALIAS</>\"\r\n"
+    HELPK("% \"<b>if <i>low|high</> PIN [<o>low|high PIN</>]* [<o>max-exec NUM</>] [<o>poll TIMESPEC</>] <i>exec</> ALIAS</>\"\r\n"
           "%\r\n"
           "% Create a condition that is checked periodically (polling)\r\n"
           "% No interrupts involved; the maximum rate is limited by the poll interval\r\n"
           "%   <i>max-exec</> NUM : execute this condition no more than NUM times\r\n"
-          "%   <i>poll</>     NUM : poll interval in milliseconds (default: 1000 ms)\r\n"
+          "%   <i>poll</>         : poll interval e.g. \"1 min 1 sec\" or \"5 millis\"\r\n"
           "%   <i>exec</>     ALIAS : alias to execute\r\n"
           "%\r\n"
           "% <u>Examples:</>\r\n"
           "%   <i>if low 5 poll 10000 exec Comm</> : if GPIO 5 is low (checked every 10 s)\r\n"
           "%   <i>if low 5 high 10 high 11 exec Comm</> : if GPIO 5 is low and GPIO 10/11 are high\r\n"
           "%   <i>if low 5 max-exec 5 poll 1 exec Comm</> : … up to five times, polled every 1 ms\r\n"
+          "%   <i>if low 5 poll 1 min 1 sec exec Comm</> : … polled every 61 seconds\r\n"
           ), 
     NULL },
 
@@ -2433,6 +2434,9 @@ KEYWORDS_REG(camera);
 // Handlers of this group expect argv[0] == "show"
 KEYWORDS_DECL(show) {
 
+#if WITH_DEVEL
+  // TODO: "interrupts" esp_intr_dump(stdout);
+#endif
 #if WITH_WIFI
   { "wifi", cmd_show_wifi, MANY_ARGS,
     HELPK("% \"<b>show <i>wifi ap | sta | clients</>\"\r\n"
