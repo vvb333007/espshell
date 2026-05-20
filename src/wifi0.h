@@ -713,7 +713,7 @@ static int cmd_wifi_if(int argc, char **argv) {
   }
 
   // Create missing network interfaces if any:
-  // Although prepare_wifi_stack() creates both network interfaces, use sketch can delete/create them
+  // Although prepare_wifi_stack() creates both network interfaces, user sketch can delete/create them
   // so it is good idea to recheck
   if (!get_staif())
     esp_netif_create_default_wifi_sta();

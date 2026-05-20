@@ -366,7 +366,7 @@ static int cmd_show_memory(int argc, char **argv) {
       unsigned int total;
 
       bool di  = esp_dram_match_iram();
-      bool rdi = esp_rtc_dram_match_rtc_iram();
+      bool rdi = true; //esp_rtc_dram_match_rtc_iram();
 
       if (di || rdi) 
         q_printf("%% <r>-- Memory caps --                                     </>\r\n"

@@ -112,6 +112,14 @@ static const char *Rr_desc[] = {
 
 // Deep-sleep wakeup source. Entries containing "(light sleep)" should never appear
 //
+#ifndef ESP_SLEEP_WAKEUP_UART1
+#define ESP_SLEEP_WAKEUP_UART1 ESP_SLEEP_WAKEUP_UART
+#endif
+
+#ifndef ESP_SLEEP_WAKEUP_UART2
+#define ESP_SLEEP_WAKEUP_UART2 ESP_SLEEP_WAKEUP_UART
+#endif
+
 static const char *Ws_desc[] = {
   [ESP_SLEEP_WAKEUP_UNDEFINED] = "<w>an undefined event",
   [ESP_SLEEP_WAKEUP_ALL] = "",

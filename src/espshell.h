@@ -99,9 +99,9 @@
 //
 #if !COMPILING_ESPSHELL
 #  ifdef __cplusplus
-#    define SHELL_USER_HANDLER() extern "C" __attribute__((used)) int cmd_misc_user(int argc, char **argv)
+#    define SHELL_USER_HANDLER(_Argc, _Argv) extern "C" __attribute__((used)) int cmd_misc_user(int _Argc, char **_Argv)
 #  else
-#    define SHELL_USER_HANDLER() extern __attribute__((used)) int cmd_misc_user(int argc, char **argv)
+#    define SHELL_USER_HANDLER(_Argc, _Argv) extern __attribute__((used)) int cmd_misc_user(int _Argc, char **_Argv)
 #  endif
 #endif
 
