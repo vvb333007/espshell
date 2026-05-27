@@ -36,6 +36,10 @@
 #  error "SOC_PERIPHERAL_LOW and/or SOC_PERIPHERAL_HIGH are not defined, code review is required"
 #endif
 
+#if ESP_ARDUINO_VERSION < ESP_ARDUINO_VERSION_VAL(3, 3, 8) // TODO: use IDF macros not Arduino!
+#  define esp_rtc_dram_match_rtc_iram() true
+#endif
+
 
 // Gets called by ESP-IDF if memory allocation fails. Registered as a callback
 // in espshell_initonce()
@@ -366,7 +370,7 @@ static int cmd_show_memory(int argc, char **argv) {
       unsigned int total;
 
       bool di  = esp_dram_match_iram();
-      bool rdi = true; //esp_rtc_dram_match_rtc_iram();
+      bool rdi = esp_rtc_dram_match_rtc_iram();
 
       if (di || rdi) 
         q_printf("%% <r>-- Memory caps --                                     </>\r\n"

@@ -1334,8 +1334,9 @@ static inline  char *q_findchar(const char *str, char sym) {
 
 // Adopted from esp32-hal-uart.c Arduino Core.
 // Internal buffer is changed from static to stack because q_printf() can be called from different tasks
-// This function can be used in Out-of-memory situation however caller must not use strings larger than 128 bytes (after % expansion)
-// TODO: if we have PSRMA: allocate permanent 5kb buffer to minimize calls to vsnprintf 
+// This function can be used in Out-of-memory situation however caller must not use strings larger than 256 bytes (after % expansion)
+// TODO: if we have PSRAM: allocate permanent 5kb buffer to minimize calls to vsnprintf 
+//
 static int __printfv(const char *format, va_list arg) {
 
   /*static */char buf[2*128 + 1]; //TODO: profile the shell to find out an optimal size. optimal == no calls to q_malloc

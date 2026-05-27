@@ -110,8 +110,7 @@ static const char *Rr_desc[] = {
 
 };
 
-// Deep-sleep wakeup source. Entries containing "(light sleep)" should never appear
-//
+// Workaround for old Ardunino cores
 #ifndef ESP_SLEEP_WAKEUP_UART1
 #define ESP_SLEEP_WAKEUP_UART1 ESP_SLEEP_WAKEUP_UART
 #endif
@@ -119,6 +118,9 @@ static const char *Rr_desc[] = {
 #ifndef ESP_SLEEP_WAKEUP_UART2
 #define ESP_SLEEP_WAKEUP_UART2 ESP_SLEEP_WAKEUP_UART
 #endif
+
+// Deep-sleep wakeup source. Entries containing "(light sleep)" should never appear
+//
 
 static const char *Ws_desc[] = {
   [ESP_SLEEP_WAKEUP_UNDEFINED] = "<w>an undefined event",
@@ -129,13 +131,13 @@ static const char *Ws_desc[] = {
   [ESP_SLEEP_WAKEUP_TOUCHPAD] = "a touchpad",
   [ESP_SLEEP_WAKEUP_ULP] = "the ULP co-processor/microcode",
   [ESP_SLEEP_WAKEUP_GPIO] = "a GPIO (light sleep)",
-  [ESP_SLEEP_WAKEUP_UART] = "an UART (light sleep)",
-#ifdef ESP_SLEEP_WAKEUP_UART1
+#if ESP_SLEEP_WAKEUP_UART != ESP_SLEEP_WAKEUP_UART1  
   [ESP_SLEEP_WAKEUP_UART1] = "an UART1 (light sleep)",
 #endif
-#ifdef ESP_SLEEP_WAKEUP_UART2
+#if ESP_SLEEP_WAKEUP_UART != ESP_SLEEP_WAKEUP_UART2  
   [ESP_SLEEP_WAKEUP_UART2] = "an UART2 (light sleep)",
-#endif
+#endif  
+  [ESP_SLEEP_WAKEUP_UART] = "an UART (light sleep)",
   [ESP_SLEEP_WAKEUP_WIFI] = "the WIFI (light sleep)",
   [ESP_SLEEP_WAKEUP_COCPU] = "the CO-CPU (INT)",
   [ESP_SLEEP_WAKEUP_COCPU_TRAP_TRIG] = "the CO-CPU (TRIG)",

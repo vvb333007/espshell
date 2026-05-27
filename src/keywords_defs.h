@@ -185,7 +185,7 @@ static void keywords_register(const struct keywords_t *key, const char *name, in
 // Get array by its asciiz name
 // Keywords array must be registered with KEYWORDS_REG() otherwise it is invisible for this function
 //
-static const struct keywords_t *keywords_by_name(const char *p) {
+UNUSED static const struct keywords_t *keywords_by_name(const char *p) {
 
   int idx = 0;
   // Scan through Subdirs array to find out corresponding entry
