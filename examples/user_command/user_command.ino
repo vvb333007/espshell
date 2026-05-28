@@ -29,13 +29,13 @@
 // argv[0] is the command name itself (i.e. "misc"),
 // while argv[1], argv[2], ..., argv[X] are the command arguments.
 //
-SHELL_USER_HANDLER();
+SHELL_USER_HANDLER(argc, argv);
 
 // This function is called every time the user executes the "misc" command.
 // The command line, split into argc/argv, is passed to the function by the shell.
 // argv[0] is always the command name itself (i.e. "misc").
 //
-SHELL_USER_HANDLER() {
+SHELL_USER_HANDLER(argc, argv) {
 
     if (argc > 1)
       Serial.printf("Hello, %s!\r\n", argv[1]);
