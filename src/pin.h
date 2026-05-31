@@ -749,12 +749,41 @@ static int cmd_show_pin(int argc, char **argv) {
 
   // depending on the command ("pin X" or "show pin X") we start either from arg1 or arg2
   // /i/ points to pin numbers
+  //
+  // Process "show pin strapping" command here also
+  //
   if (!q_strcmp(argv[0],"pin"))
     i = 1;                                   
   else if (!q_strcmp(argv[0],"show")) {
     if (argc < 3)
       return CMD_MISSING_ARG; //"show pin" with no args
+
+    // show pin strapping?
+    if (!q_strcmp(argv[2], "strapping")) {
+
+      uint64_t bits = STRAPPING_PINS;
+
+      if (!bits)
+        q_print("% None\n");
+      else {
+        q_print("% Strapping pins are: ");
+        while (bits) {
+          int bit = __builtin_ctzll(bits);
+          q_printf("%d", bit);
+          bits &= bits - 1;
+          if (bits)
+            q_print(", ");
+          else
+            q_print("\r\n");
+        }
+      }
+
+      return 0;
+    }
+
+    // show pin NUMBER NUMBER ... NUMBER
     i = 2;
+
   } else {
     // Handler invoked from somewhere else?
     MUST_NOT_HAPPEN( true );

@@ -241,7 +241,7 @@ print_hint_and_exit:
   // just update the duty cycle — don't stop the output.
   if (ledcReadFreq(pin) == freq) {
     if (ledcWrite(pin, duty_abs)) {
-      VERBOSE(q_printf("%% PWM on pin#%u, %u Hz (%.1f%% duty cycle) is enabled\r\n",pin,freq,duty));
+      VERBOSE(q_printf("%% PWM on pin#%u, %u Hz (%.1f%% duty cycle) is enabled\r\n",pin,freq,duty * 100.0f));
       return 0;
     }
     // FALL THROUGH
@@ -254,7 +254,7 @@ print_hint_and_exit:
         
     if (ledcAttachChannel(pin, freq, resolution, channel)) {
       if (ledcWrite(pin, duty_abs)) {
-        VERBOSE(q_printf("%% PWM on pin#%u, %u Hz (%.1f%% duty cycle, channel#%u) is enabled\r\n",pin,freq,duty,channel));
+        VERBOSE(q_printf("%% PWM on pin#%u, %u Hz (%.1f%% duty cycle, channel#%u) is enabled\r\n",pin,freq,duty * 100.0f, channel));
         
         // Advance to the next channel.
         // Setting pwm_ch_inc to 0 will cause channel number to remain the same unless 4th argument is passed
