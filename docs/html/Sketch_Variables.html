@@ -3,31 +3,42 @@
 <head>
   <title>ESPShell : Sketch Variables</title>
   <link rel="stylesheet" href="espshell.css">
-  <meta charset="UTF-8">
 </head>
 <body>
-<p align=center><a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: Sketch Variables" width="70%" height="70%" /></a></p>
-<h3 align=center><a href="Sketch_Variables.ru.html">[ На русском ]</a>&nbsp;&harr;&nbsp;<a href="Sketch_Variables.html">[ English ]</a></h3>
+<p align=center><a href="index.html"><img src="i/espshell_logo.jpg" alt="ESPShell for Arduino :: Accessing Sketch Variables" width="70%" height="70%" /></a></p>
+<h3 align=center><a href="Sketch_Variables.ru.html">[ Russian ]</a>&nbsp;&harr;&nbsp;<a href="Sketch_Variables.html">[ English ]</a></h3>
+
 <p>
   <ul>
-    <li><a href="#variables">Sketch Variables</a></li>
-    <li><a href="#show">Displaying Variables</a></li>
-    <li><a href="#set">Setting Values</a></li>
+    <li><a href="#variables">Sketch Variables: Registration</a></li>
+    <li><a href="#variables">Variables: Creating New Variables and Binding Them to an Address</a></li>
+    <li><a href="#show">Viewing Variables</a></li>
+    <li><a href="#set">Assigning Values</a></li>
     <li><a href="#conv">Number Conversion</a></li>
   </ul>
 </p>
 
-<p id=variables><h2 id=wit><a href="#top">&#8686;</a>SKETCH VARIABLES: REGISTRATION</h2></p>
+<p><h2 id=variables><a href="#top">&#8686;</a>SKETCH VARIABLES: REGISTRATION</h2></p>
 
 <p>
-ESPShell provides an API to register and manipulate sketch variables. Supported types are limited to simple C types such as <i>unsigned/signed int</i>, <i>char</i>, <i>short</i>, <i>float</i>, and generic <i>void*</i> pointers. Arrays of these basic types are also supported.
-</p><p>
-To make a variable accessible from ESPShell, it must be <i>registered</i>.
-</p><p>
-Use the <span class=func>convar_add()</span> macro to register a variable. There are also specialized macros like <span class=func>convar_addp()</span> for pointers and <span class=func>convar_adda()</span> for arrays.
-</p><p>
-Example usage in an Arduino sketch: suppose we have three variables we want to expose to the shell:
-</p><p>
+To make a variable accessible from ESPShell, it must first be <i>registered</i>.
+</p>
+
+<p>
+ESPShell provides an API for registering and managing sketch variables. Naturally, the shell knows nothing about your sketch variables until you explicitly tell it which variables should be exposed through the shell interface. It is also possible to create arbitrary variables directly from the shell. For example, you can create a variable named <b>MyVar</b> of type <i>unsigned short int</i> and bind it to address <code>0x3fcef000</code> using a single command (see below).
+
+Only basic C types are supported, including <i>signed/unsigned int</i>, <i>char</i>, <i>short</i>, <i>float</i>, and <i>void*</i> pointers. Arrays of these basic types are supported as well.
+</p>
+
+<p>
+The <span class=func>convar_add()</span> macro is used to register variables. Specialized macros are also available, such as <span class=func>convar_addp()</span> for pointers and <span class=func>convar_adda()</span> for arrays.
+</p>
+
+<p>
+Example usage in an Arduino sketch. Suppose we have three variables that we want to make accessible from the shell command line:
+</p>
+
+<p>
 <pre>
   static int some_variable;
   unsigned char *pointer;
@@ -35,14 +46,32 @@ Example usage in an Arduino sketch: suppose we have three variables we want to e
 
   void setup() {
     ...
-    convar_add(some_variable); &larr; Register a simple variable
+    convar_add(some_variable); &larr; Register a regular variable
     convar_addp(pointer);      &larr; Register a pointer
     convar_adda(array);        &larr; Register an array
     ...
   }
 </pre>
-</p><p>
-Other available macros include: <b>convar_addap(Name)</b> - to register an array of pointers, and <b>convar_addpp(Name)</b> - to register a pointer to a pointer.
+</p>
+
+<p>
+Additional registration macros are available:
+<b>convar_addap(Name)</b> — register an array of pointers,
+<b>convar_addpp(Name)</b> — register a pointer to a pointer.
+</p>
+
+<p><h2 id=variables><a href="#top">&#8686;</a>VARIABLES: CREATING NEW VARIABLES</h2></p>
+
+<p>
+Suppose you want to inspect the contents of memory at address <code>0x3fcef100</code>, not as a hexadecimal dump but, for example, as an array of 10 <code>float</code> elements. To do this, you need to tell the shell that a variable of a specific type is located at the given address:
+</p>
+
+<pre>
+    esp32#>var 0x3fcef100 zzz float [10]
+</pre>
+
+<p>
+After executing this command, a variable named <b>zzz</b> will be created and bound to address <code>0x3fcef100</code>. You can then inspect and modify it. All reads and writes will be performed directly through the specified memory address, taking both the data type size and byte order into account automatically.
 </p>
 
 <p><h2 id=show><a href="#top">&#8686;</a>DISPLAYING VARIABLES AND VALUES</h2></p>
