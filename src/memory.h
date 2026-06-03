@@ -10,12 +10,10 @@
  * Author: Viacheslav Logunov <vvb333007@gmail.com>
  */
 
-// TODO: Add "as hex" keyword: "show memory 0x40000000 10 int as hex"
-// TODO: This will require q_printtable() etc to be refactored. Right now the output format is hard linked
-// TODO: to the type: "int" is displayed as "%d", "void *" as "%p" but there is no way to dump array of "int" as hex
-
 #if COMPILING_ESPSHELL
 #include <esp_memory_utils.h>
+
+// CONSTANTS
 
 // Region of address space that holds peripherals. These are not defined for Xtensa arch for some reason
 // so we do it manually. Values are from TRMs
@@ -36,8 +34,9 @@
 #  error "SOC_PERIPHERAL_LOW and/or SOC_PERIPHERAL_HIGH are not defined, code review is required"
 #endif
 
-#if ESP_ARDUINO_VERSION < ESP_ARDUINO_VERSION_VAL(3, 3, 8) // TODO: use IDF macros not Arduino!
-#  define esp_rtc_dram_match_rtc_iram() true
+// Older ESP-IDF/Arduino core do not expose esp_rtc_dram_match_rtc_iram()
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 5, 4)
+#  define esp_rtc_dram_match_rtc_iram() false
 #endif
 
 

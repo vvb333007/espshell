@@ -358,8 +358,8 @@ static int cmd_suspend(int, char **);
 //
 static EL_STATUS
 ctrlc_pressed() {
-  const char *foo[] = { "suspend" };
-  cmd_suspend(1, (char **)foo);
+  const char *foo[] = { "suspend" }; 
+  cmd_suspend(1, (char **)foo); //TODO: const!!
   // We do redisplay here, because terminal window may be flooded with messages
   // (which flood was the reason to press Ctrl+C), and user wants to see clear command line
   return redisplay();
