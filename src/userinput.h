@@ -37,7 +37,7 @@ struct argcargv {
   uint8_t has_prio : 1;
   uint8_t reserved : 5;
   uint8_t prio;              // task priority. only valid if has_prio is set
-  uint8_t core;              // CPU core
+   int8_t core;              // CPU core. 0,1 or <0 for tskNO_AFFINITY
   char **argv;               // tokenized input string (array of pointers to various locations withn /userinput/)
   char *userinput;           // original input string with '\0's inserted by tokenizer
   int (*gpp)(int, char **);  //callback that is associated with argv[0] command.
@@ -179,8 +179,12 @@ static void userinput_show(argcargv_t *aa) {
       q_print("&");
       if (aa->has_prio)
         q_printf("%u", aa->prio);
-      if (aa->has_core)
-        q_printf(".%u", aa->core);
+      if (aa->has_core) {
+        if (aa->core < 0)
+          q_print(".");
+        else
+          q_printf(".%u", aa->core);
+      }
     }
   }
 }

@@ -81,8 +81,8 @@ static uint8_t shell_core = 0;
 // of running tasks.
 //
 #if CONFIG_FREERTOS_USE_TRACE_FACILITY  // New Arduino Core
-#  define taskid_remember(value) {}     //  do nothing
-#  define taskid_forget(value) {}       //  do nothing
+#  define taskid_remember(value) do {} while(0)     //  do nothing
+#  define taskid_forget(value) do {} while(0)       //  do nothing
 #else                                   // Old Arduino Core
 // TODO: remove by 1.0.0
 static vsa_t *task_list = 0;            //  variable-sized array to hold active tasks list
@@ -175,18 +175,20 @@ static vsa_t *task_list = 0;            //  variable-sized array to hold active 
 // Start a new thread on the same core espshell is running, remember the task_id.
 // With trace facility enabled, this and other macros here have zero overhead comparing to plain FreeRTOS API
 //
-// _Core can be 0, 1 or tskNO_AFFINITY
+// _Core can be 0, 1 or <0
+//
 #define task_new(_Func, _Arg, _Name, _Core) \
   ({ \
-    task_t handle = NULL; \
-    if (pdPASS == xTaskCreatePinnedToCore((TaskFunction_t)_Func, \
-                                          _Name, \
-                                          STACKSIZE, \
-                                          _Arg, \
-                                          shell_prio, /*TODO: uxTaskPriorityGet(NULL) ?*/ \
-                                          &handle, \
-                                          _Core)) \
+    BaseType_t err; \
+    task_t handle; \
+    if ((_Core) < 0) \
+      err = xTaskCreate((TaskFunction_t)_Func, (_Name), STACKSIZE, (_Arg), shell_prio, &handle); \
+    else \
+      err = xTaskCreatePinnedToCore((TaskFunction_t)_Func,(_Name),STACKSIZE,(_Arg),shell_prio,&handle,(_Core)); \
+    if (err == pdPASS) \
       taskid_remember(handle); \
+    else \
+      handle = NULL; \
     handle; \
   })
 

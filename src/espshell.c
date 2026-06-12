@@ -349,6 +349,10 @@ static const char *Task_Started =
     "%% Background task started (core %u)\r\n"
     "%% Copy/paste \"<i>kill %p</>\" to abort\r\n";
 
+static const char *Task_StartedANY = 
+    "%% Background task started\r\n"
+    "%% Copy/paste \"<i>kill %p</>\" to abort\r\n";
+
 #if WITH_HELP
 // "\033[H\033[2J%\r\n"
 static const char *WelcomeBanner =
@@ -572,7 +576,7 @@ static void amp_helper_task(void *arg) {
 static int exec_in_background(argcargv_t *aa_current) {
 
   task_t id;
-  uint8_t core = shell_core;
+  int8_t core = shell_core;
   struct helper_arg *ha = ha_get();
 
   MUST_NOT_HAPPEN(aa_current == NULL);
@@ -593,7 +597,7 @@ static int exec_in_background(argcargv_t *aa_current) {
 
   // Start an async task. If the user does not specify a core,
   // pin it to the same core on which ESPShell is running.
-  // TODO: make a "default_core" convar to make it configurable [0,1,ANY]
+  //
   if ((id = task_new(amp_helper_task, ha, aa_current->argv[0], core)) == NULL) {
     q_print("% <e>Can not start a new task. Resources low? Adjust STACKSIZE macro in \"espshell.h\"</>\r\n");
     userinput_unref(aa_current);
@@ -605,7 +609,11 @@ static int exec_in_background(argcargv_t *aa_current) {
 
     // Hint the user on how to stop a background command. If help is disabled,
     // they need to use "show tasks" to find task IDs.
-    HELP(q_printf(Task_Started, core, id));
+    if (core < 0) {
+      HELP(q_printf(Task_StartedANY, id));
+    } else {
+      HELP(q_printf(Task_Started, core, id));
+    }
   }
   return 0;
 }
@@ -696,14 +704,19 @@ free_p_and_exit:
     if (keywords_get() != KEYWORDS(alias))
 #endif      
     {
-      
+      // NOTE:
+      // Accessing argv[x][1] is safe because there are no empty-value argvs. If argv[x] exists, then
+      // it is guaranteed to be at least 1 character long not counting for the terminating `\0`
+      //
       char *p = &aa->argv[aa->argc - 1][1];
       
       // Accept priority and cpu core values if extended &-syntax was used:
       // &10  - set priority to 10
+      // &5.0 - set core to PRO_CPU (core #0)  and the priority to 5
+      // &5.  - set core to NO_AFFINITY and the priority to 5
       // &.1  - set core to APP_CPU (core #1)
       // &.0  - set core to PRO_CPU (core #0)
-      // &5.0 - set core to PRO_CPU (core #0) and the priority - to 5
+      // &.   - set core to NO_AFFINITY and the priority to 5
       //
       // If priority value is out of range, then behave like no priority was read at all
       if (*p) {
@@ -722,9 +735,15 @@ free_p_and_exit:
             aa->has_prio = 1;
         }
 
-        if (dot && dot[1]) {
-          // portNUM_PROCESSORS == 2, cores: 0 and 1
-          aa->core = q_atoi(dot + 1, portNUM_PROCESSORS);
+        // Is there a dot "." after the "&" somewhere?
+        if (dot) {
+          // Do we have anything after the dot?
+          // If yes - interpret it as a Core number. Otherwise interpret is as tskNO_AFFINITY
+          //
+          if (dot[1])
+            aa->core = q_atoi(dot + 1, portNUM_PROCESSORS); // Read core number
+          else
+            aa->core = -1;                                  // Core number == ANY
           if (aa->core >= portNUM_PROCESSORS)
             q_printf("%% This CPU has only %u core%s (numbered starting from 0)\r\n", PPA(portNUM_PROCESSORS));
           else

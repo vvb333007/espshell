@@ -401,7 +401,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 
       case WIFI_EVENT_STA_CONNECTED:
         HELP(if (Wifi.log) q_print("\r\n% WIFI STA: Connected, link UP. Waiting for protocol layer..\r\n"));
-        break;
+        break; 
 
       case WIFI_EVENT_STA_DISCONNECTED:
         wifi_event_sta_disconnected_t *event = (wifi_event_sta_disconnected_t*)event_data;

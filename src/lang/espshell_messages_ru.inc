@@ -24,6 +24,10 @@ static const char *Task_Started =
     "%% Фоновая задача запущена (CPU#%u)\r\n"
     "%% Команда \"<i>kill %p</>\" прервет выполнение задачи\r\n";
 
+static const char *Task_StartedANY =
+    "%% Фоновая задача запущена\r\n"
+    "%% Команда \"<i>kill %p</>\" прервет выполнение задачи\r\n";
+
 #if WITH_HELP
 static const char *WelcomeBanner =
     "\033[H\033[2J%\r\n"

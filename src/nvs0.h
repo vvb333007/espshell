@@ -292,6 +292,23 @@ static struct nvsnamespace *nv_get_namespaces(const char *partition) {
   return nvs_namespaces;
 }
 
+#if 0
+// key    --> keyname
+// name   --> namespace
+// nvs    --> nvs.net80211
+// !key   --> key
+// !na    --> na
+static bool nv_expand_namespace(char *dst, const char *n, size_t dst_size) {
+
+  return true; // namespace exi
+}
+
+static bool nv_expand_keyname(char *dst, const char *n, size_t dst_size) {
+  return true; // key name exists
+}
+
+#endif
+
 // List all namespaces available
 // this one is used by "ls"
 //
@@ -519,7 +536,10 @@ static int cmd_nvs_if(int argc, char **argv) {
 }
 
 // cd /|..|NAMESPACE|/NAMESPACE
-//
+// TODO: accept incomplete names
+// TODO: accept "name" as complete name, exact match is required
+//       cd nvs -> change to nvs.net80211
+//       cd !nvs -> change to nvs, do not expand names
 static int cmd_nvs_cd(int argc, char **argv) {
   if (argc < 2)
     return CMD_MISSING_ARG;
@@ -534,7 +554,7 @@ static int cmd_nvs_cd(int argc, char **argv) {
     q_print("% Path is too long\r\n");
     return CMD_FAILED;
   }
-  // TODO: nv_set_cwd() handles names like "nvs*"
+
   nv_set_cwd(*p ? p : NULL);
   return 0;
 }
