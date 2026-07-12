@@ -1552,14 +1552,16 @@ static int cmd_files_unmount(int argc, char **argv) {
       if (esp_spiffs_mounted(mountpoints[i].label))
         if ((err = esp_vfs_spiffs_unregister(mountpoints[i].label)) == ESP_OK)
           goto finalize_unmount;
+        
       goto failed_unmount;
 #endif
-#if WITH_LITTLEFS
+
+#if WITH_LITTLEFS 
     case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS:
       if (esp_littlefs_mounted(mountpoints[i].label))
         if ((err = esp_vfs_littlefs_unregister(mountpoints[i].label)) == ESP_OK)
           goto finalize_unmount;
-          // FALLTHRU
+          // FALLTHRU 
 #endif
     default:
       // FALLTHRU
@@ -1806,6 +1808,7 @@ static int cmd_files_mount(int argc, char **argv) {
               goto mount_failed;
             goto finalize_mount;
 #endif
+
 #if WITH_SPIFFS
           // Mount SPIFFS partition
           case ESP_PARTITION_SUBTYPE_DATA_SPIFFS:

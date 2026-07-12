@@ -234,7 +234,7 @@ static int cmd_show_camera(int argc, char **argv) {
       if (!cam_good) {
         q_print("% <e>Camera model name is expected</>\r\n");
         return CMD_MISSING_ARG;
-      }
+      } 
       // Print current pinout
       cam_show_pinout(&config);
     } else {
