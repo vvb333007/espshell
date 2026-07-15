@@ -282,7 +282,7 @@ static const char *files_subtype2text(unsigned char subtype) {
     case ESP_PARTITION_SUBTYPE_DATA_FAT: return " FAT/exFAT ";
     case ESP_PARTITION_SUBTYPE_DATA_SPIFFS: return "    SPIFFS ";
     case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS: return "  LittleFS ";
-
+    case 0xf0 ... 0xfe:                       return "     TARFS ";
     // Not supported file systems:
     case ESP_PARTITION_SUBTYPE_DATA_OTA: return "  OTA data ";
     case ESP_PARTITION_SUBTYPE_DATA_PHY: return "  PHY data ";

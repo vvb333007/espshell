@@ -10,10 +10,6 @@ Roadmap:
     h) Review and update screenshots
 
 
-2.1 Sequences: add sequence capture (using RMT), captured sequence display and 
-   saving to a FS. (IR remote capture & playback) add sequence decode, based on
-   user-supplied alphabet ("one","zero","head" and "tail")
-
 3. Frequency meter: add support for start/stop pin (i.e. hardware, externally
    controlled start/stop). This can improve accuracy: setting GPIO high/low 
    from an PCNT interrupt handler is much faster than sending TaskNotification.
