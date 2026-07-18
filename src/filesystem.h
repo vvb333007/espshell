@@ -41,6 +41,9 @@
 //
 #if WITH_FS
 
+
+#define ESP_PARTITION_SUBTYPE_DATA_TARFS 0xf0
+
 // Current working directory. Must start and end with "/". We don't use newlib's chdir()/getcwd() because
 // it can interfere with the sketch.
 //
@@ -282,7 +285,7 @@ static const char *files_subtype2text(unsigned char subtype) {
     case ESP_PARTITION_SUBTYPE_DATA_FAT: return " FAT/exFAT ";
     case ESP_PARTITION_SUBTYPE_DATA_SPIFFS: return "    SPIFFS ";
     case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS: return "  LittleFS ";
-    case 0xf0 ... 0xfe:                       return "     TARFS ";
+    case ESP_PARTITION_SUBTYPE_DATA_TARFS:    return "     TARFS ";
     // Not supported file systems:
     case ESP_PARTITION_SUBTYPE_DATA_OTA: return "  OTA data ";
     case ESP_PARTITION_SUBTYPE_DATA_PHY: return "  PHY data ";
@@ -552,6 +555,13 @@ static bool files_usage_stats(int i, uint64_t *total, uint64_t *used, uint64_t *
         *avail = total0 - used0;
       break;
 #endif
+
+#if WITH_TARFS
+    case ESP_PARTITION_SUBTYPE_DATA_TARFS:
+    // TODO: implement
+      break;
+#endif
+
     default:
       return false;
   }
@@ -1556,6 +1566,16 @@ static int cmd_files_unmount(int argc, char **argv) {
       goto failed_unmount;
 #endif
 
+#if WITH_TARFS
+    case ESP_PARTITION_SUBTYPE_DATA_TARFS:
+      // TODO: check if filesystem is mounted
+        tarfs_unmount(mountpoints[i].label);
+          goto finalize_unmount;
+        
+      goto failed_unmount;
+#endif
+
+
 #if WITH_LITTLEFS 
     case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS:
       if (esp_littlefs_mounted(mountpoints[i].label))
@@ -1847,6 +1867,14 @@ static int cmd_files_mount(int argc, char **argv) {
               goto mount_failed;
             goto finalize_mount;
 #endif
+#if WITH_TARFS
+          // Mount TARFS partition
+          case ESP_PARTITION_SUBTYPE_DATA_TARFS:
+            // TODO: check if already mounted
+            if (!tarfs_mount(part->label,mp,NULL, NULL))
+              goto mount_failed;
+            goto finalize_mount;
+#endif
           default:
             q_print("% <e>Unsupported file system</>\r\n");
             goto mount_failed;
@@ -1915,6 +1943,7 @@ static int cmd_files_mount0(int argc, char **argv) {
             case ESP_PARTITION_SUBTYPE_DATA_FAT:
             case ESP_PARTITION_SUBTYPE_DATA_SPIFFS:
             case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS:
+            case ESP_PARTITION_SUBTYPE_DATA_TARFS:
                 mountable = true;
                 //FALL THROUGH
             case ESP_PARTITION_SUBTYPE_DATA_NVS:                
@@ -2515,6 +2544,13 @@ static int cmd_files_format(int argc, char **argv) {
       err = esp_spiffs_format(label);
       break;
 #endif
+#if WITH_TARFS
+    case ESP_PARTITION_SUBTYPE_DATA_TARFS:
+      err = ESP_OK;
+      q_print("% <e>Immutable file system</>\r\n");
+      break;
+#endif
+
     default:
       q_printf("%% <e>Unsupported filesystem type 0x%02x</>\r\n", part->subtype);
   }

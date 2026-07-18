@@ -59,9 +59,9 @@ static uint8_t shell_prio = 0; // Default shell priority (Inherited by spawned t
 #  else
 #    define CHANGE_CORE 1
 #  endif
-static uint8_t shell_core = ARDUINO_RUNNING_CORE ^ CHANGE_CORE;
+static int8_t shell_core = ARDUINO_RUNNING_CORE ^ CHANGE_CORE;
 #else
-static uint8_t shell_core = 0;
+static int8_t shell_core = 0;
 #endif
 
 

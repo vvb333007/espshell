@@ -402,6 +402,32 @@ Example: run the command "pin 2 low high loop inf" in the background with elevat
 </pre>
 </p>
 
+<p>
+The <b>&amp;</b> operator also allows you to select the
+<i><a href="Kill_Suspend_And_Resume.html#prio">CPU core</a></i>
+for a background task.
+
+The syntax is <b>&amp;&lt;priority&gt;.&lt;core&gt;</b>. For example,
+<b>&amp;10.1</b> starts the command in the background on core 1 with
+priority 10.
+</p>
+
+<p>
+Background execution with priority 24 on core 1:
+<pre>
+  esp32#>pin 2 low high loop inf &24.1
+</pre>
+
+Background execution on core 1 using the default priority:
+<pre>
+  esp32#>pin 2 low high loop inf &.1
+</pre>
+
+Background execution on any available CPU core:
+<pre>
+  esp32#>pin 2 low high loop inf &.
+</pre>
+</p>
 
 <p>
  Any background command can be stopped by using command <a href="Kill_Suspend_And_Resume.html">kill</a>
