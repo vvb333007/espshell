@@ -41,8 +41,9 @@
 //
 #if WITH_FS
 
-
-#define ESP_PARTITION_SUBTYPE_DATA_TARFS 0xf0
+#if WITH_TARFS
+#  include "tarfs.h"
+#endif
 
 // Current working directory. Must start and end with "/". We don't use newlib's chdir()/getcwd() because
 // it can interfere with the sketch.
@@ -65,7 +66,9 @@ static struct {
   wl_handle_t   wl_handle;     // FAT wear-levelling library handle. Only for FAT filesystem on SPI flash (not used for SD cards)
 #endif
   void         *gpp;           // general purpose pointer. SD over SPI uses it to store sdmmc_card_t structure
-  signed char   gpi;           // index of a SPI bus which must be deinitialized on "unmount"
+  signed char   gpi;           // general purpose integer. 
+                               //   Index of a SPI bus which must be deinitialized on "unmount" for FATFS
+                               //   Index of the filesystem in TARFS
 } mountpoints[MOUNTPOINTS_NUM] = { 0 };
 
 
@@ -285,7 +288,7 @@ static const char *files_subtype2text(unsigned char subtype) {
     case ESP_PARTITION_SUBTYPE_DATA_FAT: return " FAT/exFAT ";
     case ESP_PARTITION_SUBTYPE_DATA_SPIFFS: return "    SPIFFS ";
     case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS: return "  LittleFS ";
-    case ESP_PARTITION_SUBTYPE_DATA_TARFS:    return "     TARFS ";
+    case 0xF0 ... 0xFE:    return "     TARFS ";
     // Not supported file systems:
     case ESP_PARTITION_SUBTYPE_DATA_OTA: return "  OTA data ";
     case ESP_PARTITION_SUBTYPE_DATA_PHY: return "  PHY data ";
@@ -557,8 +560,11 @@ static bool files_usage_stats(int i, uint64_t *total, uint64_t *used, uint64_t *
 #endif
 
 #if WITH_TARFS
-    case ESP_PARTITION_SUBTYPE_DATA_TARFS:
-    // TODO: implement
+    case 0xF0 ... 0xFE:
+      if (0 != tarfs_info(mountpoints[i].mp, &total0, &used0))
+        return false;
+      if (avail)
+        *avail = 0; // Avail is always zero. total-used is the heders size
       break;
 #endif
 
@@ -1542,7 +1548,7 @@ static int cmd_files_unmount(int argc, char **argv) {
   }
 
   // Process "unmount" depending on filesystem type
-  switch (mountpoints[i].type) {
+  switch ((unsigned )mountpoints[i].type) {
 #if WITH_FAT
     case ESP_PARTITION_SUBTYPE_DATA_FAT:
 #if WITH_SD
@@ -1567,11 +1573,11 @@ static int cmd_files_unmount(int argc, char **argv) {
 #endif
 
 #if WITH_TARFS
-    case ESP_PARTITION_SUBTYPE_DATA_TARFS:
-      // TODO: check if filesystem is mounted
-        tarfs_unmount(mountpoints[i].label);
-          goto finalize_unmount;
-        
+    case 0xF0 ... 0xFE:
+      if (tarfs_info(mountpoints[i].mp, NULL, NULL) == 0) {
+        tarfs_unmount(mountpoints[i].mp);
+        goto finalize_unmount;
+      }
       goto failed_unmount;
 #endif
 
@@ -1814,7 +1820,7 @@ static int cmd_files_mount(int argc, char **argv) {
 
 
         // Mount/Format depending on FS type
-        switch (part->subtype) {
+        switch ((unsigned )part->subtype) {
 #if WITH_FAT
           // Mount FAT partition
           case ESP_PARTITION_SUBTYPE_DATA_FAT:
@@ -1869,10 +1875,11 @@ static int cmd_files_mount(int argc, char **argv) {
 #endif
 #if WITH_TARFS
           // Mount TARFS partition
-          case ESP_PARTITION_SUBTYPE_DATA_TARFS:
-            // TODO: check if already mounted
-            if (!tarfs_mount(part->label,mp,NULL, NULL))
+          case 0xF0 ... 0xFE:
+            int fs_idx;
+            if ((fs_idx = tarfs_mount(part->label,mp,NULL, NULL)) < 0)
               goto mount_failed;
+            mountpoints[i].gpi = fs_idx;
             goto finalize_mount;
 #endif
           default:
@@ -1939,11 +1946,11 @@ static int cmd_files_mount0(int argc, char **argv) {
       mountable = false;
       switch(part->type) {
         case ESP_PARTITION_TYPE_DATA:
-          switch(part->subtype) {
+          switch((unsigned )part->subtype) {
             case ESP_PARTITION_SUBTYPE_DATA_FAT:
             case ESP_PARTITION_SUBTYPE_DATA_SPIFFS:
             case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS:
-            case ESP_PARTITION_SUBTYPE_DATA_TARFS:
+            case 0xF0 ... 0xFE:
                 mountable = true;
                 //FALL THROUGH
             case ESP_PARTITION_SUBTYPE_DATA_NVS:                
@@ -2527,7 +2534,7 @@ static int cmd_files_format(int argc, char **argv) {
 
   HELP(q_printf("%% Formatting partition \"%s\", file system type is \"%s\"\r\n", label, files_subtype2text(part->subtype)));
 
-  switch (part->subtype) {
+  switch ((unsigned )part->subtype) {
 #if WITH_FAT
     case ESP_PARTITION_SUBTYPE_DATA_FAT:
       sprintf(path0, "/%s", label);
@@ -2545,7 +2552,7 @@ static int cmd_files_format(int argc, char **argv) {
       break;
 #endif
 #if WITH_TARFS
-    case ESP_PARTITION_SUBTYPE_DATA_TARFS:
+    case 0xF0 ... 0xFE:
       err = ESP_OK;
       q_print("% <e>Immutable file system</>\r\n");
       break;

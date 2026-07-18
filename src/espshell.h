@@ -23,7 +23,7 @@
 
 // -- Compile-time settings BEGIN --
 //
-#define ESPSHELL_VERSION "0.99.17" // Code version
+#define ESPSHELL_VERSION "0.99.17-dev" // Code version
 #define WITH_LANG 0              // Set to 1 for experimental Russian language UI
 #define AUTOSTART 1              // Set to 0 for manual shell start via espshell_start().
 #define WITH_TIME 1              // Time support (commands "time" and "ntp")
@@ -36,7 +36,8 @@
 #define WITH_VAR 1               // enable support for sketch variables (command "var")
 #define WITH_COLOR 1             // Enable terminal colors support. Set to 0 if your terminal doesn't support ANSI colors
 #define WITH_FS 1                // Filesystems (fat/spiffs/littlefs) support. Unlikely that you'll need all of them
-#define WITH_SPIFFS 1            // support SPIF filesystem
+//#define WITH_TARFS 1            // support TARFS filesystem (http://github.com/vvb333007/tarfs/)
+#define WITH_SPIFFS 1            // support SPIFFS filesystem
 #define WITH_LITTLEFS 1          //   --    LittleFS
 #define WITH_FAT 1               //   --    FAT
 #define WITH_SD 1                // Support FAT filesystem on SD/TF card over SPI
