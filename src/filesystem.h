@@ -534,6 +534,7 @@ static bool files_usage_stats(int i, uint64_t *total, uint64_t *used, uint64_t *
     case ESP_PARTITION_SUBTYPE_DATA_FAT:
     // FAT is special: its info getter returns /total/ and /free/ unlike spiffs and littlefs
     // which return /total/ and /used/. Also, the first arg is a mountpoint, not partition
+    // TODO: total and avail may be NULL!!!
       if (ESP_OK != esp_vfs_fat_info(mountpoints[i].mp, total, avail))
         return false;
       if (used)
@@ -545,8 +546,9 @@ static bool files_usage_stats(int i, uint64_t *total, uint64_t *used, uint64_t *
     case ESP_PARTITION_SUBTYPE_DATA_LITTLEFS:
       if (esp_littlefs_info(mountpoints[i].label, &total0, &used0))
         return false;
-      if (avail)
-        *avail = total0 - used0;
+      if (avail) *avail = total0 - used0;
+      if (total) *total = total0;
+      if (used)  *used = used0;
       break;
 #endif
 
@@ -554,17 +556,21 @@ static bool files_usage_stats(int i, uint64_t *total, uint64_t *used, uint64_t *
     case ESP_PARTITION_SUBTYPE_DATA_SPIFFS:
       if (esp_spiffs_info(mountpoints[i].label, &total0, &used0))
         return false;
-      if (avail)
-        *avail = total0 - used0;
+      if (avail) *avail = total0 - used0;
+      if (total) *total = total0;
+      if (used)  *used = used0;
       break;
 #endif
 
 #if WITH_TARFS
     case 0xF0 ... 0xFE:
+
       if (0 != tarfs_info(mountpoints[i].mp, &total0, &used0))
         return false;
-      if (avail)
-        *avail = 0; // Avail is always zero. total-used is the heders size
+      
+      if (avail) *avail = 0; // Avail is always zero. total-used is the heders size
+      if (total) *total = total0;
+      if (used)  *used = used0;
       break;
 #endif
 

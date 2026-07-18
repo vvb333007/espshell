@@ -36,7 +36,7 @@
 #define WITH_VAR 1               // enable support for sketch variables (command "var")
 #define WITH_COLOR 1             // Enable terminal colors support. Set to 0 if your terminal doesn't support ANSI colors
 #define WITH_FS 1                // Filesystems (fat/spiffs/littlefs) support. Unlikely that you'll need all of them
-//#define WITH_TARFS 1            // support TARFS filesystem (http://github.com/vvb333007/tarfs/)
+#define WITH_TARFS 1            // support TARFS filesystem (http://github.com/vvb333007/tarfs/)
 #define WITH_SPIFFS 1            // support SPIFFS filesystem
 #define WITH_LITTLEFS 1          //   --    LittleFS
 #define WITH_FAT 1               //   --    FAT
