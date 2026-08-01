@@ -12,7 +12,9 @@
 
 #if COMPILING_ESPSHELL
 
-
+// On top of everything : this code is NOT MT-Safe. The reason for that is the static buffer in files_full_path() function.
+// It needs to be fixed.
+//
 // WARNING!!!  Hello, fellow software developer! If you’re about to modify this code, we have some bad news:
 // WARNING!!!  The code below relies heavily on shared read/write buffers. Many functions WILL modify their
 //             input buffers (paths, argv arrays, etc.).
@@ -695,6 +697,7 @@ static unsigned int files_dirwalk(const char *path0,
           }
 
           path[len] = '\0';          // cut off previous addition (made by this recursive function)
+          //TODO: strlcat()
           strcat(path, de->d_name);  // add entry name to our path.
 
           // if its a directory - call recursively
@@ -1545,6 +1548,7 @@ static int cmd_files_unmount(int argc, char **argv) {
   files_strip_trailing_slash(path);
 
   // expand name if needed
+  
   path = files_full_path(path, PROCESS_ASTERISK);
 
   // find a corresponding mountpoint
@@ -1737,9 +1741,9 @@ static int cmd_files_mount_sd(int argc, char **argv) {
 
 // "mount LABEL [/MOUNTPOINT"]
 // TODO: "mount sdmmc PIN_CMD PIN_CLK PIN_D0 [D1 D2 D3]
-//
+// TODO: too many goto!!!
 // mount a filesystem. filesystem type is defined by its label (see partitions.csv file).
-// supported filesystems: fat, littlefs, spiffs
+// supported filesystems: fat, littlefs, spiffs, tarfs
 //
 
 static int cmd_files_mount(int argc, char **argv) {
@@ -1775,6 +1779,10 @@ static int cmd_files_mount(int argc, char **argv) {
     // fixed later
     snprintf(mp0,sizeof(mp0), "/%s", argv[1]);
     mp = mp0;
+  }
+
+  if (argc > 3) {
+  /* TODO: process extra options (e.g. mount options for TARFS)*/
   }
 
   files_strip_trailing_slash(mp);  // or mount fails :-/
@@ -1883,13 +1891,20 @@ static int cmd_files_mount(int argc, char **argv) {
           // Mount TARFS partition
           case 0xF0 ... 0xFE:
             int fs_idx;
+
+            /* Disable integrity checking: we do not know if the FS contains CRC64 or not
+             TODO: add extra mount potions to set integrity/link_rebase/root_folder parameters */
+            tarfs_logging(0);
+            tarfs_integrity(0);
+
             if ((fs_idx = tarfs_mount(part->label,mp,NULL, NULL)) < 0)
               goto mount_failed;
             mountpoints[i].gpi = fs_idx;
             goto finalize_mount;
 #endif
           default:
-            q_print("% <e>Unsupported file system</>\r\n");
+            q_print("% <e>Unsupported file system.</> Edit espshell.h and enable desired FS support:\r\n"
+                    "% see macros WITH_FATFS, WITH_LITTLEFS, WITH_SPIFFS and WITH_TAR</>\r\n");
             goto mount_failed;
         }
       }

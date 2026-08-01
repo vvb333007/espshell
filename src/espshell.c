@@ -187,7 +187,7 @@
 #define CONSOLE_UP_POLL_DELAY 1000     // 1000ms. How often to check if Serial is up
 #define PWM_MAX_FREQUENCY 10000000     // Max frequency for PWM, 10Mhz. Must be below XTAL clock and well below APB frequency. 
 #define MAX_PROMPT_LEN 16              // Prompt length ( except for PROMPT_FILES), max length of a prompt
-#define MAX_PATH 256                   // max filesystem path len
+#define MAX_PATH 256                   // max filesystem path len TODO: make in 1024 bytes long, keep filename at 255
 #define MAX_FILENAME MAX_PATH          // max filename len (equal to MAX_PATH for now)
 #define UART_DEF_BAUDRATE 115200
 #define UART_RXTX_BUF 512              

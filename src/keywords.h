@@ -1175,7 +1175,7 @@ KEYWORDS_DECL(files) {
     NULL },
 
   { "mount", cmd_files_mount, 1, HIDDEN_KEYWORD },
-
+#if WITH_SD
   { "mount", cmd_files_mount_sd, 6,
     HELPK("% \"<b>mount <i>vspi|hspi|fspi</> <i>MISO MOSI CLK CS</> [<o>FREQ</>] [<o>/MOUNTPOINT</>]\"\r\n"
           "%\r\n"
@@ -1195,7 +1195,7 @@ KEYWORDS_DECL(files) {
 
   { "mount", cmd_files_mount_sd, 7, HIDDEN_KEYWORD },
   { "mount", cmd_files_mount_sd, 5, HIDDEN_KEYWORD },
-
+#endif /* WITH_SD */
   { "unmount", cmd_files_unmount, 1,
     HELPK("% \"<b>unmount</> [<o>/MOUNT_POINT</>]\"\r\n"
           "%\r\n"
