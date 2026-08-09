@@ -1781,8 +1781,12 @@ static int cmd_files_mount(int argc, char **argv) {
     mp = mp0;
   }
 
+  /* Process extra option (e.g. mount option for TARFS) */
+  int logging = 0;
+
   if (argc > 3) {
-  /* TODO: process extra options (e.g. mount options for TARFS)*/
+    if (q_strcmp(argv[3], "logging"))
+      logging = 1;
   }
 
   files_strip_trailing_slash(mp);  // or mount fails :-/
@@ -1894,7 +1898,7 @@ static int cmd_files_mount(int argc, char **argv) {
 
             /* Disable integrity checking: we do not know if the FS contains CRC64 or not
              TODO: add extra mount potions to set integrity/link_rebase/root_folder parameters */
-            tarfs_logging(0);
+            tarfs_logging( logging );
             tarfs_integrity(0);
 
             if ((fs_idx = tarfs_mount(part->label,mp,NULL, NULL)) < 0)

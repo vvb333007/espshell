@@ -1174,7 +1174,10 @@ KEYWORDS_DECL(files) {
           "%   <i>mount ffat</>     - mount partition \"ffat\" at directory \"/ffat\""),
     NULL },
 
+  { "mount", cmd_files_mount, 3, HIDDEN_KEYWORD },
+
   { "mount", cmd_files_mount, 1, HIDDEN_KEYWORD },
+  
 #if WITH_SD
   { "mount", cmd_files_mount_sd, 6,
     HELPK("% \"<b>mount <i>vspi|hspi|fspi</> <i>MISO MOSI CLK CS</> [<o>FREQ</>] [<o>/MOUNTPOINT</>]\"\r\n"
