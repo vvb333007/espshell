@@ -40,7 +40,7 @@
 #define WITH_SPIFFS 1            // support SPIFFS filesystem
 #define WITH_LITTLEFS 1          //   --    LittleFS
 #define WITH_FAT 1               //   --    FAT
-#define WITH_SD 0                // Support FAT filesystem on SD/TF card over SPI
+#define WITH_SD 1                // Support FAT filesystem on SD/TF card over SPI
 #define WITH_SPI 0               // Support SPI interface
 #if COMPILING_ESPSHELL
 #  define WITH_SPEED 0           // Set to 1 for -O2 optimization. Default is -Os (size)
