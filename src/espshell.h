@@ -29,17 +29,17 @@
 #define WITH_TIME 1              // Time support (commands "time" and "ntp")
 #define WITH_NVS 1               // NVS editor/viewer
 #define WITH_ALIAS 1             // Set to 0 to disable alias support (commands "alias", "if", "every" and "exec")
-#define WITH_WIFI 1              // Enable WiFi/IP functions
+#define WITH_WIFI 1              // Enable WiFi/IP functions where available
 #define WITH_HELP 1              // Set to 0 to save some program space by excluding help strings/functions
 #define WITH_HISTORY 1           // Enable command history
 #define WITH_ESPCAM 0            // Include camera commands. Set to 0 if your board does not have camera
 #define WITH_VAR 1               // enable support for sketch variables (command "var")
 #define WITH_COLOR 1             // Enable terminal colors support. Set to 0 if your terminal doesn't support ANSI colors
 #define WITH_FS 1                // Filesystems (fat/spiffs/littlefs) support. Unlikely that you'll need all of them
-//#define WITH_TARFS 1             // support TARFS filesystem (http://github.com/vvb333007/tarfs/)
-#define WITH_SPIFFS 0            // support SPIFFS filesystem
-#define WITH_LITTLEFS 0          //   --    LittleFS
-#define WITH_FAT 0               //   --    FAT
+#define WITH_TARFS 0             // support TARFS filesystem (http://github.com/vvb333007/tarfs/)
+#define WITH_SPIFFS 1            // support SPIFFS filesystem
+#define WITH_LITTLEFS 1          //   --    LittleFS
+#define WITH_FAT 1               //   --    FAT
 #define WITH_SD 0                // Support FAT filesystem on SD/TF card over SPI
 #define WITH_SPI 0               // Support SPI interface
 #if COMPILING_ESPSHELL
@@ -57,6 +57,9 @@
 
 // -- Compile-time settings END --
 
+// Various fixups
+
+// Startup port and mode
 #ifndef STARTUP_PORT
 #  if ARDUINO_USB_CDC_ON_BOOT      // USB mode?
 #    define STARTUP_PORT 99        // Don't change this: USB port is always number 99
@@ -64,18 +67,25 @@
 #    define STARTUP_PORT UART_NUM_0
 #  endif
 #endif
-
 #if STARTUP_PORT == 99
 #  define SERIAL_IS_USB 1
 #else
 #  define SERIAL_IS_USB 0
 #endif
 
+// SD requires FAT
 #if WITH_SD && !WITH_FAT
 #  undef WITH_SD
 #  define WITH_SD 0
 #  warning "SD support is disabled (depends on FAT FS, which is disabled)"
 #endif
+
+// P4 has no radio
+#if CONFIG_IDF_TARGET_ESP32P4
+#  undef WITH_WIFI
+#  define WITH_WIFI 0
+#endif
+
 
 // -- Developers section
 //

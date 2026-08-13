@@ -16,13 +16,18 @@
 
 #include <esp_rom_spiflash.h>
 #include <soc/rtc.h>
+#include <soc/soc.h>
 
 // Really old ESP-IDF / ArduinoCore may be missing these frequency values on particular targets.
 // ESP32P4  does not have these
 // TODO: Add support for newer CPUs
 //
-#if !defined(APB_CLK_FREQ) || !defined(MODEM_REQUIRED_MIN_APB_CLK_FREQ)
+#if !defined(APB_CLK_FREQ)
 #error "Unsupported CPU or very old ESP-IDF / Arduino Core"
+#endif
+
+#if !defined(MODEM_REQUIRED_MIN_APB_CLK_FREQ)
+#  define MODEM_REQUIRED_MIN_APB_CLK_FREQ APB_CLK_FREQ
 #endif
 
 // For performance profiling:
@@ -809,6 +814,7 @@ static int cmd_nap_alarm(int argc, char **argv) {
     VERBOSE(q_printf("%% Sleep wakeup source: EXT%d\r\n", (argc > 4)));
 #else
     q_print("% Target is not supported yet\r\n");
+    
     return CMD_FAILED;
 #endif
   } else if (!q_strcmp(argv[2], "touch")) {

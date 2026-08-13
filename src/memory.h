@@ -349,7 +349,7 @@ static int cmd_show_memory_map(int argc, char **argv) {
           "% <i>PERIFERALS</> [0x50000000 .. 0x500fffff] (MMIO registers)\r\n"
           "% <d>LP ROM</>     [0x50100000 .. 0x50103fff]\r\n"
           "% <b>RTC DIRAM</>  [0x50108000 .. 0x5010ffff] DRAM, IRAM and DATA\r\n"
-          "% <b>LP PERI</>    [0x50110000 .. 0x5012ffff]\r\n"
+          "% <b>LP PERI</>    [0x50110000 .. 0x5012ffff]\r\n";
 #else
   text = "% <e>Uhm, looks like I don't have a memory map for this CPU</>\r\n"
          "% Go to Github and create a feature request\r\n";

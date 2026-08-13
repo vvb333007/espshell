@@ -52,15 +52,19 @@ static struct {
 
 // Number of available functions in IO_MUX
 // Classic ESP32 has 6 functions per pin. Function 0 selects IO_MUX GPIO mode, function 2 selects GPIO_MATRIX GPIO mode
-// All other ESP32 variants have only 5 functions with function 1 being GPIO_MATRIX selector
+// ESP32P4 has only 4 functions
+// All other ESP32 variants have 5 functions with function 1 being GPIO_MATRIX selector
 //
 #ifdef CONFIG_IDF_TARGET_ESP32
 #  define IOMUX_NFUNC 6
+#elif defined(CONFIG_IDF_TARGET_ESP32P4)
+#  define IOMUX_NFUNC 4
 #else
 #  define IOMUX_NFUNC 5
 #endif
 
 // -- IO_MUX function code --> human readable text mapping --
+//
 // Each ESP32 variant has its own mapping but I made tables only for ESP32 and ESP32S3/2 simply because I 
 // do have these boards
 //
@@ -70,7 +74,7 @@ static struct {
 // Values like "0", "15" means GPIO function. E.g. "7" means Function="GPIO7"
 // Values of zero mean this function is undefined/unused
 //
-//TODO: add support for other Espressif ESP32 variants (namely C3, C6, C61, H2, and P4)
+//TODO: add support for other Espressif ESP32 variants (namely C3, C6, C61 and H2)
 //
 static const char *io_mux_func_name[NUM_PINS][IOMUX_NFUNC] = {
 
@@ -220,6 +224,66 @@ static const char *io_mux_func_name[NUM_PINS][IOMUX_NFUNC] = {
   { "U0RXD", "44", "CLK_OUT2", 0, 0 },
   { "45", "45", 0, 0, 0 },
   { "46", "46", 0, 0, 0 },
+
+#elif defined(CONFIG_IDF_TARGET_ESP32P4)
+
+// ESP32P4 MUX functions for pins. P4 has 4 functions per pin 
+  { "0", "0", 0, 0 },
+  { "1", "1", 0, 0 },
+  { "2", "2", 0, 0 },
+  { "3", "3", 0, 0 },
+  { "4", "4", 0, 0 },
+  { "5", "5", 0, 0 },
+  { "6", "6", 0, 0 },
+  { "7", "7", 0, 0 },
+  { "8", "8", 0, 0 },
+  { "9", "9", 0, 0 },
+  { "10", "10", 0, 0 },
+  { "11", "11", 0, 0 },
+  { "12", "12", 0, 0 },
+  { "13", "13", 0, 0 },
+  { "14", "14", 0, 0 },
+  { "15", "15", 0, 0 },
+  { "16", "16", 0, 0 },
+  { "17", "17", 0, 0 },
+  { "18", "18", 0, 0 },
+  { "19", "19", 0, 0 },
+  { "20", "20", 0, 0 },
+  { "21", "21", 0, 0 },
+  { "22", "22", 0, 0 },
+  { "23", "23", 0, 0 },
+  { "24", "24", 0, 0 },
+  { "25", "25", 0, 0 },
+  { "26", "26", 0, 0 },
+  { "27", "27", 0, 0 },
+  { "28", "28", 0, 0 },
+  { "29", "29", 0, 0 },
+  { "30", "30", 0, 0 },
+  { "31", "31", 0, 0 },
+  { "32", "32", 0, 0 },
+  { "33", "33", 0, 0 },
+  { "34", "34", 0, 0 },
+  { "35", "35", 0, 0 },
+  { "36", "36", 0, 0 },
+  { "37", "37", 0, 0 },
+  { "38", "38", 0, 0 },
+  { "39", "39", 0, 0 },
+  { "40", "40", 0, 0 },
+  { "41", "41", 0, 0 },
+  { "42", "42", 0, 0 },
+  { "43", "43", 0, 0 },
+  { "44", "44", 0, 0 },
+  { "45", "45", 0, 0 },
+  { "46", "46", 0, 0 },
+  { "47", "47", 0, 0 },
+  { "48", "48", 0, 0 },
+  { "49", "49", 0, 0 },
+  { "50", "50", 0, 0 },
+  { "51", "51", 0, 0 },
+  { "52", "52", 0, 0 },
+  { "53", "53", 0, 0 },
+  { "54", "54", 0, 0 },
+
 #else
 #  warning "Unsupported target, using dummy IO_MUX function name table"
 #  warning "Command [show iomux] will not be functional :("
@@ -711,20 +775,22 @@ static inline bool pin_is_input_only_pin(int pin) {
 // strapping pins as per Technical Reference (a 64bit bitmask)
 // TODO: add other ESP32 variants
 #ifdef CONFIG_IDF_TARGET_ESP32
-#  define STRAPPING_PINS 1 | (1 << 2) | (1 << 5) | (1 << 12) | (1 << 15)
+#  define STRAPPING_PINS ((1 | (1 << 2) | (1 << 5) | (1 << 12) | (1 << 15))
 #elif defined(CONFIG_IDF_TARGET_ESP32S2)
-#  define STRAPPING_PINS 1ULL | (1ULL << 45) | (1ULL << 46)
+#  define STRAPPING_PINS ((1ULL | (1ULL << 45) | (1ULL << 46))
 #elif defined(CONFIG_IDF_TARGET_ESP32S3)
-#  define STRAPPING_PINS 1ULL | (1ULL << 3) | (1ULL << 45) | (1ULL << 46)
+#  define STRAPPING_PINS ((1ULL | (1ULL << 3) | (1ULL << 45) | (1ULL << 46))
 #elif defined(CONFIG_IDF_TARGET_ESP32C3)
-#  define STRAPPING_PINS (1 << 2) | (1 << 8) | (1 << 9)
+#  define STRAPPING_PINS ((1 << 2) | (1 << 8) | (1 << 9))
 #elif defined(CONFIG_IDF_TARGET_ESP32C6)
-#  define STRAPPING_PINS (1 << 8) | (1 << 9) | (1 << 12) | (1 << 14) | (1 << 15)
+#  define STRAPPING_PINS ((1 << 8) | (1 << 9) | (1 << 12) | (1 << 14) | (1 << 15))
 #elif defined(CONFIG_IDF_TARGET_ESP32H2)
-#  define STRAPPING_PINS (1 << 8) | (1 << 9) | (1 << 25)
+#  define STRAPPING_PINS ((1 << 8) | (1 << 9) | (1 << 25))
+#elif defined(CONFIG_IDF_TARGET_ESP32P4)
+#  define STRAPPING_PINS ((1ULL << 34) | (1ULL << 35) | (1ULL << 36) | (1ULL << 37) | (1ULL << 38))
 #else
 #  define STRAPPING_PINS 0
-// TODO: Add H4, P4
+// TODO: Add H4 and C5
 #  warning "Unsupported (yet) target, pin_is_strapping_pin() is disabled. Dont hesitate to add support by yourself!"
 #endif
 
