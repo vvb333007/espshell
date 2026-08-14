@@ -228,20 +228,23 @@ static const char *io_mux_func_name[NUM_PINS][IOMUX_NFUNC] = {
 #elif defined(CONFIG_IDF_TARGET_ESP32P4)
 
 // ESP32P4 MUX functions for pins. P4 has 4 functions per pin 
+// Source ESP32P4 TRM, "Table 9.14-1. HP IO MUX Pin Functions"
   { "0", "0", 0, 0 },
   { "1", "1", 0, 0 },
-  { "2", "2", 0, 0 },
-  { "3", "3", 0, 0 },
-  { "4", "4", 0, 0 },
-  { "5", "5", 0, 0 },
-  { "6", "6", 0, 0 },
-  { "7", "7", 0, 0 },
-  { "8", "8", 0, 0 },
-  { "9", "9", 0, 0 },
-  { "10", "10", 0, 0 },
-  { "11", "11", 0, 0 },
-  { "12", "12", 0, 0 },
-  { "13", "13", 0, 0 },
+
+  { "MTCK", "2", 0, 0 },
+  { "MTDI", "3", 0, 0 },
+  { "MTMS", "4", 0, 0 },
+  { "MTDO", "5", 0, 0 },
+
+  { "6", "6", 0, "SPI2_HOLD" },
+  { "7", "7", 0, "SPI2_CS" },
+  { "8", "8", "UART0_RTS", "SPI2_D" },
+  { "9", "9", "UART0_CTS", "SPI2_CK" },
+  { "10", "10", "UART1_TXD", "SPI2_Q" },
+  { "11", "11", "UART1_RXD", "SPI2_WP" },
+  { "12", "12", "UART1_RTS", 0 },
+  { "13", "13", "UART1_CTS", 0 },
   { "14", "14", 0, 0 },
   { "15", "15", 0, 0 },
   { "16", "16", 0, 0 },
@@ -251,39 +254,38 @@ static const char *io_mux_func_name[NUM_PINS][IOMUX_NFUNC] = {
   { "20", "20", 0, 0 },
   { "21", "21", 0, 0 },
   { "22", "22", 0, 0 },
-  { "23", "23", 0, 0 },
+  { "23", "23", 0, "REF_50M_CK" },
   { "24", "24", 0, 0 },
   { "25", "25", 0, 0 },
   { "26", "26", 0, 0 },
   { "27", "27", 0, 0 },
-  { "28", "28", 0, 0 },
-  { "29", "29", 0, 0 },
-  { "30", "30", 0, 0 },
-  { "31", "31", 0, 0 },
-  { "32", "32", 0, 0 },
-  { "33", "33", 0, 0 },
-  { "34", "34", 0, 0 },
-  { "35", "35", 0, 0 },
-  { "36", "36", 0, 0 },
-  { "37", "37", 0, 0 },
-  { "38", "38", 0, 0 },
-  { "39", "39", 0, 0 },
-  { "40", "40", 0, 0 },
-  { "41", "41", 0, 0 },
-  { "42", "42", 0, 0 },
-  { "43", "43", 0, 0 },
-  { "44", "44", 0, 0 },
-  { "45", "45", 0, 0 },
-  { "46", "46", 0, 0 },
-  { "47", "47", 0, 0 },
-  { "48", "48", 0, 0 },
-  { "49", "49", 0, 0 },
-  { "50", "50", 0, 0 },
-  { "51", "51", 0, 0 },
-  { "52", "52", 0, 0 },
-  { "53", "53", 0, 0 },
-  { "54", "54", 0, 0 },
-
+  { "28", "28", "SPI2_CS", "ETH_RXDV" },
+  { "29", "29", "SPI2_D", "ETH_RXD0" },
+  { "30", "30", "SPI2_CK", "ETH_RXD1" },
+  { "31", "31", "SPI2_Q", "ETH_RXER" },
+  { "32", "32", "SPI2_HOLD", "RMII_CLK" },
+  { "33", "33", "SPI2_WP", "ETH_TX_EN" },
+  { "34", "34", "SPI2_IO4", "ETH_TXD0" },
+  { "35", "35", "SPI2_IO5", "ETH_TXD1" },
+  { "36", "36", "SPI2_IO6", "ETH_TXER" },
+  { "UART0_TX", "37", "SPI2_IO7", 0 },
+  { "UART0_RX", "38", "SPI2_DQS", 0 },
+  { "SD1_CDATA0", "39", 0, "REF_50M_CK" },
+  { "SD1_CDATA1", "40", 0, "ETH_TX_EN" },
+  { "SD1_CDATA2", "41", 0, "ETH_TXD0" },
+  { "SD1_CDATA3", "42", 0, "ETH_TXD1" },
+  { "SD1_CCLK", "43", 0, "ETH_TXER" },
+  { "SD1_CCMD", "44", 0, "RMII_CLK" },
+  { "SD1_CDATA4", "45", 0, "ETH_RXDV" },
+  { "SD1_CDATA5", "46", 0, "ETH_RXD0" },
+  { "SD1_CDATA6", "47", 0, "ETH_RXD1" },
+  { "SD1_CDATA7", "48", 0, "ETH_RXER" },
+  { "49", "49", 0, "ETH_TX_EN" },
+  { "50", "50", 0, "RMII_CLK" },
+  { "51", "51", 0, "ETH_RXDV" },
+  { "52", "52", 0, "ETH_RXD0" },
+  { "53", "53", 0, "ETH_RXD1" },
+  { "54", "54", 0, "ETH_RXER" },
 #else
 #  warning "Unsupported target, using dummy IO_MUX function name table"
 #  warning "Command [show iomux] will not be functional :("
@@ -341,8 +343,11 @@ static bool inline __attribute__((const)) pin_isvirtual(uint8_t const pin) {
   return pin == GPIO_MATRIX_CONST_ZERO_INPUT || pin == GPIO_MATRIX_CONST_ONE_INPUT;
 }
 
-// TODO: display runtime-reserved flags also: waiting for new ESP-IDF
+// Check if pin is reserved. By reserved we mean a GPIO which is critically important for normal SoC function:
+// these are SPI lines connecting CPU to FLASH and PSRAM
+// 
 static bool pin_is_reserved(unsigned char pin) {
+  
   return Reserved & (1ULL << pin);
 }
 
@@ -608,7 +613,7 @@ static bool pin_not_exist_notice(unsigned char pin) {
         }
     }
     if (!res)
-      q_print("none (?)</>");
+      q_print("none</>");
     else
       q_printf("(%u pins)</>", res);
   }
@@ -616,15 +621,18 @@ static bool pin_not_exist_notice(unsigned char pin) {
   
   if (pin >= NUM_PINS)
     q_printf("%% Valid pin numbers are from <i>0</> to <i>%u</>, please note that\r\n%% ", PIN_MAX);
+#if defined(CONFIG_IDF_TARGET_ESP32P4)
+  // ESP32P4 has all it pins available to the user, there is no gap in pin numbers
+#else
+  // Older ESP32 models all have gaps in  their GPIO numbers
   else
     q_print("% Unfortunately ");
   q_printf("following pins do not exist: <i>  ");
   
-  // TODO: IMPERFECTION: workaround the case where all pins are valid in the mask
   for (pin = 0; pin < NUM_PINS; pin++)
     if ((SOC_GPIO_VALID_GPIO_MASK & ((uint64_t)1 << pin)) == 0)
       q_printf("%u  ", pin);
-  
+#endif // SoC with non-existent pins  
 
   // Dump RESERVED pins.
   q_print("</>\r\n"
@@ -773,7 +781,7 @@ static inline bool pin_is_input_only_pin(int pin) {
 
 
 // strapping pins as per Technical Reference (a 64bit bitmask)
-// TODO: add other ESP32 variants
+//
 #ifdef CONFIG_IDF_TARGET_ESP32
 #  define STRAPPING_PINS ((1 | (1 << 2) | (1 << 5) | (1 << 12) | (1 << 15))
 #elif defined(CONFIG_IDF_TARGET_ESP32S2)
@@ -790,7 +798,7 @@ static inline bool pin_is_input_only_pin(int pin) {
 #  define STRAPPING_PINS ((1ULL << 34) | (1ULL << 35) | (1ULL << 36) | (1ULL << 37) | (1ULL << 38))
 #else
 #  define STRAPPING_PINS 0
-// TODO: Add H4 and C5
+// TODO: Add H4, C5, C61 and S31
 #  warning "Unsupported (yet) target, pin_is_strapping_pin() is disabled. Dont hesitate to add support by yourself!"
 #endif
 
@@ -798,6 +806,28 @@ static inline bool pin_is_input_only_pin(int pin) {
 static inline bool pin_is_strapping_pin(int pin) {
   return ((unsigned long long)( STRAPPING_PINS ) & ((unsigned long long)1 << pin)) != 0;
 }
+
+// BOOT pin. Tied to the ground switched ESP32 to UART download mode
+//
+#if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
+#  define BOOT_PIN 0
+#elif CONFIG_IDF_TARGET_ESP32C2 || CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32C61 || CONFIG_IDF_TARGET_ESP32H2
+#  define BOOT_PIN 9
+#elif CONFIG_IDF_TARGET_ESP32P4
+#  define BOOT_PIN 35
+#elif CONFIG_IDF_TARGET_ESP32C5
+#  define BOOT_PIN 28
+#else
+#  define BOOT_PIN -1
+#  warning "Unsupported (yet) target, pin_is_boot_pin() is disabled. Dont hesitate to add support by yourself!"
+#endif
+
+// Check if pin is a BOOT pin
+//
+static inline bool pin_is_boot_pin(int pin) {
+  return pin < 0 ? false : pin == BOOT_PIN;
+}
+
 
 
 
@@ -879,7 +909,10 @@ static int cmd_show_pin(int argc, char **argv) {
         q_printf("%% GPIO%u is %s", pin, res ? "reserved for SoC" : "available");
 
         if (pin_is_strapping_pin(pin))
-          q_print(", strapping pin");
+          q_print(", <i>strapping pin</>");
+
+        if (pin_is_boot_pin(pin))
+          q_print(", <i>BOOT pin</>");
 
         if (pin_is_input_only_pin(pin))
           q_print(", <i>input-only</>");
