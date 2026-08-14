@@ -349,7 +349,7 @@ static const char *Rr_desc_percore[] = {
   "",
   "Software resets the digital core",
   "",
-  "Deep sleep reset the digital core, check when doing sleep bringup",
+  "Deep sleep reset the digital core",
   "",
   "MWDT core reset",
   "",
@@ -368,9 +368,9 @@ static const char *Rr_desc_percore[] = {
   "",
   "USB Serial/JTAG controller's JTAG resets the digital core",
   "USB Serial/JTAG controller's UART resets the digital core",
-  "Triggered when a reset command from JTAG is received",
+  "Reset command from JTAG is received",
   "",
-  "Triggered when the CPU enters lockup (exception inside the exception)",
+  "CPU lockup (exception inside the exception)",
 
 #else
 
