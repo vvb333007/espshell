@@ -19,11 +19,9 @@
 #include <soc/soc.h>
 
 // Really old ESP-IDF / ArduinoCore may be missing these frequency values on particular targets.
-// ESP32P4  does not have these
-// TODO: Add support for newer CPUs
 //
 #if !defined(APB_CLK_FREQ)
-#error "Unsupported CPU or very old ESP-IDF / Arduino Core"
+#  error "Unsupported CPU or very old ESP-IDF / Arduino Core"
 #endif
 
 #if !defined(MODEM_REQUIRED_MIN_APB_CLK_FREQ)
@@ -51,7 +49,7 @@ static inline __attribute__((always_inline)) uint32_t cpu_ticks() {
 
 // Check if APB frequency is optimal or can be raised
 // ESP32 and ESP32-S2 lower their APB frequency if CPU frequency goes below 80 MHz
-// RISCV ESP CPUs have APB freq of 40 or 32 MHz, while modem min required frequency is 80MHz
+// RISCV ESP CPUs have APB freq of 90, 40 or 32 MHz, while modem min required frequency is 80MHz
 //
 #define apb_freq_max() (MODEM_REQUIRED_MIN_APB_CLK_FREQ / 1000000)
 #define apb_freq_is_optimal() (APBFreq >= (APB_CLK_FREQ / 1000000))
@@ -69,11 +67,18 @@ static inline __attribute__((always_inline)) uint32_t cpu_ticks() {
 //
 
 // Globals
-static unsigned short CPUFreq = 240,  // Default values (or "expected values")
-  APBFreq = 80,
-                      XTALFreq = 40;
+#ifndef CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ
+#  define CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ 160 // Safe default value
+#endif
 
-// TODO: investigate RTC_NOINIT_ATTR section: probably we can get rid of these "backup" variables
+#ifndef CONFIG_XTAL_FREQ
+#  define CONFIG_XTAL_FREQ 40
+#endif
+
+// Default values (or "expected values")
+static unsigned short CPUFreq  = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ,  
+                      APBFreq  = APB_CLK_FREQ / 1000000,
+                      XTALFreq = CONFIG_XTAL_FREQ;
 
 RTC_DATA_ATTR static uint32_t Sleep_count = 0;   // Number of times CPU returned from a sleep (deep + light).
 RTC_DATA_ATTR static uint32_t Reset_count2 = 0;  // backup area
@@ -651,7 +656,7 @@ static int cmd_cpu(int argc, char **argv) {
   unsigned int freq;
 
   if ((freq = q_atol(argv[1], DEF_BAD)) == DEF_BAD) {
-    HELP(q_print("% Numeric value is expected (e.g. 240): frequency in MHz\r\n"));
+    HELP(q_print("% Numeric value is expected (e.g. 160): frequency in MHz\r\n"));
     return 1;
   }
 
@@ -659,16 +664,17 @@ static int cmd_cpu(int argc, char **argv) {
   if (freq == CPUFreq)
     return 0;
 
-  // ESP32 boards do support 240,160,120 and 80 Mhz. If XTAL is 40Mhz or more then we also support
+  // ESP32 boards do support 400/360/240, 160, 120 and 80 Mhz. If XTAL is 40Mhz or more then we also support
   // XTAL,XTAL/2 and XTAL/4 frequencies. If XTAL frequency is lower than 40 Mhz then we only support XTAL and XTAL/2
   // additional frequencies
-  while (freq != 240 && freq != 160 && freq != 120 && freq != 80) {
+  // TODO: refactor this ugly "if"
+  while (freq != 400 && freq != 360 && freq != 240 && freq != 160 && freq != 120 && freq != 80) {
 
     if ((freq == xtal) || (freq == xtal / 2) || ((xtal >= 40) && (freq == xtal / 4))) break;
 
     q_printf("%% <e>%u MHz is unsupported frequency</>\r\n", freq);
 show_hint_and_exit:
-    q_printf("%% Supported frequencies are: 240, 160, 120, 80, %u, %u", xtal, xtal / 2);
+    q_printf("%% Supported frequencies are: 400/360/240, 160, 120, 80, %u, %u", xtal, xtal / 2);
     if (xtal >= 40)
       q_printf(" and %u", xtal / 4);
     q_print(" MHz\r\n");
@@ -769,7 +775,7 @@ static int cmd_nap_alarm(int argc, char **argv) {
   if (argc < 4)
     return CMD_MISSING_ARG;
 
-  // "nap alarm low 1 2 3 4"
+  // "nap alarm low|high 1 2 3 4"
   if (!q_strcmp(argv[2], "low") || !q_strcmp(argv[2], "high")) {
 
     uint64_t pins = 0;
@@ -788,35 +794,25 @@ static int cmd_nap_alarm(int argc, char **argv) {
     for (int i = 3; i < argc; i++) {
       if ((pin = q_atol(argv[i], BAD_PIN)) == BAD_PIN)
         return i;
-      if (!pin_can_wakeup(pin))
+      if (!pin_can_wakeup(pin)) {
+        q_printf("%% GPIO %u can not be used for wakeup; Must be RTC GPIO\r\n", (unsigned int)pin);
         return CMD_FAILED;
-      pins |= pin;
+      }
+      pins |= (1ULL << pin);
     }
 
-#if SOC_PM_SUPPORT_EXT1_WAKEUP && SOC_PM_SUPPORT_EXT0_WAKEUP && SOC_RTCIO_PIN_COUNT > 0
-    if (argc < 5) {
-      // only one pin. Its value is in the /pin/ variable
-      if (ESP_OK == esp_sleep_enable_ext0_wakeup(pin, level))
-        Nap_alarm_set |= 1 << ESP_SLEEP_WAKEUP_EXT0;
-      else {
-        q_print("% Can not set EXT0 wakeup source\r\n");
-        return CMD_FAILED;
-      }
-    } else {
-      // Multiple pins.
-      if (ESP_OK == esp_sleep_enable_ext1_wakeup(pins, level))
-        Nap_alarm_set |= 1 << ESP_SLEEP_WAKEUP_EXT1;
-      else {
+#if SOC_RTCIO_PIN_COUNT > 0 && SOC_PM_SUPPORT_EXT1_WAKEUP
+    if (ESP_OK == esp_sleep_enable_ext1_wakeup(pins, level))
+      Nap_alarm_set |= 1 << ESP_SLEEP_WAKEUP_EXT1;
+    else {
         q_print("% Can not set EXT1 wakeup source\r\n");
         return CMD_FAILED;
-      }
     }
-    VERBOSE(q_printf("%% Sleep wakeup source: EXT%d\r\n", (argc > 4)));
 #else
     q_print("% Target is not supported yet\r\n");
-    
     return CMD_FAILED;
 #endif
+
   } else if (!q_strcmp(argv[2], "touch")) {
 
     // TODO: touch wakeup source
