@@ -257,7 +257,10 @@ static int cmd_show_memory_map(int argc, char **argv) {
 
   const char *text;
 
-  q_print("% <r>SoC memory map: (region name and address range)  </>\r\n");
+  q_printf("%% <r>SoC memory map: (region name and address range)  </>\r\n"
+           "%% Addressable region: [ %p .. %p ]\r\n",
+             (void *)(uintptr_t )(ESP32_MIN_ADDR),
+             (void *)(uintptr_t )(ESP32_MAX_ADDR));
 
 #if CONFIG_IDF_TARGET_ESP32
   text = "% \r\n"
@@ -340,11 +343,11 @@ static int cmd_show_memory_map(int argc, char **argv) {
   text = "% \r\n"
           "% <d>CPU SUBSYS</> [0x20000000 .. 0x2fffffff]\r\n"
           "% <i>TCM</>        [0x30100000 .. 0x30101fff]\r\n"
-          "% <g>CPU PERI</>   [0x3ff00000 .. 0x3ff1ffff]\r\n"
+          "% <g>CPU PERI</>   [0x3ff00000 .. 0x3ff1ffff] (MMIO registers)\r\n"
           "% <b>DIRAM-I</>    [0x4ff00000 .. 0x4ffbffff]\r\n"
           "% <b>DIRAM-D</>    [0x4ff00000 .. 0x4ffbffff]\r\n"
-          "% <d>DATA ROM</>   [0x40000000 .. 0x43ffffff]\r\n"
-          "% <d>INST ROM</>   [0x40000000 .. 0x43ffffff]\r\n"
+          "% <d>ROM</>        [0x4fc00000 .. 0x4fc1ffff]\r\n"
+          "% <i>EXT FLASH</>  [0x40000000 .. 0x43ffffff] (External Flash)\r\n"
           "% <i>EXT RAM</>    [0x48000000 .. 0x4bffffff] (External RAM)\r\n"
           "% <i>PERIFERALS</> [0x50000000 .. 0x500fffff] (MMIO registers)\r\n"
           "% <d>LP ROM</>     [0x50100000 .. 0x50103fff]\r\n"

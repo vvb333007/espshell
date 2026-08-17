@@ -573,18 +573,52 @@ static inline __attribute__((const)) const char *number_english_ending(unsigned 
 #endif // WITH_LANG
 
 
-
+// Valid memory range: every CPU is different
+// Used to quick check pointers for validity
+//
+#if CONFIG_IDF_TARGET_ESP32
+#  define ESP32_MIN_ADDR     0x3F000000UL
+#  define ESP32_MAX_ADDR     0x7FFFFFFFUL
+#elif CONFIG_IDF_TARGET_ESP32S2
+#  define ESP32_MIN_ADDR     0x3F000000UL
+#  define ESP32_MAX_ADDR     0x7FFFFFFFUL
+#elif CONFIG_IDF_TARGET_ESP32S3
+#  define ESP32_MIN_ADDR     0x3C000000UL
+#  define ESP32_MAX_ADDR     0x7FFFFFFFUL
+#elif CONFIG_IDF_TARGET_ESP32C2
+#  define ESP32_MIN_ADDR     0x3FC80000UL
+#  define ESP32_MAX_ADDR     0x7FFFFFFFUL
+#elif CONFIG_IDF_TARGET_ESP32C3
+#  define ESP32_MIN_ADDR     0x3FC80000UL
+#  define ESP32_MAX_ADDR     0x7FFFFFFFUL
+#elif CONFIG_IDF_TARGET_ESP32C5
+#  define ESP32_MIN_ADDR     0x40000000UL
+#  define ESP32_MAX_ADDR     0x7FFFFFFFUL
+#elif CONFIG_IDF_TARGET_ESP32C6
+#  define ESP32_MIN_ADDR     0x40000000UL
+#  define ESP32_MAX_ADDR     0x7FFFFFFFUL
+#elif CONFIG_IDF_TARGET_ESP32H2
+#  define ESP32_MIN_ADDR     0x40000000UL
+#  define ESP32_MAX_ADDR     0x7FFFFFFFUL
+#elif CONFIG_IDF_TARGET_ESP32P4
+#  define ESP32_MIN_ADDR     0x20000000UL
+#  define ESP32_MAX_ADDR     0x7FFFFFFFUL
+#else
+#  define ESP32_MIN_ADDR     0x20000000UL
+#  define ESP32_MAX_ADDR     0xFFFFFFFFUL
+#  warning "Unknown target!"
+#endif /* CONFIG_IDF_TARGET_ */
 
 
 // Check if memory address is in valid range. This function does not check memory access
 // rights, only boundaries are checked.
 //
-static int8_t bypass_va = false; // convar. 
+static int8_t bypass_va = false; // a convar. bypass pointer check
 
 static bool __attribute__((const)) is_valid_address(const void *addr, unsigned int count) {
-  
+ 
   return  bypass_va ||
-          (((uintptr_t)addr >= 0x3c000000UL) && ((uintptr_t)addr + count < 0x80000000UL));
+          (((uintptr_t)addr >= ESP32_MIN_ADDR) && ((uintptr_t)addr + count <= ESP32_MAX_ADDR));
 }
 
 #if MEMTEST

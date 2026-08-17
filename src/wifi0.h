@@ -19,6 +19,7 @@
 // NAT router, NTP client and DHCP server. It is compatible with WiFi Arduino library.
 //
 // TODO: check error codes for all esp-idf functions
+// TODO: Add support for ESP32-P4+ C6 as wifi (HOSTED firmware, SDIO control)
 
 #include "freertos/event_groups.h"
 #include <esp_wifi.h>

@@ -33,14 +33,14 @@
  // "pcnt overflow interrupt" - an ISR which gets called each time counter reaches 20000 pulses
  // "GPIO anyedge interrupt" - an ISR which gets called on incoming pulse
  //
- // TODO: 1.0: "trigger" counter must record a timestamp & enable counting inside the ISR. 
+ // TODO: "trigger" counter must record a timestamp & enable counting inside the ISR. 
  // TODO: Current implementation has a delay of tens
  // TODO: of microseconds before 1st pulse and actual counting since the code uses task notifications
  // TODO: Make /pcnt_counters/ _Atomic. Use atomic_load/atomic_store/atomic_fetch_add/sub
  // TODO: make lockless access to the units[] array: use _Atomic /.in_use/ for that
  // TODO: to get rid of all these mutexes
  // TODO: Make <1Hz display possible
- //
+ // TODO: Refactor the code to use the new PCNT API: older API support is dropped in ESP-IDF 6.x
  //
 #if COMPILING_ESPSHELL
 

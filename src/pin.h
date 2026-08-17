@@ -622,7 +622,7 @@ static bool pin_not_exist_notice(unsigned char pin) {
   if (pin >= NUM_PINS)
     q_printf("%% Valid pin numbers are from <i>0</> to <i>%u</>, please note that\r\n%% ", PIN_MAX);
 #if defined(CONFIG_IDF_TARGET_ESP32P4)
-  // ESP32P4 has all it pins available to the user, there is no gap in pin numbers
+  // ESP32P4 has all its pins available to the user, there is no gap in pin numbers
 #else
   // Older ESP32 models all have gaps in  their GPIO numbers
   else
@@ -643,7 +643,7 @@ static bool pin_not_exist_notice(unsigned char pin) {
   q_print("</>\r\n");
 
   q_printf("%% Pins %u and %u are \"virtual\": sources of constant 1/0\r\n",GPIO_MATRIX_CONST_ONE_INPUT,GPIO_MATRIX_CONST_ZERO_INPUT);
-
+ // TODO: display the list of RTC_GPIO pins. These are used in particular in nap alarm command when setting wakeup GPIO numbers: only RTC_GPIOs can be used for that
 #if CONFIG_IDF_TARGET_ESP32
   q_printf("%% Pins <g>34..39</> can be only used as INPUT!\r\n");
 #endif      
@@ -810,22 +810,22 @@ static inline bool pin_is_strapping_pin(int pin) {
 // BOOT pin. Tied to the ground switched ESP32 to UART download mode
 //
 #if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
-#  define BOOT_PIN 0
+#  define BOOT_EN_PIN 0
 #elif CONFIG_IDF_TARGET_ESP32C2 || CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32C6 || CONFIG_IDF_TARGET_ESP32C61 || CONFIG_IDF_TARGET_ESP32H2
-#  define BOOT_PIN 9
+#  define BOOT_EN_PIN 9
 #elif CONFIG_IDF_TARGET_ESP32P4
-#  define BOOT_PIN 35
+#  define BOOT_EN_PIN 35
 #elif CONFIG_IDF_TARGET_ESP32C5
-#  define BOOT_PIN 28
+#  define BOOT_EN_PIN 28
 #else
-#  define BOOT_PIN -1
+#  define BOOT_EN_PIN -1
 #  warning "Unsupported (yet) target, pin_is_boot_pin() is disabled. Dont hesitate to add support by yourself!"
 #endif
 
 // Check if pin is a BOOT pin
 //
 static inline bool pin_is_boot_pin(int pin) {
-  return pin < 0 ? false : pin == BOOT_PIN;
+  return pin < 0 ? false : pin == BOOT_EN_PIN;
 }
 
 
