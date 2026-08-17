@@ -1782,7 +1782,7 @@ static int cmd_files_mount(int argc, char **argv) {
   }
 
   /* Process extra option (e.g. mount option for TARFS) */
-  int logging = 0;
+  [[maybe_unused]] int logging = 0;
 
   if (argc > 3) {
     if (q_strcmp(argv[3], "logging"))
