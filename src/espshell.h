@@ -23,7 +23,7 @@
 
 // -- Compile-time settings BEGIN --
 //
-#define ESPSHELL_VERSION "0.99.17-dev" // Code version
+#define ESPSHELL_VERSION "0.99.18-dev" // Code version
 #define WITH_LANG 0              // Set to 1 for experimental Russian language UI
 #define AUTOSTART 1              // Set to 0 for manual shell start via espshell_start().
 #define WITH_TIME 1              // Time support (commands "time" and "ntp")
@@ -42,6 +42,7 @@
 #define WITH_FAT 1               //   --    FAT
 #define WITH_SD 1                // Support FAT filesystem on SD/TF card over SPI
 #define WITH_SPI 0               // Support SPI interface
+#define WITH_PHP 0               // Used to build MicroPHP firmware, must be set to 0
 #if COMPILING_ESPSHELL
 #  define WITH_SPEED 0           // Set to 1 for -O2 optimization. Default is -Os (size)
 #  define MOUNTPOINTS_NUM 5        // Max number of simultaneously mounted filesystems (must be >0)
@@ -81,7 +82,7 @@
 #endif
 
 // P4 has no radio
-#if CONFIG_IDF_TARGET_ESP32P4
+#if CONFIG_IDF_TARGET_ESP32P4 || CONFIG_ESP_HOSTED_ENABLED
 #  undef WITH_WIFI
 #  define WITH_WIFI 0
 #endif
