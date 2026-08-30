@@ -120,7 +120,9 @@ static const char *Rr_desc[] = {
 
 };
 
-// Workaround for old Ardunino cores
+// Workaround for old Ardunino cores: they heave _UART but don't have _UART1 and _UART2 macros
+// As a result, setting wakeup sorce on OLD Arduino Cores will result in setting UART0 always
+//
 #ifndef ESP_SLEEP_WAKEUP_UART1
 #define ESP_SLEEP_WAKEUP_UART1 ESP_SLEEP_WAKEUP_UART
 #endif
@@ -131,26 +133,25 @@ static const char *Rr_desc[] = {
 
 // Deep-sleep wakeup source. Entries containing "(light sleep)" should never appear
 //
-
 static const char *Ws_desc[] = {
   [ESP_SLEEP_WAKEUP_UNDEFINED] = "<w>an undefined event",
   [ESP_SLEEP_WAKEUP_ALL] = "",
-  [ESP_SLEEP_WAKEUP_EXT0] = "EXT0 (external signal, GPIO)",
-  [ESP_SLEEP_WAKEUP_EXT1] = "EXT1 (external signal, GPIOs)",
-  [ESP_SLEEP_WAKEUP_TIMER] = "a timer",
-  [ESP_SLEEP_WAKEUP_TOUCHPAD] = "a touchpad",
-  [ESP_SLEEP_WAKEUP_ULP] = "the ULP co-processor/microcode",
-  [ESP_SLEEP_WAKEUP_GPIO] = "a GPIO (light sleep)",
+  [ESP_SLEEP_WAKEUP_EXT0] = "EXT0 (external signal, RTC_IO)",
+  [ESP_SLEEP_WAKEUP_EXT1] = "EXT1 (external signal, RTC_CNTL)",
+  [ESP_SLEEP_WAKEUP_TIMER] = "Timer",
+  [ESP_SLEEP_WAKEUP_TOUCHPAD] = "TOUCHPAD",
+  [ESP_SLEEP_WAKEUP_ULP] = "ULP co-processor/microcode",
+  [ESP_SLEEP_WAKEUP_GPIO] = "GPIO (light sleep)",
 #if ESP_SLEEP_WAKEUP_UART != ESP_SLEEP_WAKEUP_UART1  
-  [ESP_SLEEP_WAKEUP_UART1] = "an UART1 (light sleep)",
+  [ESP_SLEEP_WAKEUP_UART1] = "UART1 (light sleep)",
 #endif
 #if ESP_SLEEP_WAKEUP_UART != ESP_SLEEP_WAKEUP_UART2  
-  [ESP_SLEEP_WAKEUP_UART2] = "an UART2 (light sleep)",
+  [ESP_SLEEP_WAKEUP_UART2] = "UART2 (light sleep)",
 #endif  
-  [ESP_SLEEP_WAKEUP_UART] = "an UART (light sleep)",
-  [ESP_SLEEP_WAKEUP_WIFI] = "the WIFI (light sleep)",
-  [ESP_SLEEP_WAKEUP_COCPU] = "the CO-CPU (INT)",
-  [ESP_SLEEP_WAKEUP_COCPU_TRAP_TRIG] = "the CO-CPU (TRIG)",
+  [ESP_SLEEP_WAKEUP_UART] = "UART0 (light sleep)",
+  [ESP_SLEEP_WAKEUP_WIFI] = "WIFI (light sleep)",
+  [ESP_SLEEP_WAKEUP_COCPU] = "CO-CPU (INT)",
+  [ESP_SLEEP_WAKEUP_COCPU_TRAP_TRIG] = "CO-CPU (TRIG)",
   [ESP_SLEEP_WAKEUP_BT] = "Bluetooth (light sleep)",
 #ifdef ESP_SLEEP_WAKEUP_VAD
   [ESP_SLEEP_WAKEUP_VAD] = "<w>VAD",
@@ -367,7 +368,7 @@ static const char *Rr_desc_percore[] = {
   "VDD voltage is not stable and resets the digital core",
   "RWDT system reset",
   "",
-  "Super watch dog resets the digital core and rtc module",
+  "SuperWDT resets the digital core and rtc module",
   "Glitch on power resets the digital core and rtc module",
   "eFuse CRC error resets the digital core",
   "",
@@ -378,41 +379,11 @@ static const char *Rr_desc_percore[] = {
   "CPU lockup (exception inside the exception)",
 
 #else
-
-  //c2,c5 are missing
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-  "",
-
+  //TODO: c5 and c61 descriptions are missing and must be copied from TRMs
+  "",  "",  "",  "",  "",  "",  "",  "",
+  "",  "",  "",  "",  "",  "",  "",  "",
+  "",  "",  "",  "",  "",  "",  "",  "",
+  "",  "",  "",  "",  "",  "",  "",  "",
 #endif
 };
 
@@ -674,6 +645,8 @@ static int cmd_cpu(int argc, char **argv) {
 
     q_printf("%% <e>%u MHz is unsupported frequency</>\r\n", freq);
 show_hint_and_exit:
+    // TODO: Waiting for https://github.com/espressif/arduino-esp32/issues/12833 to be fixed.
+    //       Replace the string literal below with getSupportedCpuFrequencyMhz() call
     q_printf("%% Supported frequencies are: 400/360/240, 160, 120, 80, %u, %u", xtal, xtal / 2);
     if (xtal >= 40)
       q_printf(" and %u", xtal / 4);
@@ -683,7 +656,7 @@ show_hint_and_exit:
   }
 
   // Set new frequency. Don't check the return code but re-read frequencies instead
-  // TODO: use on_frequency_change callbacks (there are some in Arduino Core or/and IDF)
+  // TODO: use ApbChange callbacks (there are some in Arduino Core or/and IDF)
   setCpuFrequencyMhz(freq);
   cpu_read_frequencies();
 
@@ -699,6 +672,7 @@ show_hint_and_exit:
 
 //"reload"
 // Performs software reload
+// TODO: can we do hard reload, similar to power-on?
 //
 static int NORETURN cmd_reload(UNUSED int argc, UNUSED char **argv) {
   esp_restart();
@@ -706,7 +680,7 @@ static int NORETURN cmd_reload(UNUSED int argc, UNUSED char **argv) {
   //return 0;
 }
 
-// Check if proper alarm set
+// Check if alarm set and compatible with the sleep mode
 //
 static bool is_alarm_set(bool deep) {
 
@@ -794,14 +768,15 @@ static int cmd_nap_alarm(int argc, char **argv) {
     for (int i = 3; i < argc; i++) {
       if ((pin = q_atol(argv[i], BAD_PIN)) == BAD_PIN)
         return i;
-      if (!pin_can_wakeup(pin)) {
-        q_printf("%% GPIO %u can not be used for wakeup; Must be RTC GPIO\r\n", (unsigned int)pin);
-        return CMD_FAILED;
-      }
+
+      if (!pin_can_wakeup(pin)) 
+        return CMD_FAILED; // pin_can_wakeup() prints diagnostics if pin number is bad
+      
       pins |= (1ULL << pin);
     }
-
-#if SOC_RTCIO_PIN_COUNT > 0 && SOC_PM_SUPPORT_EXT1_WAKEUP
+// C3 does not have EXT1 but it also lacks EXT0, so I removed EXT0 completely
+//
+#if (SOC_RTCIO_PIN_COUNT > 0) && SOC_PM_SUPPORT_EXT1_WAKEUP
     if (ESP_OK == esp_sleep_enable_ext1_wakeup(pins, level))
       Nap_alarm_set |= 1 << ESP_SLEEP_WAKEUP_EXT1;
     else {
@@ -812,6 +787,7 @@ static int cmd_nap_alarm(int argc, char **argv) {
     q_print("% Target is not supported yet\r\n");
     return CMD_FAILED;
 #endif
+    VERBOSE(q_print("% Sleep wakeup source: GPIO\r\n"));
 
   } else if (!q_strcmp(argv[2], "touch")) {
 
@@ -819,6 +795,8 @@ static int cmd_nap_alarm(int argc, char **argv) {
     q_print("% Not implemented yet");
     //Nap_alarm_set |= 1 << ESP_SLEEP_WAKEUP_TOUCHPAD;
     return CMD_FAILED;
+
+    VERBOSE(q_print("% Sleep wakeup source: TOUCH\r\n"));
 
   } else if (!q_strcmp(argv[2], "uart")) {
 
@@ -830,6 +808,7 @@ static int cmd_nap_alarm(int argc, char **argv) {
       return CMD_MISSING_ARG;
     }
 
+    // argv[3] is UART#
     u = q_atoi(argv[3], -1);
     if (u < 0 || u >= NUM_UARTS) {
       HELP(q_printf("%% UART number is out of range. Valid numbers are 0..%u\r\n", NUM_UARTS - 1));

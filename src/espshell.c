@@ -804,7 +804,9 @@ int espshell_exec(const char *p) {
     return -1;
     
   while (*c) {
-
+    if (NULL != (nl = q_findchar(c, ';'))) 
+      *nl = '\0';
+    else
     if (NULL != (nl = q_findchar(c, '\n')))
       *nl = '\0';
 
@@ -829,6 +831,7 @@ int espshell_exec(const char *p) {
   return ret;
 }
 
+// TODO: implement!
 bool espshell_exec_finished() {
   return true;
 }

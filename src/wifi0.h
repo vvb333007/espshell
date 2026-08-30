@@ -216,7 +216,7 @@ static bool sta_restore_static_dns(esp_netif_t *staif) {
       esp_netif_set_dns_info(staif,ESP_NETIF_DNS_MAIN,&dnsi);
       dnsi.ip.u_addr.ip4.addr = q_htonl(Wifi.sta_dns2);
       esp_netif_set_dns_info(staif,ESP_NETIF_DNS_BACKUP,&dnsi);
-    } //TODO: check ESP-IDF return codes
+    }
   }
   return true;
 }
