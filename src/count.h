@@ -311,7 +311,7 @@ static int count_clear_counter(int pin) {
 //
 bool count_wait_for_the_first_pulse(unsigned int pin) {
 
-  struct trigger_arg t = {          // argument for the ISR
+  struct trigger_arg t = {          // argument for the ISR. iy is on the stack, but interrupt fires before it goes out of scope
     taskid_self(),
     pin
   };
