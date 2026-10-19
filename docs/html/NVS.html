@@ -39,6 +39,8 @@
     <li><a href="#cdls">Viewing information: <b>cd</b> and <b>ls</b></a></li>
     <li><a href="#newrmset">Creating, removing and editing values: <b>new</b>, <b>rm</b> and <b>set</b></a></li>
     <li><a href="#importexport">Saving/loading to/from a file: <b>import</b>, <b>export</b></a></li>
+    <li><a href="#startup">Special Variables: "<b>automount</b>" and "<b>autoexec</b>"</a></li>
+
  </ul>
 </p>
 
@@ -417,6 +419,33 @@ If the <i>NVS_PATH</i> parameter is omitted, the current namespace will be expor
   </tr>
 
 </table>
+</p>
+
+<p><h2 id=startup><a href="#top">&#8686;</a>Special Variables: "automount" and "autoexec"</h2></p>
+<p>
+The <code>espshell</code> namespace contains several entries that ESPShell reads at startup. These entries affect the boot process.
+</p><p>
+Both variables are strings. The <code>autoexec</code> variable typically contains something like <code>"exec /ffat/autoexec.sh"</code> — a command that will be executed by the shell after the partitions have been automatically mounted.
+The shell executes the <code>exec</code> command, which launches the user script — <code>/ffat/autoexec.esh</code> in this example.
+</p><p>
+Similarly, the <code>automount</code> variable contains a command string, for example <code>"files; mount ffat /ffat ; exit"</code>. Note the semicolons: they can be used to execute multiple commands in sequence. Semicolons are supported only in this variable; in the regular CLI, a semicolon is not a command separator.
+</p><p>
+<pre>
+p4@esp32-nvs(📁 /)>cd espshell
+p4@esp32-nvs(📁 /espshell)>ls
+% # |     Key name     |  Type  | Value (strings may be truncated. use "dump")
+% --+------------------+--------+-----------------------------------------------
+%  1| tz               | char*  | &lt;empty&gt;
+%  2| hostid           | char*  | p4
+%  3| autoexec         | char*  | exec /ffat/autoexec.esh
+%  4| automount        | char*  | files; mount tarfs; exit
+% --+------------------+--------+-----------------------------------------------
+% Total: 4 records
+p4@esp32-nvs(📁 /espshell)>
+</pre>
+</p>
+<p>
+The <code>automount</code> and <code>autoexec</code> variables are processed in the following order: the shell checks the state of the bootstrap pin. If the pin is HIGH, both commands are skipped. If the pin is LOW, the shell reads the <code>automount</code> variable and executes its contents as a shell command. Immediately afterward, the shell reads the <code>autoexec</code> variable and executes the command string it contains.
 </p>
 
 </body>
