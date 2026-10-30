@@ -6,6 +6,26 @@
 
 ![Main window](docs/html/i/espshell.jpg)
 
+# IN SHORT
+
+Change pins, speeds and parameters of a **running** ESP32 sketch from a
+terminal, without recompiling or reflashing. Add one line to your sketch
+and get a shell with commands for GPIO, PWM, I2C, UART, pulse counting,
+files, NVS and WiFi.
+
+    #include "espshell.h"
+
+Then, in any terminal on the serial port:
+
+    esp32#>pin 2 low high loop inf &    (blink in the background)
+    esp32#>count 4                      (measure pulses on pin 4)
+    esp32#>var                          (list registered sketch variables)
+    Ctrl+C                              (pause the sketch)
+    esp32#>resume                       (continue)
+
+Not a framework for your own CLI: a ready-made toolbox for working with
+hardware. Your sketch can also run shell commands via `espshell_exec()`.
+
 # WHAT IS THIS
 
 This is a debugging and development tool (a library for the Arduino framework) intended for use with **ESP32 hardware** (Tested on ESP32, ESP32S3, ESP32C6 and ESP32P4 variants.)
