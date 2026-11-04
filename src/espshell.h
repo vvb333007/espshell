@@ -23,7 +23,7 @@
 
 // -- Compile-time settings BEGIN --
 //
-#define ESPSHELL_VERSION "0.99.18-dev" // Code version
+#define ESPSHELL_VERSION "0.99.17-dev" // Code version
 #define WITH_LANG 0              // Set to 1 for experimental Russian language UI
 #define AUTOSTART 1              // Set to 0 for manual shell start via espshell_start().
 #define WITH_TIME 1              // Time support (commands "time" and "ntp")
@@ -36,11 +36,11 @@
 #define WITH_VAR 1               // enable support for sketch variables (command "var")
 #define WITH_COLOR 1             // Enable terminal colors support. Set to 0 if your terminal doesn't support ANSI colors
 #define WITH_FS 1                // Filesystems (fat/spiffs/littlefs) support. Unlikely that you'll need all of them
-#define WITH_TARFS 0             // support TARFS filesystem ("TARFS" library or http://github.com/vvb333007/tarfs/)
+#define WITH_TARFS 1             // support TARFS filesystem (http://github.com/vvb333007/tarfs/)
 #define WITH_SPIFFS 1            // support SPIFFS filesystem
 #define WITH_LITTLEFS 1          //   --    LittleFS
 #define WITH_FAT 1               //   --    FAT
-#define WITH_SD 1                // Support FAT filesystem on SD/TF card over SPI
+#define WITH_SD 0                // Support FAT filesystem on SD/TF card over SPI
 #define WITH_SPI 0               // Support SPI interface
 #define WITH_PHP 0               // Used to build MicroPHP firmware, must be set to 0
 #if COMPILING_ESPSHELL
@@ -81,10 +81,13 @@
 #  warning "SD support is disabled (depends on FAT FS, which is disabled)"
 #endif
 
-// P4 has no radio
-#if CONFIG_IDF_TARGET_ESP32P4 || CONFIG_ESP_HOSTED_ENABLED
+// P4,H2,H4 and H21 have no native WIFI and can only use 'hosted' access
+// If hosted is disabled, then disable WIFI on these targets
+//
+#if (CONFIG_IDF_TARGET_ESP32P4 || CONFIG_IDF_TARGET_ESP32H2 || CONFIG_IDF_TARGET_ESP32H4 || CONFIG_IDF_TARGET_ESP32H21)&& !CONFIG_ESP_HOSTED_ENABLED
 #  undef WITH_WIFI
 #  define WITH_WIFI 0
+#  warning "WIFI is disabled: no native WIFI nor hosted support"
 #endif
 
 

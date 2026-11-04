@@ -19,14 +19,16 @@
 // NAT router, NTP client and DHCP server. It is compatible with WiFi Arduino library.
 //
 // TODO: check error codes for all esp-idf functions
-// TODO: Add support for ESP32-P4+ C6 as wifi (HOSTED firmware, SDIO control)
+
 
 #include "freertos/event_groups.h"
 #include <esp_wifi.h>
 #include <esp_event.h>
 #include <esp_mac.h>
 #include <esp_netif.h>
-#include <esp_phy.h>
+#if !CONFIG_ESP_HOSTED_ENABLED
+# include <esp_phy.h>
+#endif
 #include <esp_wifi_ap_get_sta_list.h>
 #include "nvs_flash.h"
 #include "lwip/sockets.h"
@@ -476,8 +478,14 @@ static bool prepare_wifi_stack() {
   if (!ni) {
     // it is ok to call lwip's esp_netif_init() twice: if sketch performs esp_netif_init() then
     // *this* esp_netif_init() just does nothing
-   esp_netif_init();
-   ni = true;
+    esp_netif_init();
+    ni = true;
+#if CONFIG_ESP_HOSTED_ENABLED
+    if (!hostedInitWiFi()) {
+      VERBOSE(q_print("% start_wifi_stack() failed to initialze WIFI co-processor (hosted)\r\n"));
+      return false;
+    }
+#endif //#if CONFIG_ESP_HOSTED_ENABLED
   }
 
   // Lets check if network interfaces are created already. We check for presence AP and STA interfaces,
@@ -490,6 +498,13 @@ static bool prepare_wifi_stack() {
   if (!Wifi.prepared) {
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+
+#if CONFIG_ESP_HOSTED_ENABLED
+    // required for proper work when esp-hosted is used.
+    cfg.nvs_enable = false;
+    esp_wifi_set_storage(WIFI_STORAGE_RAM);
+#endif
+
 
     sntp_cfg.start = false;                       // start SNTP service explicitly (after connecting)
     sntp_cfg.server_from_dhcp = true;             // accept NTP offers from DHCP server, if any (need to enable *before* connecting)
