@@ -124,11 +124,16 @@ static bool nv_load_config() {
     if (Time.zone[0])
       time_apply_zone();
 
-    // Read "autoexec" and "automount" settings, but only if SHELL_BOOSTRAP_GPIO is low.
-    // Skip "auto" settings if GPIO is HIGH
-    // TODO: implement BOOTSTRAPPING mechanism
-     if (1/*digitalForceRead(SHELL_BOOSTRAP_GPIO) == LOW*/) {
-      char cmd[128] = { 0 };
+    anykey_pressed();
+
+    q_printf("%% Press any key to skip automout and autoexec..");
+    q_delay(1000);
+    if (anykey_pressed()) {
+      q_print("Skip\r\n");
+    } else {
+      // Read "autoexec" and "automount" settings
+      
+      char cmd[128] = { 0 }; // TODO: no magic numbers!
 
       // We use two variables where we can use one: technically it is possible to
       // mount & execute script useing just "automount". These two are separated because automount
@@ -136,20 +141,26 @@ static bool nv_load_config() {
 
       // execute automount commands
       length = sizeof(cmd);
+
       nvs_get_str(handle, "automount", cmd, &length);
       cmd[sizeof(cmd) - 1] = '\0';
-      if (length && cmd[0])
+
+      if (length && cmd[0]) {
         VERBOSE(q_printf("%% Automounting: %s\r\n", cmd));
         espshell_exec( cmd );
+      }
 
       // execute autoexec commands
       length = sizeof(cmd);
+
       nvs_get_str(handle, "autoexec", cmd, &length);
       cmd[sizeof(cmd) - 1] = '\0';
-      if (length && cmd[0])
+
+      if (length && cmd[0]) {
         VERBOSE(q_printf("%% Autoexec: %s\r\n", cmd));
         espshell_exec( cmd );
-     }
+      }
+    }
     nvs_close(handle);
     return true;
 }
