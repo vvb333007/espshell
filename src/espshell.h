@@ -23,7 +23,7 @@
 
 // -- Compile-time settings BEGIN --
 //
-#define ESPSHELL_VERSION "0.99.17-dev" // Code version
+#define ESPSHELL_VERSION "0.99.18" // Code version
 #define WITH_LANG 0              // Set to 1 for experimental Russian language UI
 #define AUTOSTART 1              // Set to 0 for manual shell start via espshell_start().
 #define WITH_TIME 1              // Time support (commands "time" and "ntp")
@@ -41,7 +41,7 @@
 #define WITH_LITTLEFS 1          //   --    LittleFS
 #define WITH_FAT 1               //   --    FAT
 #define WITH_SD 0                // Support FAT filesystem on SD/TF card over SPI
-#define WITH_SPI 0               // Support SPI interface
+#define WITH_SPI 0               // Support SPI interface (not yet done, do not uncomment)
 #define WITH_PHP 0               // Used to build MicroPHP firmware, must be set to 0
 #if COMPILING_ESPSHELL
 #  define WITH_SPEED 0           // Set to 1 for -O2 optimization. Default is -Os (size)
